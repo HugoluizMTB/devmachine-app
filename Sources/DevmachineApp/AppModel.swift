@@ -71,6 +71,22 @@ final class AppModel: ObservableObject {
     }
     @Published var sessionsByAlias: [String: [TmuxSession]] = [:]
     @Published var offlineAliases: Set<String> = []
+
+    /// Progress of the workspace sweep, for the sidebar's connecting bar. The
+    /// total is workspaces, not sessions: how many sessions a workspace has is
+    /// only known once it answers. Zero total means no sweep is running.
+    @Published private(set) var sweepTotal = 0
+    @Published private(set) var sweepDone = 0
+
+    /// Drives the label from a test without running a sweep.
+    func sweepDoneForTesting(_ value: Int) { sweepDone = value }
+
+    /// "Connecting 3 of 10 workspaces…", or nil when nothing is connecting.
+    var connectingLabel: String? {
+        guard sweepTotal > 0 else { return nil }
+        let current = min(sweepDone + 1, sweepTotal)
+        return "Connecting \(current) of \(sweepTotal) workspaces…"
+    }
     @Published var selection: SidebarItem? = nil {
         didSet {
             if let selection {
@@ -447,13 +463,19 @@ final class AppModel: ObservableObject {
         let targets = workspaces.filter { !refreshingAliases.contains($0.alias) }
         guard !targets.isEmpty else { return }
         sweepInFlight = true
+        sweepTotal = targets.count
+        sweepDone = 0
         for ws in targets { refreshingAliases.insert(ws.alias) }
         Task.detached { [store] in
             var remaining = targets[...]
             while let ws = remaining.first {
                 remaining = remaining.dropFirst()
                 let outcome = Result { try store.sessions(for: ws) }
-                let stop = await MainActor.run { self.apply(outcome, alias: ws.alias) }
+                let stop = await MainActor.run { () -> Bool in
+                    let stop = self.apply(outcome, alias: ws.alias)
+                    self.sweepDone += 1
+                    return stop
+                }
                 if stop { break }
             }
             // The aliases the stopped sweep never reached share the same host,
@@ -465,6 +487,8 @@ final class AppModel: ObservableObject {
                 }
                 for ws in targets { self.refreshingAliases.remove(ws.alias) }
                 self.sweepInFlight = false
+                self.sweepTotal = 0
+                self.sweepDone = 0
             }
         }
     }

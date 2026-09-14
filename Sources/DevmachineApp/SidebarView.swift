@@ -10,6 +10,7 @@ struct SidebarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             topBar
+            connectingBar
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(Array(model.sidebarWorkspaces.enumerated()), id: \.element.id) { index, ws in
@@ -38,6 +39,22 @@ struct SidebarView: View {
             footerRow
         }
         .background(Color.dmSidebarBg)
+    }
+
+    /// Only while the sweep runs: which workspace it is on, and how far it got.
+    @ViewBuilder
+    private var connectingBar: some View {
+        if let label = model.connectingLabel {
+            VStack(alignment: .leading, spacing: 5) {
+                DMProgressBar(done: model.sweepDone, total: model.sweepTotal, fillColor: .orange)
+                Text(verbatim: label)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.dmMuted)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .transition(.opacity)
+        }
     }
 
     private var footerRow: some View {

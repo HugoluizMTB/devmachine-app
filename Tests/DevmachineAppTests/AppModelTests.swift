@@ -291,25 +291,6 @@ final class AppModelTests: XCTestCase {
         model.selection = nil
         XCTAssertTrue(model.selectedSessions.isEmpty)
     }
-}
-
-private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
-    private let lock = NSLock()
-    private var calls = 0
-
-    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
-        lock.lock()
-        calls += 1
-        lock.unlock()
-        throw NSError(domain: "test", code: 1)
-    }
-
-    var callCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return calls
-    }
-
     @MainActor
     func testLocalIsAlwaysTheLastWorkspace() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
@@ -375,4 +356,56 @@ private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
 
         XCTAssertEqual(model.localSessions.map(\.name), ["Operator"])
     }
+
+    @MainActor
+    func testNothingConnectsBeforeASweepStarts() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        XCTAssertNil(model.connectingLabel)
+        XCTAssertEqual(model.sweepTotal, 0)
+    }
+
+    @MainActor
+    func testTheSweepCountsWorkspacesWhileItRuns() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "beta", alias: "beta-devmachine"),
+            Workspace(name: "gamma", alias: "gamma-devmachine"),
+        ]
+        model.refreshAll()
+
+        XCTAssertEqual(model.sweepTotal, 3)
+        XCTAssertEqual(model.sweepDone, 0)
+        XCTAssertEqual(model.connectingLabel, "Connecting 1 of 3 workspaces\u{2026}")
+    }
+
+    @MainActor
+    func testTheLabelNeverCountsPastTheTotal() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        model.refreshAll()
+        model.sweepDoneForTesting(1)
+
+        XCTAssertEqual(model.connectingLabel, "Connecting 1 of 1 workspaces\u{2026}")
+    }
+
+}
+
+private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        lock.lock()
+        calls += 1
+        lock.unlock()
+        throw NSError(domain: "test", code: 1)
+    }
+
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
 }
