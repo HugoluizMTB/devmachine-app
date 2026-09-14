@@ -13,7 +13,7 @@ let package = Package(
         .executable(name: "DevmachineApp", targets: ["DevmachineApp"])
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.20.0")
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", revision: "9fc2d2fc627f291727e82d5449ec22df76320671")
     ],
     targets: [
         .target(name: "DevmachineCore"),
