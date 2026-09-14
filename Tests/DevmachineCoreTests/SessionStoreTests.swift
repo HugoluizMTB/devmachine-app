@@ -12,7 +12,7 @@ private struct FakeRunner: CommandRunner {
 }
 
 final class SessionStoreTests: XCTestCase {
-    func testMontaSessoesDoWorkspace() throws {
+    func testBuildsWorkspaceSessions() throws {
         let fake = FakeRunner(output: """
         dash-claude|2
         @@PANES@@
@@ -29,7 +29,7 @@ final class SessionStoreTests: XCTestCase {
         )
     }
 
-    func testRunExecutaComandoNoAlias() throws {
+    func testRunExecutesCommandOnTheAlias() throws {
         let fake = FakeRunner(output: "ok")
         let store = SessionStore(runner: fake)
         let result = try store.run(alias: "acme-devmachine", command: "tmux kill-session -t 'x'")

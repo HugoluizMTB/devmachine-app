@@ -2,7 +2,7 @@ import XCTest
 @testable import DevmachineCore
 
 final class SSHConfigParserTests: XCTestCase {
-    func testColetaAliasesDeContexto() {
+    func testCollectsContextAliases() {
         let cfg = """
         Host devmachine
             HostName 100.64.0.1
@@ -25,22 +25,22 @@ final class SSHConfigParserTests: XCTestCase {
         ])
     }
 
-    func testIgnoraDevmachineCruEPub() {
+    func testIgnoresBareAndPubHosts() {
         let ws = SSHConfigParser.parse("Host devmachine devmachine-pub\n")
         XCTAssertTrue(ws.isEmpty)
     }
 
-    func testMultiplosAliasesNaMesmaLinha() {
+    func testMultipleAliasesOnTheSameLine() {
         let ws = SSHConfigParser.parse("Host dev-devmachine beta-devmachine\n")
         XCTAssertEqual(ws.map(\.name), ["dev", "beta"])
     }
 
-    func testAceitaTabDepoisDeHost() {
+    func testAcceptsTabAfterHost() {
         let ws = SSHConfigParser.parse("Host\tacme-devmachine\n")
         XCTAssertEqual(ws, [Workspace(name: "acme", alias: "acme-devmachine")])
     }
 
-    func testIgnoraWildcard() {
+    func testIgnoresWildcard() {
         let ws = SSHConfigParser.parse("Host devmachine *-devmachine\n")
         XCTAssertTrue(ws.isEmpty)
     }

@@ -1,13 +1,14 @@
 import XCTest
 @testable import DevmachineCore
 
-/// Trava a regressão: `run` NUNCA lança em exit nonzero (devolve stdout),
-/// e `runCapturing` separa stdout/stderr/exitCode sem lançar. Um refactor
-/// futuro não pode reintroduzir o throw (marcava workspace sem tmux como offline).
+/// Locks the regression down: `run` NEVER throws on a nonzero exit (it returns
+/// stdout), and `runCapturing` splits stdout/stderr/exitCode without throwing. A
+/// later refactor must not bring the throw back (it marked a workspace with no
+/// tmux as offline).
 final class ProcessRunnerTests: XCTestCase {
     private let runner = ProcessRunner()
 
-    func testRunDevolveStdoutMesmoComExitNonzero() throws {
+    func testRunReturnsStdoutEvenOnNonzeroExit() throws {
         let out = try runner.run(
             executable: "/bin/sh",
             args: ["-c", "echo hello; exit 1"],
@@ -16,7 +17,7 @@ final class ProcessRunnerTests: XCTestCase {
         XCTAssertEqual(out.trimmingCharacters(in: .whitespacesAndNewlines), "hello")
     }
 
-    func testRunCapturingSeparaStreamsEExitCode() throws {
+    func testRunCapturingSplitsStreamsAndExitCode() throws {
         let r = try runner.runCapturing(
             executable: "/bin/sh",
             args: ["-c", "echo out; echo err 1>&2; exit 3"],

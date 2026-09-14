@@ -21,7 +21,7 @@ private final class FakeRunner: CommandRunner, @unchecked Sendable {
 }
 
 final class RemoteServiceTests: XCTestCase {
-    func testSshBaseArgsTemAliasPrimeiroEOpcoesPadrao() {
+    func testSshBaseArgsPutAliasFirstThenDefaultOptions() {
         let args = RemoteService.sshBaseArgs(alias: "acme-devmachine")
 
         XCTAssertEqual(args.first, "acme-devmachine")
@@ -31,7 +31,7 @@ final class RemoteServiceTests: XCTestCase {
         XCTAssertTrue(args.contains("ServerAliveCountMax=2"))
     }
 
-    func testRunChamaSshComOsArgsEEnvCorretos() throws {
+    func testRunCallsSshWithTheRightArgsAndEnvironment() throws {
         let fake = FakeRunner(output: "ok")
         let service = RemoteService(runner: fake)
 

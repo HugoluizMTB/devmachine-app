@@ -2,7 +2,7 @@ import XCTest
 @testable import DevmachineCore
 
 final class TmuxListParserTests: XCTestCase {
-    func testParseiaSessoesEDetectaClaude() {
+    func testParsesSessionsAndDetectsClaude() {
         let out = """
         dash-claude|3
         dash-shell|1
@@ -18,7 +18,7 @@ final class TmuxListParserTests: XCTestCase {
         ])
     }
 
-    func testSaidaVaziaSemServidor() {
+    func testEmptyOutputWhenNoServerRunning() {
         XCTAssertEqual(TmuxListParser.parse("@@PANES@@\n"), [])
         XCTAssertEqual(TmuxListParser.parse(""), [])
     }

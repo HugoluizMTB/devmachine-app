@@ -2,7 +2,7 @@ import XCTest
 @testable import DevmachineCore
 
 final class RemoteCommandsTests: XCTestCase {
-    func testListSessionsTemSentinelaEDelimitador() {
+    func testListSessionsHasSentinelAndDelimiter() {
         let c = RemoteCommands.listSessions
         XCTAssertTrue(c.contains("list-sessions"))
         XCTAssertTrue(c.contains(RemoteCommands.paneSentinel))
@@ -10,27 +10,27 @@ final class RemoteCommandsTests: XCTestCase {
         XCTAssertTrue(c.contains("list-panes -a"))
     }
 
-    func testAttachENovaSessaoNaoMatam() {
+    func testAttachAndNewSessionNeverKill() {
         XCTAssertEqual(RemoteCommands.attach(session: "dash"), "tmux attach -t dash")
         XCTAssertEqual(RemoteCommands.newSession(name: "nova"), "tmux new-session -A -s 'nova'")
         XCTAssertFalse(RemoteCommands.attach(session: "x").contains("kill"))
     }
 
-    func testNewSessionEscapaNomeComEspaco() {
+    func testNewSessionEscapesNameWithSpace() {
         XCTAssertEqual(
             RemoteCommands.newSession(name: "a b"),
             "tmux new-session -A -s 'a b'"
         )
     }
 
-    func testNewSessionEscapaAspaSimples() {
+    func testNewSessionEscapesSingleQuote() {
         XCTAssertEqual(
             RemoteCommands.newSession(name: "x'y"),
             "tmux new-session -A -s 'x'\\''y'"
         )
     }
 
-    func testSshBaseArgsTemAliasPrimeiroEOpcoes() {
+    func testSshBaseArgsPutAliasFirstThenOptions() {
         XCTAssertEqual(
             RemoteCommands.sshBaseArgs(alias: "acme-devmachine"),
             [
@@ -43,13 +43,13 @@ final class RemoteCommandsTests: XCTestCase {
         )
     }
 
-    func testEnvSSHTemSocketDo1Password() {
+    func testSshEnvironmentHasThe1PasswordSocket() {
         let env = RemoteCommands.sshEnvironment()
         XCTAssertEqual(env["SSH_AUTH_SOCK"], RemoteCommands.onePasswordSocketPath)
         XCTAssertNotNil(env["HOME"])
     }
 
-    func testRenameEscapaNomes() {
+    func testRenameEscapesBothNames() {
         XCTAssertEqual(
             RemoteCommands.rename(session: "old", to: "new"),
             "tmux rename-session -t 'old' 'new'"
@@ -60,7 +60,7 @@ final class RemoteCommandsTests: XCTestCase {
         )
     }
 
-    func testKillSessionEscapaNome() {
+    func testKillSessionEscapesName() {
         XCTAssertEqual(
             RemoteCommands.killSession(name: "dash"),
             "tmux kill-session -t 'dash'"

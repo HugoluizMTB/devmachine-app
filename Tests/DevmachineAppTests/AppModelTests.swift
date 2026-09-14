@@ -59,7 +59,7 @@ private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async
 
 @MainActor
 final class AppModelTests: XCTestCase {
-    func testRefreshAllChamaCadaAliasUmaVez() async throws {
+    func testRefreshAllCallsEachAliasOnce() async throws {
         let runner = CountingRunner()
         let model = AppModel(store: SessionStore(runner: runner))
         model.workspaces = [
@@ -75,7 +75,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(runner.calls(for: "beta-devmachine"), 1)
     }
 
-    func testSelecionarSessaoAgendaPollSoDoAliasSelecionado() {
+    func testSelectingASessionPollsOnlyTheSelectedAlias() {
         let runner = CountingRunner()
         let model = AppModel(store: SessionStore(runner: runner))
         model.workspaces = [
@@ -92,7 +92,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectionPollTarget, "acme-devmachine")
     }
 
-    func testTrocarSelecaoRetargeteiaOPoll() {
+    func testChangingSelectionRetargetsThePoll() {
         let runner = CountingRunner()
         let model = AppModel(store: SessionStore(runner: runner))
         model.workspaces = [
@@ -111,7 +111,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectionPollTarget, "beta-devmachine")
     }
 
-    func testSelecaoIniciaEHomeParaOPoll() {
+    func testSelectionStartsThePollAndHomeStopsIt() {
         let runner = CountingRunner()
         let model = AppModel(store: SessionStore(runner: runner))
         model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
