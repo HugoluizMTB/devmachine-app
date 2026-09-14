@@ -24,10 +24,50 @@ final class AppModel: ObservableObject {
     /// The sidebar list: the ssh workspaces, then this Mac, always last.
     var sidebarWorkspaces: [Workspace] { workspaces + [.local] }
 
-    /// Sessions of the local workspace. Listing the Mac's own tmux server is
-    /// the next step; until then Local holds the one session it always has.
-    var localSessions: [TmuxSession] {
-        [TmuxSession(name: Workspace.operatorSession, windows: 1, hasClaude: false)]
+    /// Sessions of the local workspace: the Operator shell plus whatever
+    /// folders you added. The list is remembered, the shells are not — without
+    /// a multiplexer a local shell ends when the app does.
+    @Published private(set) var addedLocalSessions: [LocalSession] =
+        AppModel.readLocalSessions() {
+        didSet { AppModel.writeLocalSessions(addedLocalSessions) }
+    }
+
+    var localSessions: [LocalSession] {
+        [LocalSession(name: Workspace.operatorSession, path: operatorPath)] + addedLocalSessions
+    }
+
+    private var operatorPath: String {
+        settings?.opsRepoPath ?? NSHomeDirectory()
+    }
+
+    /// Adds the folder as a session and opens it. A repeated folder is a
+    /// separate session, numbered, rather than a jump to the existing one:
+    /// two shells in one repository is a normal thing to want.
+    func addLocalSession(path: String) {
+        let name = LocalSessionNaming.name(for: path, existing: localSessions.map(\.name))
+        addedLocalSessions.append(LocalSession(name: name, path: path))
+        selection = .localSession(name: name, path: path)
+    }
+
+    func removeLocalSession(name: String) {
+        guard let s = addedLocalSessions.first(where: { $0.name == name }) else { return }
+        TerminalRegistry.shared.close(.local(session: s.name, path: s.path))
+        addedLocalSessions.removeAll { $0.name == name }
+        if selection == .localSession(name: s.name, path: s.path) { selection = nil }
+    }
+
+    private static let localSessionsKey = "localSessions"
+
+    private static func readLocalSessions() -> [LocalSession] {
+        guard let data = UserDefaults.standard.data(forKey: localSessionsKey),
+              let list = try? JSONDecoder().decode([LocalSession].self, from: data)
+        else { return [] }
+        return list
+    }
+
+    private static func writeLocalSessions(_ list: [LocalSession]) {
+        guard let data = try? JSONEncoder().encode(list) else { return }
+        UserDefaults.standard.set(data, forKey: localSessionsKey)
     }
     @Published var sessionsByAlias: [String: [TmuxSession]] = [:]
     @Published var offlineAliases: Set<String> = []
@@ -231,8 +271,8 @@ final class AppModel: ObservableObject {
                 id: "local/\(s.name)",
                 title: s.name,
                 subtitle: Workspace.local.name,
-                target: .localSession(name: s.name),
-                claude: s.hasClaude
+                target: .localSession(name: s.name, path: s.path),
+                claude: false
             ))
         }
         return items

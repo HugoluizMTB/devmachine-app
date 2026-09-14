@@ -17,10 +17,7 @@ struct SidebarView: View {
                             ws.name,
                             alias: ws.alias,
                             offline: !ws.isLocal && model.offlineAliases.contains(ws.alias),
-                            // Creating a local session needs a folder to start
-                            // it in, which the new-session sheet cannot ask for
-                            // yet, so Local has no "+" until it can.
-                            action: ws.isLocal ? nil : { model.newSession(alias: ws.alias) },
+                            action: ws.isLocal ? pickLocalFolder : { model.newSession(alias: ws.alias) },
                             stackable: !ws.isLocal,
                             extraTopSpacing: index > 0
                         )
@@ -206,11 +203,31 @@ struct SidebarView: View {
         openWindow(id: "files")
     }
 
-    private func localSessionRow(session s: TmuxSession) -> some View {
-        let isOpen = model.activePage == nil && model.selection == .localSession(name: s.name)
-        return row(title: s.name, claude: s.hasClaude, windows: s.windows, selected: isOpen)
+    private func localSessionRow(session s: LocalSession) -> some View {
+        let item = SidebarItem.localSession(name: s.name, path: s.path)
+        let isOpen = model.activePage == nil && model.selection == item
+        return row(title: s.name, claude: false, windows: 1, selected: isOpen)
             .contentShape(Rectangle())
-            .onTapGesture { model.selection = .localSession(name: s.name) }
+            .onTapGesture { model.selection = item }
+            .help(s.path)
+            .contextMenu {
+                if s.name != Workspace.operatorSession {
+                    Button("Remove") { model.removeLocalSession(name: s.name) }
+                }
+            }
+    }
+
+    /// Asks for the folder the shell starts in. The name comes from the folder,
+    /// so there is nothing else to fill in.
+    private func pickLocalFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Open"
+        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.addLocalSession(path: url.path)
     }
 
     private func sessionRow(alias: String, session s: TmuxSession) -> some View {

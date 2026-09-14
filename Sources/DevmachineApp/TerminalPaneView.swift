@@ -5,7 +5,7 @@ import DevmachineCore
 
 enum TerminalKind: Hashable {
     case remote(alias: String, session: String)
-    case local(session: String)
+    case local(session: String, path: String)
 }
 
 /// A slot that shows the session's live terminal from `TerminalRegistry`.

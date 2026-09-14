@@ -144,26 +144,13 @@ final class TerminalRegistry: NSObject {
                     environment: RemoteCommands.terminalEnvironment(term: RemoteCommands.remoteTerm)
                 )
             }
-        case let .local(session):
-            // tmux, not a bare shell: the session then outlives the app, and
-            // reopening it lands on the same screen the way a remote one does.
-            // `TERM=tmux-256color` for the same reason as the remote case.
-            let repo = SettingsStore.shared.settings?.opsRepoPath ?? NSHomeDirectory()
-            guard let tmux = LocalTools.tmuxPath() else {
-                term.startProcess(
-                    executable: "/bin/zsh",
-                    args: ["-i", "-l"],
-                    environment: RemoteCommands.terminalEnvironment(),
-                    execName: "-zsh",
-                    currentDirectory: repo
-                )
-                return
-            }
+        case let .local(_, path):
             term.startProcess(
-                executable: tmux,
-                args: ["new-session", "-A", "-s", session, "-c", repo],
-                environment: RemoteCommands.terminalEnvironment(term: RemoteCommands.remoteTerm),
-                currentDirectory: repo
+                executable: "/bin/zsh",
+                args: ["-i", "-l"],
+                environment: RemoteCommands.terminalEnvironment(),
+                execName: "-zsh",
+                currentDirectory: path
             )
         }
     }
@@ -193,18 +180,6 @@ final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
         let filtered = TerminalReplyFilter.strip(Array(data))
         guard !filtered.isEmpty else { return }
         super.send(source: source, data: filtered[...])
-    }
-}
-
-/// Where the command line tools this app shells out to live on this Mac.
-enum LocalTools {
-    static let tmuxCandidates = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"]
-
-    /// First tmux on disk, or nil when the Mac has none — the caller then falls
-    /// back to a plain shell instead of failing to open a terminal at all.
-    static func tmuxPath(candidates: [String] = tmuxCandidates,
-                         exists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }) -> String? {
-        candidates.first(where: exists)
     }
 }
 

@@ -141,7 +141,7 @@ final class AppModelTests: XCTestCase {
         let last = model.paletteItems().last
         XCTAssertEqual(last?.title, "Operator")
         XCTAssertEqual(last?.subtitle, "Local")
-        XCTAssertEqual(last?.target, .localSession(name: "Operator"))
+        XCTAssertEqual(last?.target, .localSession(name: "Operator", path: "/Users/alice/dev/ops"))
     }
 
     func testPollWithSameResultDoesNotRepublish() async throws {
@@ -280,7 +280,7 @@ final class AppModelTests: XCTestCase {
         model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
         XCTAssertFalse(model.selectedSessions.isEmpty)
 
-        model.selection = .localSession(name: Workspace.operatorSession)
+        model.selection = .localSession(name: Workspace.operatorSession, path: "/tmp")
         XCTAssertTrue(model.selectedSessions.isEmpty)
         XCTAssertNil(model.selectionAnchor)
     }
@@ -333,6 +333,46 @@ private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
     @MainActor
     func testLocalAlwaysOffersTheOperatorSession() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        XCTAssertEqual(model.localSessions.map(\.name), ["Operator"])
+    }
+
+    @MainActor
+    func testAddingAFolderCreatesALocalSessionAndOpensIt() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+
+        XCTAssertEqual(model.localSessions.map(\.name), ["Operator", "acme"])
+        XCTAssertEqual(
+            model.selection, .localSession(name: "acme", path: "/Users/alice/dev/acme"))
+        model.removeLocalSession(name: "acme")
+    }
+
+    @MainActor
+    func testTheSameFolderTwiceBecomesTwoSessions() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+
+        XCTAssertEqual(model.localSessions.map(\.name), ["Operator", "acme", "acme 2"])
+        model.removeLocalSession(name: "acme")
+        model.removeLocalSession(name: "acme 2")
+    }
+
+    @MainActor
+    func testRemovingALocalSessionDropsItAndClearsTheSelection() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.removeLocalSession(name: "acme")
+
+        XCTAssertEqual(model.localSessions.map(\.name), ["Operator"])
+        XCTAssertNil(model.selection)
+    }
+
+    @MainActor
+    func testTheOperatorSessionCannotBeRemoved() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.removeLocalSession(name: Workspace.operatorSession)
+
         XCTAssertEqual(model.localSessions.map(\.name), ["Operator"])
     }
 }
