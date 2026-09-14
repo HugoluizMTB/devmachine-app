@@ -70,6 +70,9 @@ final class AppModel: ObservableObject {
     private var selectionPollTimer: Timer? = nil
     private var selectionPollAlias: String? = nil
     private var refreshingAliases: Set<String> = []
+    private var sweepInFlight = false
+    private var sweepTimer: Timer? = nil
+    private var pollPausedUntil = Date.distantPast
 
     init(store: SessionStore = SessionStore(runner: ProcessRunner())) {
         self.store = store
@@ -358,39 +361,87 @@ final class AppModel: ObservableObject {
         let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
         workspaces = SSHConfigParser.parse(text, suffix: settings.workspaceSuffix)
         refreshAll()
+        // A slow sweep of every workspace so an offline one comes back on its
+        // own; the 5s timer only follows the selected one.
+        sweepTimer?.invalidate()
+        sweepTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshAll() }
+        }
     }
 
+    // One ssh at a time, and the sweep stops at the first ssh-level failure:
+    // nine parallel auths against a locked agent are nine denied logins in
+    // one second, which is a fail2ban ban of this Mac.
     func refreshAll() {
-        for ws in workspaces { refresh(alias: ws.alias) }
+        guard Date() >= pollPausedUntil, !sweepInFlight else { return }
+        let targets = workspaces.filter { !refreshingAliases.contains($0.alias) }
+        guard !targets.isEmpty else { return }
+        sweepInFlight = true
+        for ws in targets { refreshingAliases.insert(ws.alias) }
+        Task.detached { [store] in
+            for ws in targets {
+                let outcome = Result { try store.sessions(for: ws) }
+                let stop = await MainActor.run { self.apply(outcome, alias: ws.alias) }
+                if stop { break }
+            }
+            await MainActor.run {
+                for ws in targets { self.refreshingAliases.remove(ws.alias) }
+                self.sweepInFlight = false
+            }
+        }
     }
 
     func refresh(alias: String) {
-        guard let ws = workspaces.first(where: { $0.alias == alias }) else { return }
+        guard Date() >= pollPausedUntil,
+              let ws = workspaces.first(where: { $0.alias == alias }) else { return }
         // A tick that arrives while the previous ssh for this alias is still
         // running is dropped: a slow host would otherwise stack one blocked
         // process per 5s tick.
         guard !refreshingAliases.contains(alias) else { return }
         refreshingAliases.insert(alias)
         Task.detached { [store] in
-            let result = try? store.sessions(for: ws)
+            let outcome = Result { try store.sessions(for: ws) }
             await MainActor.run {
                 self.refreshingAliases.remove(alias)
-                // Assign only on a real change: every write to a @Published
-                // re-renders the whole tree, and the 5s poll usually returns
-                // exactly what is already on screen.
-                if let result {
-                    if self.sessionsByAlias[alias] != result {
-                        self.sessionsByAlias[alias] = result
-                    }
-                    if self.offlineAliases.contains(alias) {
-                        self.offlineAliases.remove(alias)
-                    }
-                } else if !self.offlineAliases.contains(alias) {
-                    self.offlineAliases.insert(alias)
-                }
-                self.syncContext()
+                _ = self.apply(outcome, alias: alias)
             }
         }
+    }
+
+    // Returns true when polling must pause: the host or the ssh agent is down.
+    private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) -> Bool {
+        switch outcome {
+        case .success(let result):
+            // Assign only on a real change: every write to a @Published
+            // re-renders the whole tree, and the 5s poll usually returns
+            // exactly what is already on screen.
+            if sessionsByAlias[alias] != result {
+                sessionsByAlias[alias] = result
+            }
+            if offlineAliases.contains(alias) {
+                offlineAliases.remove(alias)
+            }
+            syncContext()
+            return false
+        case .failure(let error):
+            if !offlineAliases.contains(alias) {
+                offlineAliases.insert(alias)
+            }
+            syncContext()
+            guard let failure = (error as? SessionStoreError)?.failure else { return false }
+            pausePolling(after: failure)
+            return true
+        }
+    }
+
+    private func pausePolling(after failure: SSHFailure) {
+        let seconds: TimeInterval = failure == .authDenied ? 300 : 60
+        pollPausedUntil = Date().addingTimeInterval(seconds)
+        let label = failure == .authDenied
+            ? "SSH auth denied — polling paused 5 min (unlock the ssh agent)"
+            : "Host unreachable — polling paused 1 min"
+        let id = beginTask(label: label, total: 1)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.finishTask(id) }
     }
 
     // whenever selection changes to a Claude session, (re)start the poll; else stop.
