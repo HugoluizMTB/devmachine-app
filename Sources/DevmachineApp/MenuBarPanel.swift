@@ -61,14 +61,12 @@ struct MenuBarPanel: View {
     @ViewBuilder
     private var tabBar: some View {
         if MenuBarTab.allCases.count > 1 {
-            HStack(spacing: 6) {
-                ForEach(MenuBarTab.allCases) { candidate in
-                    MenuBarTabButton(tab: candidate, isSelected: candidate == tab) {
-                        tab = candidate
-                    }
-                }
-                Spacer(minLength: 0)
-            }
+            DMTabStrip(
+                tabs: MenuBarTab.allCases,
+                selection: $tab,
+                title: { $0.title },
+                systemImage: { $0.systemImage }
+            )
             .padding(8)
         } else if let onlyTab = MenuBarTab.allCases.first {
             Text(onlyTab.title)
@@ -122,38 +120,5 @@ struct MenuBarPanel: View {
         }
         .buttonStyle(.plain)
         .help(help)
-    }
-}
-
-private struct MenuBarTabButton: View {
-    let tab: MenuBarTab
-    let isSelected: Bool
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Label(tab.title, systemImage: tab.systemImage)
-                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Color.dmRowText : Color.dmMuted)
-                .padding(.vertical, 5)
-                .padding(.horizontal, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(backgroundFill)
-                )
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovering = hovering
-        }
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
-    }
-
-    private var backgroundFill: Color {
-        if isSelected {
-            return Color.white.opacity(0.10)
-        }
-        return isHovering ? Color.white.opacity(0.05) : Color.clear
     }
 }

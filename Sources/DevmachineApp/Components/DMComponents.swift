@@ -129,6 +129,29 @@ extension DMSection where Content == EmptyView {
     }
 }
 
+/// Muted bold title for a `DMSection` header, e.g. AGENTS, HISTORY.
+struct DMSectionLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .bold))
+            .kerning(0.5)
+            .foregroundStyle(Color.dmMuted)
+    }
+}
+
+/// Muted bold value on the trailing edge of a `DMSection` header, e.g. a count.
+struct DMSectionValue: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(Color.dmMuted)
+    }
+}
+
 /// Small capsule label, e.g. CI status or a source badge. Mirrors `ContextPanel`'s pills.
 struct DMPill: View {
     let text: String
@@ -142,6 +165,7 @@ struct DMPill: View {
         Text(text)
             .font(font)
             .foregroundStyle(color)
+            .lineLimit(1)
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
             .background(color.opacity(backgroundOpacity), in: Capsule())
