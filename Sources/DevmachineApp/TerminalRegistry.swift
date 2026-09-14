@@ -32,16 +32,32 @@ final class TerminalRegistry: NSObject {
     /// length of those events only.
     private func installOptionKeyMonitor() {
         optionKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard TerminalKeyboard.optionActsAsMeta(for: event.modifierFlags) else { return event }
-            MainActor.assumeIsolated {
-                for term in TerminalRegistry.shared.terminals.values
-                where term.window?.firstResponder === term {
+            let keyCode = event.keyCode
+            let flags = event.modifierFlags
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                let registry = TerminalRegistry.shared
+                // SwiftTerm's `keyDown` is not open, so Shift+Enter is answered
+                // here: the focused terminal gets the newline byte and the event
+                // stops, or the legacy encoding would send a plain Return.
+                if TerminalKeyboard.sendsNewline(keyCode: keyCode, flags: flags),
+                   let focused = registry.focusedTerminal() {
+                    focused.send(TerminalKeyboard.newlineBytes)
+                    return true
+                }
+                guard TerminalKeyboard.optionActsAsMeta(for: flags) else { return false }
+                for term in registry.terminals.values where term.window?.firstResponder === term {
                     term.optionAsMetaKey = true
                     DispatchQueue.main.async { term.optionAsMetaKey = false }
                 }
+                return false
             }
-            return event
+            return handled ? nil : event
         }
+    }
+
+    /// The terminal that currently owns the keyboard, if any.
+    private func focusedTerminal() -> LocalProcessTerminalView? {
+        terminals.values.first { $0.window?.firstResponder === $0 }
     }
 
     func terminal(for kind: TerminalKind) -> LocalProcessTerminalView {
@@ -173,5 +189,22 @@ enum TerminalKeyboard {
     /// its own it is the accent composer of the Mac's keyboard layout.
     static func optionActsAsMeta(for flags: NSEvent.ModifierFlags) -> Bool {
         flags.contains(.option) && flags.contains(.function)
+    }
+
+    static let returnKeyCode: UInt16 = 36
+
+    /// Ctrl+J, which Claude Code reads as "insert a newline" in every terminal.
+    static let newlineBytes: [UInt8] = [0x0A]
+
+    /// The legacy key encoding this app keeps on purpose cannot tell Shift+Enter
+    /// from Enter, so the terminal sends the newline byte itself. Enter alone
+    /// still submits, and Command+Shift+Return stays an app shortcut.
+    static func sendsNewline(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Bool {
+        let mods = flags.intersection(.deviceIndependentFlagsMask)
+        return keyCode == returnKeyCode
+            && mods.contains(.shift)
+            && !mods.contains(.command)
+            && !mods.contains(.control)
+            && !mods.contains(.option)
     }
 }
