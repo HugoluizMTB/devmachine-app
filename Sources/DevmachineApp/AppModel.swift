@@ -379,12 +379,20 @@ final class AppModel: ObservableObject {
         sweepInFlight = true
         for ws in targets { refreshingAliases.insert(ws.alias) }
         Task.detached { [store] in
-            for ws in targets {
+            var remaining = targets[...]
+            while let ws = remaining.first {
+                remaining = remaining.dropFirst()
                 let outcome = Result { try store.sessions(for: ws) }
                 let stop = await MainActor.run { self.apply(outcome, alias: ws.alias) }
                 if stop { break }
             }
+            // The aliases the stopped sweep never reached share the same host,
+            // so they are offline too, not "0 sessions".
+            let unreached = Array(remaining)
             await MainActor.run {
+                for ws in unreached where !self.offlineAliases.contains(ws.alias) {
+                    self.offlineAliases.insert(ws.alias)
+                }
                 for ws in targets { self.refreshingAliases.remove(ws.alias) }
                 self.sweepInFlight = false
             }
