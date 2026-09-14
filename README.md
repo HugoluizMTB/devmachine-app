@@ -1,0 +1,43 @@
+# Devmachine
+
+A native macOS app (Swift 6, SwiftUI + AppKit) that operates one Linux dev host
+over ssh: tmux sessions per context user as floating terminals, stack grids per
+workspace, a context panel fed by the host, Caddy subdomains, host stats, PR and
+Claude usage in the menu bar.
+
+The host itself is provisioned by a separate ops repo (Ansible). The app only
+needs an ssh alias to it and the path of that repo on this Mac.
+
+## Requirements
+
+- macOS 14+ and the Xcode Command Line Tools (`swift build` is the build).
+- `~/.ssh/config` with one `Host <alias>` for the machine (root) and one
+  `Host <user>-<alias>` per context user. Workspaces are discovered from that
+  suffix.
+- Optional: `mosh` (`brew install mosh`) — terminals use it when present and
+  fall back to `ssh`. Optional: the 1Password ssh agent for signing.
+
+## Build and install
+
+```
+./scripts/install.sh
+```
+
+Builds a release bundle and installs `/Applications/Devmachine.app`. The first
+launch shows a Setup card: ops repo folder, host ssh alias, public IP, base
+domain. Change them later with `⌘,`.
+
+## Development
+
+```
+swift build
+swift test
+```
+
+Read `CLAUDE.md` before changing anything: it holds the rules of this repo,
+including the one that no real infrastructure data ever enters the tree.
+
+## Credits
+
+Wallpaper: photo by [Reed Naliboff](https://unsplash.com/@reednaliboff) on
+[Unsplash](https://unsplash.com/photos/a-person-sitting-in-the-water-with-a-surfboard-92KySh7wzl8).
