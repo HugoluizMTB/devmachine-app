@@ -12,6 +12,7 @@ final class TerminalRegistry: NSObject {
     static let detachedLimit = 6
 
     private var terminals: [TerminalKind: LocalProcessTerminalView] = [:]
+    private var optionKeyMonitor: Any?
     private var detachedAt: [TerminalKind: Date] = [:]
     private(set) var pendingFocusKind: TerminalKind?
 
@@ -22,6 +23,25 @@ final class TerminalRegistry: NSObject {
         ) { _ in
             MainActor.assumeIsolated { TerminalRegistry.shared.closeAll() }
         }
+        installOptionKeyMonitor()
+    }
+
+    /// Option composes accents on this Mac (U.S. layout: ⌥c is ç, ⌥e a is á), so
+    /// the terminals run with `optionAsMetaKey = false`. Arrows and other function
+    /// keys still need Meta, or the shell loses word jumps — flip the flag for the
+    /// length of those events only.
+    private func installOptionKeyMonitor() {
+        optionKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard TerminalKeyboard.optionActsAsMeta(for: event.modifierFlags) else { return event }
+            MainActor.assumeIsolated {
+                for term in TerminalRegistry.shared.terminals.values
+                where term.window?.firstResponder === term {
+                    term.optionAsMetaKey = true
+                    DispatchQueue.main.async { term.optionAsMetaKey = false }
+                }
+            }
+            return event
+        }
     }
 
     func terminal(for kind: TerminalKind) -> LocalProcessTerminalView {
@@ -29,6 +49,7 @@ final class TerminalRegistry: NSObject {
         if let live = terminals[kind] { return live }
         let term = LegacyKeyboardTerminalView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         term.processDelegate = self
+        term.optionAsMetaKey = false
         start(kind, in: term)
         terminals[kind] = term
         return term
@@ -144,5 +165,13 @@ final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
         let filtered = TerminalReplyFilter.strip(Array(data))
         guard !filtered.isEmpty else { return }
         super.send(source: source, data: filtered[...])
+    }
+}
+
+enum TerminalKeyboard {
+    /// Option means Meta only together with a function key (arrows, F-keys); on
+    /// its own it is the accent composer of the Mac's keyboard layout.
+    static func optionActsAsMeta(for flags: NSEvent.ModifierFlags) -> Bool {
+        flags.contains(.option) && flags.contains(.function)
     }
 }

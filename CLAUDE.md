@@ -102,6 +102,12 @@ segmented control.
   `tmux list-clients -F '#{client_termfeatures}'` on the host: the app's client must
   not list `extkeys`. `LegacyKeyboardTerminalView` also drops the kitty query answer
   and XTVERSION replies as a second guard. Do not "clean this up".
+- Terminals run with `optionAsMetaKey = false`: this Mac uses the U.S. layout, where
+  Option composes accents (⌥c is ç, ⌥e a is á), and SwiftTerm's default (`true`)
+  turns them into `ESC c`. A local key monitor in `TerminalRegistry` flips the flag
+  back on for Option+function keys only, so Option+arrow still sends `CSI 1;3D`
+  (shell word jump). Verified with synthetic `NSEvent`s, never by typing into the
+  owner's live sessions.
 - SwiftTerm is pinned by revision (`9fc2d2f`, 2026-09-04: kitty encoding fixes);
   upstream `main` after 2026-09-09 does not link (`MetalError`). Bump on purpose only.
 - Terminal layout is explicit (`TerminalContainerView.layout()`), not autoresizing
