@@ -1,6 +1,6 @@
 enum SidebarItem: Hashable {
     case session(alias: String, name: String)
-    case operador
+    case opsShell
 }
 
 struct SessionRef: Hashable {

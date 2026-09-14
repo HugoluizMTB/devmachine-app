@@ -156,7 +156,7 @@ final class CaddyAddTests: XCTestCase {
 
     func testHostingRowExactString() {
         let req = subdomain(label: "staging-x", port: 8110)
-        let expected = "| `staging-x.example.com` | `127.0.0.1:8110` | ⏳ pendente |"
+        let expected = "| `staging-x.example.com` | `127.0.0.1:8110` | ⏳ pending |"
         XCTAssertEqual(CaddyAdd.hostingRow(req), expected)
     }
 
@@ -172,8 +172,8 @@ final class CaddyAddTests: XCTestCase {
         XCTAssertTrue(curl.contains("https://developers.hostinger.com/api/dns/v1/zones/example.net"))
     }
 
-    func testHostingRowExternalContainsDNSExterno() {
+    func testHostingRowExternalContainsExternalDNS() {
         let req = SubdomainRequest(host: "app.example.net", port: 8201, managedDNS: false)
-        XCTAssertTrue(CaddyAdd.hostingRow(req).contains("DNS externo"))
+        XCTAssertTrue(CaddyAdd.hostingRow(req).contains("external DNS"))
     }
 }

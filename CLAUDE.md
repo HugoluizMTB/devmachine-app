@@ -38,7 +38,7 @@ When the owner asks for a feature or "a page", he wants something that loads
   selected). A non-nil `activePage` renders that page full-size in the center,
   over the (still-mounted, hidden) terminals — so switching to a page never tears
   down a live ssh/tmux terminal.
-- Selecting a session or the operador clears `activePage` (back to the terminal).
+- Selecting a session or the ops shell clears `activePage` (back to the terminal).
 - Sidebar / menubar entries for pages (Stats, Subdomains, …) SET `activePage`;
   they do NOT `openWindow`.
 - Create a new `Window` ONLY when the owner explicitly asks for a separate window.

@@ -39,11 +39,11 @@ struct SidebarView: View {
                 systemImage: "sparkle",
                 iconColor: .orange,
                 iconSize: 9,
-                title: "operador",
-                selected: model.selection == .operador,
+                title: "ops",
+                selected: model.selection == .opsShell,
                 outerHorizontalPadding: 0,
                 fillWidth: false,
-                tap: { model.selection = .operador }
+                tap: { model.selection = .opsShell }
             )
             .fixedSize()
 

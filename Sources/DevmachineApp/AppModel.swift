@@ -200,10 +200,10 @@ final class AppModel: ObservableObject {
             }
         }
         items.append(PaletteItem(
-            id: "operador",
-            title: "operador",
+            id: "opsShell",
+            title: "ops",
             subtitle: settings?.hostAlias ?? "",
-            target: .operador,
+            target: .opsShell,
             claude: true
         ))
         return items

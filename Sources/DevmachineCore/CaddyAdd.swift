@@ -80,7 +80,7 @@ public enum CaddyAdd {
     }
 
     public static func hostingRow(_ req: SubdomainRequest) -> String {
-        let status = req.managedDNS ? "⏳ pendente" : "⏳ pendente (DNS externo)"
+        let status = req.managedDNS ? "⏳ pending" : "⏳ pending (external DNS)"
         return "| `\(req.host)` | `127.0.0.1:\(req.port)` | \(status) |"
     }
 }

@@ -129,7 +129,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectionPollTarget)
     }
 
-    func testOperadorPaletteItemShowsTheConfiguredHostAlias() {
+    func testOpsShellPaletteItemShowsTheConfiguredHostAlias() {
         let model = AppModel(store: SessionStore(runner: CountingRunner()))
         model.settings = AppSettings(
             opsRepoPath: "/Users/alice/dev/ops",

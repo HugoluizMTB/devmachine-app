@@ -78,7 +78,7 @@ final class TerminalRegistry: NSObject {
                     environment: RemoteCommands.terminalEnvironment()
                 )
             }
-        case .operador:
+        case .opsShell:
             let repo = SettingsStore.shared.settings?.opsRepoPath ?? NSHomeDirectory()
             term.startProcess(
                 executable: "/bin/zsh",

@@ -22,7 +22,7 @@ struct DMRow: View {
     var selected: Bool = false
     var outerHorizontalPadding: CGFloat = 6
     /// Pushes trailing to the right and makes the background fill the full width.
-    /// List rows (default). The operador footer passes false to hug the text.
+    /// List rows (default). The ops footer passes false to hug the text.
     var fillWidth: Bool = true
     var trailing: AnyView?
     var tap: (() -> Void)?
