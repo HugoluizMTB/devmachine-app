@@ -77,34 +77,34 @@ struct ContentView: View {
             }
         }
         .confirmationDialog(
-            "Apagar a sessão \(model.pendingDelete?.name ?? "")? Isso mata o tmux.",
+            "Delete session \(model.pendingDelete?.name ?? "")? This kills its tmux session.",
             isPresented: Binding(
                 get: { model.pendingDelete != nil },
                 set: { if !$0 { model.pendingDelete = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Apagar", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 if let pending = model.pendingDelete {
                     model.deleteSession(alias: pending.alias, name: pending.name)
                 }
             }
-            Button("Cancelar", role: .cancel) { model.pendingDelete = nil }
+            Button("Cancel", role: .cancel) { model.pendingDelete = nil }
         }
         .confirmationDialog(
-            "Apagar \(model.pendingBulkDelete?.count ?? 0) sessões? Isso mata o tmux.",
+            "Delete \(model.pendingBulkDelete?.count ?? 0) sessions? This kills their tmux sessions.",
             isPresented: Binding(
                 get: { model.pendingBulkDelete != nil },
                 set: { if !$0 { model.pendingBulkDelete = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Apagar", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 if let pending = model.pendingBulkDelete {
                     model.deleteSessions(pending)
                 }
             }
-            Button("Cancelar", role: .cancel) { model.pendingBulkDelete = nil }
+            Button("Cancel", role: .cancel) { model.pendingBulkDelete = nil }
         }
     }
 
@@ -185,7 +185,7 @@ struct ContentView: View {
                 .shadow(radius: 6, y: 2)
         }
         .buttonStyle(.plain)
-        .help("Abrir sidebar (⌘B)")
+        .help("Open sidebar (⌘B)")
         .padding(.top, 18)
         .padding(.leading, 14)
     }
@@ -287,12 +287,12 @@ private struct RenameSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Renomear \(oldName)").font(.headline)
-            TextField("novo nome", text: $name).frame(width: 240)
+            Text("Rename \(oldName)").font(.headline)
+            TextField("new name", text: $name).frame(width: 240)
             HStack {
                 Spacer()
-                Button("Cancelar") { model.pendingRename = nil }
-                Button("Renomear") { model.renameSession(alias: alias, old: oldName, new: name) }
+                Button("Cancel") { model.pendingRename = nil }
+                Button("Rename") { model.renameSession(alias: alias, old: oldName, new: name) }
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -307,12 +307,12 @@ private struct NewSessionSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Nova sessão em \(alias)").font(.headline)
-            TextField("nome", text: $name).frame(width: 240)
+            Text("New session in \(alias)").font(.headline)
+            TextField("name", text: $name).frame(width: 240)
             HStack {
                 Spacer()
-                Button("Cancelar") { model.pendingNewSessionAlias = nil }
-                Button("Criar") { model.confirmNewSession(alias: alias, name: name) }
+                Button("Cancel") { model.pendingNewSessionAlias = nil }
+                Button("Create") { model.confirmNewSession(alias: alias, name: name) }
                     .keyboardShortcut(.defaultAction)
             }
         }

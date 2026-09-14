@@ -91,7 +91,7 @@ struct SidebarView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color.dmMuted)
-            .help("Fechar sidebar (⌘B)")
+            .help("Close sidebar (⌘B)")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -115,7 +115,7 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.dmMuted)
-                .help("Atualizar")
+                .help("Refresh")
 
                 Menu {
                     ForEach(model.workspaces) { ws in
@@ -128,7 +128,7 @@ struct SidebarView: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .foregroundStyle(Color.dmMuted)
-                .help("Nova sessão…")
+                .help("New session…")
             }
         )
         .safeAreaInset(edge: .top) {
@@ -231,17 +231,17 @@ struct SidebarView: View {
                 Button("Stack to Home") {
                     model.stackSessions(Array(model.selectedSessions))
                 }
-                Button("Apagar \(model.selectedSessions.count) sessões", role: .destructive) {
+                Button("Delete \(model.selectedSessions.count) sessions", role: .destructive) {
                     model.pendingBulkDelete = Array(model.selectedSessions)
                 }
             } else {
-                Button("Abrir") {
+                Button("Open") {
                     model.clickSession(ref)
                 }
-                Button("Renomear…") {
+                Button("Rename…") {
                     model.pendingRename = (alias: alias, old: s.name)
                 }
-                Button("Apagar", role: .destructive) {
+                Button("Delete", role: .destructive) {
                     model.pendingDelete = (alias: alias, name: s.name)
                 }
             }

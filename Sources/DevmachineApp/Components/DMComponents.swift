@@ -216,7 +216,7 @@ struct DMToastCard: View {
                         .foregroundStyle(.green)
                         .font(.system(size: 12))
                 } else {
-                    Text("\(task.completed) de \(task.total)")
+                    Text("\(task.completed) of \(task.total)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }

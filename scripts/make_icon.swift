@@ -1,7 +1,7 @@
 import AppKit
 
-// Terminal escuro com prompt verde ">_". Badge quadrado arredondado,
-// fundo navy, chevron + cursor. So AppKit/CoreGraphics, sem asset externo.
+// Dark terminal with a green ">_" prompt. Rounded square badge, navy
+// background, chevron + cursor. AppKit/CoreGraphics only, no external asset.
 func drawIcon(size: CGFloat) -> NSImage {
     let image = NSImage(size: NSSize(width: size, height: size))
     image.lockFocus()

@@ -199,7 +199,7 @@ final class AddSubdomainRunner {
                 let updated = existing + "\n" + CaddyAdd.hostingRow(req)
                 try updated.write(toFile: hostingPath, atomically: true, encoding: .utf8)
 
-                let commitMessage = "feat(caddy): \(req.host) (porta \(req.port))"
+                let commitMessage = "feat(caddy): \(req.host) (port \(req.port))"
                 let command = "git add ansible/roles/caddy/files/Caddyfile docs/hosting.md"
                     + " && git commit -m '\(commitMessage)'"
                     + " && git push"

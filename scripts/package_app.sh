@@ -10,11 +10,11 @@ cp .build/release/DevmachineApp "$APP/Contents/MacOS/DevmachineApp"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp wallpaper.jpg "$APP/Contents/Resources/wallpaper.jpg"
 
-# icone: PNGs -> iconset -> icns
+# icon: PNGs -> iconset -> icns
 ICONSET="build/AppIcon.iconset"
 mkdir -p "$ICONSET"
 swift scripts/make_icon.swift "$ICONSET"
-# renomear pros nomes que o iconutil espera
+# rename to the names iconutil expects
 mv "$ICONSET/icon_16.png"   "$ICONSET/icon_16x16.png"
 mv "$ICONSET/icon_32.png"   "$ICONSET/icon_16x16@2x.png"
 cp "$ICONSET/icon_16x16@2x.png" "$ICONSET/icon_32x32.png"

@@ -30,7 +30,7 @@ struct ContextPanel: View {
                 }
             } else {
                 Spacer()
-                Text("Sem contexto")
+                Text("No context")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.dmMuted)
                     .frame(maxWidth: .infinity)
@@ -49,7 +49,7 @@ struct ContextPanel: View {
                 Circle()
                     .fill(Color.green)
                     .frame(width: 6, height: 6)
-                Text("CONTEXTO")
+                Text("CONTEXT")
                     .font(.system(size: 11, weight: .semibold))
                     .kerning(0.5)
                     .foregroundStyle(Color.dmMuted)
@@ -63,7 +63,7 @@ struct ContextPanel: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.dmMuted)
-                .help("Fechar contexto")
+                .help("Close context")
             }
         )
     }
@@ -118,7 +118,7 @@ struct ContextPanel: View {
             contentSpacing: 9,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
             showBottomDivider: true,
-            label: { sectionLabel("PLANO · \(plan.source)") },
+            label: { sectionLabel("PLAN · \(plan.source)") },
             trailing: { sectionTrailing("\(plan.done)/\(plan.total)") }
         ) {
             DMProgressBar(done: plan.done, total: plan.total)
@@ -276,7 +276,7 @@ struct ContextCollapsedStrip: View {
                 // rotationEffect keeps the pre-rotation layout size, so reserve
                 // the rotated text's real footprint (narrow width, tall height)
                 // to stop it overlapping the icon above it.
-                Text("CONTEXTO")
+                Text("CONTEXT")
                     .font(.system(size: 10, weight: .bold))
                     .kerning(1)
                     .foregroundStyle(Color.dmMuted)
@@ -292,7 +292,7 @@ struct ContextCollapsedStrip: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Abrir contexto")
+        .help("Open context")
         .background(Color.dmSidebarBg)
     }
 }

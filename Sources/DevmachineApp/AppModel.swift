@@ -265,7 +265,7 @@ final class AppModel: ObservableObject {
     func deleteSessions(_ refs: [SessionRef]) {
         pendingBulkDelete = nil
         guard !refs.isEmpty else { return }
-        let taskId = beginTask(label: "Apagando sessões", total: refs.count)
+        let taskId = beginTask(label: "Deleting sessions", total: refs.count)
         Task.detached { [store] in
             for ref in refs {
                 _ = try? store.run(alias: ref.alias, command: RemoteCommands.killSession(name: ref.name))
@@ -296,7 +296,7 @@ final class AppModel: ObservableObject {
             return
         }
         pendingRename = nil
-        let taskId = beginTask(label: "Renomeando \(old)", total: 1)
+        let taskId = beginTask(label: "Renaming \(old)", total: 1)
         Task.detached { [store] in
             _ = try? store.run(alias: alias, command: RemoteCommands.rename(session: old, to: clean))
             await MainActor.run {
@@ -316,7 +316,7 @@ final class AppModel: ObservableObject {
 
     func deleteSession(alias: String, name: String) {
         pendingDelete = nil
-        let taskId = beginTask(label: "Apagando \(name)", total: 1)
+        let taskId = beginTask(label: "Deleting \(name)", total: 1)
         Task.detached { [store] in
             _ = try? store.run(alias: alias, command: RemoteCommands.killSession(name: name))
             await MainActor.run {

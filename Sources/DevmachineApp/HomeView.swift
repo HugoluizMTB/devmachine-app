@@ -124,9 +124,9 @@ struct HomeView: View {
 
     private var compactStatCluster: some View {
         HStack(spacing: 6) {
-            Text(verbatim: "\(totalSessions) sessões")
+            Text(verbatim: "\(totalSessions) sessions")
             Text(verbatim: "·")
-            Text(verbatim: "\(claudeSessions) com Claude")
+            Text(verbatim: "\(claudeSessions) with Claude")
             Text(verbatim: "·")
             Text(verbatim: "\(workspaceCount) workspaces")
         }
