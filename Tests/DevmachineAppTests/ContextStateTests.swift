@@ -1,0 +1,39 @@
+import XCTest
+@testable import DevmachineApp
+
+final class ContextStateTests: XCTestCase {
+    func testDecodesSample() throws {
+        let json = """
+        {"cwd":"/home/acme/dev/dash","isClaude":true,"updatedAt":"2026-09-12T10:00:00Z",
+         "plan":{"title":"panel","source":"superpowers","done":6,"total":10,
+                 "items":[{"text":"SessionStore + runner","state":"done"},
+                          {"text":"inference engine","state":"active"},
+                          {"text":"right panel","state":"pending"}]},
+         "prs":[{"number":4242,"repo":"acme/dash","title":"","url":"https://github.com/acme/dash/pull/4242",
+                 "ci":"pass","review":"approved","state":"open"}],
+         "links":[{"url":"https://linear.app/x/issue/LIN-1234","label":"LIN-1234 next tasks","kind":"linear"},
+                   {"url":"https://github.com/acme/dash/pull/4240","label":"github.com/acme/dash/pull/4240","kind":"web"}]}
+        """.data(using: .utf8)!
+
+        let state = try JSONDecoder().decode(ContextState.self, from: json)
+
+        XCTAssertTrue(state.isClaude)
+        XCTAssertEqual(state.plan?.done, 6)
+        XCTAssertEqual(state.plan?.items.count, 3)
+        XCTAssertEqual(state.plan?.items.first?.state, "done")
+        XCTAssertEqual(state.prs.first?.number, 4242)
+        XCTAssertEqual(state.links.first?.kind, "linear")
+    }
+
+    func testDecodesWithoutPlan() throws {
+        let json = """
+        {"cwd":"/home/dev","isClaude":false,"updatedAt":"2026-09-12T10:00:00Z",
+         "plan":null,"prs":[],"links":[]}
+        """.data(using: .utf8)!
+
+        let state = try JSONDecoder().decode(ContextState.self, from: json)
+
+        XCTAssertNil(state.plan)
+        XCTAssertFalse(state.isClaude)
+    }
+}

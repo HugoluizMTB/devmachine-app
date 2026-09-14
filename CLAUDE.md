@@ -1,0 +1,101 @@
+# CLAUDE.md — devmachine-app
+
+Native macOS app (Swift 6 / SwiftUI / AppKit, SwiftPM) that operates the
+`devmachine` VPS: tmux sessions per context-user, PRs, files, Caddy subdomains,
+VPS stats, Claude usage. Sibling of `~/dev/devmachine` (the ops repo).
+
+## Language — ABSOLUTE, overrides everything
+**All code, identifiers, comments, and git commit messages are ENGLISH.** No
+Portuguese anywhere in this repo. (Chat with the owner stays Portuguese; that
+never leaks into the code or commits.) This rule wins over any base preference.
+
+## No real data — absolute, overrides everything
+**This repo never holds real infrastructure or personal data**: real
+workspace/context user names, client or product names, hostnames, public or
+tailnet IPs, domains, emails, tokens. Not in code, tests, fixtures, docs,
+comments, commit messages, screenshots or assets.
+
+- Fixtures use invented names: workspaces `acme`, `beta`, `gamma`; people
+  `alice`, `bob`; repos `acme/dash`; domains `example.com` / `example.net`; Mac
+  paths under `/Users/alice`; IPs from the documentation ranges `203.0.113.x`
+  (public) and `100.64.0.x` (tailnet); PR numbers arbitrary.
+- Real values enter only two ways: the app's Setup/Settings page (`AppSettings`,
+  persisted in `UserDefaults`) and the ops repo on disk. A feature that needs an
+  infra value reads `AppSettings`; it never carries a literal.
+- Before any push run `scripts/check-real-data.sh`. It greps the tree with the
+  owner's private pattern list (`~/.config/devmachine-app/private-patterns`,
+  outside the repo on purpose — the list itself is real data) and must print
+  nothing. The one allowed hit is `2BUA8C4S2C.com.1password` (the 1Password
+  agent socket path in `RemoteCommands.swift`) — a product default.
+
+## "Page" = a central panel, NEVER a new window
+When the owner asks for a feature or "a page", he wants something that loads
+**in the middle of the app** (the central content area), like a new home screen —
+**not** a new macOS window. Default to a central page.
+
+- The center is polymorphic, driven by `AppModel.activePage: AppPage?`. `nil` =
+  normal behavior (the selected session's terminal, or Home when nothing is
+  selected). A non-nil `activePage` renders that page full-size in the center,
+  over the (still-mounted, hidden) terminals — so switching to a page never tears
+  down a live ssh/tmux terminal.
+- Selecting a session or the operador clears `activePage` (back to the terminal).
+- Sidebar / menubar entries for pages (Stats, Subdomains, …) SET `activePage`;
+  they do NOT `openWindow`.
+- Create a new `Window` ONLY when the owner explicitly asks for a separate window.
+  Existing exception: the **Files** window is contextual per-workspace (opened
+  from the sidebar folder button) and stays a window for now.
+
+## Menubar
+`MenuBarExtra` uses `.menuBarExtraStyle(.window)` — an interactive popover with a
+tab bar (`MenuBarTab`), mouse-navigable like pr-menubar. Tabs render inline
+(Pull Requests, Usage, …); no separate PR window. The popover should size itself
+to the active tab. Tab styling should be elegant/custom, not the raw native
+segmented control.
+
+## Reusable structure
+- `DevmachineCore` (library): pure logic, parsers, command builders — unit-tested,
+  no UI, no AppKit where avoidable.
+- `ClaudeUsageKit` (library): reusable Claude-usage data layer + views. Depends
+  only on Foundation/SwiftUI/Charts. NEVER depends on the app target; the app
+  depends on it. Reuse its views in the menubar tab, central pages, and Home.
+- `DevmachineApp` (executable): the app shell + SwiftUI views.
+- Shared UI in `Sources/DevmachineApp/Components/DMComponents.swift`
+  (`DMRow`, `DMSection`, `DMPill`, `DMProgressBar`, `DMToastCard`, `DMStatBubble`)
+  + `Theme.swift` (`Color.dm*`). Reuse these; match the dark palette.
+
+## Hard UI rules
+- **Never put a `Divider` inside a `ZStack`** — it becomes horizontal and greedy.
+  Use `Rectangle().frame(width:1)` / `.frame(height:1)`.
+- Numbers shown to the user go through `Text(verbatim:)` with explicit formatting.
+  Never `Text("\(intValue)")` — SwiftUI localizes it (pt-BR renders `5.182`,
+  `740,31M`). This bug already shipped once; don't repeat it.
+- A central page must fill the center (`.frame(maxWidth:.infinity, maxHeight:.infinity)`),
+  never float at intrinsic size.
+- **`.clipped()` / `.clipShape` do NOT clip hit-testing.** A `scaledToFill` image
+  overflows its container and its invisible overflow still swallows clicks over
+  neighboring views (this once killed the sidebar's right edge for a whole day).
+  Every decorative full-bleed view (wallpaper, gradients, shadows) gets
+  `.allowsHitTesting(false)`. Never rely on clipping to contain hit regions.
+- SwiftUI `Button` + `.contextMenu` on the same view in a `ScrollView` fires
+  once then goes stale on macOS. Rows use `.onTapGesture` (modifiers via
+  `NSEvent.modifierFlags`) + `.contentShape(Rectangle())` + `.contextMenu`.
+- Never `makeFirstResponder` on an embedded AppKit view (terminal) at mount —
+  it steals focus from SwiftUI and makes sidebar clicks flaky.
+- When clicks die "in a region" and nothing looks wrong: dump the AppKit
+  hierarchy + `hitTest` from inside the app (walk `window.contentView.superview`,
+  log class/frame per view). A platform view wider than its container is the tell.
+
+## Build / test
+- `swift build` and `swift test` must be green before every commit.
+- Package a bundle with `./scripts/package_app.sh` (writes `build/DevmachineApp.app`).
+
+## Git
+- Conventional Commits, one line, ENGLISH. Sign via the 1Password agent socket:
+  `export SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"`.
+- **NEVER add any Claude/AI attribution, trailer, or `Co-Authored-By` — anywhere.**
+- Branch prefix `da-` when not committing straight to `main` locally.
+
+## VPS writes
+Features that write to the VPS or public DNS (e.g. Caddy add-subdomain) run only
+on an explicit user action in the app, behind a confirm, and never from tests.
+The `add-subdomain` flow lives in the `devmachine` repo skill; the app mirrors it.

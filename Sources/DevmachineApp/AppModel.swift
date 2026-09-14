@@ -1,0 +1,423 @@
+import Foundation
+import Combine
+import DevmachineCore
+
+struct BGTask: Identifiable, Equatable {
+    let id: UUID
+    var label: String
+    var completed: Int
+    var total: Int
+}
+
+struct PaletteItem: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let target: SidebarItem
+    let claude: Bool
+}
+
+@MainActor
+final class AppModel: ObservableObject {
+    @Published var workspaces: [Workspace] = []
+    @Published var sessionsByAlias: [String: [TmuxSession]] = [:]
+    @Published var offlineAliases: Set<String> = []
+    @Published var selection: SidebarItem? = nil {
+        didSet {
+            if selection != nil {
+                activePage = nil
+            }
+            syncContext()
+        }
+    }
+    @Published var activePage: AppPage? = nil
+    @Published var settings: AppSettings? = nil
+    @Published var stackCellSizes: [String: StackCellSize] = AppModel.loadStackCellSizes() {
+        didSet { AppModel.saveStackCellSizes(stackCellSizes) }
+    }
+    @Published var pendingNewSessionAlias: String? = nil
+    @Published var pendingRename: (alias: String, old: String)? = nil
+    @Published var pendingDelete: (alias: String, name: String)? = nil
+    @Published var pendingBulkDelete: [SessionRef]? = nil
+    @Published var selectedSessions: Set<SessionRef> = []
+    @Published var activeTasks: [BGTask] = []
+    @Published var showCommandPalette = false
+    @Published var showShortcuts = false
+    var selectionAnchor: SessionRef? = nil
+
+    @Published var sidebarCollapsed: Bool = (UserDefaults.standard.object(forKey: "sidebarCollapsed") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "sidebarCollapsed") }
+    }
+    @Published var sidebarWidth: CGFloat = {
+        let saved = UserDefaults.standard.double(forKey: "sidebarWidth")
+        return (saved >= 200 && saved <= 460) ? CGFloat(saved) : 260
+    }() {
+        didSet { UserDefaults.standard.set(Double(sidebarWidth), forKey: "sidebarWidth") }
+    }
+
+    @Published var contextCollapsed: Bool = (UserDefaults.standard.object(forKey: "contextCollapsed") as? Bool) ?? false {
+        didSet { UserDefaults.standard.set(contextCollapsed, forKey: "contextCollapsed") }
+    }
+    @Published var contextWidth: CGFloat = {
+        let saved = UserDefaults.standard.double(forKey: "contextWidth")
+        return (saved >= 240 && saved <= 520) ? CGFloat(saved) : 300
+    }() {
+        didSet { UserDefaults.standard.set(Double(contextWidth), forKey: "contextWidth") }
+    }
+    let context = ContextStore()
+
+    private let store: SessionStore
+    private var selectionPollTimer: Timer? = nil
+    private var selectionPollAlias: String? = nil
+    private var refreshingAliases: Set<String> = []
+
+    init(store: SessionStore = SessionStore(runner: ProcessRunner())) {
+        self.store = store
+    }
+
+    var hasSelectionPollTimer: Bool { selectionPollTimer != nil }
+    var selectionPollTarget: String? { selectionPollAlias }
+
+    func newSession(alias: String) {
+        pendingNewSessionAlias = alias
+    }
+
+    func showPage(_ page: AppPage) {
+        activePage = page
+    }
+
+    func stackSessions(_ refs: [SessionRef]) {
+        guard !refs.isEmpty else { return }
+        activePage = .stack(refs)
+    }
+
+    func stackWorkspace(_ alias: String) {
+        let refs = (sessionsByAlias[alias] ?? []).map { SessionRef(alias: alias, name: $0.name) }
+        stackSessions(refs)
+    }
+
+    func isStacked(_ ref: SessionRef) -> Bool {
+        if case let .stack(refs) = activePage { return refs.contains(ref) }
+        return false
+    }
+
+    func isWorkspaceStacked(_ alias: String) -> Bool {
+        guard case let .stack(refs) = activePage, !refs.isEmpty else { return false }
+        return refs.allSatisfy { $0.alias == alias }
+    }
+
+    func stackCellSize(_ ref: SessionRef) -> StackCellSize {
+        stackCellSizes[Self.stackCellKey(ref)] ?? .auto
+    }
+
+    func cycleStackCellSize(_ ref: SessionRef) {
+        let key = Self.stackCellKey(ref)
+        stackCellSizes[key] = stackCellSize(ref).next
+    }
+
+    func moveStackCell(_ ref: SessionRef, by delta: Int) {
+        guard case let .stack(refs) = activePage,
+              let index = refs.firstIndex(of: ref) else { return }
+        let target = index + delta
+        guard refs.indices.contains(target) else { return }
+        var newRefs = refs
+        newRefs.swapAt(index, target)
+        activePage = .stack(newRefs)
+    }
+
+    // ⌘⇧↩ — like maximizing/restoring a pane: grid cell → that session alone;
+    // single session → its workspace grid.
+    func toggleMaximize() {
+        if case let .stack(refs) = activePage {
+            guard let ref = FocusedTerminal.ref().flatMap({ refs.contains($0) ? $0 : nil }) ?? refs.first else { return }
+            selectedSessions = [ref]
+            selectionAnchor = ref
+            selection = .session(alias: ref.alias, name: ref.name)
+        } else if case let .session(alias, _) = selection {
+            stackWorkspace(alias)
+        }
+    }
+
+    private static func stackCellKey(_ ref: SessionRef) -> String {
+        "\(ref.alias)/\(ref.name)"
+    }
+
+    private static func loadStackCellSizes() -> [String: StackCellSize] {
+        guard let data = UserDefaults.standard.data(forKey: "stackCellSizes"),
+              let raw = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return raw.compactMapValues { StackCellSize(rawValue: $0) }
+    }
+
+    private static func saveStackCellSizes(_ sizes: [String: StackCellSize]) {
+        let raw = sizes.mapValues(\.rawValue)
+        guard let data = try? JSONEncoder().encode(raw) else { return }
+        UserDefaults.standard.set(data, forKey: "stackCellSizes")
+    }
+
+    func setSidebarWidth(_ w: CGFloat) {
+        sidebarWidth = min(max(w, 200), 460)
+    }
+
+    func setContextWidth(_ w: CGFloat) {
+        contextWidth = min(max(w, 240), 520)
+    }
+
+    func flattenedSessions() -> [SessionRef] {
+        workspaces.flatMap { ws in
+            (sessionsByAlias[ws.alias] ?? []).map { SessionRef(alias: ws.alias, name: $0.name) }
+        }
+    }
+
+    func clickSession(_ ref: SessionRef) {
+        // re-clicking the open session (no multi-select) goes back home
+        if selection == .session(alias: ref.alias, name: ref.name), selectedSessions == [ref], activePage == nil {
+            selection = nil
+            selectedSessions = []
+            selectionAnchor = nil
+            return
+        }
+        selectedSessions = [ref]
+        selectionAnchor = ref
+        selection = .session(alias: ref.alias, name: ref.name)
+    }
+
+    func goHome() {
+        selection = nil
+        selectedSessions = []
+        selectionAnchor = nil
+    }
+
+    func paletteItems() -> [PaletteItem] {
+        var items = workspaces.flatMap { ws in
+            (sessionsByAlias[ws.alias] ?? []).map { s in
+                PaletteItem(
+                    id: "\(ws.alias)/\(s.name)",
+                    title: s.name,
+                    subtitle: ws.name,
+                    target: .session(alias: ws.alias, name: s.name),
+                    claude: s.hasClaude
+                )
+            }
+        }
+        items.append(PaletteItem(
+            id: "operador",
+            title: "operador",
+            subtitle: settings?.hostAlias ?? "",
+            target: .operador,
+            claude: true
+        ))
+        return items
+    }
+
+    func openPalette(_ item: PaletteItem) {
+        selection = item.target
+        if case let .session(alias, name) = item.target {
+            let ref = SessionRef(alias: alias, name: name)
+            selectedSessions = [ref]
+            selectionAnchor = ref
+        }
+        showCommandPalette = false
+    }
+
+    func cmdClickSession(_ ref: SessionRef) {
+        if selectedSessions.contains(ref) {
+            selectedSessions.remove(ref)
+        } else {
+            selectedSessions.insert(ref)
+        }
+        selectionAnchor = ref
+    }
+
+    func shiftClickSession(_ ref: SessionRef) {
+        let flattened = flattenedSessions()
+        let anchor = selectionAnchor ?? ref
+        guard let anchorIndex = flattened.firstIndex(of: anchor),
+              let refIndex = flattened.firstIndex(of: ref) else {
+            selectedSessions = [ref]
+            return
+        }
+        let range = anchorIndex <= refIndex ? anchorIndex...refIndex : refIndex...anchorIndex
+        selectedSessions = Set(flattened[range])
+    }
+
+    @discardableResult
+    private func beginTask(label: String, total: Int) -> UUID {
+        let id = UUID()
+        activeTasks.append(BGTask(id: id, label: label, completed: 0, total: total))
+        return id
+    }
+
+    private func bumpTask(_ id: UUID) {
+        if let i = activeTasks.firstIndex(where: { $0.id == id }) {
+            activeTasks[i].completed += 1
+        }
+    }
+
+    private func finishTask(_ id: UUID) {
+        if let i = activeTasks.firstIndex(where: { $0.id == id }) {
+            activeTasks[i].completed = activeTasks[i].total
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            self.activeTasks.removeAll { $0.id == id }
+        }
+    }
+
+    func deleteSessions(_ refs: [SessionRef]) {
+        pendingBulkDelete = nil
+        guard !refs.isEmpty else { return }
+        let taskId = beginTask(label: "Apagando sessões", total: refs.count)
+        Task.detached { [store] in
+            for ref in refs {
+                _ = try? store.run(alias: ref.alias, command: RemoteCommands.killSession(name: ref.name))
+                await MainActor.run { self.bumpTask(taskId) }
+            }
+            let affectedAliases = Set(refs.map(\.alias))
+            await MainActor.run {
+                for alias in affectedAliases { self.refresh(alias: alias) }
+                for ref in refs {
+                    self.selectedSessions.remove(ref)
+                    TerminalRegistry.shared.close(alias: ref.alias, session: ref.name)
+                    let item = SidebarItem.session(alias: ref.alias, name: ref.name)
+                    if self.selection == item {
+                        self.selection = nil
+                    }
+                }
+                self.finishTask(taskId)
+            }
+        }
+    }
+
+    func renameSession(alias: String, old: String, new: String) {
+        let clean = new.trimmingCharacters(in: .whitespaces)
+        guard !clean.isEmpty else { pendingRename = nil; return }
+        let range = NSRange(clean.startIndex..., in: clean)
+        guard Self.validSessionName.firstMatch(in: clean, range: range) != nil else {
+            pendingRename = nil
+            return
+        }
+        pendingRename = nil
+        let taskId = beginTask(label: "Renomeando \(old)", total: 1)
+        Task.detached { [store] in
+            _ = try? store.run(alias: alias, command: RemoteCommands.rename(session: old, to: clean))
+            await MainActor.run {
+                self.bumpTask(taskId)
+                self.refresh(alias: alias)
+                // The old client is still attached to the renamed tmux session;
+                // drop it so the new name mounts as the only client.
+                TerminalRegistry.shared.close(alias: alias, session: old)
+                let oldItem = SidebarItem.session(alias: alias, name: old)
+                if self.selection == oldItem {
+                    self.selection = .session(alias: alias, name: clean)
+                }
+                self.finishTask(taskId)
+            }
+        }
+    }
+
+    func deleteSession(alias: String, name: String) {
+        pendingDelete = nil
+        let taskId = beginTask(label: "Apagando \(name)", total: 1)
+        Task.detached { [store] in
+            _ = try? store.run(alias: alias, command: RemoteCommands.killSession(name: name))
+            await MainActor.run {
+                self.bumpTask(taskId)
+                self.refresh(alias: alias)
+                TerminalRegistry.shared.close(alias: alias, session: name)
+                let item = SidebarItem.session(alias: alias, name: name)
+                if self.selection == item {
+                    self.selection = nil
+                }
+                self.finishTask(taskId)
+            }
+        }
+    }
+
+    private static let validSessionName = try! NSRegularExpression(pattern: "^[A-Za-z0-9_-]+$")
+
+    func confirmNewSession(alias: String, name: String) {
+        let clean = name.trimmingCharacters(in: .whitespaces)
+        guard !clean.isEmpty else { pendingNewSessionAlias = nil; return }
+        let range = NSRange(clean.startIndex..., in: clean)
+        guard Self.validSessionName.firstMatch(in: clean, range: range) != nil else {
+            pendingNewSessionAlias = nil
+            return
+        }
+        selection = .session(alias: alias, name: clean)
+        pendingNewSessionAlias = nil
+        // The terminal creates the tmux session lazily on attach (`new-session -A`);
+        // with no global poll, a single refresh can race that create, so re-poll a
+        // few times until the new session shows up in the sidebar.
+        for delay in [1.5, 3.0, 5.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self.refresh(alias: alias) }
+        }
+    }
+
+    func loadWorkspaces() {
+        guard let settings else { return }
+        let path = NSHomeDirectory() + "/.ssh/config"
+        let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        workspaces = SSHConfigParser.parse(text, suffix: settings.workspaceSuffix)
+        refreshAll()
+    }
+
+    func refreshAll() {
+        for ws in workspaces { refresh(alias: ws.alias) }
+    }
+
+    func refresh(alias: String) {
+        guard let ws = workspaces.first(where: { $0.alias == alias }) else { return }
+        // A tick that arrives while the previous ssh for this alias is still
+        // running is dropped: a slow host would otherwise stack one blocked
+        // process per 5s tick.
+        guard !refreshingAliases.contains(alias) else { return }
+        refreshingAliases.insert(alias)
+        Task.detached { [store] in
+            let result = try? store.sessions(for: ws)
+            await MainActor.run {
+                self.refreshingAliases.remove(alias)
+                // Assign only on a real change: every write to a @Published
+                // re-renders the whole tree, and the 5s poll usually returns
+                // exactly what is already on screen.
+                if let result {
+                    if self.sessionsByAlias[alias] != result {
+                        self.sessionsByAlias[alias] = result
+                    }
+                    if self.offlineAliases.contains(alias) {
+                        self.offlineAliases.remove(alias)
+                    }
+                } else if !self.offlineAliases.contains(alias) {
+                    self.offlineAliases.insert(alias)
+                }
+                self.syncContext()
+            }
+        }
+    }
+
+    // whenever selection changes to a Claude session, (re)start the poll; else stop.
+    func syncContext() {
+        if case let .session(alias, name) = selection,
+           let ws = sessionsByAlias[alias]?.first(where: { $0.name == name }), ws.hasClaude {
+            context.start(alias: alias, session: name)
+        } else {
+            context.stop()
+        }
+        updateSelectionPoll()
+    }
+
+    // 5s poll of only the selected session's workspace; no session selected, no poll.
+    private func updateSelectionPoll() {
+        guard case let .session(alias, _) = selection else {
+            selectionPollTimer?.invalidate()
+            selectionPollTimer = nil
+            selectionPollAlias = nil
+            return
+        }
+        guard selectionPollAlias != alias || selectionPollTimer == nil else { return }
+
+        selectionPollAlias = alias
+        selectionPollTimer?.invalidate()
+        selectionPollTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refresh(alias: alias) }
+        }
+    }
+}

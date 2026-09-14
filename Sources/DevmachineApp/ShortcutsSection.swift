@@ -1,0 +1,134 @@
+import SwiftUI
+
+struct ShortcutsSection: View {
+    let alias: String
+    let session: String
+    @EnvironmentObject var skillsStore: SkillsStore
+    @State private var showEditor = false
+
+    var body: some View {
+        DMSection(
+            contentSpacing: 9,
+            padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
+            showBottomDivider: true,
+            label: {
+                Text("SHORTCUTS")
+                    .font(.system(size: 10, weight: .bold))
+                    .kerning(0.5)
+                    .foregroundStyle(Color.dmMuted)
+            },
+            trailing: {
+                Button {
+                    showEditor = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.dmMuted)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Edit shortcuts")
+                .popover(isPresented: $showEditor) {
+                    SkillsEditorView()
+                        .environmentObject(skillsStore)
+                }
+            }
+        ) {
+            FlowLayout(spacing: 4, rowSpacing: 4) {
+                ForEach(skillsStore.skills) { skill in
+                    SkillButton(skill: skill) {
+                        skillsStore.send(skill, alias: alias, session: session)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct SkillButton: View {
+    let skill: SkillCommand
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: skill.systemImage)
+                    .font(.system(size: 11))
+                Text(skill.label)
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Color.dmRowText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(hovering ? Color.dmHover : Color.clear, in: RoundedRectangle(cornerRadius: 5))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+}
+
+private struct SkillsEditorView: View {
+    @EnvironmentObject var skillsStore: SkillsStore
+    @State private var newLabel = ""
+    @State private var newCommand = ""
+    @State private var newSystemImage = "star"
+
+    private var canAdd: Bool {
+        !newLabel.trimmingCharacters(in: .whitespaces).isEmpty
+            && !newCommand.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Shortcuts").font(.headline)
+
+            VStack(spacing: 4) {
+                ForEach(skillsStore.skills) { skill in
+                    HStack(spacing: 8) {
+                        Image(systemName: skill.systemImage)
+                            .foregroundStyle(Color.dmMuted)
+                            .frame(width: 16)
+                        Text(skill.label)
+                            .font(.system(size: 12))
+                        Text(skill.command)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.dmMuted)
+                        Spacer()
+                        Button {
+                            skillsStore.remove(skill)
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .foregroundStyle(Color.dmMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            Rectangle().fill(Color.dmDivider).frame(height: 1)
+
+            VStack(alignment: .leading, spacing: 6) {
+                TextField("Label", text: $newLabel)
+                TextField("Command", text: $newCommand)
+                TextField("SF Symbol", text: $newSystemImage)
+                Button("Add") {
+                    skillsStore.add(
+                        label: newLabel.trimmingCharacters(in: .whitespaces),
+                        command: newCommand.trimmingCharacters(in: .whitespaces),
+                        systemImage: newSystemImage.trimmingCharacters(in: .whitespaces)
+                    )
+                    newLabel = ""
+                    newCommand = ""
+                    newSystemImage = "star"
+                }
+                .disabled(!canAdd)
+            }
+        }
+        .padding(16)
+        .frame(width: 280)
+    }
+}
