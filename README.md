@@ -25,7 +25,7 @@ needs an ssh alias to it and the path of that repo on this Mac.
 
 Builds a release bundle and installs `/Applications/Devmachine.app`. The first
 launch shows a Setup card: ops repo folder, host ssh alias, public IP, base
-domain. Change them later with `⌘,`.
+domain, wallpaper. Change them later with `⌘,`.
 
 ## Development
 
@@ -41,3 +41,6 @@ including the one that no real infrastructure data ever enters the tree.
 
 Wallpaper: photo by [Reed Naliboff](https://unsplash.com/@reednaliboff) on
 [Unsplash](https://unsplash.com/photos/a-person-sitting-in-the-water-with-a-surfboard-92KySh7wzl8).
+
+Wallpapers: photos from [Unsplash](https://unsplash.com) by their respective
+photographers; each photo shows its credit in Settings.
