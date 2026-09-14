@@ -19,4 +19,13 @@ struct RemoteService: Sendable {
             environment: RemoteCommands.sshEnvironment()
         )
     }
+
+    func runCapturing(alias: String, args: [String]) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        try runner.runCapturing(
+            executable: "/usr/bin/ssh",
+            args: RemoteService.sshBaseArgs(alias: alias) + args,
+            environment: RemoteCommands.sshEnvironment()
+        )
+    }
 }

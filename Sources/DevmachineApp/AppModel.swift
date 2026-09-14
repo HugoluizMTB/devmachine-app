@@ -64,6 +64,13 @@ final class AppModel: ObservableObject {
     }() {
         didSet { UserDefaults.standard.set(Double(contextWidth), forKey: "contextWidth") }
     }
+    @Published var contextTab: ContextTab =
+        ContextTab(rawValue: UserDefaults.standard.string(forKey: "contextTab") ?? "") ?? .context {
+        didSet {
+            UserDefaults.standard.set(contextTab.rawValue, forKey: "contextTab")
+            syncContext()
+        }
+    }
     let context = ContextStore()
 
     private let store: SessionStore
@@ -253,6 +260,10 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func flashToast(_ label: String) {
+        finishTask(beginTask(label: label, total: 1))
+    }
+
     private func finishTask(_ id: UUID) {
         if let i = activeTasks.firstIndex(where: { $0.id == id }) {
             activeTasks[i].completed = activeTasks[i].total
@@ -394,9 +405,11 @@ final class AppModel: ObservableObject {
     }
 
     // whenever selection changes to a Claude session, (re)start the poll; else stop.
+    // Another context tab on screen also stops it: only the visible tab polls.
     func syncContext() {
         if case let .session(alias, name) = selection,
-           let ws = sessionsByAlias[alias]?.first(where: { $0.name == name }), ws.hasClaude {
+           let ws = sessionsByAlias[alias]?.first(where: { $0.name == name }), ws.hasClaude,
+           contextTab == .context {
             context.start(alias: alias, session: name)
         } else {
             context.stop()

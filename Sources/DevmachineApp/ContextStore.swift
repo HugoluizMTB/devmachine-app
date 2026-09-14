@@ -14,6 +14,8 @@ final class ContextStore: ObservableObject {
         self.remote = remote
     }
 
+    var isPolling: Bool { timer != nil }
+
     func start(alias: String, session: String) {
         if let cur = current, cur.alias == alias, cur.session == session, timer != nil {
             return

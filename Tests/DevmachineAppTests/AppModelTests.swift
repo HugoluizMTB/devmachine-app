@@ -236,6 +236,24 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(changes.count, 0)
     }
+
+    func testAnotherContextTabStopsTheContextPoll() {
+        let model = AppModel(store: SessionStore(runner: CountingRunner()))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        model.sessionsByAlias = [
+            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, hasClaude: true)]
+        ]
+        model.contextTab = .context
+        model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
+        XCTAssertTrue(model.context.isPolling)
+
+        model.contextTab = .git
+        XCTAssertFalse(model.context.isPolling)
+
+        model.contextTab = .context
+        XCTAssertTrue(model.context.isPolling)
+        model.context.stop()
+    }
 }
 
 private final class ThrowingRunner: CommandRunner, @unchecked Sendable {

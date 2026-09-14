@@ -29,6 +29,13 @@ public struct GitSnapshot: Equatable, Sendable {
             self.age = age
             self.refs = refs
         }
+
+        /// The one ref worth a badge on a narrow row: a tag, else a local branch, else the first.
+        public var primaryRef: String? {
+            refs.first { $0.hasPrefix("tag: ") }
+                ?? refs.first { !$0.contains("/") }
+                ?? refs.first
+        }
     }
 
     public let root: String

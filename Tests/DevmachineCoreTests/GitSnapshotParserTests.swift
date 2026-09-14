@@ -147,6 +147,17 @@ final class GitSnapshotParserTests: XCTestCase {
         XCTAssertTrue(snapshot.commits[1].refs.isEmpty)
     }
 
+    func testPrimaryRefPrefersATagThenALocalBranch() {
+        func commit(_ refs: [String]) -> GitSnapshot.Commit {
+            GitSnapshot.Commit(sha: "1a2b3c4", subject: "s", author: "alice", age: "now", refs: refs)
+        }
+
+        XCTAssertEqual(commit(["main", "origin/main", "tag: v1"]).primaryRef, "tag: v1")
+        XCTAssertEqual(commit(["origin/main", "main"]).primaryRef, "main")
+        XCTAssertEqual(commit(["origin/main"]).primaryRef, "origin/main")
+        XCTAssertNil(commit([]).primaryRef)
+    }
+
     func testEmptyLogGivesNoCommits() throws {
         let snapshot = try XCTUnwrap(GitSnapshotParser.parse(output(
             status: """

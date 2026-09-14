@@ -1,58 +1,111 @@
 import SwiftUI
 import AppKit
 
+enum ContextTab: String, CaseIterable {
+    case context
+    case files
+    case git
+
+    var title: String {
+        switch self {
+        case .context: return "Context"
+        case .files: return "Files"
+        case .git: return "Git"
+        }
+    }
+}
+
 struct ContextPanel: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: ContextStore
+    @StateObject private var gitStore = GitStore()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if case let .session(alias, name) = model.selection {
-                ShortcutsSection(alias: alias, session: name)
-            }
-            if let state = store.state {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        if !state.agents.isEmpty {
-                            agentsSection(state.agents)
-                        }
-                        if let plan = state.plan {
-                            planSection(plan)
-                        }
-                        if !state.prs.isEmpty {
-                            prsSection(state.prs)
-                        }
-                        if !state.links.isEmpty {
-                            linksSection(state.links)
-                        }
-                    }
-                }
-            } else {
-                Spacer()
-                Text("No context")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.dmMuted)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            }
+            tabBody
         }
         .background(Color.dmSidebarBg)
+    }
+
+    private var session: (alias: String, name: String)? {
+        guard case let .session(alias, name) = model.selection else { return nil }
+        return (alias, name)
+    }
+
+    @ViewBuilder
+    private var tabBody: some View {
+        switch model.contextTab {
+        case .context:
+            contextBody
+        case .files:
+            if let session {
+                FilesTab(alias: session.alias, session: session.name)
+            } else {
+                message("No session")
+            }
+        case .git:
+            if let session {
+                GitTab(store: gitStore, alias: session.alias, session: session.name)
+            } else {
+                message("No session")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var contextBody: some View {
+        if let session {
+            ShortcutsSection(alias: session.alias, session: session.name)
+        }
+        if let state = store.state {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if !state.agents.isEmpty {
+                        agentsSection(state.agents)
+                    }
+                    if let plan = state.plan {
+                        planSection(plan)
+                    }
+                    if !state.prs.isEmpty {
+                        prsSection(state.prs)
+                    }
+                    if !state.links.isEmpty {
+                        linksSection(state.links)
+                    }
+                }
+            }
+        } else {
+            message("No context")
+        }
+    }
+
+    @ViewBuilder
+    private func message(_ text: String) -> some View {
+        Spacer()
+        Text(text)
+            .font(.system(size: 12))
+            .foregroundStyle(Color.dmMuted)
+            .frame(maxWidth: .infinity)
+        Spacer()
     }
 
     private var header: some View {
         DMSection(
             headerSpacing: 6,
-            padding: EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14),
+            padding: EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14),
             showBottomDivider: true,
             label: {
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: 6, height: 6)
-                Text("CONTEXT")
-                    .font(.system(size: 11, weight: .semibold))
-                    .kerning(0.5)
-                    .foregroundStyle(Color.dmMuted)
+                DMTabStrip(
+                    tabs: ContextTab.allCases,
+                    selection: $model.contextTab,
+                    title: { $0.title },
+                    fontSize: 11,
+                    horizontalPadding: 8,
+                    verticalPadding: 3,
+                    cornerRadius: 6,
+                    spacing: 2
+                )
             },
             trailing: {
                 Button {
@@ -70,17 +123,12 @@ struct ContextPanel: View {
 
     @ViewBuilder
     private func sectionLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 10, weight: .bold))
-            .kerning(0.5)
-            .foregroundStyle(Color.dmMuted)
+        DMSectionLabel(text: title)
     }
 
     @ViewBuilder
     private func sectionTrailing(_ trailing: String) -> some View {
-        Text(trailing)
-            .font(.system(size: 10, weight: .bold))
-            .foregroundStyle(Color.dmMuted)
+        DMSectionValue(text: trailing)
     }
 
     private func agentsSection(_ agents: [ContextState.Agent]) -> some View {
