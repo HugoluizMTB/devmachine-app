@@ -48,6 +48,16 @@ struct TerminalPaneView: NSViewRepresentable {
         container.addSubview(term)
         container.content = term
         TerminalRegistry.shared.viewDidAttach(kind)
+        // The same terminal view moves between panes. When the new container
+        // ends up the size the view already had, AppKit sees no frame change,
+        // skips the redraw, and the pane stays blank until something resizes it
+        // (collapsing the sidebar was the workaround). Lay it out once more
+        // after SwiftUI's first sizing pass and ask for a repaint either way.
+        DispatchQueue.main.async { [weak container, weak term] in
+            guard let container, let term, term.superview === container else { return }
+            term.frame = container.contentFrame
+            term.needsDisplay = true
+        }
         return container
     }
 
@@ -84,10 +94,12 @@ struct TerminalPaneView: NSViewRepresentable {
         override func layout() {
             super.layout()
             content?.frame = contentFrame
+            content?.needsDisplay = true
         }
 
         override func resizeSubviews(withOldSize oldSize: NSSize) {
             content?.frame = contentFrame
+            content?.needsDisplay = true
         }
     }
 }
