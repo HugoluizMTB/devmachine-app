@@ -86,9 +86,16 @@ public enum RemoteCommands {
         ]
     }
 
-    public static func terminalEnvironment() -> [String] {
+    // Remote sessions do not report as xterm: the host's tmux gives every
+    // `xterm*` client `extkeys`, then forwards the kitty keyboard protocol
+    // that Claude Code enables, and SwiftTerm's kitty encoding breaks Enter
+    // and dead keys. `tmux-256color` exists on both sides and keeps
+    // bracketed paste, focus, RGB and cursor style.
+    public static let remoteTerm = "tmux-256color"
+
+    public static func terminalEnvironment(term: String = "xterm-256color") -> [String] {
         [
-            "TERM=xterm-256color",
+            "TERM=\(term)",
             "COLORTERM=truecolor",
             "HOME=\(NSHomeDirectory())",
             "SSH_AUTH_SOCK=\(onePasswordSocketPath)",

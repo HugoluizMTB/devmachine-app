@@ -95,4 +95,10 @@ final class RemoteCommandsTests: XCTestCase {
             "tmux send-keys -t 'dash' -- '$(rm -rf /); `whoami`' Enter"
         )
     }
+
+    func testRemoteSessionsReportAsTmuxNotXterm() {
+        XCTAssertTrue(RemoteCommands.terminalEnvironment().contains("TERM=xterm-256color"))
+        XCTAssertTrue(RemoteCommands.terminalEnvironment(term: RemoteCommands.remoteTerm).contains("TERM=tmux-256color"))
+        XCTAssertFalse(RemoteCommands.remoteTerm.hasPrefix("xterm"))
+    }
 }

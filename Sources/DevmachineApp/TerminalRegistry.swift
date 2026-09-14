@@ -69,13 +69,13 @@ final class TerminalRegistry: NSObject {
                 term.startProcess(
                     executable: mosh,
                     args: [alias, "--", "tmux", "new-session", "-A", "-s", session],
-                    environment: RemoteCommands.terminalEnvironment()
+                    environment: RemoteCommands.terminalEnvironment(term: RemoteCommands.remoteTerm)
                 )
             } else {
                 term.startProcess(
                     executable: "/usr/bin/ssh",
                     args: [alias, "-t", RemoteCommands.newSession(name: session)],
-                    environment: RemoteCommands.terminalEnvironment()
+                    environment: RemoteCommands.terminalEnvironment(term: RemoteCommands.remoteTerm)
                 )
             }
         case .opsShell:

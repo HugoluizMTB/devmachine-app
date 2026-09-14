@@ -92,10 +92,13 @@ segmented control.
   session in two places: two tmux clients at different sizes make `window-size latest`
   flap and garble the screen. Detached views are LRU-capped (6); a dismantled pane
   never terminates the process (only delete/rename/quit do).
-- `LegacyKeyboardTerminalView` drops two replies on the way out: the kitty keyboard
-  query answer and XTVERSION. tmux 3.4 reads "XTerm(...)" as `extkeys` and then
-  forwards the kitty protocol Claude Code 2.1.269+ turns on; SwiftTerm's kitty
-  encoding breaks Enter and dead keys (ç, ´). Do not "clean this up".
+- Remote sessions run with `TERM=tmux-256color` (`RemoteCommands.remoteTerm`), never
+  `xterm-256color`: the host's `/etc/tmux.conf` gives every `xterm*` client `extkeys`,
+  tmux then forwards the kitty keyboard protocol Claude Code 2.1.269+ turns on, and
+  SwiftTerm's kitty encoding breaks Enter and dead keys (ç, ´). Check with
+  `tmux list-clients -F '#{client_termfeatures}'` on the host: the app's client must
+  not list `extkeys`. `LegacyKeyboardTerminalView` also drops the kitty query answer
+  and XTVERSION replies as a second guard. Do not "clean this up".
 - SwiftTerm is pinned by revision (`9fc2d2f`, 2026-09-04: kitty encoding fixes);
   upstream `main` after 2026-09-09 does not link (`MetalError`). Bump on purpose only.
 - Terminal layout is explicit (`TerminalContainerView.layout()`), not autoresizing
