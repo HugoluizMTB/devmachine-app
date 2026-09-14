@@ -254,6 +254,23 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.context.isPolling)
         model.context.stop()
     }
+
+    func testOpeningASessionAsksForKeyboardFocus() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
+        let pending = TerminalRegistry.shared.pendingFocusKind
+        XCTAssertEqual(pending, .remote(alias: "acme-devmachine", session: "dash"))
+    }
+
+    func testStackingAsksForFocusOnTheFirstCell() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.stackSessions([
+            SessionRef(alias: "acme-devmachine", name: "dash"),
+            SessionRef(alias: "acme-devmachine", name: "api")
+        ])
+        let pending = TerminalRegistry.shared.pendingFocusKind
+        XCTAssertEqual(pending, .remote(alias: "acme-devmachine", session: "dash"))
+    }
 }
 
 private final class ThrowingRunner: CommandRunner, @unchecked Sendable {

@@ -13,6 +13,7 @@ final class TerminalRegistry: NSObject {
 
     private var terminals: [TerminalKind: LocalProcessTerminalView] = [:]
     private var detachedAt: [TerminalKind: Date] = [:]
+    private(set) var pendingFocusKind: TerminalKind?
 
     private override init() {
         super.init()
@@ -44,8 +45,36 @@ final class TerminalRegistry: NSObject {
         }
     }
 
+    /// Give the keyboard to this session as soon as its view is on screen. The
+    /// request comes from an explicit user action (opening a session); mounting
+    /// alone must never grab focus, or SwiftUI loses the sidebar's clicks.
+    func requestFocus(_ kind: TerminalKind) {
+        pendingFocusKind = kind
+        applyPendingFocus()
+    }
+
+    /// A pane just put the shared view back in a window.
+    func viewDidAttach(_ kind: TerminalKind) {
+        guard pendingFocusKind == kind else { return }
+        // Next runloop: SwiftUI is still mid-layout, and taking first responder
+        // inside it is what used to make the sidebar unclickable.
+        DispatchQueue.main.async { [weak self] in self?.applyPendingFocus() }
+    }
+
+    private func applyPendingFocus() {
+        guard let kind = pendingFocusKind,
+              let term = terminals[kind],
+              let window = term.window
+        else { return }
+        pendingFocusKind = nil
+        // A sheet (rename, new session, setup) owns the keyboard while it is up.
+        guard window.isKeyWindow else { return }
+        window.makeFirstResponder(term)
+    }
+
     func close(_ kind: TerminalKind) {
         detachedAt[kind] = nil
+        if pendingFocusKind == kind { pendingFocusKind = nil }
         guard let term = terminals.removeValue(forKey: kind) else { return }
         term.terminate()
         term.removeFromSuperview()

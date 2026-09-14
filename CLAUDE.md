@@ -79,8 +79,11 @@ segmented control.
 - SwiftUI `Button` + `.contextMenu` on the same view in a `ScrollView` fires
   once then goes stale on macOS. Rows use `.onTapGesture` (modifiers via
   `NSEvent.modifierFlags`) + `.contentShape(Rectangle())` + `.contextMenu`.
-- Never `makeFirstResponder` on an embedded AppKit view (terminal) at mount —
-  it steals focus from SwiftUI and makes sidebar clicks flaky.
+- Never `makeFirstResponder` on an embedded AppKit view (terminal) during mount —
+  it steals focus from SwiftUI and makes sidebar clicks flaky. Focus is
+  request-driven instead: an explicit user action (opening or stacking a session)
+  calls `TerminalRegistry.requestFocus(_:)`, and the pane hands the request back
+  on the next runloop once the view is in a key window (`viewDidAttach`).
 - When clicks die "in a region" and nothing looks wrong: dump the AppKit
   hierarchy + `hitTest` from inside the app (walk `window.contentView.superview`,
   log class/frame per view). A platform view wider than its container is the tell.

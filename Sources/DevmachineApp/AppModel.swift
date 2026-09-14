@@ -24,8 +24,9 @@ final class AppModel: ObservableObject {
     @Published var offlineAliases: Set<String> = []
     @Published var selection: SidebarItem? = nil {
         didSet {
-            if selection != nil {
+            if let selection {
                 activePage = nil
+                TerminalRegistry.shared.requestFocus(selection.terminalKind)
             }
             syncContext()
         }
@@ -97,8 +98,9 @@ final class AppModel: ObservableObject {
     }
 
     func stackSessions(_ refs: [SessionRef]) {
-        guard !refs.isEmpty else { return }
+        guard let first = refs.first else { return }
         activePage = .stack(refs)
+        TerminalRegistry.shared.requestFocus(.remote(alias: first.alias, session: first.name))
     }
 
     func stackWorkspace(_ alias: String) {

@@ -47,6 +47,7 @@ struct TerminalPaneView: NSViewRepresentable {
         term.frame = container.contentFrame
         container.addSubview(term)
         container.content = term
+        TerminalRegistry.shared.viewDidAttach(kind)
         return container
     }
 
