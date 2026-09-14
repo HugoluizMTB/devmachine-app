@@ -33,4 +33,15 @@ final class TerminalKeyboardTests: XCTestCase {
     func testOnlyTheReturnKeyCounts() {
         XCTAssertFalse(TerminalKeyboard.sendsNewline(keyCode: 0, flags: [.shift]))
     }
+
+    func testCommandVIsTheClipboardPaste() {
+        XCTAssertTrue(TerminalKeyboard.pastesClipboard(keyCode: 9, flags: [.command]))
+    }
+
+    func testOtherPasteChordsAreLeftToTheTerminal() {
+        XCTAssertFalse(TerminalKeyboard.pastesClipboard(keyCode: 9, flags: []))
+        XCTAssertFalse(TerminalKeyboard.pastesClipboard(keyCode: 9, flags: [.command, .shift]))
+        XCTAssertFalse(TerminalKeyboard.pastesClipboard(keyCode: 9, flags: [.command, .option]))
+        XCTAssertFalse(TerminalKeyboard.pastesClipboard(keyCode: 0, flags: [.command]))
+    }
 }

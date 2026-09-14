@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import SwiftTerm
 import DevmachineCore
 
@@ -44,6 +45,16 @@ final class TerminalRegistry: NSObject {
                     focused.send(TerminalKeyboard.newlineBytes)
                     return true
                 }
+                // An image on the clipboard cannot be typed into a terminal,
+                // and the agent reads the clipboard of the machine it runs on,
+                // which for a remote session is not this Mac. So the bytes are
+                // written over there and the path is typed instead.
+                if TerminalKeyboard.pastesClipboard(keyCode: keyCode, flags: flags),
+                   let (kind, _) = registry.focusedEntry(),
+                   let image = ImagePasteService.image(from: .general) {
+                    registry.pasteImage(image, into: kind)
+                    return true
+                }
                 guard TerminalKeyboard.optionActsAsMeta(for: flags) else { return false }
                 for term in registry.terminals.values where term.window?.firstResponder === term {
                     term.optionAsMetaKey = true
@@ -57,7 +68,28 @@ final class TerminalRegistry: NSObject {
 
     /// The terminal that currently owns the keyboard, if any.
     private func focusedTerminal() -> LocalProcessTerminalView? {
-        terminals.values.first { $0.window?.firstResponder === $0 }
+        focusedEntry()?.view
+    }
+
+    private func focusedEntry() -> (kind: TerminalKind, view: LocalProcessTerminalView)? {
+        for (kind, view) in terminals where view.window?.firstResponder === view {
+            return (kind, view)
+        }
+        return nil
+    }
+
+    /// Stores the image where the session's agent can read it, then types the
+    /// path without a newline: the sentence around it is yours to write.
+    private func pasteImage(_ image: (data: Data, fileExtension: String), into kind: TerminalKind) {
+        let service = ImagePasteService(runner: ProcessRunner())
+        Task.detached {
+            let path = try? service.store(
+                image.data, fileExtension: image.fileExtension, on: kind)
+            await MainActor.run {
+                guard let path, let view = TerminalRegistry.shared.terminals[kind] else { return }
+                view.send(txt: path + " ")
+            }
+        }
     }
 
     func terminal(for kind: TerminalKind) -> LocalProcessTerminalView {
@@ -198,6 +230,19 @@ enum TerminalKeyboard {
     /// The legacy key encoding this app keeps on purpose cannot tell Shift+Enter
     /// from Enter, so the terminal sends the newline byte itself. Enter alone
     /// still submits, and Command+Shift+Return stays an app shortcut.
+    static let vKeyCode: UInt16 = 9
+
+    /// Command+V, the paste the app answers itself when the clipboard holds an
+    /// image. Everything else still reaches SwiftTerm's own paste.
+    static func pastesClipboard(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Bool {
+        let mods = flags.intersection(.deviceIndependentFlagsMask)
+        return keyCode == vKeyCode
+            && mods.contains(.command)
+            && !mods.contains(.shift)
+            && !mods.contains(.control)
+            && !mods.contains(.option)
+    }
+
     static func sendsNewline(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Bool {
         let mods = flags.intersection(.deviceIndependentFlagsMask)
         return keyCode == returnKeyCode

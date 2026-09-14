@@ -2,11 +2,22 @@ import Foundation
 
 public protocol CommandRunner: Sendable {
     func run(executable: String, args: [String], environment: [String: String]?) throws -> String
+
+    /// Feeds `input` to the command's stdin. Used to write a file on the other
+    /// side of an ssh connection without a second tool.
+    func run(executable: String, args: [String], environment: [String: String]?, input: Data)
+        throws -> String
     func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32)
 }
 
 public extension CommandRunner {
+    /// Fakes in tests do not care about stdin.
+    func run(executable: String, args: [String], environment: [String: String]?, input: Data)
+        throws -> String {
+        try run(executable: executable, args: args, environment: environment)
+    }
+
     // Default for conformers that don't need stderr/exit-code detail (e.g.
     // test fakes): treat it as an always-successful capture of `run`'s output.
     func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
@@ -28,8 +39,20 @@ public struct ProcessRunner: CommandRunner {
         try runCapturing(executable: executable, args: args, environment: environment).stdout
     }
 
+    public func run(executable: String, args: [String], environment: [String: String]?, input: Data)
+        throws -> String {
+        try runCapturing(
+            executable: executable, args: args, environment: environment, input: input).stdout
+    }
+
     public func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32) {
+        try runCapturing(executable: executable, args: args, environment: environment, input: nil)
+    }
+
+    public func runCapturing(
+        executable: String, args: [String], environment: [String: String]?, input: Data?
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
         // Under XCTest a real ssh must never run: `~/.ssh/config` maps every
         // `*-devmachine` alias to the real host, so a fixture alias such as
         // `acme-devmachine` would log in as the Mac user and get the Mac banned
@@ -42,13 +65,24 @@ public struct ProcessRunner: CommandRunner {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
         if let environment { process.environment = environment }
-        process.standardInput = FileHandle.nullDevice
+        let inPipe = input.map { _ in Pipe() }
+        process.standardInput = inPipe ?? FileHandle.nullDevice
         let out = Pipe()
         let err = Pipe()
         process.standardOutput = out
         process.standardError = err
 
         try process.run()
+        // Write stdin on its own thread and close it: a file bigger than the
+        // pipe buffer would block here while the child waits on output we have
+        // not started reading yet.
+        if let inPipe, let input {
+            let handle = inPipe.fileHandleForWriting
+            DispatchQueue.global(qos: .userInitiated).async {
+                handle.write(input)
+                try? handle.close()
+            }
+        }
         // Read BEFORE waiting: if the pipe buffer fills, waiting first
         // deadlocks the child (blocked writing) against us (blocked waiting).
         // Drain both pipes concurrently: reading one to EOF before the other
