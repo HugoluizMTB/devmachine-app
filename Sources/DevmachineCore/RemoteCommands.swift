@@ -48,6 +48,17 @@ public enum RemoteCommands {
             + " && git log --format='%h%x1f%s%x1f%an%x1f%ar%x1f%D' -n 80"
     }
 
+    // The pane's cwd is the starting point, but the tree is rooted at the
+    // repository so a session sitting in a subdirectory still shows the project.
+    public static func fileTreeRoot(session: String) -> String {
+        "cd \"$(tmux display -p -t \(shellSingleQuoted(session)) '#{pane_current_path}')\""
+            + " && (git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    }
+
+    public static func listDirectory(path: String) -> String {
+        "find \(shellSingleQuoted(path)) -mindepth 1 -maxdepth 1 -printf '%y\\t%f\\n' | sort -f"
+    }
+
     public static func sendKeys(session: String, text: String) -> String {
         "tmux send-keys -t \(shellSingleQuoted(session)) -- \(shellSingleQuoted(text)) Enter"
     }
