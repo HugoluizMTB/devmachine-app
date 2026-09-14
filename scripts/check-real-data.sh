@@ -10,7 +10,7 @@ if [ ! -s "$PATTERNS" ]; then
   exit 2
 fi
 
-hits=$(git grep -inE -f "$PATTERNS" -- . | grep -v "2BUA8C4S2C.com.1password" || true)
+hits=$(git grep -inIE -f "$PATTERNS" -- . | grep -v "2BUA8C4S2C.com.1password" || true)
 if [ -n "$hits" ]; then
   echo "$hits"
   echo "real data found — fix before pushing" >&2
