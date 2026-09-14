@@ -27,4 +27,12 @@ final class ProcessRunnerTests: XCTestCase {
         XCTAssertEqual(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines), "err")
         XCTAssertEqual(r.exitCode, 3)
     }
+
+    func testRefusesToSpawnSSHUnderXCTest() {
+        XCTAssertThrowsError(try runner.run(
+            executable: "/usr/bin/ssh", args: ["acme-devmachine", "true"], environment: nil
+        )) { error in
+            XCTAssertEqual(error as? ProcessRunnerError, .remoteCommandUnderTest("/usr/bin/ssh"))
+        }
+    }
 }

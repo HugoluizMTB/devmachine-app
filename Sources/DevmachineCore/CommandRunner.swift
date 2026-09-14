@@ -30,6 +30,14 @@ public struct ProcessRunner: CommandRunner {
 
     public func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32) {
+        // Under XCTest a real ssh must never run: `~/.ssh/config` maps every
+        // `*-devmachine` alias to the real host, so a fixture alias such as
+        // `acme-devmachine` would log in as the Mac user and get the Mac banned
+        // by fail2ban. Tests inject a fake runner; this is the safety net.
+        if executable.hasSuffix("/ssh") || executable.hasSuffix("/mosh") || executable.hasSuffix("/scp"),
+           NSClassFromString("XCTestCase") != nil {
+            throw ProcessRunnerError.remoteCommandUnderTest(executable)
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
@@ -68,4 +76,8 @@ public struct ProcessRunner: CommandRunner {
 
 private final class DataBox: @unchecked Sendable {
     var data = Data()
+}
+
+public enum ProcessRunnerError: Error, Equatable {
+    case remoteCommandUnderTest(String)
 }
