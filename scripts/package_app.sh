@@ -9,6 +9,7 @@ swift build -c release
 cp .build/release/DevmachineApp "$APP/Contents/MacOS/DevmachineApp"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp wallpaper.jpg "$APP/Contents/Resources/wallpaper.jpg"
+cp Resources/wallpapers.json "$APP/Contents/Resources/wallpapers.json"
 
 # icon: PNGs -> iconset -> icns
 ICONSET="build/AppIcon.iconset"

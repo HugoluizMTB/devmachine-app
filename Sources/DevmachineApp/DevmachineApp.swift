@@ -12,6 +12,7 @@ struct DevmachineApp: App {
     @StateObject private var statsStore = StatsStore()
     @StateObject private var usageStore = ClaudeUsageStore()
     @StateObject private var settingsStore = SettingsStore.shared
+    @StateObject private var wallpaperStore = WallpaperStore()
 
     var body: some Scene {
         // Single main window (Window, not WindowGroup) so the menubar "Open"
@@ -25,6 +26,7 @@ struct DevmachineApp: App {
                 .environmentObject(statsStore)
                 .environmentObject(usageStore)
                 .environmentObject(settingsStore)
+                .environmentObject(wallpaperStore)
                 .frame(minWidth: 900, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
         }
         .windowStyle(.hiddenTitleBar)

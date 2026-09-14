@@ -22,12 +22,33 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var hostAlias: String
     public var publicIP: String
     public var baseDomain: String
+    public var wallpaper: WallpaperChoice
 
-    public init(opsRepoPath: String, hostAlias: String, publicIP: String, baseDomain: String) {
+    public init(
+        opsRepoPath: String,
+        hostAlias: String,
+        publicIP: String,
+        baseDomain: String,
+        wallpaper: WallpaperChoice = .bundled
+    ) {
         self.opsRepoPath = opsRepoPath
         self.hostAlias = hostAlias
         self.publicIP = publicIP
         self.baseDomain = baseDomain
+        self.wallpaper = wallpaper
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case opsRepoPath, hostAlias, publicIP, baseDomain, wallpaper
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        opsRepoPath = try values.decode(String.self, forKey: .opsRepoPath)
+        hostAlias = try values.decode(String.self, forKey: .hostAlias)
+        publicIP = try values.decode(String.self, forKey: .publicIP)
+        baseDomain = try values.decode(String.self, forKey: .baseDomain)
+        wallpaper = try values.decodeIfPresent(WallpaperChoice.self, forKey: .wallpaper) ?? .bundled
     }
 
     public static let empty = AppSettings(opsRepoPath: "", hostAlias: "", publicIP: "", baseDomain: "")
