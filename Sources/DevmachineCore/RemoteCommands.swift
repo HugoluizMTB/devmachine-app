@@ -36,6 +36,18 @@ public enum RemoteCommands {
         "tmux kill-session -t \(shellSingleQuoted(name))"
     }
 
+    // One round trip for the whole panel: the three git reads are joined by a
+    // record separator, and `rev-parse` failing first is how "not a repo" is reported.
+    public static func gitSnapshot(session: String) -> String {
+        "cd \"$(tmux display -p -t \(shellSingleQuoted(session)) '#{pane_current_path}')\""
+            + " && git rev-parse --show-toplevel"
+            + " && git status --porcelain=v2 --branch"
+            + " && printf '\\x1e'"
+            + " && git worktree list --porcelain"
+            + " && printf '\\x1e'"
+            + " && git log --format='%h%x1f%s%x1f%an%x1f%ar%x1f%D' -n 80"
+    }
+
     public static func sendKeys(session: String, text: String) -> String {
         "tmux send-keys -t \(shellSingleQuoted(session)) -- \(shellSingleQuoted(text)) Enter"
     }
