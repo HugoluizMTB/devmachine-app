@@ -5,18 +5,25 @@ import DevmachineCore
 struct SetupPage: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var wallpapers: WallpaperStore
+
+    /// Not a theme id in the library — the chip that shows the built-in gradients.
+    static let gradientTheme = "gradient"
 
     @State private var opsRepoPath = ""
     @State private var hostAlias = ""
     @State private var publicIP = ""
     @State private var baseDomain = ""
+    @State private var wallpaper = WallpaperChoice.bundled
+    @State private var themeID = SetupPage.gradientTheme
 
     private var draft: AppSettings {
         AppSettings(
             opsRepoPath: opsRepoPath.trimmingCharacters(in: .whitespaces),
             hostAlias: hostAlias.trimmingCharacters(in: .whitespaces),
             publicIP: publicIP.trimmingCharacters(in: .whitespaces),
-            baseDomain: baseDomain.trimmingCharacters(in: .whitespaces)
+            baseDomain: baseDomain.trimmingCharacters(in: .whitespaces),
+            wallpaper: wallpaper
         )
     }
 
@@ -26,14 +33,23 @@ struct SetupPage: View {
 
     var body: some View {
         ZStack {
-            WallpaperBackground(style: .photo)
-            card
-                .frame(maxWidth: 480)
-                .padding(24)
+            WallpaperBackground(style: .photo, choice: wallpaper)
+            // The wallpaper grid can outgrow a 560pt window; scroll only then.
+            ViewThatFits(in: .vertical) {
+                cardBox
+                ScrollView(.vertical) { cardBox }
+                    .scrollIndicators(.hidden)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onAppear { load() }
+    }
+
+    private var cardBox: some View {
+        card
+            .frame(maxWidth: 480)
+            .padding(24)
     }
 
     private var card: some View {
@@ -92,6 +108,8 @@ struct SetupPage: View {
                     .setupField()
             }
 
+            wallpaperBlock
+
             HStack(spacing: 10) {
                 Spacer()
                 Button("Start devmachine") { save() }
@@ -143,7 +161,153 @@ struct SetupPage: View {
         }
     }
 
+    private var wallpaperBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(verbatim: "Wallpaper")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+
+            FlowLayout(spacing: 6, rowSpacing: 6) {
+                chip(id: Self.gradientTheme, title: "Gradient")
+                ForEach(wallpapers.themes) { theme in
+                    chip(id: theme.id, title: theme.title)
+                }
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                if themeID == Self.gradientTheme {
+                    ForEach(WallpaperGradient.all) { gradientCell($0) }
+                } else if let theme = wallpapers.library.theme(id: themeID) {
+                    ForEach(theme.photos) { photoCell($0) }
+                }
+            }
+
+            credit
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.5))
+        }
+    }
+
+    private func chip(id: String, title: String) -> some View {
+        let selected = themeID == id
+        return Text(verbatim: title)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(selected ? Color.white : Color.white.opacity(0.7))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                selected ? Color.white.opacity(0.18) : Color.white.opacity(0.07),
+                in: Capsule()
+            )
+            .overlay(
+                Capsule().stroke(
+                    selected ? Color.accentColor : Color.white.opacity(0.12),
+                    lineWidth: selected ? 1 : 0.5
+                )
+            )
+            .contentShape(Capsule())
+            .onTapGesture { themeID = id }
+    }
+
+    private func photoCell(_ photo: WallpaperPhoto) -> some View {
+        ZStack {
+            Color.white.opacity(0.06)
+            if let image = wallpapers.thumbnails[photo.id] {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    // A scaledToFill thumbnail overflows its cell and its overflow
+                    // would swallow the taps of the neighbouring cells.
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(height: 62)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(ring(selected: wallpaper == Self.choice(for: photo)))
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .onTapGesture { select(photo) }
+        .onAppear { wallpapers.ensureThumbnail(photo) }
+    }
+
+    private func gradientCell(_ gradient: WallpaperGradient) -> some View {
+        gradient.swatch
+            .frame(height: 62)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .bottomLeading) {
+                Text(verbatim: gradient.title)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .padding(6)
+            }
+            .overlay(ring(selected: wallpaper == .gradient(name: gradient.name)))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .onTapGesture { wallpaper = .gradient(name: gradient.name) }
+    }
+
+    private func ring(selected: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .stroke(
+                selected ? Color.accentColor : Color.white.opacity(0.12),
+                lineWidth: selected ? 2 : 0.5
+            )
+    }
+
+    @ViewBuilder
+    private var credit: some View {
+        if let photo = creditPhoto {
+            if let page = wallpapers.library.pageURL(photo) {
+                Link(destination: page) { Text(photo.credit) }
+            } else {
+                Text(photo.credit)
+            }
+        } else {
+            Text(verbatim: "Built-in gradient")
+        }
+    }
+
+    private var creditPhoto: WallpaperPhoto? {
+        switch wallpaper {
+        case .gradient:
+            return nil
+        case .bundled:
+            return wallpapers.library.bundledPhoto
+        case .unsplash(let id):
+            return wallpapers.library.photo(id: id)
+        }
+    }
+
+    /// The photo the app already ships needs no download, so its cell keeps the
+    /// `.bundled` choice instead of a second, identical-looking Unsplash one.
+    static func choice(for photo: WallpaperPhoto) -> WallpaperChoice {
+        photo.bundled ? .bundled : .unsplash(id: photo.id)
+    }
+
+    /// The chip that opens with a choice already made: its theme, or the first one.
+    static func openThemeID(for choice: WallpaperChoice, in library: WallpaperLibrary) -> String {
+        if case .gradient = choice { return gradientTheme }
+
+        let photoID: String?
+        switch choice {
+        case .bundled: photoID = library.bundledPhoto?.id
+        case .unsplash(let id): photoID = id
+        case .gradient: photoID = nil
+        }
+
+        let theme = photoID.flatMap { library.theme(ofPhoto: $0) } ?? library.themes.first
+        return theme?.id ?? gradientTheme
+    }
+
+    private func select(_ photo: WallpaperPhoto) {
+        wallpaper = Self.choice(for: photo)
+        if !photo.bundled {
+            wallpapers.ensure(photo, force: true)
+        }
+    }
+
     private func load() {
+        wallpaper = settingsStore.settings?.wallpaper ?? .bundled
+        themeID = Self.openThemeID(for: wallpaper, in: wallpapers.library)
+
         if let current = settingsStore.settings {
             opsRepoPath = current.opsRepoPath
             hostAlias = current.hostAlias
