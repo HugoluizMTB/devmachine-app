@@ -41,20 +41,29 @@ struct SidebarView: View {
         .background(Color.dmSidebarBg)
     }
 
-    /// Only while the sweep runs: which workspace it is on, and how far it got.
+    /// One bar for whatever short job is running: sending a file wins over the
+    /// sweep, since it is the thing you just started.
     @ViewBuilder
     private var connectingBar: some View {
-        if let label = model.connectingLabel {
-            VStack(alignment: .leading, spacing: 5) {
-                DMProgressBar(done: model.sweepDone, total: model.sweepTotal, fillColor: .orange)
-                Text(verbatim: label)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.dmMuted)
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-            .transition(.opacity)
+        if let transfer = model.transfer {
+            progressStrip(label: transfer.label, done: transfer.done, total: transfer.total,
+                          color: .blue)
+        } else if let label = model.connectingLabel {
+            progressStrip(label: label, done: model.sweepDone, total: model.sweepTotal,
+                          color: .orange)
         }
+    }
+
+    private func progressStrip(label: String, done: Int, total: Int, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            DMProgressBar(done: done, total: total, fillColor: color)
+            Text(verbatim: label)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.dmMuted)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+        .transition(.opacity)
     }
 
     private var footerRow: some View {

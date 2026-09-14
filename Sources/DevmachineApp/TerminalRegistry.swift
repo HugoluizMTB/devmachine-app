@@ -82,13 +82,27 @@ final class TerminalRegistry: NSObject {
     /// path without a newline: the sentence around it is yours to write.
     private func pasteImage(_ image: (data: Data, fileExtension: String), into kind: TerminalKind) {
         let service = ImagePasteService(runner: ProcessRunner())
+        let model = AppModel.shared
+        model?.beginTransfer(label: Self.sendingLabel(for: kind), total: image.data.count)
         Task.detached {
             let path = try? service.store(
-                image.data, fileExtension: image.fileExtension, on: kind)
+                image.data, fileExtension: image.fileExtension, on: kind,
+                onBytesWritten: { written in
+                    Task { @MainActor in AppModel.shared?.advanceTransfer(done: written) }
+                }
+            )
             await MainActor.run {
+                AppModel.shared?.endTransfer()
                 guard let path, let view = TerminalRegistry.shared.terminals[kind] else { return }
                 view.send(txt: path + " ")
             }
+        }
+    }
+
+    static func sendingLabel(for kind: TerminalKind) -> String {
+        switch kind {
+        case let .remote(alias, _): return "Sending image to \(alias)…"
+        case .local: return "Saving image…"
         }
     }
 

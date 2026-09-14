@@ -31,7 +31,10 @@ struct ImagePasteService {
     /// Writes the bytes on the machine that runs the session and returns the
     /// path there. A remote write goes through one ssh command that also prints
     /// the path, so the app never has to guess the remote home.
-    func store(_ data: Data, fileExtension: String, on kind: TerminalKind) throws -> String {
+    func store(
+        _ data: Data, fileExtension: String, on kind: TerminalKind,
+        onBytesWritten: (@Sendable (Int) -> Void)? = nil
+    ) throws -> String {
         let name = ImagePaste.fileName(date: Date(), fileExtension: fileExtension, tail: Self.tail())
         switch kind {
         case let .remote(alias, _):
@@ -39,7 +42,8 @@ struct ImagePasteService {
                 executable: "/usr/bin/ssh",
                 args: RemoteCommands.sshBaseArgs(alias: alias) + [ImagePaste.writeCommand(fileName: name)],
                 environment: RemoteCommands.sshEnvironment(),
-                input: data
+                input: data,
+                onBytesWritten: onBytesWritten
             )
             let path = out.trimmingCharacters(in: .whitespacesAndNewlines)
             guard path.hasPrefix("/") else { throw Failure.transferFailed(path) }
@@ -50,6 +54,7 @@ struct ImagePasteService {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let file = dir.appendingPathComponent(name)
             try data.write(to: file)
+            onBytesWritten?(data.count)
             return file.path
         }
     }

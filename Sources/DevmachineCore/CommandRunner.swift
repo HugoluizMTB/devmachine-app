@@ -4,18 +4,24 @@ public protocol CommandRunner: Sendable {
     func run(executable: String, args: [String], environment: [String: String]?) throws -> String
 
     /// Feeds `input` to the command's stdin. Used to write a file on the other
-    /// side of an ssh connection without a second tool.
-    func run(executable: String, args: [String], environment: [String: String]?, input: Data)
-        throws -> String
+    /// side of an ssh connection without a second tool. `onBytesWritten` is
+    /// called with the running total, so a caller can show real progress.
+    func run(
+        executable: String, args: [String], environment: [String: String]?, input: Data,
+        onBytesWritten: (@Sendable (Int) -> Void)?
+    ) throws -> String
     func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32)
 }
 
 public extension CommandRunner {
     /// Fakes in tests do not care about stdin.
-    func run(executable: String, args: [String], environment: [String: String]?, input: Data)
-        throws -> String {
-        try run(executable: executable, args: args, environment: environment)
+    func run(
+        executable: String, args: [String], environment: [String: String]?, input: Data,
+        onBytesWritten: (@Sendable (Int) -> Void)?
+    ) throws -> String {
+        onBytesWritten?(input.count)
+        return try run(executable: executable, args: args, environment: environment)
     }
 
     // Default for conformers that don't need stderr/exit-code detail (e.g.
@@ -39,19 +45,26 @@ public struct ProcessRunner: CommandRunner {
         try runCapturing(executable: executable, args: args, environment: environment).stdout
     }
 
-    public func run(executable: String, args: [String], environment: [String: String]?, input: Data)
-        throws -> String {
+    public func run(
+        executable: String, args: [String], environment: [String: String]?, input: Data,
+        onBytesWritten: (@Sendable (Int) -> Void)?
+    ) throws -> String {
         try runCapturing(
-            executable: executable, args: args, environment: environment, input: input).stdout
+            executable: executable, args: args, environment: environment, input: input,
+            onBytesWritten: onBytesWritten
+        ).stdout
     }
 
     public func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32) {
-        try runCapturing(executable: executable, args: args, environment: environment, input: nil)
+        try runCapturing(
+            executable: executable, args: args, environment: environment, input: nil,
+            onBytesWritten: nil)
     }
 
     public func runCapturing(
-        executable: String, args: [String], environment: [String: String]?, input: Data?
+        executable: String, args: [String], environment: [String: String]?, input: Data?,
+        onBytesWritten: (@Sendable (Int) -> Void)?
     ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
         // Under XCTest a real ssh must never run: `~/.ssh/config` maps every
         // `*-devmachine` alias to the real host, so a fixture alias such as
@@ -79,7 +92,15 @@ public struct ProcessRunner: CommandRunner {
         if let inPipe, let input {
             let handle = inPipe.fileHandleForWriting
             DispatchQueue.global(qos: .userInitiated).async {
-                handle.write(input)
+                // In chunks, so progress is reported as the far side drains the
+                // pipe rather than all at once when the write returns.
+                var written = 0
+                while written < input.count {
+                    let end = min(written + 64 * 1024, input.count)
+                    handle.write(input[written..<end])
+                    written = end
+                    onBytesWritten?(written)
+                }
                 try? handle.close()
             }
         }

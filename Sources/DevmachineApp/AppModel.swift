@@ -19,6 +19,10 @@ struct PaletteItem: Identifiable, Hashable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    /// The one model the app builds, so code outside the view tree — the
+    /// terminal key monitor — can report progress without being handed it.
+    private(set) static weak var shared: AppModel?
+
     @Published var workspaces: [Workspace] = []
 
     /// The sidebar list: the ssh workspaces, then this Mac, always last.
@@ -80,6 +84,28 @@ final class AppModel: ObservableObject {
 
     /// Drives the label from a test without running a sweep.
     func sweepDoneForTesting(_ value: Int) { sweepDone = value }
+
+    /// A short job worth a bar in the sidebar: sending an image, for now.
+    /// It takes the same place as the sweep's bar and wins while it runs,
+    /// because it is the thing you just asked for.
+    struct Transfer: Equatable {
+        let label: String
+        let done: Int
+        let total: Int
+    }
+
+    @Published var transfer: Transfer?
+
+    func beginTransfer(label: String, total: Int) {
+        transfer = Transfer(label: label, done: 0, total: total)
+    }
+
+    func advanceTransfer(done: Int) {
+        guard let current = transfer else { return }
+        transfer = Transfer(label: current.label, done: done, total: current.total)
+    }
+
+    func endTransfer() { transfer = nil }
 
     /// "Connecting 3 of 10 workspaces…", or nil when nothing is connecting.
     var connectingLabel: String? {
@@ -155,6 +181,7 @@ final class AppModel: ObservableObject {
 
     init(store: SessionStore = SessionStore(runner: ProcessRunner())) {
         self.store = store
+        AppModel.shared = self
     }
 
     var hasSelectionPollTimer: Bool { selectionPollTimer != nil }

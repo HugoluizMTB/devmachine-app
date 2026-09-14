@@ -16,9 +16,12 @@ private struct RecordingRunner: CommandRunner {
         return output
     }
 
-    func run(executable: String, args: [String], environment: [String: String]?, input: Data)
-        throws -> String {
+    func run(
+        executable: String, args: [String], environment: [String: String]?, input: Data,
+        onBytesWritten: (@Sendable (Int) -> Void)?
+    ) throws -> String {
         box.input = input
+        onBytesWritten?(input.count)
         return try run(executable: executable, args: args, environment: environment)
     }
 }
@@ -70,5 +73,30 @@ final class ImagePasteServiceTests: XCTestCase {
         board.setString("hello", forType: .string)
 
         XCTAssertNil(ImagePasteService.image(from: board))
+    }
+
+    @MainActor
+    func testTheLabelNamesTheWorkspaceTheImageGoesTo() {
+        XCTAssertEqual(
+            TerminalRegistry.sendingLabel(for: .remote(alias: "acme-devmachine", session: "dash")),
+            "Sending image to acme-devmachine\u{2026}")
+        XCTAssertEqual(
+            TerminalRegistry.sendingLabel(for: .local(session: "Operator", path: "/tmp")),
+            "Saving image\u{2026}")
+    }
+
+    func testStoringReportsEveryByte() throws {
+        let runner = RecordingRunner(output: "/home/alice/a.png\n")
+        let service = ImagePasteService(runner: runner)
+        let data = png()
+        final class Seen: @unchecked Sendable { var last = 0 }
+        let seen = Seen()
+
+        _ = try service.store(
+            data, fileExtension: "png",
+            on: .remote(alias: "acme-devmachine", session: "dash"),
+            onBytesWritten: { seen.last = $0 })
+
+        XCTAssertEqual(seen.last, data.count)
     }
 }

@@ -389,6 +389,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.connectingLabel, "Connecting 1 of 1 workspaces\u{2026}")
     }
 
+
+    @MainActor
+    func testATransferShowsABarAndThenClearsIt() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.beginTransfer(label: "Sending image\u{2026}", total: 1000)
+        XCTAssertEqual(model.transfer?.done, 0)
+        XCTAssertEqual(model.transfer?.total, 1000)
+
+        model.advanceTransfer(done: 400)
+        XCTAssertEqual(model.transfer?.done, 400)
+        XCTAssertEqual(model.transfer?.label, "Sending image\u{2026}")
+
+        model.endTransfer()
+        XCTAssertNil(model.transfer)
+    }
+
+    @MainActor
+    func testProgressWithoutATransferIsIgnored() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.advanceTransfer(done: 10)
+        XCTAssertNil(model.transfer)
+    }
+
 }
 
 private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
