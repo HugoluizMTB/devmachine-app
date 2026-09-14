@@ -85,9 +85,50 @@ segmented control.
   hierarchy + `hitTest` from inside the app (walk `window.contentView.superview`,
   log class/frame per view). A platform view wider than its container is the tell.
 
+## Terminals (SwiftTerm)
+- `TerminalRegistry` owns ONE live `LocalProcessTerminalView` (mosh → `tmux new-session -A`)
+  per session for the app's lifetime. `TerminalPaneView` only attaches/detaches it;
+  single pane and stack-grid cells re-parent the same view. Never mount the same
+  session in two places: two tmux clients at different sizes make `window-size latest`
+  flap and garble the screen. Detached views are LRU-capped (6); a dismantled pane
+  never terminates the process (only delete/rename/quit do).
+- `LegacyKeyboardTerminalView` drops two replies on the way out: the kitty keyboard
+  query answer and XTVERSION. tmux 3.4 reads "XTerm(...)" as `extkeys` and then
+  forwards the kitty protocol Claude Code 2.1.269+ turns on; SwiftTerm's kitty
+  encoding breaks Enter and dead keys (ç, ´). Do not "clean this up".
+- SwiftTerm is pinned by revision (`9fc2d2f`, 2026-09-04: kitty encoding fixes);
+  upstream `main` after 2026-09-09 does not link (`MetalError`). Bump on purpose only.
+- Terminal layout is explicit (`TerminalContainerView.layout()`), not autoresizing
+  masks — they lost the insets after SwiftUI's first sizing pass.
+
+## Performance rules (learned from a 2 GB footprint)
+- Poll only while a view is visible (`onAppear`/`onDisappear` begin/end, refcount),
+  one in-flight run per target, publish a `@Published` only when the value changed.
+- Never decode an image or run a blur inside `body`; bake once (`WallpaperBackground`)
+  and cache with a cap. Hidden `.opacity(0)` views still cost a full-window drawable —
+  render only what is shown. No `.shadow` on full-window cards.
+- Session polling is a sequential sweep that stops at the first ssh-level failure and
+  pauses (5 min on `Permission denied`, 1 min unreachable): parallel auths against a
+  locked agent got this Mac banned by fail2ban. Keep it that way.
+
+## Tests never spawn ssh
+`~/.ssh/config` maps `*-devmachine` to the real host, so a fixture alias such as
+`acme-devmachine` logs into the VPS as the Mac user. `ProcessRunner` refuses
+ssh/mosh/scp under XCTest; tests inject a fake `CommandRunner`.
+
+## Verifying UI
+- Screenshot flow: `./scripts/install.sh` (relaunches), `osascript` to front the app,
+  `screencapture -x -R<x,y,w,h>` of the window, downscale with `sips` before reading.
+- Never send keystrokes into the app while the owner's sessions are open: `⌘K` +
+  typing has landed in his live Claude sessions twice. Verify with screenshots,
+  `tmux list-clients`/`capture-pane` over ssh, or ask him to try.
+
 ## Build / test
 - `swift build` and `swift test` must be green before every commit.
-- Package a bundle with `./scripts/package_app.sh` (writes `build/DevmachineApp.app`).
+- Package a bundle with `./scripts/package_app.sh` (writes `build/DevmachineApp.app`);
+  `./scripts/install.sh` builds, installs `/Applications/Devmachine.app` and relaunches.
+- `scripts/check-real-data.sh` runs as a pre-push hook with the private pattern list
+  in `~/.config/devmachine-app/private-patterns`.
 
 ## Git
 - Conventional Commits, one line, ENGLISH. Sign via the 1Password agent socket:
