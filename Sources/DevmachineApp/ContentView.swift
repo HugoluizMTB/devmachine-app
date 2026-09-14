@@ -253,8 +253,8 @@ private struct MainPane: View {
     private func terminal(for item: SidebarItem) -> some View {
         Group {
             switch item {
-            case .opsShell:
-                TerminalPaneView(kind: .opsShell, translucent: true)
+            case let .localSession(name):
+                TerminalPaneView(kind: .local(session: name), translucent: true)
             case let .session(alias, name):
                 TerminalPaneView(kind: .remote(alias: alias, session: name), translucent: true)
             }
@@ -267,7 +267,7 @@ private struct MainPane: View {
 
     private func key(_ item: SidebarItem) -> String {
         switch item {
-        case .opsShell: return "opsShell"
+        case let .localSession(name): return "local/\(name)"
         case let .session(alias, name): return "\(alias)/\(name)"
         }
     }

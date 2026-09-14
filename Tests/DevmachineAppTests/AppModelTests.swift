@@ -129,7 +129,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectionPollTarget)
     }
 
-    func testOpsShellPaletteItemShowsTheConfiguredHostAlias() {
+    func testTheLastPaletteItemIsTheLocalOperatorSession() {
         let model = AppModel(store: SessionStore(runner: CountingRunner()))
         model.settings = AppSettings(
             opsRepoPath: "/Users/alice/dev/ops",
@@ -138,7 +138,10 @@ final class AppModelTests: XCTestCase {
             baseDomain: "example.com"
         )
 
-        XCTAssertEqual(model.paletteItems().last?.subtitle, "myhost")
+        let last = model.paletteItems().last
+        XCTAssertEqual(last?.title, "Operator")
+        XCTAssertEqual(last?.subtitle, "Local")
+        XCTAssertEqual(last?.target, .localSession(name: "Operator"))
     }
 
     func testPollWithSameResultDoesNotRepublish() async throws {
@@ -271,6 +274,23 @@ final class AppModelTests: XCTestCase {
         let pending = TerminalRegistry.shared.pendingFocusKind
         XCTAssertEqual(pending, .remote(alias: "acme-devmachine", session: "dash"))
     }
+
+    func testOpeningALocalSessionClearsTheSessionHighlight() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
+        XCTAssertFalse(model.selectedSessions.isEmpty)
+
+        model.selection = .localSession(name: Workspace.operatorSession)
+        XCTAssertTrue(model.selectedSessions.isEmpty)
+        XCTAssertNil(model.selectionAnchor)
+    }
+
+    func testGoingHomeClearsTheSessionHighlight() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
+        model.selection = nil
+        XCTAssertTrue(model.selectedSessions.isEmpty)
+    }
 }
 
 private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
@@ -288,5 +308,31 @@ private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return calls
+    }
+
+    @MainActor
+    func testLocalIsAlwaysTheLastWorkspace() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "beta", alias: "beta-devmachine"),
+        ]
+        XCTAssertEqual(model.sidebarWorkspaces.map(\.name), ["acme", "beta", "Local"])
+        XCTAssertTrue(model.sidebarWorkspaces.last?.isLocal == true)
+    }
+
+    @MainActor
+    func testLocalWorkspaceIsNotPolledOverSSH() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        // `workspaces` is what the ssh sweep walks; Local is added for the
+        // sidebar alone and must never reach it.
+        XCTAssertFalse(model.workspaces.contains { $0.isLocal })
+    }
+
+    @MainActor
+    func testLocalAlwaysOffersTheOperatorSession() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        XCTAssertEqual(model.localSessions.map(\.name), ["Operator"])
     }
 }

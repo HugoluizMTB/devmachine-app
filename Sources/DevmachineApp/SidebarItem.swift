@@ -1,11 +1,11 @@
 enum SidebarItem: Hashable {
     case session(alias: String, name: String)
-    case opsShell
+    case localSession(name: String)
 
     var terminalKind: TerminalKind {
         switch self {
         case let .session(alias, name): return .remote(alias: alias, session: name)
-        case .opsShell: return .opsShell
+        case let .localSession(name): return .local(session: name)
         }
     }
 }

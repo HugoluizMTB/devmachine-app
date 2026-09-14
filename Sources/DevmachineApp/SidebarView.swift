@@ -12,16 +12,26 @@ struct SidebarView: View {
             topBar
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Array(model.workspaces.enumerated()), id: \.element.id) { index, ws in
+                    ForEach(Array(model.sidebarWorkspaces.enumerated()), id: \.element.id) { index, ws in
                         groupHeader(
                             ws.name,
                             alias: ws.alias,
-                            offline: model.offlineAliases.contains(ws.alias),
-                            action: { model.newSession(alias: ws.alias) },
+                            offline: !ws.isLocal && model.offlineAliases.contains(ws.alias),
+                            // Creating a local session needs a folder to start
+                            // it in, which the new-session sheet cannot ask for
+                            // yet, so Local has no "+" until it can.
+                            action: ws.isLocal ? nil : { model.newSession(alias: ws.alias) },
+                            stackable: !ws.isLocal,
                             extraTopSpacing: index > 0
                         )
-                        ForEach(model.sessionsByAlias[ws.alias] ?? []) { s in
-                            sessionRow(alias: ws.alias, session: s)
+                        if ws.isLocal {
+                            ForEach(model.localSessions) { s in
+                                localSessionRow(session: s)
+                            }
+                        } else {
+                            ForEach(model.sessionsByAlias[ws.alias] ?? []) { s in
+                                sessionRow(alias: ws.alias, session: s)
+                            }
                         }
                     }
                 }
@@ -34,26 +44,13 @@ struct SidebarView: View {
     }
 
     private var footerRow: some View {
-        HStack(spacing: 8) {
-            DMRow(
-                systemImage: "sparkle",
-                iconColor: .orange,
-                iconSize: 9,
-                title: "ops",
-                selected: model.selection == .opsShell,
-                outerHorizontalPadding: 0,
-                fillWidth: false,
-                tap: { model.selection = .opsShell }
-            )
-            .fixedSize()
-
-            Spacer(minLength: 4)
-
+        HStack(spacing: 0) {
             Button {
                 model.showPage(.stats)
             } label: {
                 Image(systemName: "chart.bar")
-                    .frame(width: 24, height: 24)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -64,7 +61,8 @@ struct SidebarView: View {
                 model.showPage(.subdomains)
             } label: {
                 Image(systemName: "globe")
-                    .frame(width: 24, height: 24)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -75,7 +73,8 @@ struct SidebarView: View {
                 model.showPage(.setup)
             } label: {
                 Image(systemName: "gearshape")
-                    .frame(width: 24, height: 24)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -86,7 +85,8 @@ struct SidebarView: View {
                 withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = true }
             } label: {
                 Image(systemName: "sidebar.left")
-                    .frame(width: 24, height: 24)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -142,6 +142,7 @@ struct SidebarView: View {
         alias: String,
         offline: Bool,
         action: (() -> Void)?,
+        stackable: Bool = true,
         extraTopSpacing: Bool
     ) -> some View {
         DMSection(
@@ -158,28 +159,30 @@ struct SidebarView: View {
                 }
             },
             trailing: {
-                Button {
-                    model.stackWorkspace(alias)
-                } label: {
-                    Image(systemName: model.isWorkspaceStacked(alias) ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2")
-                        .frame(width: 20, height: 16)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(model.isWorkspaceStacked(alias) ? Color.accentColor : Color.dmMuted)
-                .font(.system(size: 11))
-                .help("Workspace home")
+                if stackable {
+                    Button {
+                        model.stackWorkspace(alias)
+                    } label: {
+                        Image(systemName: model.isWorkspaceStacked(alias) ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2")
+                            .frame(width: 20, height: 16)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(model.isWorkspaceStacked(alias) ? Color.accentColor : Color.dmMuted)
+                    .font(.system(size: 11))
+                    .help("Workspace home")
 
-                Button {
-                    openFiles(alias: alias)
-                } label: {
-                    Image(systemName: "folder")
-                        .frame(width: 20, height: 16)
-                        .contentShape(Rectangle())
+                    Button {
+                        openFiles(alias: alias)
+                    } label: {
+                        Image(systemName: "folder")
+                            .frame(width: 20, height: 16)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Color.dmMuted)
+                    .font(.system(size: 11))
+                    .help("Files…")
                 }
-                .buttonStyle(.plain).foregroundStyle(Color.dmMuted)
-                .font(.system(size: 11))
-                .help("Files…")
 
                 if let action {
                     Button(action: action) {
@@ -201,6 +204,13 @@ struct SidebarView: View {
     private func openFiles(alias: String) {
         filesStore.open(alias: alias)
         openWindow(id: "files")
+    }
+
+    private func localSessionRow(session s: TmuxSession) -> some View {
+        let isOpen = model.activePage == nil && model.selection == .localSession(name: s.name)
+        return row(title: s.name, claude: s.hasClaude, windows: s.windows, selected: isOpen)
+            .contentShape(Rectangle())
+            .onTapGesture { model.selection = .localSession(name: s.name) }
     }
 
     private func sessionRow(alias: String, session s: TmuxSession) -> some View {

@@ -48,3 +48,15 @@ final class TerminalContainerViewTests: XCTestCase {
         XCTAssertEqual(container.contentFrame.height, 1)
     }
 }
+
+final class LocalToolsTests: XCTestCase {
+    func testPrefersTheFirstToolOnDisk() {
+        let path = LocalTools.tmuxPath(
+            candidates: ["/a/tmux", "/b/tmux"], exists: { $0 == "/b/tmux" })
+        XCTAssertEqual(path, "/b/tmux")
+    }
+
+    func testReportsNothingWhenTheMacHasNoTmux() {
+        XCTAssertNil(LocalTools.tmuxPath(candidates: ["/a/tmux"], exists: { _ in false }))
+    }
+}

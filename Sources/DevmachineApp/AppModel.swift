@@ -20,6 +20,15 @@ struct PaletteItem: Identifiable, Hashable {
 @MainActor
 final class AppModel: ObservableObject {
     @Published var workspaces: [Workspace] = []
+
+    /// The sidebar list: the ssh workspaces, then this Mac, always last.
+    var sidebarWorkspaces: [Workspace] { workspaces + [.local] }
+
+    /// Sessions of the local workspace. Listing the Mac's own tmux server is
+    /// the next step; until then Local holds the one session it always has.
+    var localSessions: [TmuxSession] {
+        [TmuxSession(name: Workspace.operatorSession, windows: 1, hasClaude: false)]
+    }
     @Published var sessionsByAlias: [String: [TmuxSession]] = [:]
     @Published var offlineAliases: Set<String> = []
     @Published var selection: SidebarItem? = nil {
@@ -27,6 +36,12 @@ final class AppModel: ObservableObject {
             if let selection {
                 activePage = nil
                 TerminalRegistry.shared.requestFocus(selection.terminalKind)
+            }
+            // Leaving the session list (ops shell, Home) drops the session
+            // highlight: two places lit at once reads as being in two sessions.
+            if case .session = selection {} else {
+                selectedSessions = []
+                selectionAnchor = nil
             }
             syncContext()
         }
@@ -211,13 +226,15 @@ final class AppModel: ObservableObject {
                 )
             }
         }
-        items.append(PaletteItem(
-            id: "opsShell",
-            title: "ops",
-            subtitle: settings?.hostAlias ?? "",
-            target: .opsShell,
-            claude: true
-        ))
+        for s in localSessions {
+            items.append(PaletteItem(
+                id: "local/\(s.name)",
+                title: s.name,
+                subtitle: Workspace.local.name,
+                target: .localSession(name: s.name),
+                claude: s.hasClaude
+            ))
+        }
         return items
     }
 
