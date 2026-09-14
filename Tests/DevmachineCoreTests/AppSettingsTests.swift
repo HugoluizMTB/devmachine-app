@@ -154,4 +154,38 @@ final class AppSettingsTests: XCTestCase {
         )
         XCTAssertEqual(settings.opsRepoPath, repo)
     }
+
+    func testNewSettingsStartOnTheBundledWallpaper() {
+        XCTAssertEqual(AppSettings.empty.wallpaper, .bundled)
+        XCTAssertEqual(goodSettings.wallpaper, .bundled)
+        XCTAssertEqual(
+            AppSettings.prefill(sshConfig: "", sshResolve: { _ in nil }, fileExists: { _ in false }).wallpaper,
+            .bundled
+        )
+    }
+
+    func testWallpaperSurvivesARoundTrip() throws {
+        var settings = goodSettings
+        settings.wallpaper = .unsplash(id: "aaa111")
+        let data = try JSONEncoder().encode(settings)
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: data), settings)
+    }
+
+    func testSettingsSavedBeforeWallpapersStillDecode() throws {
+        let old = Data("""
+        {
+          "opsRepoPath": "/Users/alice/dev/devmachine",
+          "hostAlias": "devmachine",
+          "publicIP": "203.0.113.7",
+          "baseDomain": "example.com"
+        }
+        """.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: old), goodSettings)
+    }
+
+    func testValidateIgnoresTheWallpaper() {
+        var settings = goodSettings
+        settings.wallpaper = .gradient(name: "midnight")
+        XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
+    }
 }
