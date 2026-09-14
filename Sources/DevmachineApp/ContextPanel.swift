@@ -210,7 +210,7 @@ struct ContextPanel: View {
             trailing: { sectionTrailing("\(prs.count)") }
         ) {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(prs, id: \.number) { pr in
+                ForEach(prs) { pr in
                     prRow(pr)
                 }
             }

@@ -36,4 +36,15 @@ final class ContextStateTests: XCTestCase {
         XCTAssertNil(state.plan)
         XCTAssertFalse(state.isClaude)
     }
+
+    func testPRIdentityKeepsRepositoriesApart() {
+        let dash = ContextState.PR(
+            number: 11062, repo: "acme/dash", title: "", url: "",
+            ci: "none", review: "none", state: "open")
+        let engineering = ContextState.PR(
+            number: 11062, repo: "acme/engineering", title: "", url: "",
+            ci: "none", review: "none", state: "open")
+        XCTAssertNotEqual(dash.id, engineering.id)
+        XCTAssertEqual(dash.id, "acme/dash#11062")
+    }
 }

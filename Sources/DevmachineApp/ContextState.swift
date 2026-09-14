@@ -5,9 +5,12 @@ struct ContextState: Codable, Equatable, Sendable {
         struct Item: Codable, Equatable, Sendable { let text: String; let state: String }
         let title: String; let source: String; let done: Int; let total: Int; let items: [Item]
     }
-    struct PR: Codable, Equatable, Sendable {
+    struct PR: Codable, Equatable, Sendable, Identifiable {
         let number: Int; let repo: String; let title: String; let url: String
         let ci: String; let review: String; let state: String
+        /// Two repositories can share a number, so the number alone is not an
+        /// identity: a list keyed by it renders one row twice.
+        var id: String { "\(repo)#\(number)" }
     }
     struct Link: Codable, Equatable, Sendable { let url: String; let label: String; let kind: String }
     struct Agent: Codable, Equatable, Sendable { let label: String; let status: String }
