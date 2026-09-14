@@ -106,13 +106,13 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
     }
 }
 
-// Claude Code 2.1.269+ turns on the kitty keyboard protocol in any terminal
-// that answers its query, and SwiftTerm's kitty encoding still breaks Enter
-// and dead keys through tmux/mosh. Swallow the answer: programs keep the
-// legacy encoding this app always ran with.
+// Claude Code 2.1.269+ turns on the kitty keyboard protocol wherever it can,
+// and tmux forwards it to any client whose XTVERSION reply says "XTerm(...)".
+// SwiftTerm's kitty encoding still breaks Enter and dead keys, so the view
+// drops both replies: programs keep the legacy encoding this app always ran.
 final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {
-        let filtered = KittyQueryFilter.strip(Array(data))
+        let filtered = TerminalReplyFilter.strip(Array(data))
         guard !filtered.isEmpty else { return }
         super.send(source: source, data: filtered[...])
     }
