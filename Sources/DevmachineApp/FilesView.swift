@@ -49,7 +49,7 @@ struct FilesView: View {
                 Image(systemName: "arrow.up")
             }
             .buttonStyle(.plain)
-            .disabled(store.path == ".")
+            .disabled(!store.canGoUp)
             .help("Up")
 
             Text(store.path)

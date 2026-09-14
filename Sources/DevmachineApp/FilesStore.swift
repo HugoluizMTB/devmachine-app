@@ -23,12 +23,16 @@ final class FilesStore: ObservableObject {
         refreshTask?.cancel()
     }
 
-    func open(alias: String) {
+    func open(alias: String, path: String = ".") {
         self.alias = alias
-        path = "."
+        self.path = path
         entries = []
         errorText = nil
         refresh()
+    }
+
+    var canGoUp: Bool {
+        path != "." && path != "/"
     }
 
     func refresh() {
@@ -64,10 +68,13 @@ final class FilesStore: ObservableObject {
     }
 
     func up() {
-        guard path != "." else { return }
+        guard canGoUp else { return }
         let trimmed = path.hasSuffix("/") ? String(path.dropLast()) : path
         if let slash = trimmed.lastIndex(of: "/") {
-            path = String(trimmed[trimmed.startIndex..<slash])
+            // An absolute path (the context panel opens one) runs out of
+            // components at the root, where the parent is "/" and not "".
+            let parent = String(trimmed[trimmed.startIndex..<slash])
+            path = parent.isEmpty ? "/" : parent
         } else {
             path = "."
         }

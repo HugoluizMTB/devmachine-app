@@ -19,6 +19,7 @@ struct ContextPanel: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: ContextStore
     @StateObject private var gitStore = GitStore()
+    @StateObject private var fileTreeStore = FileTreeStore()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -40,7 +41,7 @@ struct ContextPanel: View {
             contextBody
         case .files:
             if let session {
-                FilesTab(alias: session.alias, session: session.name)
+                FilesTab(store: fileTreeStore, alias: session.alias, session: session.name)
             } else {
                 message("No session")
             }
