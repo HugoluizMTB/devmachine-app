@@ -26,7 +26,7 @@ final class TerminalRegistry: NSObject {
     func terminal(for kind: TerminalKind) -> LocalProcessTerminalView {
         detachedAt[kind] = nil
         if let live = terminals[kind] { return live }
-        let term = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        let term = LegacyKeyboardTerminalView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         term.processDelegate = self
         start(kind, in: term)
         terminals[kind] = term
@@ -103,5 +103,17 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
             terminals[kind] = nil
             detachedAt[kind] = nil
         }
+    }
+}
+
+// Claude Code 2.1.269+ turns on the kitty keyboard protocol in any terminal
+// that answers its query, and SwiftTerm's kitty encoding still breaks Enter
+// and dead keys through tmux/mosh. Swallow the answer: programs keep the
+// legacy encoding this app always ran with.
+final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
+    override func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        let filtered = KittyQueryFilter.strip(Array(data))
+        guard !filtered.isEmpty else { return }
+        super.send(source: source, data: filtered[...])
     }
 }
