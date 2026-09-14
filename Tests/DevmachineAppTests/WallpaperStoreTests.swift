@@ -283,6 +283,51 @@ final class WallpaperGradientTests: XCTestCase {
     }
 }
 
+@MainActor
+final class WallpaperBakerTests: XCTestCase {
+    private var calls = 0
+
+    private func source() -> NSImage? {
+        calls += 1
+        return WallpaperGradient.named("ember").bitmap(width: 16, height: 16)
+    }
+
+    private func bake(_ key: String, style: WallpaperStyle = .ambient) -> NSImage? {
+        WallpaperBaker.image(key: key, style: style) { source() }
+    }
+
+    func testASecondAskReusesTheBake() {
+        let key = UUID().uuidString
+        XCTAssertNotNil(bake(key))
+        XCTAssertNotNil(bake(key))
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testEveryStyleGetsItsOwnBake() {
+        let key = UUID().uuidString
+        XCTAssertNotNil(bake(key, style: .photo))
+        XCTAssertNotNil(bake(key, style: .ambient))
+        XCTAssertEqual(calls, 2)
+    }
+
+    func testTheOldestBakeGoesWhenTheCacheIsFull() {
+        let keys = (0...WallpaperBaker.cap).map { _ in UUID().uuidString }
+        for key in keys {
+            XCTAssertNotNil(bake(key))
+        }
+        XCTAssertEqual(calls, keys.count)
+
+        XCTAssertNotNil(bake(keys[0]))
+        XCTAssertEqual(calls, keys.count + 1)
+        XCTAssertNotNil(bake(keys[keys.count - 1]))
+        XCTAssertEqual(calls, keys.count + 1)
+    }
+
+    func testASourceThatGivesNothingBakesNothing() {
+        XCTAssertNil(WallpaperBaker.image(key: UUID().uuidString, style: .photo) { nil })
+    }
+}
+
 final class WallpaperStyleTests: XCTestCase {
     func testPhotoBakesBigAndSharp() {
         XCTAssertEqual(WallpaperStyle.photo.bakeWidth, 1920)

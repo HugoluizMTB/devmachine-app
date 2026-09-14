@@ -113,6 +113,8 @@ struct WallpaperGradient: Identifiable, Equatable {
         LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
+    /// `lockFocus` draws into the current graphics context, which is main-thread only.
+    @MainActor
     func bitmap(width: CGFloat = 1024, height: CGFloat = 640) -> NSImage? {
         let size = NSSize(width: width, height: height)
         guard let gradient = NSGradient(starting: NSColor(top), ending: NSColor(bottom)) else { return nil }
@@ -135,15 +137,35 @@ enum WallpaperAsset {
         return try? Data(contentsOf: url)
     }
 
+    /// Walks up from `start` to the checkout that holds it, so an unbundled
+    /// binary finds the assets of the tree it was built from.
+    static func checkoutRoot(from start: URL) -> URL? {
+        var directory = start
+        for _ in 0..<6 {
+            if FileManager.default.fileExists(atPath: directory.appendingPathComponent("Package.swift").path) {
+                return directory
+            }
+            directory = directory.deletingLastPathComponent()
+        }
+        return nil
+    }
+
     // Unbundled (a plain `swift build` binary) there is no resource folder, so
-    // fall back to the checkout — at its root for the photo, Resources/ for the list.
+    // fall back to the checkout — its root holds the photo, Resources/ the list.
     private static func url(resource: String, extension ext: String) -> URL? {
         if let url = Bundle.main.url(forResource: resource, withExtension: ext) { return url }
 
-        let repo = NSHomeDirectory() + "/dev/devmachine-app/"
-        for path in [repo + resource + "." + ext, repo + "Resources/" + resource + "." + ext]
-        where FileManager.default.fileExists(atPath: path) {
-            return URL(fileURLWithPath: path)
+        let roots = [
+            checkoutRoot(from: Bundle.main.bundleURL),
+            URL(fileURLWithPath: NSHomeDirectory() + "/dev/devmachine-app")
+        ]
+        for root in roots.compactMap({ $0 }) {
+            for candidate in [
+                root.appendingPathComponent("\(resource).\(ext)"),
+                root.appendingPathComponent("Resources/\(resource).\(ext)")
+            ] where FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
         }
         return nil
     }
@@ -153,13 +175,27 @@ enum WallpaperAsset {
 /// that is still downloading shares the bundled bake instead of making its own.
 @MainActor
 enum WallpaperBaker {
+    /// A 1920px bake is around 10MB, and browsing Setup walks through 31 photos.
+    static let cap = 6
+
     private static var cache: [String: NSImage] = [:]
+    private static var usedAt: [String: Date] = [:]
 
     static func image(key: String, style: WallpaperStyle, source: () -> NSImage?) -> NSImage? {
         let id = key + "#" + style.bakeKey
+        usedAt[id] = Date()
+
         if let hit = cache[id] { return hit }
-        guard let baked = bake(source(), width: style.bakeWidth, blur: style.bakeBlur) else { return nil }
+        guard let baked = bake(source(), width: style.bakeWidth, blur: style.bakeBlur) else {
+            usedAt[id] = nil
+            return nil
+        }
+
         cache[id] = baked
+        for stale in LRUEviction.keysToEvict(detachedAt: usedAt, cap: cap) {
+            cache[stale] = nil
+            usedAt[stale] = nil
+        }
         return baked
     }
 
