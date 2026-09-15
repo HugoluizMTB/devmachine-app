@@ -13,7 +13,7 @@ struct ShortcutsSection: View {
             showBottomDivider: true,
             label: {
                 Text("SHORTCUTS")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.dm(10, weight: .bold))
                     .kerning(0.5)
                     .foregroundStyle(Color.dmMuted)
             },
@@ -22,7 +22,7 @@ struct ShortcutsSection: View {
                     showEditor = true
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
@@ -56,9 +56,9 @@ private struct SkillButton: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: skill.systemImage)
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                 Text(skill.label)
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                     .lineLimit(1)
             }
             .foregroundStyle(Color.dmRowText)
@@ -93,9 +93,9 @@ private struct SkillsEditorView: View {
                             .foregroundStyle(Color.dmMuted)
                             .frame(width: 16)
                         Text(skill.label)
-                            .font(.system(size: 12))
+                            .font(.dm(12))
                         Text(skill.command)
-                            .font(.system(size: 11))
+                            .font(.dm(11))
                             .foregroundStyle(Color.dmMuted)
                         Spacer()
                         Button {

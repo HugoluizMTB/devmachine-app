@@ -20,7 +20,7 @@ struct FilesView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text(store.alias.map { "\($0) — \(store.path)" } ?? "Files")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
                 .lineLimit(1)
 
@@ -53,7 +53,7 @@ struct FilesView: View {
             .help("Up")
 
             Text(store.path)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.dm(11, design: .monospaced))
                 .foregroundStyle(Color.dmMuted)
                 .lineLimit(1)
                 .truncationMode(.head)
@@ -80,7 +80,7 @@ struct FilesView: View {
                     .font(.title)
                     .foregroundStyle(.orange)
                 Text(err)
-                    .font(.system(size: 12))
+                    .font(.dm(12))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -94,7 +94,7 @@ struct FilesView: View {
                     .font(.title)
                     .foregroundStyle(.secondary)
                 Text(store.isLoading ? "Loading…" : "Empty")
-                    .font(.system(size: 12))
+                    .font(.dm(12))
                     .foregroundStyle(.secondary)
             }
             .padding(24)

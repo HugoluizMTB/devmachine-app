@@ -25,7 +25,7 @@ struct CommandPaletteView: View {
                     .foregroundStyle(.secondary)
                 TextField("Search sessions…", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 15))
+                    .font(.dm(15))
                     .focused($focused)
                     .onSubmit(openSelected)
             }
@@ -65,13 +65,13 @@ struct CommandPaletteView: View {
     private func row(i: Int, item: PaletteItem) -> some View {
         HStack(spacing: 10) {
             Image(systemName: item.claude ? "circle.fill" : "circle")
-                .font(.system(size: 7))
+                .font(.dm(7))
                 .foregroundStyle(item.claude ? Color.orange : Color.dmMuted)
             Text(item.title)
-                .font(.system(size: 13, weight: .medium))
+                .font(.dm(13, weight: .medium))
                 .foregroundStyle(.primary)
             Text(item.subtitle)
-                .font(.system(size: 11))
+                .font(.dm(11))
                 .foregroundStyle(.secondary)
             Spacer()
         }

@@ -30,14 +30,14 @@ struct StatsView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("Stats")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 
             Spacer()
 
             if let refreshedAt = store.refreshedAt {
                 Text(verbatim: "updated \(Self.timeFormatter.string(from: refreshedAt))")
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
             }
 
@@ -81,7 +81,7 @@ struct StatsView: View {
                 .font(.title)
                 .foregroundStyle(.orange)
             Text(message)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -95,7 +95,7 @@ struct StatsView: View {
         VStack(spacing: 8) {
             ProgressView()
             Text("Loading…")
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -107,7 +107,7 @@ struct StatsView: View {
                 .font(.title)
                 .foregroundStyle(.secondary)
             Text("No stats available")
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -146,7 +146,7 @@ struct StatsView: View {
             padding: EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16),
             label: {
                 Text("MEMORY")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dm(11, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
                     .kerning(0.8)
             },
@@ -158,7 +158,7 @@ struct StatsView: View {
                             total: Int(snapshot.memTotal / 1_048_576)
                         )
                         Text(verbatim: "\(gb(snapshot.memUsed)) / \(gb(snapshot.memTotal)) GB used")
-                            .font(.system(size: 11))
+                            .font(.dm(11))
                             .foregroundStyle(Color.dmMuted)
                     }
                     if snapshot.swapTotal > 0 {
@@ -169,7 +169,7 @@ struct StatsView: View {
                                 fillColor: .orange
                             )
                             Text(verbatim: "\(gb(snapshot.swapUsed)) / \(gb(snapshot.swapTotal)) GB swap")
-                                .font(.system(size: 11))
+                                .font(.dm(11))
                                 .foregroundStyle(Color.dmMuted)
                         }
                     }
@@ -184,7 +184,7 @@ struct StatsView: View {
             padding: EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16),
             label: {
                 Text("DISK")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dm(11, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
                     .kerning(0.8)
             },
@@ -192,7 +192,7 @@ struct StatsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     DMProgressBar(done: snapshot.diskPercent, total: 100)
                     Text(verbatim: "\(gb(snapshot.diskUsed)) GB used · \(gb(snapshot.diskAvail)) GB free")
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                 }
             }
@@ -205,7 +205,7 @@ struct StatsView: View {
             padding: EdgeInsets(top: 12, leading: 10, bottom: 0, trailing: 10),
             label: {
                 Text("CONTAINERS")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dm(11, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
                     .kerning(0.8)
                     .padding(.leading, 6)
@@ -219,7 +219,7 @@ struct StatsView: View {
                             title: container.name,
                             trailing: AnyView(
                                 Text(verbatim: "\(container.mem) · \(container.cpu)")
-                                    .font(.system(size: 11))
+                                    .font(.dm(11))
                                     .foregroundStyle(Color.dmMuted)
                             )
                         )
@@ -235,7 +235,7 @@ struct StatsView: View {
             padding: EdgeInsets(top: 12, leading: 10, bottom: 0, trailing: 10),
             label: {
                 Text("RAM BY USER")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dm(11, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
                     .kerning(0.8)
                     .padding(.leading, 6)
@@ -249,7 +249,7 @@ struct StatsView: View {
                             title: user.user,
                             trailing: AnyView(
                                 Text(verbatim: "\(gb(user.rssBytes)) GB")
-                                    .font(.system(size: 11))
+                                    .font(.dm(11))
                                     .foregroundStyle(Color.dmMuted)
                             )
                         )

@@ -40,7 +40,7 @@ struct SubdomainsView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("Subdomains")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 
             Spacer()
@@ -95,7 +95,7 @@ struct SubdomainsView: View {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
             Text(message)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(Color.dmRowText)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
@@ -116,7 +116,7 @@ struct SubdomainsView: View {
                 .font(.title)
                 .foregroundStyle(.orange)
             Text(message)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -130,7 +130,7 @@ struct SubdomainsView: View {
         VStack(spacing: 8) {
             ProgressView()
             Text("Loading…")
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -142,7 +142,7 @@ struct SubdomainsView: View {
                 .font(.title)
                 .foregroundStyle(.secondary)
             Text("No subdomains found")
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -158,7 +158,7 @@ struct SubdomainsView: View {
                         title: site.address,
                         trailing: AnyView(
                             Text(site.target)
-                                .font(.system(size: 11))
+                                .font(.dm(11))
                                 .foregroundStyle(Color.dmMuted)
                                 .lineLimit(1)
                         ),
@@ -174,18 +174,18 @@ struct SubdomainsView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Caddy log")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.dm(12, weight: .semibold))
                     .foregroundStyle(Color.dmRowText)
                 Spacer()
                 Toggle("TLS only", isOn: $tlsOnly)
                     .toggleStyle(.checkbox)
-                    .font(.system(size: 11))
+                    .font(.dm(11))
             }
             .padding(10)
             Rectangle().fill(Color.dmDivider).frame(height: 1)
             ScrollView {
                 Text(filteredLogs)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.dm(10, design: .monospaced))
                     .foregroundStyle(Color.dmRowText)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)

@@ -70,7 +70,7 @@ struct MenuBarPanel: View {
             .padding(8)
         } else if let onlyTab = MenuBarTab.allCases.first {
             Text(onlyTab.title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
@@ -115,7 +115,7 @@ struct MenuBarPanel: View {
             action()
         } label: {
             Image(systemName: systemImage)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(Color.dmMuted)
         }
         .buttonStyle(.plain)

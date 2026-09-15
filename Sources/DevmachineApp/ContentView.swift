@@ -178,7 +178,7 @@ struct ContentView: View {
             withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = false }
         } label: {
             Image(systemName: "sidebar.left")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.dm(13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
                 .padding(9)
                 .background(.ultraThinMaterial, in: Circle())
@@ -319,12 +319,12 @@ private struct NewSessionSheet: View {
                 let suggestion = SessionName.suggestion(for: name)
                 HStack(spacing: 6) {
                     Text(hint)
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                     if !suggestion.isEmpty {
                         Button("Use \(suggestion)") { name = suggestion }
                             .buttonStyle(.link)
-                            .font(.system(size: 11))
+                            .font(.dm(11))
                     }
                 }
             }

@@ -58,7 +58,7 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 5) {
             DMProgressBar(done: done, total: total, fillColor: color)
             Text(verbatim: label)
-                .font(.system(size: 11))
+                .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
         }
         .padding(.horizontal, 12)
@@ -126,7 +126,7 @@ struct SidebarView: View {
             padding: EdgeInsets(top: 0, leading: 12, bottom: 6, trailing: 12),
             label: {
                 Text("WORKSPACES")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dm(11, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
                     .kerning(0.8)
             },
@@ -172,7 +172,7 @@ struct SidebarView: View {
             padding: EdgeInsets(top: extraTopSpacing ? 16 : 4, leading: 10, bottom: 4, trailing: 10),
             label: {
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.dm(11, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
                 if offline {
                     Circle()
@@ -192,7 +192,7 @@ struct SidebarView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(model.isWorkspaceStacked(alias) ? Color.accentColor : Color.dmMuted)
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                     .help("Workspace home")
 
                     Button {
@@ -203,7 +203,7 @@ struct SidebarView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).foregroundStyle(Color.dmMuted)
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                     .help("Files…")
                 }
 
@@ -214,7 +214,7 @@ struct SidebarView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).foregroundStyle(Color.dmMuted)
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                 }
             }
         )
@@ -308,7 +308,7 @@ struct SidebarView: View {
             title: title,
             selected: selected,
             trailing: windows.map { count in
-                AnyView(Text("\(count)").font(.system(size: 11)).foregroundStyle(Color.dmMuted))
+                AnyView(Text("\(count)").font(.dm(11)).foregroundStyle(Color.dmMuted))
             }
         )
     }

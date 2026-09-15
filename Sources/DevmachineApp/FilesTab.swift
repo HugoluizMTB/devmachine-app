@@ -62,7 +62,7 @@ struct FilesTab: View {
             showBottomDivider: true,
             label: {
                 Text(Self.shortPath(root))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.dm(11, design: .monospaced))
                     .foregroundStyle(Color.dmMuted)
                     .lineLimit(1)
                     .truncationMode(.head)
@@ -73,7 +73,7 @@ struct FilesTab: View {
                     store.refresh()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
@@ -112,7 +112,7 @@ struct FilesTab: View {
 
     private func placeholder(_ row: FileTreeRow) -> some View {
         Text("empty")
-            .font(.system(size: 12))
+            .font(.dm(12))
             .foregroundStyle(Color.dmMuted)
             .padding(.leading, Self.indent(row.depth) + 21)
             .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
@@ -134,7 +134,7 @@ struct FilesTab: View {
 
     private func message(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12))
+            .font(.dm(12))
             .foregroundStyle(Color.dmMuted)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
@@ -188,11 +188,11 @@ private struct FileTreeRowView: View {
         HStack(spacing: 5) {
             chevron
             Image(systemName: FileTreeIcon.name(for: row, expanded: expanded))
-                .font(.system(size: 10))
+                .font(.dm(10))
                 .foregroundStyle(iconColor)
                 .frame(width: 12, alignment: .center)
             Text(row.name)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(dimmed ? Color.dmMuted : Color.dmRowText)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -223,7 +223,7 @@ private struct FileTreeRowView: View {
     private var chevron: some View {
         if row.isDirectory {
             Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.dm(10, weight: .semibold))
                 .foregroundStyle(Color.dmMuted)
                 .rotationEffect(.degrees(expanded ? 90 : 0))
                 .frame(width: 10, alignment: .center)

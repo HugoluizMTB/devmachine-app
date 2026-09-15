@@ -48,7 +48,7 @@ struct GitTab: View {
                 ProgressView().controlSize(.small)
             } else {
                 Text(store.errorText ?? "Not a git repository")
-                    .font(.system(size: 12))
+                    .font(.dm(12))
                     .foregroundStyle(Color.dmMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 14)
@@ -66,10 +66,10 @@ struct GitTab: View {
             showBottomDivider: true,
             label: {
                 Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
                 Text(headName(snapshot))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.dm(13, weight: .semibold))
                     .foregroundStyle(Color.dmRowText)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -79,7 +79,7 @@ struct GitTab: View {
                     store.refresh()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
@@ -91,7 +91,7 @@ struct GitTab: View {
             HStack(spacing: 5) {
                 if let upstream = snapshot.upstream {
                     Text(upstream)
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -132,7 +132,7 @@ struct GitTab: View {
                 .fill(isCurrent ? Color.green : Color.dmDivider)
                 .frame(width: 5, height: 5)
             Text(shortPath(worktree.path))
-                .font(.system(size: 11, design: .monospaced))
+                .font(.dm(11, design: .monospaced))
                 .foregroundStyle(isCurrent ? Color.dmRowText : Color.dmMuted)
                 .lineLimit(1)
                 .truncationMode(.head)
@@ -141,7 +141,7 @@ struct GitTab: View {
                 DMPill(
                     text: branch,
                     color: Self.accent,
-                    font: .system(size: 9, weight: .semibold),
+                    font: .dm(9, weight: .semibold),
                     backgroundOpacity: 0.18
                 )
             }
@@ -219,12 +219,12 @@ struct GitTab: View {
     private func workingTreeRow(_ dirtyFiles: Int) -> some View {
         HStack(spacing: 6) {
             Text("Working tree")
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(Color.dmMuted)
                 .lineLimit(1)
             Spacer(minLength: 4)
             Text(changesLabel(dirtyFiles))
-                .font(.system(size: 11))
+                .font(.dm(11))
                 .foregroundStyle(.yellow)
         }
         .padding(.horizontal, 6)
@@ -261,7 +261,7 @@ private struct CommitRow: View {
     var body: some View {
         HStack(spacing: 5) {
             Text(commit.subject)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(Color.dmRowText)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -269,14 +269,14 @@ private struct CommitRow: View {
                 DMPill(
                     text: Self.shortRef(badge),
                     color: Self.refColor(badge),
-                    font: .system(size: 9, weight: .semibold),
+                    font: .dm(9, weight: .semibold),
                     backgroundOpacity: 0.18
                 )
                 .fixedSize()
             }
             Spacer(minLength: 4)
             Text(commit.sha)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.dm(11, design: .monospaced))
                 .foregroundStyle(Color.dmMuted)
                 .fixedSize()
         }

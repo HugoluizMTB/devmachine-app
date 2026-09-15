@@ -26,14 +26,14 @@ struct HomeView: View {
                 TimelineView(.everyMinute) { ctx in
                     VStack(spacing: 6) {
                         Text(ctx.date, format: .dateTime.hour().minute())
-                            .font(.system(size: 150, weight: .thin, design: .rounded))
+                            .font(.dm(150, weight: .thin, design: .rounded))
                             .foregroundStyle(.white)
                             .shadow(radius: 18, y: 2)
                         Text(ctx.date, format: .dateTime.weekday(.wide).day().month(.wide))
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.dm(13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.75))
                         Text(systemName)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.dm(13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.6))
                     }
                 }
@@ -80,19 +80,19 @@ struct HomeView: View {
     private var usageCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(verbatim: "Claude Usage")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.dm(12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
 
             if usageBlocks.isEmpty {
                 Text(verbatim: "Loading usage…")
-                    .font(.system(size: 12))
+                    .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.55))
             } else {
                 UsageBarsView(blocks: usageBlocks)
             }
 
             Text(verbatim: "Today: \(UsageFormat.tokens(usage.stats?.todayTokens ?? 0)) tokens")
-                .font(.system(size: 11, weight: .medium))
+                .font(.dm(11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.6))
         }
         .padding(16)
@@ -107,10 +107,10 @@ struct HomeView: View {
     private var notificationsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: "Notifications")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.dm(12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
             Text(verbatim: "No notifications")
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(.white.opacity(0.5))
         }
         .padding(16)
@@ -130,7 +130,7 @@ struct HomeView: View {
             Text(verbatim: "·")
             Text(verbatim: "\(workspaceCount) workspaces")
         }
-        .font(.system(size: 11, weight: .medium))
+        .font(.dm(11, weight: .medium))
         .foregroundStyle(.white.opacity(0.65))
         .padding(.vertical, 8)
         .padding(.horizontal, 12)

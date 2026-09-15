@@ -23,23 +23,35 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var publicIP: String
     public var baseDomain: String
     public var wallpaper: WallpaperChoice
+    /// How much of the wallpaper shows through a terminal, from `Appearance`.
+    public var terminalOpacity: Double
+    public var terminalFontSize: Double
+    /// Multiplies every size in the app's own interface.
+    public var uiFontScale: Double
 
     public init(
         opsRepoPath: String,
         hostAlias: String,
         publicIP: String,
         baseDomain: String,
-        wallpaper: WallpaperChoice = .bundled
+        wallpaper: WallpaperChoice = .bundled,
+        terminalOpacity: Double = Appearance.defaultTerminalOpacity,
+        terminalFontSize: Double = Appearance.defaultTerminalFontSize,
+        uiFontScale: Double = Appearance.defaultUIFontScale
     ) {
         self.opsRepoPath = opsRepoPath
         self.hostAlias = hostAlias
         self.publicIP = publicIP
         self.baseDomain = baseDomain
         self.wallpaper = wallpaper
+        self.terminalOpacity = Appearance.clampTerminalOpacity(terminalOpacity)
+        self.terminalFontSize = Appearance.clampTerminalFontSize(terminalFontSize)
+        self.uiFontScale = Appearance.clampUIFontScale(uiFontScale)
     }
 
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, wallpaper
+        case terminalOpacity, terminalFontSize, uiFontScale
     }
 
     public init(from decoder: Decoder) throws {
@@ -49,6 +61,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
         publicIP = try values.decode(String.self, forKey: .publicIP)
         baseDomain = try values.decode(String.self, forKey: .baseDomain)
         wallpaper = try values.decodeIfPresent(WallpaperChoice.self, forKey: .wallpaper) ?? .bundled
+        // Settings written before these existed decode to the defaults.
+        terminalOpacity = Appearance.clampTerminalOpacity(
+            try values.decodeIfPresent(Double.self, forKey: .terminalOpacity)
+                ?? Appearance.defaultTerminalOpacity)
+        terminalFontSize = Appearance.clampTerminalFontSize(
+            try values.decodeIfPresent(Double.self, forKey: .terminalFontSize)
+                ?? Appearance.defaultTerminalFontSize)
+        uiFontScale = Appearance.clampUIFontScale(
+            try values.decodeIfPresent(Double.self, forKey: .uiFontScale)
+                ?? Appearance.defaultUIFontScale)
     }
 
     public static let empty = AppSettings(opsRepoPath: "", hostAlias: "", publicIP: "", baseDomain: "")

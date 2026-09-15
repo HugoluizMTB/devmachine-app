@@ -47,7 +47,7 @@ private struct DMTabButton: View {
     var body: some View {
         Button(action: action) {
             label
-                .font(.system(size: fontSize, weight: selected ? .semibold : .regular))
+                .font(.dm(fontSize, weight: selected ? .semibold : .regular))
                 .foregroundStyle(selected ? Color.dmRowText : Color.dmMuted)
                 .padding(.vertical, verticalPadding)
                 .padding(.horizontal, horizontalPadding)

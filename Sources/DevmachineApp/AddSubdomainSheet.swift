@@ -52,7 +52,7 @@ struct AddSubdomainSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add subdomain")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.dm(14, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 
             Picker("", selection: $mode) {
@@ -67,32 +67,32 @@ struct AddSubdomainSheet: View {
             case .managed:
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Label")
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                     HStack(spacing: 4) {
                         TextField("myapp", text: $label)
                             .textFieldStyle(.roundedBorder)
                         Text(verbatim: ".\(settings.baseDomain)")
-                            .font(.system(size: 12))
+                            .font(.dm(12))
                             .foregroundStyle(Color.dmMuted)
                     }
                 }
             case .custom:
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Domain")
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                     TextField("app.example.com", text: $customHost)
                         .textFieldStyle(.roundedBorder)
                     Text(verbatim: "Point this domain's DNS at \(settings.publicIP) (A record) before creating.")
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                 }
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Local port")
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
                 TextField("8080", text: $port)
                     .textFieldStyle(.roundedBorder)

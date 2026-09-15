@@ -85,7 +85,7 @@ struct ContextPanel: View {
     private func message(_ text: String) -> some View {
         Spacer()
         Text(text)
-            .font(.system(size: 12))
+            .font(.dm(12))
             .foregroundStyle(Color.dmMuted)
             .frame(maxWidth: .infinity)
         Spacer()
@@ -113,7 +113,7 @@ struct ContextPanel: View {
                     withAnimation(.easeInOut(duration: 0.18)) { model.contextCollapsed = true }
                 } label: {
                     Image(systemName: "sidebar.right")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.dm(13, weight: .semibold))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.dmMuted)
@@ -153,7 +153,7 @@ struct ContextPanel: View {
             ProgressView()
                 .controlSize(.small)
             Text(agent.label)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(Color.dmRowText)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -189,12 +189,12 @@ struct ContextPanel: View {
         }()
         return HStack(alignment: .top, spacing: 8) {
             Text(symbol)
-                .font(.system(size: 10))
+                .font(.dm(10))
                 .foregroundStyle(color)
                 .frame(width: 12, alignment: .leading)
                 .padding(.top, 1)
             Text(item.text)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(textColor)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -220,10 +220,10 @@ struct ContextPanel: View {
     private func prRow(_ pr: ContextState.PR) -> some View {
         HStack(spacing: 8) {
             Text(verbatim: "#\(pr.number)")
-                .font(.system(size: 12, design: .monospaced))
+                .font(.dm(12, design: .monospaced))
                 .foregroundStyle(Color(hex: 0x5AA9E6))
             Text(pr.repo)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(Color.dmRowText)
                 .lineLimit(1)
             Spacer()
@@ -258,11 +258,11 @@ struct ContextPanel: View {
     private func reviewMark(_ review: String) -> some View {
         switch review {
         case "approved":
-            Text("✓").font(.system(size: 12, weight: .semibold)).foregroundStyle(.green)
+            Text("✓").font(.dm(12, weight: .semibold)).foregroundStyle(.green)
         case "changes":
-            Text("✗").font(.system(size: 12, weight: .semibold)).foregroundStyle(.red)
+            Text("✗").font(.dm(12, weight: .semibold)).foregroundStyle(.red)
         case "required":
-            Text("!").font(.system(size: 12, weight: .semibold)).foregroundStyle(.yellow)
+            Text("!").font(.dm(12, weight: .semibold)).foregroundStyle(.yellow)
         default:
             EmptyView()
         }
@@ -289,12 +289,12 @@ struct ContextPanel: View {
                 DMPill(
                     text: "LINEAR",
                     color: Color(hex: 0xB07FD0),
-                    font: .system(size: 9, weight: .semibold),
+                    font: .dm(9, weight: .semibold),
                     backgroundOpacity: 0.18
                 )
             }
             Text(link.label)
-                .font(.system(size: 12))
+                .font(.dm(12))
                 .foregroundStyle(Color(hex: 0x5AA9E6))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -319,14 +319,14 @@ struct ContextCollapsedStrip: View {
         } label: {
             VStack(spacing: 18) {
                 Image(systemName: "sidebar.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.dm(13, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
 
                 // rotationEffect keeps the pre-rotation layout size, so reserve
                 // the rotated text's real footprint (narrow width, tall height)
                 // to stop it overlapping the icon above it.
                 Text("CONTEXT")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.dm(10, weight: .bold))
                     .kerning(1)
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize()

@@ -51,7 +51,7 @@ struct StackGridView: View {
         )
             .overlay(alignment: .topLeading) {
                 Text("\(ref.alias) / \(ref.name)")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.dm(11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -100,7 +100,7 @@ struct StackGridView: View {
             .frame(width: 22, height: 22)
             .contentShape(Rectangle())
         }
-        .font(.system(size: 11, weight: .medium))
+        .font(.dm(11, weight: .medium))
         .foregroundStyle(.white.opacity(0.85))
         .padding(.horizontal, 4)
         .padding(.vertical, 2)

@@ -1,4 +1,5 @@
 import SwiftUI
+import DevmachineCore
 import AppKit
 import ClaudeUsageKit
 
@@ -26,6 +27,11 @@ struct DevmachineApp: App {
                 .environmentObject(statsStore)
                 .environmentObject(usageStore)
                 .environmentObject(settingsStore)
+                .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
+                .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
+                .onChange(of: settingsStore.settings?.uiFontScale) { _, scale in
+                    DMFont.scale = scale ?? 1
+                }
                 .environmentObject(wallpaperStore)
                 .frame(minWidth: 900, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
         }
@@ -65,7 +71,7 @@ struct MenuBarLabel: View {
     @ObservedObject var prStore: PRStore
 
     var body: some View {
-        let mark = Text(verbatim: "❯_").font(.system(size: 13, weight: .bold, design: .monospaced))
+        let mark = Text(verbatim: "❯_").font(.dm(13, weight: .bold, design: .monospaced))
         if prStore.openCount > 0 {
             HStack(spacing: 3) {
                 mark

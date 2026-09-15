@@ -69,7 +69,7 @@ struct PRsView: View {
                     .font(.title)
                     .foregroundStyle(.orange)
                 Text(err)
-                    .font(.system(size: 12))
+                    .font(.dm(12))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -83,7 +83,7 @@ struct PRsView: View {
                     .font(.title)
                     .foregroundStyle(.secondary)
                 Text(store.isLoading ? "Loading…" : "No open pull requests")
-                    .font(.system(size: 12))
+                    .font(.dm(12))
                     .foregroundStyle(.secondary)
             }
             .padding(24)

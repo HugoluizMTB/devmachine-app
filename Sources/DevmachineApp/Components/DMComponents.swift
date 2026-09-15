@@ -31,10 +31,10 @@ struct DMRow: View {
     var body: some View {
         let content = HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.system(size: iconSize))
+                .font(.dm(iconSize))
                 .foregroundStyle(iconColor)
             Text(title)
-                .font(.system(size: 13))
+                .font(.dm(13))
                 .foregroundStyle(titleColor)
                 .lineLimit(1)
             if fillWidth { Spacer() }
@@ -135,7 +135,7 @@ struct DMSectionLabel: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 10, weight: .bold))
+            .font(.dm(10, weight: .bold))
             .kerning(0.5)
             .foregroundStyle(Color.dmMuted)
     }
@@ -147,7 +147,7 @@ struct DMSectionValue: View {
 
     var body: some View {
         Text(verbatim: text)
-            .font(.system(size: 10, weight: .bold))
+            .font(.dm(10, weight: .bold))
             .foregroundStyle(Color.dmMuted)
     }
 }
@@ -156,7 +156,7 @@ struct DMSectionValue: View {
 struct DMPill: View {
     let text: String
     let color: Color
-    var font: Font = .system(size: 10, weight: .semibold)
+    var font: Font = .dm(10, weight: .semibold)
     var backgroundOpacity: Double = 0.15
     var horizontalPadding: CGFloat = 6
     var verticalPadding: CGFloat = 1
@@ -213,12 +213,12 @@ struct DMStatBubble: View {
     var body: some View {
         VStack(spacing: 3) {
             Text(verbatim: value)
-                .font(.system(size: 24, weight: .semibold, design: .rounded))
+                .font(.dm(24, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.dm(12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(1)
         }
@@ -241,17 +241,17 @@ struct DMToastCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Text(task.label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.dm(12, weight: .semibold))
                     .foregroundStyle(.primary)
                 Spacer()
                 if task.completed >= task.total {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                        .font(.system(size: 12))
+                        .font(.dm(12))
                 } else {
                     // `Text("\(int)")` localizes: pt-BR renders 5182 as 5.182.
                     Text(verbatim: "\(task.completed) of \(task.total)")
-                        .font(.system(size: 11))
+                        .font(.dm(11))
                         .foregroundStyle(.secondary)
                 }
             }

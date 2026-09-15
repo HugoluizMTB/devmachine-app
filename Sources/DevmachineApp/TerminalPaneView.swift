@@ -28,9 +28,16 @@ struct TerminalPaneView: NSViewRepresentable {
         }
 
         let term = TerminalRegistry.shared.terminal(for: kind)
+        let settings = SettingsStore.shared.settings
+        let opacity = Appearance.clampTerminalOpacity(
+            settings?.terminalOpacity ?? Appearance.defaultTerminalOpacity)
         let background = translucent
-            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255, alpha: 0.66)
+            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255, alpha: opacity)
             : NSColor(srgbRed: 0x14 / 255, green: 0x19 / 255, blue: 0x1F / 255, alpha: 1)
+        term.font = NSFont.monospacedSystemFont(
+            ofSize: Appearance.clampTerminalFontSize(
+                settings?.terminalFontSize ?? Appearance.defaultTerminalFontSize),
+            weight: .regular)
         // Translucent: only the container paints the background. If the terminal
         // painted the same alpha color too, the text area would double-blend and
         // read as a different shade than the padding ring around it.

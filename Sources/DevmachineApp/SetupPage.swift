@@ -16,6 +16,9 @@ struct SetupPage: View {
     @State private var baseDomain = ""
     @State private var wallpaper = WallpaperChoice.bundled
     @State private var themeID = SetupPage.gradientTheme
+    @State private var terminalOpacity = Appearance.defaultTerminalOpacity
+    @State private var terminalFontSize = Appearance.defaultTerminalFontSize
+    @State private var uiFontScale = Appearance.defaultUIFontScale
 
     private var draft: AppSettings {
         AppSettings(
@@ -23,7 +26,10 @@ struct SetupPage: View {
             hostAlias: hostAlias.trimmingCharacters(in: .whitespaces),
             publicIP: publicIP.trimmingCharacters(in: .whitespaces),
             baseDomain: baseDomain.trimmingCharacters(in: .whitespaces),
-            wallpaper: wallpaper
+            wallpaper: wallpaper,
+            terminalOpacity: terminalOpacity,
+            terminalFontSize: terminalFontSize,
+            uiFontScale: uiFontScale
         )
     }
 
@@ -56,10 +62,10 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(isFirstRun ? "Welcome" : "Settings")
-                    .font(.system(size: 26, weight: .semibold))
+                    .font(.dm(26, weight: .semibold))
                     .foregroundStyle(.white)
                 Text("The app talks to one host through ssh and keeps its ops repo on this Mac. Tell it where both are.")
-                    .font(.system(size: 12.5))
+                    .font(.dm(12.5))
                     .foregroundStyle(.white.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -109,6 +115,7 @@ struct SetupPage: View {
             }
 
             wallpaperBlock
+            appearanceBlock
 
             HStack(spacing: 10) {
                 Spacer()
@@ -144,27 +151,75 @@ struct SetupPage: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.dm(11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
             content()
             if let issue = issues.first(where: { $0.field == field }) {
                 Text(issue.message)
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(hint)
-                    .font(.system(size: 11))
+                    .font(.dm(11))
                     .foregroundStyle(.white.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
+    private var appearanceBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(verbatim: "Appearance")
+                .font(.dm(11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+
+            slider(
+                title: "Terminal transparency",
+                value: $terminalOpacity,
+                range: Appearance.terminalOpacityRange,
+                // Shown the way you read it: more transparency, less opacity.
+                reading: "\(Int(((1 - terminalOpacity) * 100).rounded()))%"
+            )
+            slider(
+                title: "Terminal font size",
+                value: $terminalFontSize,
+                range: Appearance.terminalFontSizeRange,
+                step: 1,
+                reading: "\(Int(terminalFontSize.rounded())) pt"
+            )
+            slider(
+                title: "App font size",
+                value: $uiFontScale,
+                range: Appearance.uiFontScaleRange,
+                step: 0.05,
+                reading: "\(Int((uiFontScale * 100).rounded()))%"
+            )
+        }
+    }
+
+    private func slider(
+        title: String, value: Binding<Double>, range: ClosedRange<Double>,
+        step: Double = 0.01, reading: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(verbatim: title)
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+                Spacer()
+                Text(verbatim: reading)
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+            Slider(value: value, in: range, step: step)
+        }
+    }
+
     private var wallpaperBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: "Wallpaper")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.dm(11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
 
             FlowLayout(spacing: 6, rowSpacing: 6) {
@@ -183,7 +238,7 @@ struct SetupPage: View {
             }
 
             credit
-                .font(.system(size: 11))
+                .font(.dm(11))
                 .foregroundStyle(.white.opacity(0.5))
         }
     }
@@ -191,7 +246,7 @@ struct SetupPage: View {
     private func chip(id: String, title: String) -> some View {
         let selected = themeID == id
         return Text(verbatim: title)
-            .font(.system(size: 11, weight: .medium))
+            .font(.dm(11, weight: .medium))
             .foregroundStyle(selected ? Color.white : Color.white.opacity(0.7))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
@@ -235,7 +290,7 @@ struct SetupPage: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(alignment: .bottomLeading) {
                 Text(verbatim: gradient.title)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.dm(10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.8))
                     .padding(6)
             }
@@ -313,6 +368,9 @@ struct SetupPage: View {
             hostAlias = current.hostAlias
             publicIP = current.publicIP
             baseDomain = current.baseDomain
+            terminalOpacity = current.terminalOpacity
+            terminalFontSize = current.terminalFontSize
+            uiFontScale = current.uiFontScale
             return
         }
 
@@ -355,7 +413,7 @@ struct SetupPage: View {
 private extension View {
     func setupField() -> some View {
         self
-            .font(.system(size: 13))
+            .font(.dm(13))
             .foregroundStyle(.white)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)

@@ -45,7 +45,7 @@ struct ShortcutsSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Keyboard Shortcuts")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.dm(14, weight: .semibold))
                     .foregroundStyle(Color.dmRowText)
                 Spacer()
                 Button("Close") { model.showShortcuts = false }
@@ -59,7 +59,7 @@ struct ShortcutsSheet: View {
                     ForEach(groups) { group in
                         VStack(alignment: .leading, spacing: 8) {
                             Text(group.title.uppercased())
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.dm(11, weight: .semibold))
                                 .foregroundStyle(Color.dmMuted)
                                 .kerning(0.8)
                             ForEach(group.items) { item in
@@ -67,7 +67,7 @@ struct ShortcutsSheet: View {
                                     HStack(spacing: 4) {
                                         ForEach(item.keys, id: \.self) { key in
                                             Text(verbatim: key)
-                                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                                .font(.dm(11, weight: .medium, design: .monospaced))
                                                 .foregroundStyle(Color.dmRowText)
                                                 .padding(.horizontal, 7)
                                                 .padding(.vertical, 3)
@@ -80,7 +80,7 @@ struct ShortcutsSheet: View {
                                     }
                                     .frame(width: 130, alignment: .leading)
                                     Text(item.action)
-                                        .font(.system(size: 12))
+                                        .font(.dm(12))
                                         .foregroundStyle(Color.dmRowText)
                                     Spacer(minLength: 0)
                                 }
