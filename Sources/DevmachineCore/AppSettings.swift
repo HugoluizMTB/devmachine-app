@@ -28,6 +28,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var terminalFontSize: Double
     /// Multiplies every size in the app's own interface.
     public var uiFontScale: Double
+    /// Terminals kept connected in the background.
+    public var keptTerminals: Int
 
     public init(
         opsRepoPath: String,
@@ -37,7 +39,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         wallpaper: WallpaperChoice = .bundled,
         terminalOpacity: Double = Appearance.defaultTerminalOpacity,
         terminalFontSize: Double = Appearance.defaultTerminalFontSize,
-        uiFontScale: Double = Appearance.defaultUIFontScale
+        uiFontScale: Double = Appearance.defaultUIFontScale,
+        keptTerminals: Int = Appearance.defaultKeptTerminals
     ) {
         self.opsRepoPath = opsRepoPath
         self.hostAlias = hostAlias
@@ -47,11 +50,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.terminalOpacity = Appearance.clampTerminalOpacity(terminalOpacity)
         self.terminalFontSize = Appearance.clampTerminalFontSize(terminalFontSize)
         self.uiFontScale = Appearance.clampUIFontScale(uiFontScale)
+        self.keptTerminals = Appearance.clampKeptTerminals(keptTerminals)
     }
 
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, wallpaper
-        case terminalOpacity, terminalFontSize, uiFontScale
+        case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals
     }
 
     public init(from decoder: Decoder) throws {
@@ -71,6 +75,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         uiFontScale = Appearance.clampUIFontScale(
             try values.decodeIfPresent(Double.self, forKey: .uiFontScale)
                 ?? Appearance.defaultUIFontScale)
+        keptTerminals = Appearance.clampKeptTerminals(
+            try values.decodeIfPresent(Int.self, forKey: .keptTerminals)
+                ?? Appearance.defaultKeptTerminals)
     }
 
     public static let empty = AppSettings(opsRepoPath: "", hostAlias: "", publicIP: "", baseDomain: "")

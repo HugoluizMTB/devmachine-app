@@ -20,6 +20,18 @@ public enum Appearance {
         clamp(value, to: terminalFontSizeRange, fallback: defaultTerminalFontSize)
     }
 
+    /// How many terminals stay connected while you are not looking at them.
+    public static let defaultKeptTerminals = 24
+    public static let keptTerminalsRange = 4...64
+
+    /// The same limits as a range of doubles, for a slider.
+    public static let keptTerminalsSliderRange =
+        Double(keptTerminalsRange.lowerBound)...Double(keptTerminalsRange.upperBound)
+
+    public static func clampKeptTerminals(_ value: Int) -> Int {
+        min(max(value, keptTerminalsRange.lowerBound), keptTerminalsRange.upperBound)
+    }
+
     public static func clampUIFontScale(_ value: Double) -> Double {
         clamp(value, to: uiFontScaleRange, fallback: defaultUIFontScale)
     }

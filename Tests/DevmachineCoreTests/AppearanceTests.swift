@@ -42,3 +42,20 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(settings.uiFontScale, 1.6)
     }
 }
+
+extension AppearanceTests {
+    func testTheKeptTerminalsLimitStaysInRange() {
+        XCTAssertEqual(Appearance.clampKeptTerminals(24), 24)
+        XCTAssertEqual(Appearance.clampKeptTerminals(0), 4)
+        XCTAssertEqual(Appearance.clampKeptTerminals(500), 64)
+    }
+
+    func testSettingsWithoutTheLimitDecodeToTheDefault() throws {
+        let json = """
+        {"opsRepoPath":"/x","hostAlias":"acme","publicIP":"203.0.113.10",
+         "baseDomain":"example.com"}
+        """
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.keptTerminals, Appearance.defaultKeptTerminals)
+    }
+}

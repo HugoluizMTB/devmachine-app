@@ -9,11 +9,14 @@ import DevmachineCore
 @MainActor
 final class TerminalRegistry: NSObject {
     static let shared = TerminalRegistry()
-    /// How many detached terminals (and their mosh/tmux clients) to keep around.
-    /// One per workspace plus the local ones, with room to spare: at six, simply
-    /// moving between workspaces closed clients behind you, and coming back
-    /// showed `[mosh is exiting.]` instead of the session.
-    static let detachedLimit = 24
+    /// How many detached terminals (and their clients) to keep around. Settable,
+    /// because the right number is one per workspace plus the local ones: at
+    /// six, moving between workspaces closed clients behind you, and coming
+    /// back showed `[mosh is exiting.]` instead of the session.
+    static var detachedLimit: Int {
+        Appearance.clampKeptTerminals(
+            SettingsStore.shared.settings?.keptTerminals ?? Appearance.defaultKeptTerminals)
+    }
 
     private var terminals: [TerminalKind: LocalProcessTerminalView] = [:]
     private var optionKeyMonitor: Any?

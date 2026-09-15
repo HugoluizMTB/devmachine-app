@@ -19,6 +19,7 @@ struct SetupPage: View {
     @State private var terminalOpacity = Appearance.defaultTerminalOpacity
     @State private var terminalFontSize = Appearance.defaultTerminalFontSize
     @State private var uiFontScale = Appearance.defaultUIFontScale
+    @State private var keptTerminals = Appearance.defaultKeptTerminals
 
     private var draft: AppSettings {
         AppSettings(
@@ -29,7 +30,8 @@ struct SetupPage: View {
             wallpaper: wallpaper,
             terminalOpacity: terminalOpacity,
             terminalFontSize: terminalFontSize,
-            uiFontScale: uiFontScale
+            uiFontScale: uiFontScale,
+            keptTerminals: keptTerminals
         )
     }
 
@@ -195,6 +197,26 @@ struct SetupPage: View {
                 step: 0.05,
                 reading: "\(Int((uiFontScale * 100).rounded()))%"
             )
+
+            slider(
+                title: "Sessions kept connected",
+                value: Binding(
+                    get: { Double(keptTerminals) },
+                    set: { keptTerminals = Appearance.clampKeptTerminals(Int($0.rounded())) }
+                ),
+                range: Appearance.keptTerminalsSliderRange,
+                step: 1,
+                reading: "\(keptTerminals)"
+            )
+            Text(verbatim: "A session you are not looking at stays connected, "
+                + "so switching back to it is instant. Each one costs a client "
+                + "process and its scrollback. Past this many, the one left "
+                + "alone the longest is disconnected; the session on the other "
+                + "side keeps running and reconnects when you return. Keep it "
+                + "above your number of workspaces.")
+                .font(.dm(10))
+                .foregroundStyle(.white.opacity(0.45))
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -371,6 +393,7 @@ struct SetupPage: View {
             terminalOpacity = current.terminalOpacity
             terminalFontSize = current.terminalFontSize
             uiFontScale = current.uiFontScale
+            keptTerminals = current.keptTerminals
             return
         }
 
