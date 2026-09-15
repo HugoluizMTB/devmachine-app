@@ -40,3 +40,14 @@ final class LRUEvictionTests: XCTestCase {
         XCTAssertEqual(LRUEviction.keysToEvict(detachedAt: [String: Date](), cap: 6), [])
     }
 }
+
+extension LRUEvictionTests {
+    func testTheCapHoldsEveryWorkspaceOfThisMachine() {
+        // Ten workspaces plus a few local sessions have to fit, or moving
+        // between them closes clients behind you.
+        let detached = (0..<14).reduce(into: [String: Date]()) { acc, i in
+            acc["ws-\(i)"] = Date(timeIntervalSince1970: Double(i))
+        }
+        XCTAssertTrue(LRUEviction.keysToEvict(detachedAt: detached, cap: 24).isEmpty)
+    }
+}

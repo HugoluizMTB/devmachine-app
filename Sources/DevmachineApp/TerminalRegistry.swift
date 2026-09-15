@@ -10,11 +10,17 @@ import DevmachineCore
 final class TerminalRegistry: NSObject {
     static let shared = TerminalRegistry()
     /// How many detached terminals (and their mosh/tmux clients) to keep around.
-    static let detachedLimit = 6
+    /// One per workspace plus the local ones, with room to spare: at six, simply
+    /// moving between workspaces closed clients behind you, and coming back
+    /// showed `[mosh is exiting.]` instead of the session.
+    static let detachedLimit = 24
 
     private var terminals: [TerminalKind: LocalProcessTerminalView] = [:]
     private var optionKeyMonitor: Any?
     private var detachedAt: [TerminalKind: Date] = [:]
+    /// Terminals whose process ended on its own — a dropped connection, a shell
+    /// that exited. The view is kept so returning to it reconnects in place.
+    private var dead: Set<TerminalKind> = []
     private(set) var pendingFocusKind: TerminalKind?
 
     private override init() {
@@ -108,7 +114,10 @@ final class TerminalRegistry: NSObject {
 
     func terminal(for kind: TerminalKind) -> LocalProcessTerminalView {
         detachedAt[kind] = nil
-        if let live = terminals[kind] { return live }
+        if let live = terminals[kind] {
+            reviveIfDead(kind, view: live)
+            return live
+        }
         let term = LegacyKeyboardTerminalView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         term.processDelegate = self
         term.optionAsMetaKey = false
@@ -138,6 +147,7 @@ final class TerminalRegistry: NSObject {
 
     /// A pane just put the shared view back in a window.
     func viewDidAttach(_ kind: TerminalKind) {
+        if let view = terminals[kind] { reviveIfDead(kind, view: view) }
         guard pendingFocusKind == kind else { return }
         // Next runloop: SwiftUI is still mid-layout, and taking first responder
         // inside it is what used to make the sidebar unclickable.
@@ -155,7 +165,16 @@ final class TerminalRegistry: NSObject {
         window.makeFirstResponder(term)
     }
 
+    /// Starts the process again in the same view, so the pane you return to
+    /// shows the session instead of the message its client left behind.
+    private func reviveIfDead(_ kind: TerminalKind, view: LocalProcessTerminalView) {
+        guard dead.contains(kind) else { return }
+        dead.remove(kind)
+        start(kind, in: view)
+    }
+
     func close(_ kind: TerminalKind) {
+        dead.remove(kind)
         detachedAt[kind] = nil
         if pendingFocusKind == kind { pendingFocusKind = nil }
         guard let term = terminals.removeValue(forKey: kind) else { return }
@@ -240,8 +259,11 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
     // A dead process must not be handed out again: the next mount starts a
     // fresh one.
     func processTerminated(source: TerminalView, exitCode: Int32?) {
+        // The view stays: the session it was showing usually outlived the
+        // client (tmux and zmx both do), so coming back should reconnect rather
+        // than leave a dead screen or lose the pane.
         if let kind = terminals.first(where: { $0.value === source })?.key {
-            terminals[kind] = nil
+            dead.insert(kind)
             detachedAt[kind] = nil
         }
     }
