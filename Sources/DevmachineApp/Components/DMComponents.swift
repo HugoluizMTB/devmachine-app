@@ -181,18 +181,27 @@ struct DMProgressBar: View {
     var barHeight: CGFloat = 5
     var cornerRadius: CGFloat = 3
 
+    /// How full the bar is, from 0 to 1. A zero or negative total reads as
+    /// "nothing to do", not as division by zero.
+    static func fraction(done: Int, total: Int) -> Double {
+        guard total > 0 else { return 0 }
+        return min(max(Double(done) / Double(total), 0), 1)
+    }
+
     var body: some View {
-        let fraction = total > 0 ? min(max(Double(done) / Double(total), 0), 1) : 0
-        GeometryReader { geo in
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .fill(trackColor)
-                .overlay(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(fillColor)
-                        .frame(width: geo.size.width * fraction)
-                }
-        }
-        .frame(height: barHeight)
+        // The fill is scaled, not measured: a `GeometryReader` here reported the
+        // width of a container the bar was not drawn in, so the track spanned
+        // the window while the fill stopped at the sidebar's edge.
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(trackColor)
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(fillColor)
+                    .scaleEffect(
+                        x: Self.fraction(done: done, total: total), y: 1, anchor: .leading)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: barHeight)
     }
 }
 
