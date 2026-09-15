@@ -1,4 +1,5 @@
 import SwiftUI
+import DevmachineCore
 import AppKit
 
 struct ContentView: View {
@@ -309,11 +310,27 @@ private struct NewSessionSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New session in \(alias)").font(.headline)
             TextField("name", text: $name).frame(width: 240)
+            // The rule used to be enforced silently: a name with a space closed
+            // the sheet and created nothing.
+            if let hint = SessionName.hint(for: name) {
+                let suggestion = SessionName.suggestion(for: name)
+                HStack(spacing: 6) {
+                    Text(hint)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.dmMuted)
+                    if !suggestion.isEmpty {
+                        Button("Use \(suggestion)") { name = suggestion }
+                            .buttonStyle(.link)
+                            .font(.system(size: 11))
+                    }
+                }
+            }
             HStack {
                 Spacer()
                 Button("Cancel") { model.pendingNewSessionAlias = nil }
                 Button("Create") { model.confirmNewSession(alias: alias, name: name) }
                     .keyboardShortcut(.defaultAction)
+                    .disabled(!SessionName.isValid(name))
             }
         }
         .padding(20)

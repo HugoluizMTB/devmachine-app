@@ -10,3 +10,34 @@ public struct TmuxSession: Equatable, Identifiable, Sendable {
         self.hasClaude = hasClaude
     }
 }
+
+
+public enum SessionName {
+    /// tmux treats a name with a space or a dot as something to quote or split,
+    /// so the app keeps names to letters, digits, dash and underscore.
+    public static func isValid(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        return trimmed.allSatisfy { $0.isLetter && $0.isASCII || $0.isNumber || $0 == "-" || $0 == "_" }
+    }
+
+    /// What to show while the field holds something the rule rejects.
+    public static func hint(for raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return nil }
+        return isValid(trimmed) ? nil : "Letters, numbers, - and _ only"
+    }
+
+    /// The same name with the rejected characters turned into dashes, for a
+    /// one-click fix rather than retyping.
+    public static func suggestion(for raw: String) -> String {
+        let mapped = raw.trimmingCharacters(in: .whitespaces).map { ch -> Character in
+            (ch.isLetter && ch.isASCII) || ch.isNumber || ch == "-" || ch == "_" ? ch : "-"
+        }
+        var name = String(mapped)
+        while name.hasPrefix("-") { name.removeFirst() }
+        while name.hasSuffix("-") { name.removeLast() }
+        while name.contains("--") { name = name.replacingOccurrences(of: "--", with: "-") }
+        return name
+    }
+}
