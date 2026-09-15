@@ -29,5 +29,22 @@ mv "$ICONSET/icon_1024.png" "$ICONSET/icon_512x512@2x.png"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 
 chmod 755 "$APP/Contents/MacOS/DevmachineApp"
-codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+
+# zmx keeps local sessions alive after the app quits. It is embedded rather
+# than required from the machine, so nothing has to be installed first.
+./scripts/fetch_zmx.sh
+mkdir -p "$APP/Contents/Resources/zmx"
+cp vendor/zmx/zmx "$APP/Contents/Resources/zmx/zmx"
+chmod 755 "$APP/Contents/Resources/zmx/zmx"
+
+# Inside out: signing the bundle seals what is already inside it, so a nested
+# binary signed afterwards breaks the seal. `-` is an ad-hoc signature, which
+# is all a local install needs; notarizing needs a Developer ID identity here.
+IDENTITY="${DEVMACHINE_CODESIGN_IDENTITY:--}"
+SIGN=(codesign --force --sign "$IDENTITY")
+if [ "$IDENTITY" != "-" ]; then
+  SIGN+=(--options runtime --timestamp)
+fi
+"${SIGN[@]}" "$APP/Contents/Resources/zmx/zmx"
+"${SIGN[@]}" "$APP"
 echo "Built: $APP"

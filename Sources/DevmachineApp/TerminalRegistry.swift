@@ -167,6 +167,21 @@ final class TerminalRegistry: NSObject {
         close(.remote(alias: alias, session: session))
     }
 
+    /// Ends the multiplexer session behind a local pane, so removing a session
+    /// from the sidebar removes the shell too.
+    func killLocalSession(named name: String) {
+        guard let zmx = LocalTools.zmxPath() else { return }
+        let socketDirectory = Zmx.socketDirectory()
+        let session = Zmx.sessionName(from: name, socketDirectory: socketDirectory)
+        Task.detached {
+            _ = try? ProcessRunner().run(
+                executable: zmx,
+                args: Zmx.killArguments(name: session),
+                environment: ["ZMX_DIR": socketDirectory]
+            )
+        }
+    }
+
     func closeAll() {
         for kind in Array(terminals.keys) { close(kind) }
     }
@@ -190,12 +205,27 @@ final class TerminalRegistry: NSObject {
                     environment: RemoteCommands.terminalEnvironment(term: RemoteCommands.remoteTerm)
                 )
             }
-        case let .local(_, path):
+        case let .local(session, path):
+            // The multiplexer holds the shell, so the session survives the app.
+            // Without it the pane is still usable, just not persistent.
+            guard let zmx = LocalTools.zmxPath() else {
+                term.startProcess(
+                    executable: "/bin/zsh",
+                    args: ["-i", "-l"],
+                    environment: RemoteCommands.terminalEnvironment(),
+                    execName: "-zsh",
+                    currentDirectory: path
+                )
+                return
+            }
+            let socketDirectory = Zmx.socketDirectory()
             term.startProcess(
-                executable: "/bin/zsh",
-                args: ["-i", "-l"],
-                environment: RemoteCommands.terminalEnvironment(),
-                execName: "-zsh",
+                executable: zmx,
+                args: Zmx.attachArguments(
+                    name: Zmx.sessionName(from: session, socketDirectory: socketDirectory)),
+                environment: Zmx.environment(socketDirectory: socketDirectory),
+                // The session's own directory comes from here: the multiplexer
+                // starts the shell in the directory it was launched from.
                 currentDirectory: path
             )
         }
@@ -226,6 +256,19 @@ final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
         let filtered = TerminalReplyFilter.strip(Array(data))
         guard !filtered.isEmpty else { return }
         super.send(source: source, data: filtered[...])
+    }
+}
+
+/// Tools the app carries in its own bundle rather than expecting on the Mac.
+enum LocalTools {
+    static func zmxPath(
+        bundle: Bundle = .main,
+        exists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+    ) -> String? {
+        guard let url = bundle.url(forResource: "zmx", withExtension: nil, subdirectory: "zmx"),
+              exists(url.path)
+        else { return nil }
+        return url.path
     }
 }
 

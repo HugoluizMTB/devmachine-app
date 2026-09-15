@@ -56,6 +56,9 @@ final class AppModel: ObservableObject {
     func removeLocalSession(name: String) {
         guard let s = addedLocalSessions.first(where: { $0.name == name }) else { return }
         TerminalRegistry.shared.close(.local(session: s.name, path: s.path))
+        // Closing the pane only drops this app's client; the multiplexer would
+        // keep the shell running with nothing pointing at it.
+        TerminalRegistry.shared.killLocalSession(named: s.name)
         addedLocalSessions.removeAll { $0.name == name }
         if selection == .localSession(name: s.name, path: s.path) { selection = nil }
     }
