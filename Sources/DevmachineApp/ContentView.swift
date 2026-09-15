@@ -310,6 +310,9 @@ private struct NewSessionSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New session in \(alias)").font(.headline)
             TextField("name", text: $name).frame(width: 240)
+            // Where the session starts decides whether Claude Code can list
+            // files there, so it is asked for, not assumed.
+            TextField("directory", text: $model.newSessionDirectory).frame(width: 240)
             // The rule used to be enforced silently: a name with a space closed
             // the sheet and created nothing.
             if let hint = SessionName.hint(for: name) {
@@ -328,7 +331,10 @@ private struct NewSessionSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { model.pendingNewSessionAlias = nil }
-                Button("Create") { model.confirmNewSession(alias: alias, name: name) }
+                Button("Create") {
+                    model.confirmNewSession(
+                        alias: alias, name: name, directory: model.newSessionDirectory)
+                }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!SessionName.isValid(name))
             }

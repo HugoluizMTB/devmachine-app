@@ -102,3 +102,28 @@ final class RemoteCommandsTests: XCTestCase {
         XCTAssertFalse(RemoteCommands.remoteTerm.hasPrefix("xterm"))
     }
 }
+
+extension RemoteCommandsTests {
+    func testCreateSessionNamesTheDirectory() {
+        XCTAssertEqual(
+            RemoteCommands.createSession(name: "dash", directory: "~/dev/dash"),
+            "tmux new-session -d -s 'dash' -c \"$HOME\"/'dev/dash'")
+    }
+
+    func testCreateSessionWithoutADirectoryLandsWhereverTheShellDoes() {
+        XCTAssertEqual(
+            RemoteCommands.createSession(name: "dash", directory: "  "),
+            "tmux new-session -d -s 'dash'")
+    }
+
+    func testAnAbsoluteDirectoryIsQuotedWhole() {
+        XCTAssertEqual(
+            RemoteCommands.createSession(name: "x", directory: "/srv/app"),
+            "tmux new-session -d -s 'x' -c '/srv/app'")
+    }
+
+    func testAQuoteInThePathCannotEndTheQuoting() {
+        XCTAssertTrue(
+            RemoteCommands.createSession(name: "x", directory: "/a'b").contains("'/a'\\''b'"))
+    }
+}

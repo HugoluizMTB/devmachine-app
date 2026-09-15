@@ -453,7 +453,13 @@ final class AppModel: ObservableObject {
 
     private static let validSessionName = try! NSRegularExpression(pattern: "^[A-Za-z0-9_-]+$")
 
-    func confirmNewSession(alias: String, name: String) {
+    /// Remembered so the next session starts where the last one did.
+    @Published var newSessionDirectory: String =
+        UserDefaults.standard.string(forKey: "newSessionDirectory") ?? "~/dev" {
+        didSet { UserDefaults.standard.set(newSessionDirectory, forKey: "newSessionDirectory") }
+    }
+
+    func confirmNewSession(alias: String, name: String, directory: String) {
         let clean = name.trimmingCharacters(in: .whitespaces)
         guard !clean.isEmpty else { pendingNewSessionAlias = nil; return }
         let range = NSRange(clean.startIndex..., in: clean)
@@ -461,11 +467,20 @@ final class AppModel: ObservableObject {
             pendingNewSessionAlias = nil
             return
         }
-        selection = .session(alias: alias, name: clean)
+        newSessionDirectory = directory
         pendingNewSessionAlias = nil
-        // The terminal creates the tmux session lazily on attach (`new-session -A`);
-        // with no global poll, a single refresh can race that create, so re-poll a
-        // few times until the new session shows up in the sidebar.
+        // Created here rather than left to the terminal's own `new-session -A`,
+        // because only a session created up front can be told which directory to
+        // start in, and that is what gives Claude Code its file list.
+        let store = self.store
+        Task.detached {
+            _ = try? store.run(
+                alias: alias,
+                command: RemoteCommands.createSession(name: clean, directory: directory))
+            await MainActor.run { self.selection = .session(alias: alias, name: clean) }
+        }
+        // With no global poll, a single refresh can race the create, so re-poll
+        // a few times until the new session shows up in the sidebar.
         for delay in [1.5, 3.0, 5.0] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self.refresh(alias: alias) }
         }

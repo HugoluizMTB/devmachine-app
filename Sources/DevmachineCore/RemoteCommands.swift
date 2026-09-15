@@ -28,6 +28,28 @@ public enum RemoteCommands {
         "tmux new-session -A -s \(shellSingleQuoted(name))"
     }
 
+    /// Creates the session up front, in a directory. Claude Code lists files
+    /// for its `@` menu from the directory it starts in, and a session opened
+    /// in a folder of many repositories gets no list at all, so where a session
+    /// starts is a feature, not a detail.
+    public static func createSession(name: String, directory: String) -> String {
+        let trimmed = directory.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            return "tmux new-session -d -s \(shellSingleQuoted(name))"
+        }
+        return "tmux new-session -d -s \(shellSingleQuoted(name)) -c \(remotePath(trimmed))"
+    }
+
+    /// A path for the remote shell. `~` is the shell's, so it stays outside the
+    /// quotes as `$HOME`, and the rest is quoted as usual.
+    static func remotePath(_ path: String) -> String {
+        if path == "~" { return "\"$HOME\"" }
+        if path.hasPrefix("~/") {
+            return "\"$HOME\"/" + shellSingleQuoted(String(path.dropFirst(2)))
+        }
+        return shellSingleQuoted(path)
+    }
+
     public static func rename(session: String, to newName: String) -> String {
         "tmux rename-session -t \(shellSingleQuoted(session)) \(shellSingleQuoted(newName))"
     }
