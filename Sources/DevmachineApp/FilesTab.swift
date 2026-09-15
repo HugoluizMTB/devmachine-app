@@ -32,6 +32,8 @@ struct FilesTab: View {
     @EnvironmentObject var filesStore: FilesStore
     @Environment(\.openWindow) private var openWindow
     @State private var selected: String?
+    @StateObject private var search = FileSearchStore()
+    @State private var searching = false
 
     private var target: String { "\(alias)/\(session)" }
 
@@ -39,6 +41,18 @@ struct FilesTab: View {
         VStack(alignment: .leading, spacing: 0) {
             if let root = store.root {
                 header(root)
+                if searching {
+                    FileSearchOverlay(
+                        store: search,
+                        root: root,
+                        onCopy: { path in
+                            copy(path, label: "Copied path")
+                            searching = false
+                        },
+                        onType: { path in typeInSession(path) },
+                        onClose: { searching = false }
+                    )
+                }
                 if let error = store.errorText {
                     message(error)
                         .padding(.horizontal, 14)
@@ -50,6 +64,13 @@ struct FilesTab: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background {
+            // Command+K belongs to the command palette everywhere else; here,
+            // with the file tree on screen, it opens this search instead.
+            Button("") { toggleSearch() }
+                .keyboardShortcut("k", modifiers: .command)
+                .hidden()
+        }
         .onAppear { store.start(alias: alias, session: session) }
         .onDisappear { store.stop() }
         .onChange(of: target) { _, _ in store.start(alias: alias, session: session) }
@@ -138,6 +159,28 @@ struct FilesTab: View {
             .foregroundStyle(Color.dmMuted)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
+    }
+
+    private func toggleSearch() {
+        searching.toggle()
+        guard searching, let root = store.root else {
+            search.clear()
+            return
+        }
+        search.load(alias: alias, root: root)
+    }
+
+    /// Types the path where the session is waiting for input, without sending
+    /// it, so it can be part of a sentence you are still writing.
+    private func typeInSession(_ path: String) {
+        let relative = path
+        searching = false
+        let alias = self.alias
+        let session = self.session
+        Task.detached {
+            _ = try? RemoteService().run(
+                alias: alias, args: [RemoteCommands.typeKeys(session: session, text: relative)])
+        }
     }
 
     private func tapped(_ row: FileTreeRow) {
