@@ -16,6 +16,7 @@ final class FileSearchStore: ObservableObject {
     private let remote: RemoteService
     private var paths: [String] = []
     private var loaded: (alias: String, root: String)?
+    @Published private(set) var root = ""
 
     init(remote: RemoteService = RemoteService()) {
         self.remote = remote
@@ -23,10 +24,35 @@ final class FileSearchStore: ObservableObject {
 
     var fileCount: Int { paths.count }
 
+    /// Resolves the session's repository and lists it. Called when the palette
+    /// opens, so the field is ready before the first keystroke lands.
+    func open(alias: String, session: String) {
+        isLoading = true
+        errorText = nil
+        let remote = self.remote
+        Task.detached {
+            let resolved = (try? remote.run(
+                alias: alias, args: [RemoteCommands.fileTreeRoot(session: session)]))?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            await MainActor.run {
+                guard let resolved, !resolved.isEmpty else {
+                    self.isLoading = false
+                    self.errorText = "Could not find the session's directory"
+                    return
+                }
+                self.root = resolved
+                self.load(alias: alias, root: resolved)
+            }
+        }
+    }
+
     /// Loads the list unless this root is already the one in memory. Reopening
     /// the field on the same session is then instant.
     func load(alias: String, root: String, force: Bool = false) {
-        if !force, let loaded, loaded.alias == alias, loaded.root == root { return }
+        if !force, let loaded, loaded.alias == alias, loaded.root == root {
+            isLoading = false
+            return
+        }
         isLoading = true
         errorText = nil
         let command = RemoteCommands.listFiles(root: root)

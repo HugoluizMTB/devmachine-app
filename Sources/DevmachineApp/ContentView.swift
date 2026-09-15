@@ -4,6 +4,7 @@ import AppKit
 
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    @StateObject private var fileSearch = FileSearchStore()
     @EnvironmentObject var settingsStore: SettingsStore
     @State private var dragStartWidth: CGFloat? = nil
     @State private var contextDragStartWidth: CGFloat? = nil
@@ -27,6 +28,17 @@ struct ContentView: View {
         }
         .background(Color.dmSidebarBg)
         .overlay {
+            if model.showFileSearch, case let .session(alias, name) = model.selection {
+                ZStack(alignment: .top) {
+                    Color.black.opacity(0.35)
+                        .ignoresSafeArea()
+                        .onTapGesture { model.showFileSearch = false }
+                    FileSearchPaletteView(store: fileSearch, alias: alias, session: name)
+                        .environmentObject(model)
+                        .padding(.top, 110)
+                }
+                .transition(.opacity)
+            }
             if model.showCommandPalette {
                 ZStack(alignment: .top) {
                     Color.black.opacity(0.35)
@@ -197,6 +209,8 @@ struct ContentView: View {
                 withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed.toggle() }
             }
             .keyboardShortcut("b", modifiers: .command)
+            Button("") { model.showFileSearch.toggle() }
+                .keyboardShortcut("p", modifiers: .command)
             Button("") { model.showCommandPalette.toggle() }
                 .keyboardShortcut("k", modifiers: .command)
             Button("") {

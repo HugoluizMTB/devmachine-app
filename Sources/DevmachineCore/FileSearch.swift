@@ -5,11 +5,14 @@ public enum FileSearch {
     public struct Hit: Equatable, Identifiable, Sendable {
         public let path: String
         public let score: Int
+        /// Which characters of the path the query matched, for highlighting.
+        public let matches: [Int]
         public var id: String { path }
 
-        public init(path: String, score: Int) {
+        public init(path: String, score: Int, matches: [Int] = []) {
             self.path = path
             self.score = score
+            self.matches = matches
         }
     }
 
@@ -23,8 +26,8 @@ public enum FileSearch {
         var hits: [Hit] = []
         hits.reserveCapacity(min(paths.count, limit * 4))
         for path in paths {
-            guard let score = score(path: path, query: trimmed) else { continue }
-            hits.append(Hit(path: path, score: score))
+            guard let found = match(path: path, query: trimmed) else { continue }
+            hits.append(Hit(path: path, score: found.score, matches: found.matches))
         }
         return hits.sorted {
             $0.score == $1.score
@@ -37,6 +40,12 @@ public enum FileSearch {
     /// that rewards letters found next to each other, matches in the file's own
     /// name rather than a folder above it, and a match right at a word start.
     public static func score(path: String, query: String) -> Int? {
+        match(path: path, query: query)?.score
+    }
+
+    /// Nil when the query's letters do not appear in order. Otherwise the score
+    /// and where each letter landed.
+    public static func match(path: String, query: String) -> (score: Int, matches: [Int])? {
         let haystack = Array(path.lowercased())
         let needle = Array(query.lowercased())
         guard !needle.isEmpty, needle.count <= haystack.count else { return nil }
@@ -45,6 +54,8 @@ public enum FileSearch {
         var score = 0
         var haystackIndex = 0
         var previousMatch = -2
+        var matches: [Int] = []
+        matches.reserveCapacity(needle.count)
 
         for character in needle {
             var found = -1
@@ -61,10 +72,11 @@ public enum FileSearch {
                 || haystack[found - 1] == "-" || haystack[found - 1] == "." {
                 score += 4
             }
+            matches.append(found)
             previousMatch = found
             haystackIndex = found + 1
         }
         // A short path carrying the same letters is the better answer.
-        return score * 100 - haystack.count
+        return (score * 100 - haystack.count, matches)
     }
 }

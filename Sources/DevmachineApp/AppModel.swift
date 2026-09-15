@@ -144,6 +144,8 @@ final class AppModel: ObservableObject {
     @Published var selectedSessions: Set<SessionRef> = []
     @Published var activeTasks: [BGTask] = []
     @Published var showCommandPalette = false
+    /// The file finder, opened over any session.
+    @Published var showFileSearch = false
     @Published var showShortcuts = false
     var selectionAnchor: SessionRef? = nil
 
@@ -194,6 +196,15 @@ final class AppModel: ObservableObject {
 
     func newSession(alias: String) {
         pendingNewSessionAlias = alias
+    }
+
+    /// Types text where a session is waiting for input, without sending it.
+    func typeInSession(alias: String, session: String, text: String) {
+        let store = self.store
+        Task.detached {
+            _ = try? store.run(
+                alias: alias, command: RemoteCommands.typeKeys(session: session, text: text))
+        }
     }
 
     func showPage(_ page: AppPage) {
