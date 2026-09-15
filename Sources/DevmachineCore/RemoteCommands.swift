@@ -81,6 +81,22 @@ public enum RemoteCommands {
         "find \(shellSingleQuoted(path)) -mindepth 1 -maxdepth 1 -printf '%y\\t%f\\n' | sort -f"
     }
 
+    /// Every file under the root, for the search field. Asks git first, which
+    /// already knows the repository's files and skips what it ignores; a folder
+    /// that is not a repository falls back to a walk that prunes the usual
+    /// unsearchable trees. The cap keeps one wrong root from returning forever.
+    public static func listFiles(root: String, limit: Int = 50_000) -> String {
+        "cd \(remotePath(root)) && { git ls-files 2>/dev/null"
+            + " || find . -type f -not -path './.git/*' -not -path '*/node_modules/*'"
+            + " -not -path '*/.build/*' 2>/dev/null; } | head -n \(limit)"
+    }
+
+    /// Types text into a session without sending it, so a path can be put in a
+    /// prompt that is already being written.
+    public static func typeKeys(session: String, text: String) -> String {
+        "tmux send-keys -t \(shellSingleQuoted(session)) -- \(shellSingleQuoted(text))"
+    }
+
     public static func sendKeys(session: String, text: String) -> String {
         "tmux send-keys -t \(shellSingleQuoted(session)) -- \(shellSingleQuoted(text)) Enter"
     }

@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Combine
 import DevmachineCore
 
@@ -185,6 +186,7 @@ final class AppModel: ObservableObject {
     init(store: SessionStore = SessionStore(runner: ProcessRunner())) {
         self.store = store
         AppModel.shared = self
+        observeWake()
     }
 
     var hasSelectionPollTimer: Bool { selectionPollTimer != nil }
@@ -578,6 +580,29 @@ final class AppModel: ObservableObject {
             guard let failure = (error as? SessionStoreError)?.failure else { return false }
             pausePolling(after: failure)
             return true
+        }
+    }
+
+    /// True while a failure is holding the sweep back.
+    var isPollingPaused: Bool { Date() < pollPausedUntil }
+
+    /// Sleeping made every ssh fail at once, which paused the sweep and turned
+    /// the whole sidebar red. Waking is the evidence that the pause no longer
+    /// applies, so it is lifted and the sweep runs at once instead of leaving
+    /// the sidebar wrong for up to two minutes.
+    func resumePollingAfterWake() {
+        pollPausedUntil = .distantPast
+        sweepInFlight = false
+        refreshingAliases.removeAll()
+        refreshAll()
+    }
+
+    private func observeWake() {
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { AppModel.shared?.resumePollingAfterWake() }
+            }
         }
     }
 

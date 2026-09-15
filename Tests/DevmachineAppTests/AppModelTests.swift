@@ -412,6 +412,24 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.transfer)
     }
 
+
+    @MainActor
+    func testWakingLiftsThePauseAndSweepsAgain() {
+        let model = AppModel(store: SessionStore(runner: UnreachableRunner()))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        model.refreshAll()
+
+        // The sweep marked the workspace offline and paused polling; without a
+        // wake the sidebar would stay red for up to two minutes.
+        let waitForSweep = expectation(description: "sweep")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { waitForSweep.fulfill() }
+        wait(for: [waitForSweep], timeout: 2)
+        XCTAssertTrue(model.isPollingPaused)
+
+        model.resumePollingAfterWake()
+        XCTAssertFalse(model.isPollingPaused)
+    }
+
 }
 
 private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
@@ -431,4 +449,18 @@ private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
         return calls
     }
 
+}
+
+
+/// ssh itself failing, the way it does while the Mac is asleep: exit 255 and a
+/// connection error, not a command that ran and failed.
+private final class UnreachableRunner: CommandRunner, @unchecked Sendable {
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        try runCapturing(executable: executable, args: args, environment: environment).stdout
+    }
+
+    func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        ("", "ssh: connect to host port 22: Operation timed out", 255)
+    }
 }
