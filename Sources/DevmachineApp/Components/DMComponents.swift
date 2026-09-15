@@ -249,13 +249,16 @@ struct DMToastCard: View {
                         .foregroundStyle(.green)
                         .font(.system(size: 12))
                 } else {
-                    Text("\(task.completed) of \(task.total)")
+                    // `Text("\(int)")` localizes: pt-BR renders 5182 as 5.182.
+                    Text(verbatim: "\(task.completed) of \(task.total)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
             }
-            ProgressView(value: Double(task.completed), total: Double(max(task.total, 1)))
-                .progressViewStyle(.linear)
+            // The app's own bar, not the system one: the native linear
+            // ProgressView drew its track across the window while the fill
+            // stopped short.
+            DMProgressBar(done: task.completed, total: task.total, fillColor: .accentColor)
                 .frame(width: 200)
         }
         .padding(12)
