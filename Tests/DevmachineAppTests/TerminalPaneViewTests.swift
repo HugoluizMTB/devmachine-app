@@ -47,4 +47,18 @@ final class TerminalContainerViewTests: XCTestCase {
         XCTAssertEqual(container.contentFrame.width, 1)
         XCTAssertEqual(container.contentFrame.height, 1)
     }
+
+    func testTheNudgeChangesTheHeightAndKeepsTheWidth() {
+        let frame = NSRect(x: 10, y: 8, width: 380, height: 284)
+        let nudged = TerminalPaneView.nudged(frame)
+
+        XCTAssertEqual(nudged.width, frame.width)
+        XCTAssertEqual(nudged.height, 264)
+        XCTAssertNotEqual(nudged, frame)
+    }
+
+    func testTheNudgeNeverCollapsesATinyPane() {
+        let nudged = TerminalPaneView.nudged(NSRect(x: 0, y: 0, width: 100, height: 4))
+        XCTAssertEqual(nudged.height, 1)
+    }
 }
