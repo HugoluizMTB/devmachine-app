@@ -15,14 +15,36 @@ enum PaneLog {
         return f.string(from: date)
     }
 
+    private static func trimIfHuge() {
+        guard let size = try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int,
+              size > sizeLimit,
+              let data = FileManager.default.contents(atPath: path)
+        else { return }
+        let tail = data.suffix(keepAfterTrim)
+        try? Data(tail).write(to: URL(fileURLWithPath: path))
+    }
+
     static var isEnabled: Bool {
         FileManager.default.fileExists(atPath: (path as NSString).deletingLastPathComponent)
     }
 
+    /// Half a megabyte of history is plenty to read a bug from; past a
+    /// megabyte the file is cut to that, newest kept.
+    private static let sizeLimit = 1_048_576
+    private static let keepAfterTrim = 524_288
+
+    nonisolated(unsafe) private static var lastLine = ""
+
     static func log(_ message: @autoclosure @escaping () -> String) {
         guard isEnabled else { return }
-        let line = "\(stamp(Date())) \(message())\n"
+        let text = message()
+        // Dragging a window measures it over and over; the same line repeated
+        // says nothing and buries what does.
+        guard text != lastLine else { return }
+        lastLine = text
+        let line = "\(stamp(Date())) \(text)\n"
         queue.async {
+            trimIfHuge()
             guard let data = line.data(using: .utf8) else { return }
             if let handle = FileHandle(forWritingAtPath: path) {
                 handle.seekToEndOfFile()
