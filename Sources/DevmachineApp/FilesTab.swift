@@ -148,14 +148,8 @@ struct FilesTab: View {
     /// The Files window reads a host over ssh, so it has nothing to open for a
     /// session that runs on this Mac — Finder does that job here.
     private func openInFilesWindow(_ row: FileTreeRow) {
-        switch target {
-        case let .remote(alias, _):
-            filesStore.open(alias: alias, path: store.parentPath(of: row.path))
-            openWindow(id: "files")
-        case .local:
-            NSWorkspace.shared.selectFile(
-                row.path, inFileViewerRootedAtPath: store.parentPath(of: row.path))
-        }
+        filesStore.open(target, path: store.parentPath(of: row.path))
+        openWindow(id: "files")
     }
 
     private func copy(_ text: String, label: String) {

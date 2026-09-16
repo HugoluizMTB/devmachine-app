@@ -4,7 +4,7 @@ import DevmachineCore
 
 @MainActor
 final class FilesStore: ObservableObject {
-    @Published var alias: String?
+    @Published var target: CommandTarget?
     @Published var path: String = "."
     @Published var entries: [FileEntry] = []
     @Published var isLoading = false
@@ -23,8 +23,8 @@ final class FilesStore: ObservableObject {
         refreshTask?.cancel()
     }
 
-    func open(alias: String, path: String = ".") {
-        self.alias = alias
+    func open(_ target: CommandTarget, path: String = ".") {
+        self.target = target
         self.path = path
         entries = []
         errorText = nil
@@ -36,7 +36,7 @@ final class FilesStore: ObservableObject {
     }
 
     func refresh() {
-        guard let alias else { return }
+        guard let target else { return }
         let path = self.path
         refreshTask?.cancel()
         isLoading = true
@@ -45,7 +45,7 @@ final class FilesStore: ObservableObject {
 
         refreshTask = Task {
             do {
-                let result = try await Task.detached { try service.list(alias: alias, path: path) }.value
+                let result = try await Task.detached { try service.list(target, path: path) }.value
                 guard !Task.isCancelled else { return }
                 self.entries = result
                 self.isLoading = false
@@ -81,9 +81,15 @@ final class FilesStore: ObservableObject {
         refresh()
     }
 
+    /// On this Mac there is nothing to copy: the file is already here, so the
+    /// same action opens it where the person can act on it.
     func download(_ entry: FileEntry) {
-        guard let alias else { return }
-        guard !entry.isDir else { return }
+        guard let target, !entry.isDir else { return }
+        guard case let .remote(alias, _) = target else {
+            NSWorkspace.shared.selectFile(
+                joinedPath(entry.name), inFileViewerRootedAtPath: path)
+            return
+        }
 
         let panel = NSSavePanel()
         panel.nameFieldStringValue = entry.name
@@ -95,7 +101,7 @@ final class FilesStore: ObservableObject {
     }
 
     func uploadFiles() {
-        guard let alias else { return }
+        guard let target else { return }
 
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -112,10 +118,24 @@ final class FilesStore: ObservableObject {
         Task {
             var failedNames: [String] = []
             for url in urls {
-                let remotePath = self.joinedPath(url.lastPathComponent, base: currentPath)
-                let args = service.uploadArgs(alias: alias, localPath: url.path, remotePath: remotePath)
+                let destination = self.joinedPath(url.lastPathComponent, base: currentPath)
                 do {
-                    _ = try await Task.detached { try runner.run(executable: "/usr/bin/scp", args: args, environment: nil) }.value
+                    switch target {
+                    case let .remote(alias, _):
+                        let args = service.uploadArgs(
+                            alias: alias, localPath: url.path, remotePath: destination)
+                        _ = try await Task.detached {
+                            try runner.run(
+                                executable: "/usr/bin/scp", args: args, environment: nil)
+                        }.value
+                    case .local:
+                        // Both sides are this Mac, so it is a copy, not a transfer.
+                        _ = try await Task.detached {
+                            try runner.run(
+                                executable: "/bin/cp", args: [url.path, destination],
+                                environment: nil)
+                        }.value
+                    }
                 } catch {
                     failedNames.append(url.lastPathComponent)
                 }

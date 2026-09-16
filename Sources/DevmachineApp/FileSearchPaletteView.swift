@@ -8,8 +8,7 @@ import DevmachineCore
 struct FileSearchPaletteView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: FileSearchStore
-    let alias: String
-    let session: String
+    let target: CommandTarget
 
     @State private var index = 0
     @FocusState private var focused: Bool
@@ -28,7 +27,7 @@ struct FileSearchPaletteView: View {
         .onAppear {
             focused = true
             index = 0
-            store.open(alias: alias, session: session)
+            store.open(target)
         }
         .onChange(of: store.query) { _, _ in index = 0 }
         .onKeyPress(.downArrow) {
@@ -141,7 +140,7 @@ struct FileSearchPaletteView: View {
         guard store.hits.indices.contains(index) else { return }
         let path = store.hits[index].path
         model.showFileSearch = false
-        model.typeInSession(alias: alias, session: session, text: path)
+        model.typeInSession(target, text: path)
     }
 
     private func copy(_ path: String) {

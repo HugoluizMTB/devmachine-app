@@ -10,22 +10,22 @@ private final class ListingRunner: CommandRunner, @unchecked Sendable {
 final class FilesStoreTests: XCTestCase {
     private func makeStore() -> FilesStore {
         let runner = ListingRunner()
-        return FilesStore(service: FileService(remote: RemoteService(runner: runner)), runner: runner)
+        return FilesStore(service: FileService(host: HostRunner(remote: RemoteService(runner: runner))), runner: runner)
     }
 
     func testOpeningWithAnAbsolutePathStartsThere() {
         let store = makeStore()
 
-        store.open(alias: "acme-devmachine", path: "/home/alice/dev/dash/Sources")
+        store.open(.host(alias: "acme-devmachine"), path: "/home/alice/dev/dash/Sources")
 
-        XCTAssertEqual(store.alias, "acme-devmachine")
+        XCTAssertEqual(store.target, .host(alias: "acme-devmachine"))
         XCTAssertEqual(store.path, "/home/alice/dev/dash/Sources")
     }
 
     func testOpeningWithoutAPathStaysAtTheHomeDirectory() {
         let store = makeStore()
 
-        store.open(alias: "acme-devmachine")
+        store.open(.host(alias: "acme-devmachine"))
 
         XCTAssertEqual(store.path, ".")
         XCTAssertFalse(store.canGoUp)
@@ -33,7 +33,7 @@ final class FilesStoreTests: XCTestCase {
 
     func testGoingUpFromAnAbsolutePathStopsAtTheFilesystemRoot() {
         let store = makeStore()
-        store.open(alias: "acme-devmachine", path: "/home/alice")
+        store.open(.host(alias: "acme-devmachine"), path: "/home/alice")
 
         store.up()
         XCTAssertEqual(store.path, "/home")

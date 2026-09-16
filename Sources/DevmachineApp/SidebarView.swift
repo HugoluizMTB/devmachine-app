@@ -225,7 +225,7 @@ struct SidebarView: View {
     }
 
     private func openFiles(alias: String) {
-        filesStore.open(alias: alias)
+        filesStore.open(.host(alias: alias))
         openWindow(id: "files")
     }
 

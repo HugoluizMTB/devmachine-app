@@ -19,9 +19,9 @@ private final class FakeRunner: CommandRunner, @unchecked Sendable {
 final class FileServiceTests: XCTestCase {
     func testListSendsSingleQuotedRemoteCommand() throws {
         let fake = FakeRunner(output: "dir1/\nfile.txt\n")
-        let service = FileService(remote: RemoteService(runner: fake))
+        let service = FileService(host: HostRunner(remote: RemoteService(runner: fake)))
 
-        let entries = try service.list(alias: "acme-devmachine", path: "/home/acme/dev")
+        let entries = try service.list(.host(alias: "acme-devmachine"), path: "/home/acme/dev")
 
         XCTAssertEqual(entries, [
             FileEntry(name: "dir1", isDir: true),
@@ -31,7 +31,7 @@ final class FileServiceTests: XCTestCase {
     }
 
     func testListCommandQuotesPathWithSpaceAndQuoteSafely() {
-        let service = FileService(remote: RemoteService(runner: FakeRunner()))
+        let service = FileService(host: HostRunner(remote: RemoteService(runner: FakeRunner())))
 
         let command = service.listCommand(path: "my folder/it's here")
 
@@ -39,7 +39,7 @@ final class FileServiceTests: XCTestCase {
     }
 
     func testDownloadArgsBuildsScpSourceAndDestination() {
-        let service = FileService(remote: RemoteService(runner: FakeRunner()))
+        let service = FileService(host: HostRunner(remote: RemoteService(runner: FakeRunner())))
 
         let args = service.downloadArgs(alias: "acme-devmachine", remotePath: "/home/acme/file.txt", localPath: "/tmp/file.txt")
 
@@ -47,7 +47,7 @@ final class FileServiceTests: XCTestCase {
     }
 
     func testUploadArgsBuildsScpSourceAndDestination() {
-        let service = FileService(remote: RemoteService(runner: FakeRunner()))
+        let service = FileService(host: HostRunner(remote: RemoteService(runner: FakeRunner())))
 
         let args = service.uploadArgs(alias: "acme-devmachine", localPath: "/tmp/file.txt", remotePath: "/home/acme/file.txt")
 
@@ -55,7 +55,7 @@ final class FileServiceTests: XCTestCase {
     }
 
     func testDownloadArgsSingleQuotesSpaceInRemotePath() {
-        let service = FileService(remote: RemoteService(runner: FakeRunner()))
+        let service = FileService(host: HostRunner(remote: RemoteService(runner: FakeRunner())))
 
         let args = service.downloadArgs(alias: "acme-devmachine", remotePath: "/home/acme/my folder/file.txt", localPath: "/tmp/file.txt")
 
@@ -63,7 +63,7 @@ final class FileServiceTests: XCTestCase {
     }
 
     func testDownloadArgsNeutralizesDollarSignInRemotePath() {
-        let service = FileService(remote: RemoteService(runner: FakeRunner()))
+        let service = FileService(host: HostRunner(remote: RemoteService(runner: FakeRunner())))
 
         let args = service.downloadArgs(alias: "acme-devmachine", remotePath: "/home/acme/$(whoami).txt", localPath: "/tmp/file.txt")
 
@@ -71,7 +71,7 @@ final class FileServiceTests: XCTestCase {
     }
 
     func testDownloadArgsNeutralizesBacktickInRemotePath() {
-        let service = FileService(remote: RemoteService(runner: FakeRunner()))
+        let service = FileService(host: HostRunner(remote: RemoteService(runner: FakeRunner())))
 
         let args = service.downloadArgs(alias: "acme-devmachine", remotePath: "/home/acme/`whoami`.txt", localPath: "/tmp/file.txt")
 
@@ -79,7 +79,7 @@ final class FileServiceTests: XCTestCase {
     }
 
     func testUploadArgsNeutralizesSemicolonInRemotePath() {
-        let service = FileService(remote: RemoteService(runner: FakeRunner()))
+        let service = FileService(host: HostRunner(remote: RemoteService(runner: FakeRunner())))
 
         let args = service.uploadArgs(alias: "acme-devmachine", localPath: "/tmp/file.txt", remotePath: "/home/acme/file.txt; rm -rf ~")
 

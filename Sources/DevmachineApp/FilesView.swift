@@ -19,7 +19,7 @@ struct FilesView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text(store.alias.map { "\($0) — \(store.path)" } ?? "Files")
+            Text(store.target.map { "\($0.label) — \(store.path)" } ?? "Files")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
                 .lineLimit(1)
@@ -129,7 +129,9 @@ struct FilesView: View {
         )
         .contextMenu {
             if !entry.isDir {
-                Button("Download") { store.download(entry) }
+                Button(store.target?.isLocal == true ? "Reveal in Finder" : "Download") {
+                    store.download(entry)
+                }
             }
         }
     }

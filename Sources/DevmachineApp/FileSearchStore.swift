@@ -13,26 +13,26 @@ final class FileSearchStore: ObservableObject {
         didSet { rank() }
     }
 
-    private let remote: RemoteService
+    private let host: HostRunner
     private var paths: [String] = []
-    private var loaded: (alias: String, root: String)?
+    private var loaded: (key: String, root: String)?
     @Published private(set) var root = ""
 
-    init(remote: RemoteService = RemoteService()) {
-        self.remote = remote
+    init(host: HostRunner = HostRunner()) {
+        self.host = host
     }
 
     var fileCount: Int { paths.count }
 
     /// Resolves the session's repository and lists it. Called when the palette
     /// opens, so the field is ready before the first keystroke lands.
-    func open(alias: String, session: String) {
+    func open(_ target: CommandTarget) {
         isLoading = true
         errorText = nil
-        let remote = self.remote
+        let host = self.host
         Task.detached {
-            let resolved = (try? remote.run(
-                alias: alias, args: [RemoteCommands.fileTreeRoot(session: session)]))?
+            let resolved = (try? host.runCapturing(
+                target, RemoteCommands.fileTreeRootBody).stdout)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             await MainActor.run {
                 guard let resolved, !resolved.isEmpty else {
@@ -41,24 +41,25 @@ final class FileSearchStore: ObservableObject {
                     return
                 }
                 self.root = resolved
-                self.load(alias: alias, root: resolved)
+                self.load(target, root: resolved)
             }
         }
     }
 
     /// Loads the list unless this root is already the one in memory. Reopening
     /// the field on the same session is then instant.
-    func load(alias: String, root: String, force: Bool = false) {
-        if !force, let loaded, loaded.alias == alias, loaded.root == root {
+    func load(_ target: CommandTarget, root: String, force: Bool = false) {
+        if !force, let loaded, loaded.key == target.key, loaded.root == root {
             isLoading = false
             return
         }
         isLoading = true
         errorText = nil
         let command = RemoteCommands.listFiles(root: root)
-        let remote = self.remote
+        let host = self.host
+        let key = target.key
         Task.detached {
-            let output = try? remote.run(alias: alias, args: [command])
+            let output = try? host.runCapturingAnywhere(target, command).stdout
             await MainActor.run {
                 self.isLoading = false
                 guard let output else {
@@ -66,7 +67,7 @@ final class FileSearchStore: ObservableObject {
                     return
                 }
                 self.paths = output.split(separator: "\n").map(String.init)
-                self.loaded = (alias, root)
+                self.loaded = (key, root)
                 self.rank()
             }
         }

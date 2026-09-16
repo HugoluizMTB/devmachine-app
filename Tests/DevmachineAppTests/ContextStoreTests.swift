@@ -68,7 +68,7 @@ final class ContextStoreTests: XCTestCase {
 
     func testPollWithSameStateDoesNotRepublish() async throws {
         let runner = ContextRunner(output: contextJSON)
-        let store = ContextStore(remote: RemoteService(runner: runner))
+        let store = ContextStore(host: HostRunner(remote: RemoteService(runner: runner)))
         defer { store.stop() }
 
         store.start(.remote(alias: "acme-devmachine", session: "dash"))
@@ -88,7 +88,7 @@ final class ContextStoreTests: XCTestCase {
 
     func testPollSkipsTickWhileTheSameSessionIsInFlight() async throws {
         let runner = BlockingRunner(output: contextJSON)
-        let store = ContextStore(remote: RemoteService(runner: runner))
+        let store = ContextStore(host: HostRunner(remote: RemoteService(runner: runner)))
         defer { store.stop() }
 
         store.start(.remote(alias: "acme-devmachine", session: "dash"))
@@ -109,34 +109,38 @@ final class ContextStoreTests: XCTestCase {
     func testALocalTargetRunsTheEngineHereWithTheFolder() async throws {
         let local = RecordingRunner(output: contextJSON)
         let remote = ContextRunner(output: contextJSON)
-        let store = ContextStore(remote: RemoteService(runner: remote), local: local)
+        let store = ContextStore(
+            host: HostRunner(remote: RemoteService(runner: remote), local: local))
         defer { store.stop() }
 
-        store.start(.local(path: "/Users/alice/dev/acme"))
+        store.start(.local(session: "shell", path: "/Users/alice/dev/acme"))
         try await waitUntil { store.state != nil }
 
         XCTAssertEqual(remote.callCount, 0)
         let call = try XCTUnwrap(local.calls.first)
-        XCTAssertTrue(call.0.hasSuffix("/.local/bin/devmachine-infer"))
-        XCTAssertEqual(call.1, ["--project", "/Users/alice/dev/acme"])
+        XCTAssertEqual(call.0, "/bin/sh")
+        let command = try XCTUnwrap(call.1.last)
+        XCTAssertTrue(command.contains("/.local/bin/devmachine-infer"))
+        XCTAssertTrue(command.hasSuffix("--project '/Users/alice/dev/acme'"))
         XCTAssertNotNil(call.2?["PATH"])
     }
 
     func testSwitchingFromRemoteToLocalRestartsThePoll() async throws {
         let local = RecordingRunner(output: contextJSON)
         let remote = ContextRunner(output: contextJSON)
-        let store = ContextStore(remote: RemoteService(runner: remote), local: local)
+        let store = ContextStore(
+            host: HostRunner(remote: RemoteService(runner: remote), local: local))
         defer { store.stop() }
 
         store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { remote.callCount == 1 }
-        store.start(.local(path: "/Users/alice/dev/acme"))
+        store.start(.local(session: "shell", path: "/Users/alice/dev/acme"))
         try await waitUntil { local.calls.count == 1 }
     }
 
     func testStopClearsStateOnlyOnce() async throws {
         let runner = ContextRunner(output: contextJSON)
-        let store = ContextStore(remote: RemoteService(runner: runner))
+        let store = ContextStore(host: HostRunner(remote: RemoteService(runner: runner)))
 
         store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.state != nil }
@@ -156,9 +160,14 @@ final class ContextStoreTests: XCTestCase {
 @MainActor
 final class LocalContextTests: XCTestCase {
     func testTheFolderIsPassedAsTheProjectWithATildeExpanded() {
+        let command = LocalContext.command(for: .local(session: "acme", path: "~/dev/acme"))
+        XCTAssertTrue(command.hasSuffix("--project '\(NSHomeDirectory())/dev/acme'"))
+    }
+
+    func testAHostReadsItsOwnEngineBySessionName() {
         XCTAssertEqual(
-            LocalContext.arguments(path: "~/dev/acme"),
-            ["--project", NSHomeDirectory() + "/dev/acme"])
+            LocalContext.command(for: .remote(alias: "acme-devmachine", session: "dash")),
+            "devmachine-infer --session 'dash'")
     }
 
     func testThePathCarriesTheToolsTheEngineShellsOutTo() {

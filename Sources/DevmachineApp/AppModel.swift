@@ -377,11 +377,10 @@ final class AppModel: ObservableObject {
     }
 
     /// Types text where a session is waiting for input, without sending it.
-    func typeInSession(alias: String, session: String, text: String) {
-        let store = self.store
+    func typeInSession(_ target: CommandTarget, text: String) {
+        let host = HostRunner()
         Task.detached {
-            _ = try? store.run(
-                alias: alias, command: RemoteCommands.typeKeys(session: session, text: text))
+            try? host.type(text, into: target)
         }
     }
 
@@ -844,7 +843,7 @@ final class AppModel: ObservableObject {
 
     /// Only a session that holds a Claude has a context to read, and a local one
     /// also needs the engine installed here.
-    private func contextTarget(for item: SidebarItem?) -> ContextTarget? {
+    private func contextTarget(for item: SidebarItem?) -> CommandTarget? {
         switch item {
         case let .session(alias, name):
             guard let ws = sessionsByAlias[alias]?.first(where: { $0.name == name }),
@@ -854,7 +853,22 @@ final class AppModel: ObservableObject {
             guard LocalContext.isInstalled,
                   let session = localSessions.first(where: { $0.handle == name }),
                   localSessionHasClaude(session) else { return nil }
-            return .local(path: localWorkingDirectory(of: session) ?? path)
+            return .local(session: name, path: localWorkingDirectory(of: session) ?? path)
+        case nil:
+            return nil
+        }
+    }
+
+    /// Where a panel or the search field reads from, for whatever is selected.
+    /// The one place that turns a sidebar row into a target.
+    func commandTarget(for item: SidebarItem?) -> CommandTarget? {
+        switch item {
+        case let .session(alias, name):
+            return .remote(alias: alias, session: name)
+        case let .localSession(name, path):
+            let session = localSessions.first { $0.handle == name }
+            return .local(
+                session: name, path: session.flatMap(localWorkingDirectory) ?? path)
         case nil:
             return nil
         }

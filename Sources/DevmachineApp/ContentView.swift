@@ -27,12 +27,12 @@ struct ContentView: View {
         }
         .background(Color.dmSidebarBg)
         .overlay {
-            if model.showFileSearch, case let .session(alias, name) = model.selection {
+            if model.showFileSearch, let target = model.commandTarget(for: model.selection) {
                 ZStack(alignment: .top) {
                     Color.black.opacity(0.35)
                         .ignoresSafeArea()
                         .onTapGesture { model.showFileSearch = false }
-                    FileSearchPaletteView(store: fileSearch, alias: alias, session: name)
+                    FileSearchPaletteView(store: fileSearch, target: target)
                         .environmentObject(model)
                         .padding(.top, 110)
                 }

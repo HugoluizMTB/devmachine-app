@@ -2,37 +2,21 @@ import Foundation
 import Combine
 import DevmachineCore
 
-/// Where the context engine runs. A remote session is read over ssh on the
-/// host that owns it; a local one runs the same script on this Mac.
-enum ContextTarget: Equatable {
-    case remote(alias: String, session: String)
-    case local(path: String)
-
-    var key: String {
-        switch self {
-        case let .remote(alias, session): return "\(alias)/\(session)"
-        case let .local(path): return "local:\(path)"
-        }
-    }
-}
-
 @MainActor
 final class ContextStore: ObservableObject {
     @Published var state: ContextState? = nil
-    private let remote: RemoteService
-    private let local: CommandRunner
+    private let host: HostRunner
     private var timer: Timer?
-    private var current: ContextTarget?
+    private var current: CommandTarget?
     private var inFlight: String?
 
-    init(remote: RemoteService = RemoteService(), local: CommandRunner = ProcessRunner()) {
-        self.remote = remote
-        self.local = local
+    init(host: HostRunner = HostRunner()) {
+        self.host = host
     }
 
     var isPolling: Bool { timer != nil }
 
-    func start(_ target: ContextTarget) {
+    func start(_ target: CommandTarget) {
         if current == target, timer != nil { return }
         current = target
         clearState()
@@ -58,20 +42,10 @@ final class ContextStore: ObservableObject {
         let key = target.key
         guard inFlight != key else { return }
         inFlight = key
-        let remote = self.remote
-        let local = self.local
+        let host = self.host
+        let command = LocalContext.command(for: target)
         Task.detached {
-            let out: String?
-            switch target {
-            case let .remote(alias, session):
-                out = try? remote.run(
-                    alias: alias, args: ["devmachine-infer", "--session", session])
-            case let .local(path):
-                out = try? local.run(
-                    executable: LocalContext.scriptPath,
-                    args: LocalContext.arguments(path: path),
-                    environment: LocalContext.environment())
-            }
+            let out = try? host.runCapturingAnywhere(target, command).stdout
             let parsed: ContextState? = out
                 .flatMap { $0.data(using: .utf8) }
                 .flatMap { try? JSONDecoder().decode(ContextState.self, from: $0) }
@@ -97,17 +71,25 @@ final class ContextStore: ObservableObject {
 /// The context engine as it runs on this Mac. Installed by the operator repo
 /// (`ansible/mac.yml --tags mac_infer`), the same script the hosts run.
 enum LocalContext {
+    /// One engine, two sides: the host already has `devmachine-infer` on its
+    /// PATH, and here it is the script this Mac installed.
+    static func command(for target: CommandTarget) -> String {
+        switch target {
+        case let .remote(_, session):
+            return "devmachine-infer --session \(RemoteCommands.shellSingleQuoted(session))"
+        case let .local(_, path):
+            return RemoteCommands.shellSingleQuoted(scriptPath)
+                + " --project "
+                + RemoteCommands.shellSingleQuoted((path as NSString).expandingTildeInPath)
+        }
+    }
+
     static var scriptPath: String {
         NSHomeDirectory() + "/.local/bin/devmachine-infer"
     }
 
     static var isInstalled: Bool {
         FileManager.default.isExecutableFile(atPath: scriptPath)
-    }
-
-    /// No session name: `zmx` is not `tmux`, so the folder is passed straight in.
-    static func arguments(path: String) -> [String] {
-        ["--project", (path as NSString).expandingTildeInPath]
     }
 
     /// A login shell's PATH is not inherited by an app started from Finder, and

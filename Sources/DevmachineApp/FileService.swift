@@ -2,14 +2,14 @@ import Foundation
 import DevmachineCore
 
 struct FileService: Sendable {
-    let remote: RemoteService
+    let host: HostRunner
 
-    init(remote: RemoteService = RemoteService()) {
-        self.remote = remote
+    init(host: HostRunner = HostRunner()) {
+        self.host = host
     }
 
-    func list(alias: String, path: String) throws -> [FileEntry] {
-        let output = try remote.run(alias: alias, args: [listCommand(path: path)])
+    func list(_ target: CommandTarget, path: String) throws -> [FileEntry] {
+        let output = try host.runCapturingAnywhere(target, listCommand(path: path)).stdout
         return FileListParser.parse(output)
     }
 

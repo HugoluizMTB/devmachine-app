@@ -38,6 +38,16 @@ public enum Zmx {
     public static let listArguments = ["ls"]
     public static func killArguments(name: String) -> [String] { ["kill", name] }
 
+    /// Raw input for a session, as if it were typed. There is no trailing
+    /// newline, so text lands in a prompt without running it.
+    public static func sendArguments(name: String, text: String) -> [String] {
+        ["send", name, text]
+    }
+
+    /// The carriage return a terminal sends for Return; `\n` reaches some
+    /// programs as a line feed instead, which is not the same key.
+    public static let enterText = "\r"
+
     /// The session's shell, from a listing, so the program running in it can be
     /// asked to repaint.
     public static func pid(of session: String, in listing: String) -> Int? {

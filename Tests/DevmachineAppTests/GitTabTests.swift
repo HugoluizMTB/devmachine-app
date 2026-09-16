@@ -74,7 +74,7 @@ final class GitTabTests: XCTestCase {
 
     func testTheContextTabStripKeepsTheHeaderHeight() throws {
         let model = AppModel(store: SessionStore(runner: SilentRunner()))
-        let panel = ContextPanel(store: ContextStore(remote: RemoteService(runner: SilentRunner())))
+        let panel = ContextPanel(store: ContextStore(host: HostRunner(remote: RemoteService(runner: SilentRunner()))))
             .environmentObject(model)
             .environmentObject(SkillsStore())
             .frame(width: 300, height: 400)

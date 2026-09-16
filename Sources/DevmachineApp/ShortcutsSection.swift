@@ -1,8 +1,7 @@
 import SwiftUI
 
 struct ShortcutsSection: View {
-    let alias: String
-    let session: String
+    let target: CommandTarget
     @EnvironmentObject var skillsStore: SkillsStore
     @State private var showEditor = false
 
@@ -38,7 +37,7 @@ struct ShortcutsSection: View {
             FlowLayout(spacing: 4, rowSpacing: 4) {
                 ForEach(skillsStore.skills) { skill in
                     SkillButton(skill: skill) {
-                        skillsStore.send(skill, alias: alias, session: session)
+                        skillsStore.send(skill, to: target)
                     }
                 }
             }

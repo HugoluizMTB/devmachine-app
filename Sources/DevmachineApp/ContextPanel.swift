@@ -43,7 +43,8 @@ struct ContextPanel: View {
             return .remote(alias: alias, session: name)
         case let .localSession(name, path):
             let session = model.localSessions.first { $0.handle == name }
-            return .local(path: session.flatMap(model.localWorkingDirectory) ?? path)
+            return .local(
+                session: name, path: session.flatMap(model.localWorkingDirectory) ?? path)
         case nil:
             return nil
         }
@@ -71,8 +72,8 @@ struct ContextPanel: View {
 
     @ViewBuilder
     private var contextBody: some View {
-        if let session {
-            ShortcutsSection(alias: session.alias, session: session.name)
+        if let commandTarget {
+            ShortcutsSection(target: commandTarget)
         }
         if let state = store.state {
             ScrollView {

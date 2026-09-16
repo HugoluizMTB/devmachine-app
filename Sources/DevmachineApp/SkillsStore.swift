@@ -29,11 +29,11 @@ final class SkillsStore: ObservableObject {
         SkillCommand(label: "pr-voice", command: "/pr-voice", systemImage: "text.bubble")
     ]
 
-    private let remote: RemoteService
+    private let host: HostRunner
     private let defaults: UserDefaults
 
-    init(remote: RemoteService = RemoteService(), defaults: UserDefaults = .standard) {
-        self.remote = remote
+    init(host: HostRunner = HostRunner(), defaults: UserDefaults = .standard) {
+        self.host = host
         self.defaults = defaults
         self.skills = Self.load(from: defaults)
     }
@@ -66,10 +66,10 @@ final class SkillsStore: ObservableObject {
         persist()
     }
 
-    func send(_ skill: SkillCommand, alias: String, session: String) {
-        let remote = self.remote
+    func send(_ skill: SkillCommand, to target: CommandTarget) {
+        let host = self.host
         Task.detached {
-            _ = try? remote.run(alias: alias, args: [RemoteCommands.sendKeys(session: session, text: skill.command)])
+            try? host.send(skill.command, into: target)
         }
     }
 }
