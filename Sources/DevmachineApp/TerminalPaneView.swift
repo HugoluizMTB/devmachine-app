@@ -28,30 +28,7 @@ struct TerminalPaneView: NSViewRepresentable {
         }
 
         let term = TerminalRegistry.shared.terminal(for: kind)
-        let settings = SettingsStore.shared.settings
-        let opacity = Appearance.clampTerminalOpacity(
-            settings?.terminalOpacity ?? Appearance.defaultTerminalOpacity)
-        let background = translucent
-            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255, alpha: opacity)
-            : NSColor(srgbRed: 0x14 / 255, green: 0x19 / 255, blue: 0x1F / 255, alpha: 1)
-        term.font = NSFont.monospacedSystemFont(
-            ofSize: Appearance.clampTerminalFontSize(
-                settings?.terminalFontSize ?? Appearance.defaultTerminalFontSize),
-            weight: .regular)
-        // The terminal always paints its own background, translucent or not. It
-        // used to be handed a clear color so the container could paint instead,
-        // and that left every cell the terminal did not redraw showing whatever
-        // was there before: a screen half old, half missing, and slow, since a
-        // large transparent layer is expensive to blend.
-        term.nativeBackgroundColor = background
-        term.wantsLayer = true
-        term.layer?.isOpaque = !translucent
-        container.wantsLayer = true
-        container.layer?.isOpaque = !translucent
-        // The ring of padding around the terminal, in the same colour, so the
-        // card reads as one surface. The terminal paints the rest.
-        container.layer?.backgroundColor = background.cgColor
-        term.nativeForegroundColor = NSColor(srgbRed: 0xC9 / 255, green: 0xCE / 255, blue: 0xD4 / 255, alpha: 1)
+        TerminalPaneView.applyAppearance(to: term, container: container, translucent: translucent)
 
         // Inset the terminal so text does not sit at 0,0; the container paints the
         // same background so the padding reads as part of the card.
@@ -80,7 +57,45 @@ struct TerminalPaneView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        // Don't call startProcess here: updateNSView runs many times.
+        // Don't call startProcess here: updateNSView runs many times. Appearance
+        // is re-applied, so a change in Settings reaches panes already on screen
+        // instead of waiting for the next time they are built.
+        guard let container = nsView as? TerminalContainerView,
+              let term = container.content as? LocalProcessTerminalView
+        else { return }
+        TerminalPaneView.applyAppearance(to: term, container: container, translucent: translucent)
+    }
+
+    /// Colours and font from Settings. The terminal always paints its own
+    /// background, translucent or not: handing it a clear colour left every cell
+    /// it did not redraw showing whatever was there before, which is a screen
+    /// half old and half missing, and slow, since a large transparent layer is
+    /// expensive to blend.
+    static func applyAppearance(
+        to term: LocalProcessTerminalView, container: NSView, translucent: Bool
+    ) {
+        let settings = SettingsStore.shared.settings
+        let opacity = Appearance.clampTerminalOpacity(
+            settings?.terminalOpacity ?? Appearance.defaultTerminalOpacity)
+        let background = translucent
+            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255, alpha: opacity)
+            : NSColor(srgbRed: 0x14 / 255, green: 0x19 / 255, blue: 0x1F / 255, alpha: 1)
+        let size = Appearance.clampTerminalFontSize(
+            settings?.terminalFontSize ?? Appearance.defaultTerminalFontSize)
+        if term.font.pointSize != size {
+            term.font = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+        }
+        term.nativeBackgroundColor = background
+        term.nativeForegroundColor =
+            NSColor(srgbRed: 0xC9 / 255, green: 0xCE / 255, blue: 0xD4 / 255, alpha: 1)
+        term.wantsLayer = true
+        term.layer?.isOpaque = !translucent
+        term.needsDisplay = true
+        container.wantsLayer = true
+        container.layer?.isOpaque = !translucent
+        // The ring of padding around the terminal, in the same colour, so the
+        // card reads as one surface. The terminal paints the rest.
+        container.layer?.backgroundColor = background.cgColor
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: ()) {

@@ -62,12 +62,10 @@ struct ContextPanel: View {
         if let state = store.state {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if !state.agents.isEmpty {
-                        agentsSection(state.agents)
-                    }
-                    if let plan = state.plan {
-                        planSection(plan)
-                    }
+                    runningSection("MONITORS", state.monitors)
+                    runningSection("SHELLS", state.shells)
+                    runningSection("SUB-AGENTS", state.agents)
+                    todoSection(state.plan)
                     if !state.prs.isEmpty {
                         prsSection(state.prs)
                     }
@@ -132,20 +130,31 @@ struct ContextPanel: View {
         DMSectionValue(text: trailing)
     }
 
-    private func agentsSection(_ agents: [ContextState.Agent]) -> some View {
+    private func runningSection(_ title: String, _ rows: [ContextState.Agent]) -> some View {
         DMSection(
             contentSpacing: 7,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
             showBottomDivider: true,
-            label: { sectionLabel("AGENTS") },
-            trailing: { sectionTrailing("\(agents.count)") }
+            label: { sectionLabel(title) },
+            trailing: { sectionTrailing("\(rows.count)") }
         ) {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(agents.enumerated()), id: \.offset) { _, agent in
-                    agentRow(agent)
+                if rows.isEmpty {
+                    emptyRow
+                } else {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        agentRow(row)
+                    }
                 }
             }
         }
+    }
+
+    private var emptyRow: some View {
+        Text("empty")
+            .font(.dm(12))
+            .foregroundStyle(Color.dmMuted)
+            .padding(.vertical, 5)
     }
 
     private func agentRow(_ agent: ContextState.Agent) -> some View {
@@ -162,19 +171,23 @@ struct ContextPanel: View {
         .padding(.vertical, 5)
     }
 
-    private func planSection(_ plan: ContextState.Plan) -> some View {
+    private func todoSection(_ plan: ContextState.Plan?) -> some View {
         DMSection(
             contentSpacing: 9,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
             showBottomDivider: true,
-            label: { sectionLabel("PLAN · \(plan.source)") },
-            trailing: { sectionTrailing("\(plan.done)/\(plan.total)") }
+            label: { sectionLabel("TODO") },
+            trailing: { sectionTrailing(plan.map { "\($0.done)/\($0.total)" } ?? "0") }
         ) {
-            DMProgressBar(done: plan.done, total: plan.total)
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(Array(plan.items.enumerated()), id: \.offset) { _, item in
-                    planItemRow(item)
+            if let plan {
+                DMProgressBar(done: plan.done, total: plan.total)
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(plan.items.enumerated()), id: \.offset) { _, item in
+                        planItemRow(item)
+                    }
                 }
+            } else {
+                emptyRow
             }
         }
     }

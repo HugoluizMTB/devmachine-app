@@ -22,9 +22,11 @@ struct ContextState: Codable, Equatable, Sendable {
     let prs: [PR]
     let links: [Link]
     let agents: [Agent]
+    let monitors: [Agent]
+    let shells: [Agent]
 
     enum CodingKeys: String, CodingKey {
-        case cwd, isClaude, updatedAt, plan, prs, links, agents
+        case cwd, isClaude, updatedAt, plan, prs, links, agents, monitors, shells
     }
 
     init(from decoder: Decoder) throws {
@@ -36,9 +38,12 @@ struct ContextState: Codable, Equatable, Sendable {
         prs = try c.decode([PR].self, forKey: .prs)
         links = try c.decode([Link].self, forKey: .links)
         agents = try c.decodeIfPresent([Agent].self, forKey: .agents) ?? []
+        monitors = try c.decodeIfPresent([Agent].self, forKey: .monitors) ?? []
+        shells = try c.decodeIfPresent([Agent].self, forKey: .shells) ?? []
     }
 
-    init(cwd: String, isClaude: Bool, updatedAt: String, plan: Plan?, prs: [PR], links: [Link], agents: [Agent] = []) {
+    init(cwd: String, isClaude: Bool, updatedAt: String, plan: Plan?, prs: [PR], links: [Link],
+         agents: [Agent] = [], monitors: [Agent] = [], shells: [Agent] = []) {
         self.cwd = cwd
         self.isClaude = isClaude
         self.updatedAt = updatedAt
@@ -46,5 +51,7 @@ struct ContextState: Codable, Equatable, Sendable {
         self.prs = prs
         self.links = links
         self.agents = agents
+        self.monitors = monitors
+        self.shells = shells
     }
 }
