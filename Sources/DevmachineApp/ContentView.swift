@@ -11,9 +11,21 @@ struct ContentView: View {
     @State private var contextDragStartWidth: CGFloat?
     @State private var viewerDragStartWidth: CGFloat? = nil
 
+    /// The context panel belongs to a session that holds a Claude, wherever it
+    /// runs: a local session has one too, and gating this on `.session` alone
+    /// is what kept the panel off screen for the Local workspace.
     private var isClaudeSession: Bool {
-        guard case let .session(alias, name) = model.selection else { return false }
-        return model.sessionsByAlias[alias]?.first(where: { $0.name == name })?.hasClaude ?? false
+        switch model.selection {
+        case let .session(alias, name):
+            return model.sessionsByAlias[alias]?
+                .first { $0.name == name }?.hasClaude ?? false
+        case let .localSession(name, _):
+            guard let session = model.localSessions.first(where: { $0.handle == name })
+            else { return false }
+            return model.localSessionHasClaude(session)
+        case nil:
+            return false
+        }
     }
 
     var body: some View {

@@ -602,6 +602,22 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testALocalSessionWithAClaudeIsATargetForTheContextPanel() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        let session = try! XCTUnwrap(model.localSessions.first { $0.handle == "acme" })
+
+        XCTAssertFalse(model.localSessionHasClaude(session))
+        model.acceptLocalScanForTesting(
+            sessions: [ZmxSession(name: "acme", pid: 4242, clients: 1, directory: "/live/acme")],
+            withClaude: ["acme"])
+
+        XCTAssertTrue(model.localSessionHasClaude(session))
+        XCTAssertEqual(model.localWorkingDirectory(of: session), "/live/acme")
+        model.removeLocalSession(handle: "acme")
+    }
+
+    @MainActor
     func testARemoteReferenceStaysRemote() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         let kind = model.terminalKind(for: SessionRef(alias: "acme-devmachine", name: "dash"))

@@ -123,6 +123,12 @@ final class AppModel: ObservableObject {
 
     private var localScanInFlight = false
 
+    /// Fills what a scan would have found, for tests that must not run `zmx`.
+    func acceptLocalScanForTesting(sessions: [ZmxSession], withClaude: Set<String>) {
+        liveLocalSessions = sessions
+        localClaudeSessions = withClaude
+    }
+
     private var operatorPath: String {
         settings?.opsRepoPath ?? NSHomeDirectory()
     }
