@@ -104,13 +104,14 @@ struct FileViewerView: View {
             if store.showsSource {
                 scroll { code(preview.text ?? "", language: "markdown") }
             } else {
-                ScrollView {
+                ScrollView(.vertical) {
                     Markdown(preview.text ?? "")
                         .markdownTheme(.gitHub)
                         .textSelection(.enabled)
                         .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+                .defaultScrollAnchor(.top)
             }
         case .text:
             scroll {
@@ -153,15 +154,20 @@ struct FileViewerView: View {
     ) -> some View {
         let body = text.hasSuffix("\n") ? String(text.dropLast()) : text
         let count = body.split(separator: "\n", omittingEmptySubsequences: false).count
-        return HStack(alignment: .top, spacing: 10) {
+        return HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .trailing, spacing: 0) {
                 ForEach(1...max(count, 1), id: \.self) { number in
                     Text(verbatim: "\(number)")
                         .font(.dm(12, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.25))
+                        .foregroundStyle(.white.opacity(0.28))
                 }
             }
             .fixedSize()
+            .padding(.trailing, 10)
+            Rectangle()
+                .fill(Color.white.opacity(0.07))
+                .frame(width: 1)
+                .padding(.trailing, 12)
             content()
         }
     }
@@ -178,11 +184,22 @@ struct FileViewerView: View {
         }
     }
 
+    /// The file starts at the top left corner and fills the pane, the way an
+    /// editor shows one. A plain scroll view centres content smaller than its
+    /// viewport, which made a ten-line file float in the middle of the pane.
     private func scroll<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        ScrollView([.horizontal, .vertical]) {
-            content()
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+        let body = content()
+        return GeometryReader { proxy in
+            ScrollView([.horizontal, .vertical]) {
+                body
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .frame(
+                        minWidth: proxy.size.width,
+                        minHeight: proxy.size.height,
+                        alignment: .topLeading)
+            }
+            .defaultScrollAnchor(.topLeading)
         }
     }
 
