@@ -38,14 +38,18 @@ struct TerminalPaneView: NSViewRepresentable {
             ofSize: Appearance.clampTerminalFontSize(
                 settings?.terminalFontSize ?? Appearance.defaultTerminalFontSize),
             weight: .regular)
-        // Translucent: only the container paints the background. If the terminal
-        // painted the same alpha color too, the text area would double-blend and
-        // read as a different shade than the padding ring around it.
-        term.nativeBackgroundColor = translucent ? .clear : background
+        // The terminal always paints its own background, translucent or not. It
+        // used to be handed a clear color so the container could paint instead,
+        // and that left every cell the terminal did not redraw showing whatever
+        // was there before: a screen half old, half missing, and slow, since a
+        // large transparent layer is expensive to blend.
+        term.nativeBackgroundColor = background
         term.wantsLayer = true
         term.layer?.isOpaque = !translucent
         container.wantsLayer = true
         container.layer?.isOpaque = !translucent
+        // The ring of padding around the terminal, in the same colour, so the
+        // card reads as one surface. The terminal paints the rest.
         container.layer?.backgroundColor = background.cgColor
         term.nativeForegroundColor = NSColor(srgbRed: 0xC9 / 255, green: 0xCE / 255, blue: 0xD4 / 255, alpha: 1)
 

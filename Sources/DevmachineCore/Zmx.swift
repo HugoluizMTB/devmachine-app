@@ -38,6 +38,12 @@ public enum Zmx {
     public static let listArguments = ["ls"]
     public static func killArguments(name: String) -> [String] { ["kill", name] }
 
+    /// The session's shell, from a listing, so the program running in it can be
+    /// asked to repaint.
+    public static func pid(of session: String, in listing: String) -> Int? {
+        ZmxListParser.parse(listing).first { $0.name == session }?.pid
+    }
+
     /// `SHELL` because without it the multiplexer starts `/bin/sh`, and the
     /// detach key off because the app's own UI decides when a pane detaches,
     /// and the default binding would swallow the quit signal instead.

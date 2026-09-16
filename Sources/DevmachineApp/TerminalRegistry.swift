@@ -204,11 +204,30 @@ final class TerminalRegistry: NSObject {
                         + [RemoteCommands.refreshClient(session: session)],
                     environment: RemoteCommands.sshEnvironment())
             }
-        case .local:
-            // Nothing: an earlier version killed the client and started another
-            // in the same view, which left the keyboard wired to the process
-            // that had just died — the pane stopped accepting input entirely.
-            break
+        case let .local(session, _):
+            // No refresh command in the local multiplexer, so the program is
+            // asked directly with the window-changed signal — the same one a
+            // resize sends. Nothing is killed and no size changes.
+            guard let zmx = LocalTools.zmxPath() else { return }
+            PaneLog.log("repaint pane=\(kind)")
+            let socketDirectory = Zmx.socketDirectory()
+            let name = Zmx.sessionName(from: session, socketDirectory: socketDirectory)
+            Task.detached {
+                let runner = ProcessRunner()
+                guard let listing = try? runner.run(
+                    executable: zmx, args: Zmx.listArguments,
+                    environment: ["ZMX_DIR": socketDirectory]),
+                    let pid = Zmx.pid(of: name, in: listing),
+                    let tpgid = try? runner.run(
+                        executable: "/bin/ps", args: ProcessTree.tpgidArguments(pid: pid),
+                        environment: nil),
+                    let group = ProcessTree.foregroundGroup(fromTPGID: tpgid)
+                else { return }
+                _ = try? runner.run(
+                    executable: "/bin/kill",
+                    args: ProcessTree.windowChangedArguments(group: group),
+                    environment: nil)
+            }
         }
     }
 
