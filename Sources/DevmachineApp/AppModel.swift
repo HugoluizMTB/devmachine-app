@@ -132,7 +132,15 @@ final class AppModel: ObservableObject {
             syncContext()
         }
     }
-    @Published var activePage: AppPage? = nil
+    @Published var activePage: AppPage? = nil {
+        didSet {
+            // Coming back from a page leaves the pane exactly as it was, so the
+            // program inside is never told to draw again and the screen stays
+            // stale. Same repaint the app asks for after a pane is put away.
+            guard activePage == nil, oldValue != nil, let selection else { return }
+            TerminalRegistry.shared.requestRepaint(selection.terminalKind)
+        }
+    }
     @Published var settings: AppSettings? = nil
     @Published var stackCellSizes: [String: StackCellSize] = AppModel.loadStackCellSizes() {
         didSet { AppModel.saveStackCellSizes(stackCellSizes) }

@@ -93,9 +93,11 @@ struct TerminalPaneView: NSViewRepresentable {
         term.needsDisplay = true
         container.wantsLayer = true
         container.layer?.isOpaque = !translucent
-        // The ring of padding around the terminal, in the same colour, so the
-        // card reads as one surface. The terminal paints the rest.
-        container.layer?.backgroundColor = background.cgColor
+        // Behind a translucent terminal the container paints nothing: its colour
+        // would sit under the terminal's own and the two alphas would add up,
+        // which is why the pane looked solid at any setting. Opaque panes still
+        // get it, so the ring of padding matches the text area.
+        container.layer?.backgroundColor = translucent ? NSColor.clear.cgColor : background.cgColor
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: ()) {

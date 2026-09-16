@@ -192,6 +192,14 @@ final class TerminalRegistry: NSObject {
     /// program inside is never told to draw again and the screen stays as it
     /// was left, which can be nearly empty. Each multiplexer is asked to repaint
     /// in its own way.
+    /// Asks the program in a pane to draw its screen again, for a pane that is
+    /// back on screen without anything having changed.
+    func requestRepaint(_ kind: TerminalKind) {
+        guard terminals[kind] != nil else { return }
+        reattached.insert(kind)
+        redrawAfterReattach(kind)
+    }
+
     private func redrawAfterReattach(_ kind: TerminalKind) {
         guard reattached.remove(kind) != nil else { return }
         switch kind {
