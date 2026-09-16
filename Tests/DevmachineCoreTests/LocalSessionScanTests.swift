@@ -44,3 +44,4 @@ final class LocalSessionScanTests: XCTestCase {
         XCTAssertEqual(merged.first?.name, "Client work")
     }
 }
+

@@ -26,6 +26,27 @@ private final class ContextRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
+private final class RecordingRunner: CommandRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private let output: String
+    private var invocations: [(String, [String], [String: String]?)] = []
+
+    init(output: String) { self.output = output }
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        lock.lock()
+        invocations.append((executable, args, environment))
+        lock.unlock()
+        return output
+    }
+
+    var calls: [(String, [String], [String: String]?)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return invocations
+    }
+}
+
 @MainActor
 private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async throws {
     let deadline = Date().addingTimeInterval(timeout)
@@ -50,7 +71,7 @@ final class ContextStoreTests: XCTestCase {
         let store = ContextStore(remote: RemoteService(runner: runner))
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.state != nil }
 
         let changes = ChangeCounter()
@@ -70,7 +91,7 @@ final class ContextStoreTests: XCTestCase {
         let store = ContextStore(remote: RemoteService(runner: runner))
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { runner.callCount == 1 }
 
         store.poll()
@@ -85,11 +106,39 @@ final class ContextStoreTests: XCTestCase {
         try await waitUntil { runner.callCount == 2 }
     }
 
+    func testALocalTargetRunsTheEngineHereWithTheFolder() async throws {
+        let local = RecordingRunner(output: contextJSON)
+        let remote = ContextRunner(output: contextJSON)
+        let store = ContextStore(remote: RemoteService(runner: remote), local: local)
+        defer { store.stop() }
+
+        store.start(.local(path: "/Users/alice/dev/acme"))
+        try await waitUntil { store.state != nil }
+
+        XCTAssertEqual(remote.callCount, 0)
+        let call = try XCTUnwrap(local.calls.first)
+        XCTAssertTrue(call.0.hasSuffix("/.local/bin/devmachine-infer"))
+        XCTAssertEqual(call.1, ["--project", "/Users/alice/dev/acme"])
+        XCTAssertNotNil(call.2?["PATH"])
+    }
+
+    func testSwitchingFromRemoteToLocalRestartsThePoll() async throws {
+        let local = RecordingRunner(output: contextJSON)
+        let remote = ContextRunner(output: contextJSON)
+        let store = ContextStore(remote: RemoteService(runner: remote), local: local)
+        defer { store.stop() }
+
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
+        try await waitUntil { remote.callCount == 1 }
+        store.start(.local(path: "/Users/alice/dev/acme"))
+        try await waitUntil { local.calls.count == 1 }
+    }
+
     func testStopClearsStateOnlyOnce() async throws {
         let runner = ContextRunner(output: contextJSON)
         let store = ContextStore(remote: RemoteService(runner: runner))
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.state != nil }
         store.stop()
 
@@ -101,5 +150,21 @@ final class ContextStoreTests: XCTestCase {
 
         XCTAssertNil(store.state)
         XCTAssertEqual(changes.count, 0)
+    }
+}
+
+@MainActor
+final class LocalContextTests: XCTestCase {
+    func testTheFolderIsPassedAsTheProjectWithATildeExpanded() {
+        XCTAssertEqual(
+            LocalContext.arguments(path: "~/dev/acme"),
+            ["--project", NSHomeDirectory() + "/dev/acme"])
+    }
+
+    func testThePathCarriesTheToolsTheEngineShellsOutTo() {
+        let path = LocalContext.environment(home: "/Users/alice")["PATH"] ?? ""
+        XCTAssertTrue(path.contains("/Users/alice/.local/bin"))
+        XCTAssertTrue(path.contains("/opt/homebrew/bin"))
+        XCTAssertTrue(path.contains("/usr/bin"))
     }
 }

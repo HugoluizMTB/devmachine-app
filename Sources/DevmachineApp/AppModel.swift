@@ -66,6 +66,14 @@ final class AppModel: ObservableObject {
         return liveLocalSessions.contains { $0.name == name }
     }
 
+    /// Where the shell is now, which is not always where it started: the
+    /// multiplexer reports the live folder, and that is what the context engine
+    /// has to read.
+    func localWorkingDirectory(of session: LocalSession) -> String? {
+        let name = LocalSessionScan.multiplexerName(of: session)
+        return liveLocalSessions.first { $0.name == name }?.directory
+    }
+
     func localSessionHasClaude(_ session: LocalSession) -> Bool {
         localClaudeSessions.contains(LocalSessionScan.multiplexerName(of: session))
     }
@@ -740,14 +748,31 @@ final class AppModel: ObservableObject {
     // whenever selection changes to a Claude session, (re)start the poll; else stop.
     // Another context tab on screen also stops it: only the visible tab polls.
     func syncContext() {
-        if case let .session(alias, name) = selection,
-           let ws = sessionsByAlias[alias]?.first(where: { $0.name == name }), ws.hasClaude,
-           contextTab == .context {
-            context.start(alias: alias, session: name)
-        } else {
+        guard contextTab == .context, let target = contextTarget(for: selection) else {
             context.stop()
+            updateSelectionPoll()
+            return
         }
+        context.start(target)
         updateSelectionPoll()
+    }
+
+    /// Only a session that holds a Claude has a context to read, and a local one
+    /// also needs the engine installed here.
+    private func contextTarget(for item: SidebarItem?) -> ContextTarget? {
+        switch item {
+        case let .session(alias, name):
+            guard let ws = sessionsByAlias[alias]?.first(where: { $0.name == name }),
+                  ws.hasClaude else { return nil }
+            return .remote(alias: alias, session: name)
+        case let .localSession(name, path):
+            guard LocalContext.isInstalled,
+                  let session = localSessions.first(where: { $0.handle == name }),
+                  localSessionHasClaude(session) else { return nil }
+            return .local(path: localWorkingDirectory(of: session) ?? path)
+        case nil:
+            return nil
+        }
     }
 
     // 5s poll of only the selected session's workspace; no session selected, no poll.
