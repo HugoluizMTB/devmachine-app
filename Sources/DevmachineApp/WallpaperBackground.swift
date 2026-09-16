@@ -70,7 +70,10 @@ struct WallpaperBackground: View {
         case .bundled:
             return bundled
         case .unsplash(let id):
-            guard let image = wallpapers.images[id] else { return bundled }
+            // The plain gradient while the chosen photo is read from disk, not
+            // the bundled one: showing another photo for an instant reads as the
+            // app flashing a wallpaper the owner did not pick.
+            guard let image = wallpapers.images[id] else { return nil }
             return WallpaperBaker.image(key: "unsplash:" + id, style: style) { image }
         case .gradient(let name):
             let gradient = WallpaperGradient.named(name)
