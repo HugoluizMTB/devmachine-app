@@ -47,4 +47,33 @@ final class ContextStateTests: XCTestCase {
         XCTAssertNotEqual(dash.id, engineering.id)
         XCTAssertEqual(dash.id, "acme/dash#11062")
     }
+
+    func testDecodesMonitorsAndShells() throws {
+        let json = """
+        {"cwd":"/home/dev","isClaude":true,"updatedAt":"2026-09-12T10:00:00Z",
+         "plan":null,"prs":[],"links":[],
+         "agents":[{"label":"Audit ship readiness","status":"running"}],
+         "monitors":[{"label":"CI for PR 4982","status":"running"}],
+         "shells":[{"label":"Deploy the thing","status":"running"}]}
+        """.data(using: .utf8)!
+
+        let state = try JSONDecoder().decode(ContextState.self, from: json)
+
+        XCTAssertEqual(state.monitors.map(\.label), ["CI for PR 4982"])
+        XCTAssertEqual(state.shells.map(\.label), ["Deploy the thing"])
+        XCTAssertEqual(state.agents.map(\.label), ["Audit ship readiness"])
+    }
+
+    /// An older engine on the VPS does not send the new keys; the panel still loads.
+    func testDecodesWithoutMonitorsAndShells() throws {
+        let json = """
+        {"cwd":"/home/dev","isClaude":true,"updatedAt":"2026-09-12T10:00:00Z",
+         "plan":null,"prs":[],"links":[],"agents":[]}
+        """.data(using: .utf8)!
+
+        let state = try JSONDecoder().decode(ContextState.self, from: json)
+
+        XCTAssertEqual(state.monitors, [])
+        XCTAssertEqual(state.shells, [])
+    }
 }
