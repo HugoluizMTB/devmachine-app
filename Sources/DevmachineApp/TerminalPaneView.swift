@@ -33,9 +33,11 @@ struct TerminalPaneView: NSViewRepresentable {
         let term = TerminalRegistry.shared.terminal(for: kind)
         TerminalPaneView.applyAppearance(to: term, container: container, translucent: translucent)
 
-        // Inset the terminal so text does not sit at 0,0; the container paints the
-        // same background so the padding reads as part of the card.
-        term.frame = container.contentFrame
+        // The frame is not set here on purpose. A container starts at a
+        // placeholder size, and giving that to a terminal whose session is
+        // already running resizes the program to it — a live tmux rewraps its
+        // screen to 40 by 15 and loses characters. The real size comes once the
+        // pane is in a window.
         container.addSubview(term)
         container.content = term
         TerminalRegistry.shared.viewDidAttach(kind)
@@ -43,10 +45,28 @@ struct TerminalPaneView: NSViewRepresentable {
         // pane actually has. An earlier version shrank the pane by a row and
         // restored it to force a repaint; that left the last row unpainted,
         // which is worse than the blank pane it was meant to fix.
+        sizeWhenOnScreen(container: container, term: term, attempt: 0)
+        return container
+    }
+
+    /// The pane is measured only once it is in a window. SwiftUI probes a
+    /// representable with sizes that are not the pane's — 2 by 1 cells among
+    /// them — and every one of those reaches the program as a resize, which
+    /// makes a remote tmux rewrap the screen and lose characters.
+    private func sizeWhenOnScreen(
+        container: TerminalContainerView, term: LocalProcessTerminalView, attempt: Int
+    ) {
         DispatchQueue.main.async { [weak container, weak term] in
             guard let container, let term, term.superview === container else { return }
-            term.frame = container.contentFrame
-            term.requestRedraw()
+            guard container.window != nil else {
+                guard attempt < 20 else {
+                    PaneLog.log("gave up sizing pane=\(kind): never reached a window")
+                    return
+                }
+                sizeWhenOnScreen(container: container, term: term, attempt: attempt + 1)
+                return
+            }
+            container.applyContentFrame()
             // Frame and grid together: when the content stops halfway down the
             // pane, these two disagree, and the pair says which one is wrong.
             let grid = term.getWindowSize()
@@ -56,7 +76,6 @@ struct TerminalPaneView: NSViewRepresentable {
             // Only now may the process start: it reads its size at startup.
             TerminalRegistry.shared.viewDidSize(kind)
         }
-        return container
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
@@ -129,8 +148,7 @@ struct TerminalPaneView: NSViewRepresentable {
 
         override func layout() {
             super.layout()
-            content?.frame = contentFrame
-            redrawContent()
+            applyContentFrame()
         }
 
         /// `needsDisplay` is dropped on the floor by SwiftTerm's Metal
@@ -140,14 +158,45 @@ struct TerminalPaneView: NSViewRepresentable {
             (content as? TerminalView)?.requestRedraw()
         }
 
+        /// Cell size in points, learned from a frame the terminal accepted. It
+        /// comes from the font, so one reading is good until the font changes.
+        private var cellSize: CGSize?
+
+        /// Gives the terminal the pane's size, but never a size that is only a
+        /// step in SwiftUI's measurement or a window being taken apart: the
+        /// program on the other end resizes with it, and a remote tmux that
+        /// rewraps to 2 columns and back comes back with characters missing.
+        func applyContentFrame() {
+            guard let content else { return }
+            guard window != nil else { return }
+            let target = contentFrame
+            if let cell = cellSize, cell.width > 0, cell.height > 0 {
+                let cols = Int(target.width / cell.width)
+                let rows = Int(target.height / cell.height)
+                guard TerminalSizeGuard.isUsable(cols: cols, rows: rows) else {
+                    PaneLog.log("skipped pane size cols=\(cols) rows=\(rows)")
+                    return
+                }
+            }
+            content.frame = target
+            if let term = content as? LocalProcessTerminalView {
+                let grid = term.getWindowSize()
+                if grid.ws_col > 0, grid.ws_row > 0 {
+                    cellSize = CGSize(
+                        width: target.width / CGFloat(grid.ws_col),
+                        height: target.height / CGFloat(grid.ws_row))
+                }
+            }
+            redrawContent()
+        }
+
         /// Kept as a no-op: masking the container to the ring also clipped the
         /// terminal inside it, and every pane went blank.
         func updateRingMask() {}
         var hasRingMask = false
 
         override func resizeSubviews(withOldSize oldSize: NSSize) {
-            content?.frame = contentFrame
-            redrawContent()
+            applyContentFrame()
         }
     }
 }

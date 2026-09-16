@@ -49,7 +49,7 @@ struct DevmachineApp: App {
             // menu is handled before the key reaches the focused view, and the
             // terminal is a view from AppKit that holds first responder, which
             // is where the hidden-button shortcuts were being lost.
-            CommandMenu("View") {
+            CommandGroup(after: .sidebar) {
                 Button("Toggle Sidebar") {
                     withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed.toggle() }
                 }
