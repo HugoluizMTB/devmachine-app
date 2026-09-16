@@ -30,6 +30,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var uiFontScale: Double
     /// Terminals kept connected in the background.
     public var keptTerminals: Int
+    /// Writes what happens around a terminal pane to a file. Off by default.
+    public var debugLogging: Bool
 
     public init(
         opsRepoPath: String,
@@ -40,7 +42,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         terminalOpacity: Double = Appearance.defaultTerminalOpacity,
         terminalFontSize: Double = Appearance.defaultTerminalFontSize,
         uiFontScale: Double = Appearance.defaultUIFontScale,
-        keptTerminals: Int = Appearance.defaultKeptTerminals
+        keptTerminals: Int = Appearance.defaultKeptTerminals,
+        debugLogging: Bool = false
     ) {
         self.opsRepoPath = opsRepoPath
         self.hostAlias = hostAlias
@@ -51,11 +54,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.terminalFontSize = Appearance.clampTerminalFontSize(terminalFontSize)
         self.uiFontScale = Appearance.clampUIFontScale(uiFontScale)
         self.keptTerminals = Appearance.clampKeptTerminals(keptTerminals)
+        self.debugLogging = debugLogging
     }
 
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, wallpaper
-        case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals
+        case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging
     }
 
     public init(from decoder: Decoder) throws {
@@ -78,6 +82,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keptTerminals = Appearance.clampKeptTerminals(
             try values.decodeIfPresent(Int.self, forKey: .keptTerminals)
                 ?? Appearance.defaultKeptTerminals)
+        debugLogging = try values.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? false
     }
 
     public static let empty = AppSettings(opsRepoPath: "", hostAlias: "", publicIP: "", baseDomain: "")

@@ -24,8 +24,17 @@ enum PaneLog {
         try? Data(tail).write(to: URL(fileURLWithPath: path))
     }
 
+    /// Only while Debug logging is on in Settings. Off, nothing is written and
+    /// nothing is measured.
     static var isEnabled: Bool {
-        FileManager.default.fileExists(atPath: (path as NSString).deletingLastPathComponent)
+        MainActor.assumeIsolated { SettingsStore.shared.settings?.debugLogging == true }
+    }
+
+    /// Makes the folder the log lives in, when the setting is turned on.
+    static func prepare() {
+        try? FileManager.default.createDirectory(
+            atPath: (path as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true)
     }
 
     /// Half a megabyte of history is plenty to read a bug from; past a

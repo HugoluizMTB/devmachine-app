@@ -20,6 +20,7 @@ struct SetupPage: View {
     @State private var terminalFontSize = Appearance.defaultTerminalFontSize
     @State private var uiFontScale = Appearance.defaultUIFontScale
     @State private var keptTerminals = Appearance.defaultKeptTerminals
+    @State private var debugLogging = false
 
     private var draft: AppSettings {
         AppSettings(
@@ -31,7 +32,8 @@ struct SetupPage: View {
             terminalOpacity: terminalOpacity,
             terminalFontSize: terminalFontSize,
             uiFontScale: uiFontScale,
-            keptTerminals: keptTerminals
+            keptTerminals: keptTerminals,
+            debugLogging: debugLogging
         )
     }
 
@@ -208,6 +210,22 @@ struct SetupPage: View {
                 step: 1,
                 reading: "\(keptTerminals)"
             )
+            Toggle(isOn: $debugLogging) {
+                Text(verbatim: "Debug logging")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            Text(verbatim: "Writes what happens around a terminal — the size a "
+                + "program is given, when it starts, when a pane is put away and "
+                + "brought back — to ~/.devmachine-app/terminal.log. Turn it on "
+                + "only while chasing something; off, nothing is written. The "
+                + "file keeps itself under a megabyte.")
+                .font(.dm(10))
+                .foregroundStyle(.white.opacity(0.45))
+                .fixedSize(horizontal: false, vertical: true)
+
             Text(verbatim: "A session you are not looking at stays connected, "
                 + "so switching back to it is instant. Each one costs a client "
                 + "process and its scrollback. Past this many, the one left "
@@ -394,6 +412,7 @@ struct SetupPage: View {
             terminalFontSize = current.terminalFontSize
             uiFontScale = current.uiFontScale
             keptTerminals = current.keptTerminals
+            debugLogging = current.debugLogging
             return
         }
 
@@ -426,6 +445,7 @@ struct SetupPage: View {
 
     private func save() {
         let value = draft
+        if value.debugLogging { PaneLog.prepare() }
         settingsStore.settings = value
         model.settings = value
         model.activePage = nil

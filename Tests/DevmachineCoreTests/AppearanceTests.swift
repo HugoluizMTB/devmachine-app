@@ -59,3 +59,24 @@ extension AppearanceTests {
         XCTAssertEqual(settings.keptTerminals, Appearance.defaultKeptTerminals)
     }
 }
+
+extension AppearanceTests {
+    func testDebugLoggingIsOffUnlessAsked() throws {
+        let json = """
+        {"opsRepoPath":"/x","hostAlias":"acme","publicIP":"203.0.113.10",
+         "baseDomain":"example.com"}
+        """
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertFalse(settings.debugLogging)
+    }
+
+    func testDebugLoggingSurvivesASaveAndRead() throws {
+        let settings = AppSettings(
+            opsRepoPath: "/x", hostAlias: "acme", publicIP: "203.0.113.10",
+            baseDomain: "example.com", debugLogging: true)
+        let data = try JSONEncoder().encode(settings)
+        let read = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertTrue(read.debugLogging)
+    }
+}
