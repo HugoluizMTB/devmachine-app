@@ -19,7 +19,7 @@ struct SidebarView: View {
                             alias: ws.alias,
                             offline: !ws.isLocal && model.offlineAliases.contains(ws.alias),
                             action: ws.isLocal ? pickLocalFolder : { model.newSession(alias: ws.alias) },
-                            stackable: !ws.isLocal,
+                            filesButton: !ws.isLocal,
                             extraTopSpacing: index > 0
                         )
                         if ws.isLocal {
@@ -165,7 +165,7 @@ struct SidebarView: View {
         alias: String,
         offline: Bool,
         action: (() -> Void)?,
-        stackable: Bool = true,
+        filesButton: Bool = true,
         extraTopSpacing: Bool
     ) -> some View {
         DMSection(
@@ -182,19 +182,19 @@ struct SidebarView: View {
                 }
             },
             trailing: {
-                if stackable {
-                    Button {
-                        model.stackWorkspace(alias)
-                    } label: {
-                        Image(systemName: model.isWorkspaceStacked(alias) ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2")
-                            .frame(width: 20, height: 16)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(model.isWorkspaceStacked(alias) ? Color.accentColor : Color.dmMuted)
-                    .font(.dm(11))
-                    .help("Workspace home")
+                Button {
+                    model.stackWorkspace(alias)
+                } label: {
+                    Image(systemName: model.isWorkspaceStacked(alias) ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2")
+                        .frame(width: 20, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(model.isWorkspaceStacked(alias) ? Color.accentColor : Color.dmMuted)
+                .font(.dm(11))
+                .help("Workspace home")
 
+                if filesButton {
                     Button {
                         openFiles(alias: alias)
                     } label: {

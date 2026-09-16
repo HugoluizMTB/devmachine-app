@@ -45,12 +45,13 @@ struct StackGridView: View {
 
     private func cell(_ ref: SessionRef) -> some View {
         TerminalPaneView(
-            kind: .remote(alias: ref.alias, session: ref.name),
+            kind: model.terminalKind(for: ref),
             translucent: true,
             contentInsets: NSEdgeInsets(top: 34, left: 10, bottom: 8, right: 10)
         )
             .overlay(alignment: .topLeading) {
-                Text("\(ref.alias) / \(ref.name)")
+                Text(ref.alias == Workspace.local.alias
+                     ? ref.name : "\(ref.alias) / \(ref.name)")
                     .font(.dm(11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 8)

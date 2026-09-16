@@ -218,8 +218,20 @@ final class AppModel: ObservableObject {
     }
 
     func stackWorkspace(_ alias: String) {
-        let refs = (sessionsByAlias[alias] ?? []).map { SessionRef(alias: alias, name: $0.name) }
+        let refs = alias == Workspace.local.alias
+            ? localSessions.map { SessionRef(alias: alias, name: $0.name) }
+            : (sessionsByAlias[alias] ?? []).map { SessionRef(alias: alias, name: $0.name) }
         stackSessions(refs)
+    }
+
+    /// Which terminal a reference stands for. The local workspace is the one
+    /// whose sessions run here, and those need the folder they started in.
+    func terminalKind(for ref: SessionRef) -> TerminalKind {
+        guard ref.alias == Workspace.local.alias else {
+            return .remote(alias: ref.alias, session: ref.name)
+        }
+        let path = localSessions.first { $0.name == ref.name }?.path ?? NSHomeDirectory()
+        return .local(session: ref.name, path: path)
     }
 
     func isStacked(_ ref: SessionRef) -> Bool {

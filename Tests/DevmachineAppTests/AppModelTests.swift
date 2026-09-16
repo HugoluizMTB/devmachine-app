@@ -430,6 +430,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isPollingPaused)
     }
 
+
+    @MainActor
+    func testStackingTheLocalWorkspaceUsesItsOwnSessions() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.stackWorkspace(Workspace.local.alias)
+
+        guard case let .stack(refs) = model.activePage else {
+            return XCTFail("the local workspace did not open as a stack")
+        }
+        XCTAssertEqual(refs.map(\.name), ["Operator", "acme"])
+        model.removeLocalSession(name: "acme")
+    }
+
+    @MainActor
+    func testALocalReferenceCarriesTheFolderItRunsIn() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+
+        let kind = model.terminalKind(
+            for: SessionRef(alias: Workspace.local.alias, name: "acme"))
+        XCTAssertEqual(kind, .local(session: "acme", path: "/Users/alice/dev/acme"))
+        model.removeLocalSession(name: "acme")
+    }
+
+    @MainActor
+    func testARemoteReferenceStaysRemote() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        let kind = model.terminalKind(for: SessionRef(alias: "acme-devmachine", name: "dash"))
+        XCTAssertEqual(kind, .remote(alias: "acme-devmachine", session: "dash"))
+    }
+
 }
 
 private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
