@@ -24,6 +24,11 @@ final class TerminalRegistry: NSObject {
     /// Terminals whose process ended on its own — a dropped connection, a shell
     /// that exited. The view is kept so returning to it reconnects in place.
     private var dead: Set<TerminalKind> = []
+    /// Views built but not started yet. A process must not begin while the view
+    /// still has its placeholder size: whatever runs inside draws the screen for
+    /// the size it is told at startup, and a program that repaints only on its
+    /// own schedule never corrects it.
+    private var awaitingSize: Set<TerminalKind> = []
     private(set) var pendingFocusKind: TerminalKind?
 
     private override init() {
@@ -124,7 +129,7 @@ final class TerminalRegistry: NSObject {
         let term = LegacyKeyboardTerminalView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         term.processDelegate = self
         term.optionAsMetaKey = false
-        start(kind, in: term)
+        awaitingSize.insert(kind)
         terminals[kind] = term
         return term
     }
@@ -169,6 +174,14 @@ final class TerminalRegistry: NSObject {
         window.makeFirstResponder(term)
     }
 
+    /// Called by the pane once the view has the size it will be drawn at. This
+    /// is when a process may begin: it then learns the real number of rows and
+    /// columns from its first breath.
+    func viewDidSize(_ kind: TerminalKind) {
+        guard awaitingSize.remove(kind) != nil, let term = terminals[kind] else { return }
+        start(kind, in: term)
+    }
+
     /// Starts the process again in the same view, so the pane you return to
     /// shows the session instead of the message its client left behind.
     private func reviveIfDead(_ kind: TerminalKind, view: LocalProcessTerminalView) {
@@ -181,6 +194,7 @@ final class TerminalRegistry: NSObject {
     func close(_ kind: TerminalKind) {
         PaneLog.log("close pane=\(kind)")
         dead.remove(kind)
+        awaitingSize.remove(kind)
         detachedAt[kind] = nil
         if pendingFocusKind == kind { pendingFocusKind = nil }
         guard let term = terminals.removeValue(forKey: kind) else { return }

@@ -64,7 +64,9 @@ struct TerminalPaneView: NSViewRepresentable {
             term.frame = container.contentFrame
             term.needsDisplay = true
             PaneLog.log(
-                "attach pane=\(kind) frame=\(Int(term.frame.width))x\(Int(term.frame.height))")
+                "sized pane=\(kind) frame=\(Int(term.frame.width))x\(Int(term.frame.height))")
+            // Only now may the process start: it reads its size at startup.
+            TerminalRegistry.shared.viewDidSize(kind)
         }
         return container
     }

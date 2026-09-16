@@ -462,6 +462,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(kind, .remote(alias: "acme-devmachine", session: "dash"))
     }
 
+
+    @MainActor
+    func testATerminalWaitsForItsSizeBeforeTheProcessStarts() {
+        let registry = TerminalRegistry.shared
+        let kind = TerminalKind.local(session: "size-test", path: NSTemporaryDirectory())
+        defer { registry.close(kind) }
+
+        let view = registry.terminal(for: kind)
+        // Built, but nothing runs in it yet: the view still has the placeholder
+        // size, and a process started now would draw for the wrong geometry.
+        XCTAssertNil(view.process.running ? true : nil)
+    }
+
 }
 
 private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
