@@ -232,10 +232,18 @@ struct SidebarView: View {
     private func localSessionRow(session s: LocalSession) -> some View {
         let item = SidebarItem.localSession(name: s.handle, path: s.path)
         let isOpen = model.activePage == nil && model.selection == item
-        return row(title: s.name, claude: false, windows: 1, selected: isOpen)
+        let live = model.localSessionIsLive(s)
+        return row(
+            title: s.name,
+            claude: model.localSessionHasClaude(s),
+            // A session the multiplexer does not have yet is a name waiting for
+            // a shell, so it carries no client count.
+            windows: live ? 1 : nil,
+            selected: isOpen
+        )
             .contentShape(Rectangle())
             .onTapGesture { model.selection = item }
-            .help(s.path)
+            .help(live ? s.path : "\(s.path) — not started")
             .contextMenu {
                 Button("Rename…") {
                     model.pendingLocalRename = (handle: s.handle, current: s.name)

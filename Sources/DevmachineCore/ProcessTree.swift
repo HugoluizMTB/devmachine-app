@@ -21,4 +21,69 @@ public enum ProcessTree {
     public static func windowChangedArguments(group: Int) -> [String] {
         ["-WINCH", "-\(group)"]
     }
+
+    /// Every process on the machine, as pid, parent and program. One call is
+    /// enough to answer "what is running inside this session" for every
+    /// session, instead of one `ps` per session per poll.
+    public static let listArguments = ["-axo", "pid=,ppid=,comm="]
+
+    public struct Entry: Equatable, Sendable {
+        public let pid: Int
+        public let parent: Int
+        public let command: String
+
+        public init(pid: Int, parent: Int, command: String) {
+            self.pid = pid
+            self.parent = parent
+            self.command = command
+        }
+
+        /// The program name without its folder and without its arguments. A
+        /// login shell is printed as `-zsh`, so the leading dash comes off too.
+        public var program: String {
+            let head = command.split(separator: " ").first.map(String.init) ?? command
+            var name = (head as NSString).lastPathComponent
+            if name.hasPrefix("-") { name.removeFirst() }
+            return name
+        }
+    }
+
+    public static func parse(_ output: String) -> [Entry] {
+        output.split(separator: "\n").compactMap { line in
+            let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard fields.count >= 3,
+                  let pid = Int(fields[0]), let parent = Int(fields[1])
+            else { return nil }
+            let command = fields.dropFirst(2).joined(separator: " ")
+            return Entry(pid: pid, parent: parent, command: command)
+        }
+    }
+
+    /// Which of `roots` have `program` running under them, at any depth. This is
+    /// how a local session knows it holds a Claude: the shell is the root and
+    /// the program is its child.
+    public static func rootsRunning(
+        _ program: String, roots: [Int], in entries: [Entry]
+    ) -> Set<Int> {
+        var children: [Int: [Int]] = [:]
+        var byPid: [Int: Entry] = [:]
+        for entry in entries {
+            children[entry.parent, default: []].append(entry.pid)
+            byPid[entry.pid] = entry
+        }
+        var found = Set<Int>()
+        for root in roots {
+            var stack = [root]
+            var seen = Set<Int>()
+            while let pid = stack.popLast() {
+                guard seen.insert(pid).inserted else { continue }
+                if pid != root, byPid[pid]?.program == program {
+                    found.insert(root)
+                    break
+                }
+                stack.append(contentsOf: children[pid] ?? [])
+            }
+        }
+        return found
+    }
 }

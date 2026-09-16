@@ -44,14 +44,61 @@ final class AppModel: ObservableObject {
         didSet { UserDefaults.standard.set(localSessionNames, forKey: AppModel.localNamesKey) }
     }
 
+    /// What `zmx ls` last reported, and which of those sessions hold a Claude.
+    @Published private(set) var liveLocalSessions: [ZmxSession] = []
+    @Published private(set) var localClaudeSessions: Set<String> = []
+
     var localSessions: [LocalSession] {
-        let all = [LocalSession(name: Workspace.operatorSession, path: operatorPath)]
+        let remembered = [LocalSession(name: Workspace.operatorSession, path: operatorPath)]
             + addedLocalSessions
+        let all = LocalSessionScan.merge(
+            stored: remembered, live: liveLocalSessions, fallbackPath: NSHomeDirectory())
         return all.map { session in
             guard let shown = localSessionNames[session.handle] else { return session }
             return LocalSession(handle: session.handle, name: shown, path: session.path)
         }
     }
+
+    /// True while the multiplexer has this session, so the sidebar can tell a
+    /// shell that is running from one that only exists in the app's list.
+    func localSessionIsLive(_ session: LocalSession) -> Bool {
+        let name = LocalSessionScan.multiplexerName(of: session)
+        return liveLocalSessions.contains { $0.name == name }
+    }
+
+    func localSessionHasClaude(_ session: LocalSession) -> Bool {
+        localClaudeSessions.contains(LocalSessionScan.multiplexerName(of: session))
+    }
+
+    /// Reads the multiplexer's own list, then one `ps` to see what runs inside
+    /// each session. Both are local and cheap; neither touches the network.
+    func scanLocalSessions() {
+        guard !localScanInFlight, let zmx = LocalTools.zmxPath() else { return }
+        localScanInFlight = true
+        let socketDirectory = Zmx.socketDirectory()
+        Task.detached {
+            let runner = ProcessRunner()
+            let listing = (try? runner.run(
+                executable: zmx, args: Zmx.listArguments,
+                environment: ["ZMX_DIR": socketDirectory])) ?? ""
+            let sessions = ZmxListParser.parse(listing)
+            var withClaude = Set<String>()
+            if !sessions.isEmpty,
+               let processes = try? runner.run(
+                executable: "/bin/ps", args: ProcessTree.listArguments, environment: nil) {
+                let roots = ProcessTree.rootsRunning(
+                    "claude", roots: sessions.map(\.pid), in: ProcessTree.parse(processes))
+                withClaude = Set(sessions.filter { roots.contains($0.pid) }.map(\.name))
+            }
+            await MainActor.run {
+                self.localScanInFlight = false
+                if self.liveLocalSessions != sessions { self.liveLocalSessions = sessions }
+                if self.localClaudeSessions != withClaude { self.localClaudeSessions = withClaude }
+            }
+        }
+    }
+
+    private var localScanInFlight = false
 
     private var operatorPath: String {
         settings?.opsRepoPath ?? NSHomeDirectory()
@@ -67,12 +114,13 @@ final class AppModel: ObservableObject {
     }
 
     func removeLocalSession(handle: String) {
-        guard let s = addedLocalSessions.first(where: { $0.handle == handle }) else { return }
+        guard let s = localSessions.first(where: { $0.handle == handle }) else { return }
         TerminalRegistry.shared.close(.local(session: s.handle, path: s.path))
         // Closing the pane only drops this app's client; the multiplexer would
         // keep the shell running with nothing pointing at it.
         TerminalRegistry.shared.killLocalSession(named: s.handle)
         addedLocalSessions.removeAll { $0.handle == handle }
+        liveLocalSessions.removeAll { $0.name == LocalSessionScan.multiplexerName(of: s) }
         localSessionNames[handle] = nil
         if selection == .localSession(name: s.handle, path: s.path) { selection = nil }
     }
@@ -220,6 +268,7 @@ final class AppModel: ObservableObject {
     private var refreshingAliases: Set<String> = []
     private var sweepInFlight = false
     private var sweepTimer: Timer? = nil
+    private var localScanTimer: Timer? = nil
     private var pollPausedUntil = Date.distantPast
 
     init(store: SessionStore = SessionStore(runner: ProcessRunner())) {
@@ -566,6 +615,11 @@ final class AppModel: ObservableObject {
         sweepTimer?.invalidate()
         sweepTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshAll() }
+        }
+        scanLocalSessions()
+        localScanTimer?.invalidate()
+        localScanTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.scanLocalSessions() }
         }
     }
 
