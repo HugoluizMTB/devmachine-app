@@ -54,6 +54,13 @@ public enum RemoteCommands {
         "tmux rename-session -t \(shellSingleQuoted(session)) \(shellSingleQuoted(newName))"
     }
 
+    /// Asks tmux to draw the session again, without changing its size. Used
+    /// when a pane returns to the screen unchanged, which otherwise gives the
+    /// program inside no reason to repaint.
+    public static func refreshClient(session: String) -> String {
+        "tmux refresh-client -t \(shellSingleQuoted(session))"
+    }
+
     public static func killSession(name: String) -> String {
         "tmux kill-session -t \(shellSingleQuoted(name))"
     }

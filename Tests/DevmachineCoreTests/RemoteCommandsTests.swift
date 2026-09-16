@@ -127,3 +127,10 @@ extension RemoteCommandsTests {
             RemoteCommands.createSession(name: "x", directory: "/a'b").contains("'/a'\\''b'"))
     }
 }
+
+extension RemoteCommandsTests {
+    func testRefreshAsksTmuxToDrawAgain() {
+        XCTAssertEqual(
+            RemoteCommands.refreshClient(session: "main"), "tmux refresh-client -t 'main'")
+    }
+}

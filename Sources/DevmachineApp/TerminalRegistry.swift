@@ -29,6 +29,8 @@ final class TerminalRegistry: NSObject {
     /// the size it is told at startup, and a program that repaints only on its
     /// own schedule never corrects it.
     private var awaitingSize: Set<TerminalKind> = []
+    /// Panes that were put away and are now back on screen.
+    private var reattached: Set<TerminalKind> = []
     private(set) var pendingFocusKind: TerminalKind?
 
     private override init() {
@@ -140,6 +142,7 @@ final class TerminalRegistry: NSObject {
     func detach(_ kind: TerminalKind) {
         guard terminals[kind] != nil else { return }
         PaneLog.log("detach pane=\(kind)")
+        reattached.insert(kind)
         detachedAt[kind] = Date()
         for stale in LRUEviction.keysToEvict(detachedAt: detachedAt, cap: Self.detachedLimit) {
             close(stale)
@@ -178,8 +181,38 @@ final class TerminalRegistry: NSObject {
     /// is when a process may begin: it then learns the real number of rows and
     /// columns from its first breath.
     func viewDidSize(_ kind: TerminalKind) {
-        guard awaitingSize.remove(kind) != nil, let term = terminals[kind] else { return }
-        start(kind, in: term)
+        if awaitingSize.remove(kind) != nil, let term = terminals[kind] {
+            start(kind, in: term)
+            return
+        }
+        redrawAfterReattach(kind)
+    }
+
+    /// A pane that comes back at the size it left gets no size change, so the
+    /// program inside is never told to draw again and the screen stays as it
+    /// was left, which can be nearly empty. Each multiplexer is asked to repaint
+    /// in its own way.
+    private func redrawAfterReattach(_ kind: TerminalKind) {
+        guard reattached.remove(kind) != nil else { return }
+        switch kind {
+        case let .remote(alias, session):
+            PaneLog.log("refresh pane=\(kind)")
+            Task.detached {
+                _ = try? ProcessRunner().run(
+                    executable: "/usr/bin/ssh",
+                    args: RemoteCommands.sshBaseArgs(alias: alias)
+                        + [RemoteCommands.refreshClient(session: session)],
+                    environment: RemoteCommands.sshEnvironment())
+            }
+        case .local:
+            // zmx has no refresh command, but attaching again replays the whole
+            // screen, and locally that costs nothing.
+            guard let term = terminals[kind] else { return }
+            PaneLog.log("reattach pane=\(kind)")
+            term.terminate()
+            dead.remove(kind)
+            start(kind, in: term)
+        }
     }
 
     /// Starts the process again in the same view, so the pane you return to
@@ -195,6 +228,7 @@ final class TerminalRegistry: NSObject {
         PaneLog.log("close pane=\(kind)")
         dead.remove(kind)
         awaitingSize.remove(kind)
+        reattached.remove(kind)
         detachedAt[kind] = nil
         if pendingFocusKind == kind { pendingFocusKind = nil }
         guard let term = terminals.removeValue(forKey: kind) else { return }
