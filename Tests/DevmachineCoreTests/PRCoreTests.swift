@@ -76,6 +76,60 @@ final class PRCoreTests: XCTestCase {
         XCTAssertEqual(pr(1, repo: "a/b", head: "h", base: "main", draft: true, review: "APPROVED").rowState, .draft)
     }
 
+    // MARK: - lifecycle rowState
+
+    func testMergedBeatsReview() {
+        XCTAssertEqual(rowState(lifecycle: .merged, review: .approved), .merged)
+        XCTAssertEqual(rowState(lifecycle: .merged, review: .changesRequested), .merged)
+    }
+
+    func testClosedBeatsReview() {
+        XCTAssertEqual(rowState(lifecycle: .closed, review: .approved), .closed)
+    }
+
+    func testDraftBeatsReviewInLifecycle() {
+        XCTAssertEqual(rowState(lifecycle: .draft, review: .approved), .draft)
+    }
+
+    func testOpenTakesTheReview() {
+        XCTAssertEqual(rowState(lifecycle: .open, review: .approved), .approved)
+        XCTAssertEqual(rowState(lifecycle: .open, review: .changesRequested), .changesRequested)
+        XCTAssertEqual(rowState(lifecycle: .open, review: .required), .open)
+        XCTAssertEqual(rowState(lifecycle: .open, review: .none), .open)
+    }
+
+    func testUnknownLifecycleStillReadsTheReview() {
+        XCTAssertEqual(rowState(lifecycle: .unknown, review: .approved), .approved)
+    }
+
+    func testLifecycleFromInferStrings() {
+        XCTAssertEqual(PRLifecycle(inferState: "merged"), .merged)
+        XCTAssertEqual(PRLifecycle(inferState: "OPEN"), .open)
+        XCTAssertEqual(PRLifecycle(inferState: "closed"), .closed)
+        XCTAssertEqual(PRLifecycle(inferState: "draft"), .draft)
+        XCTAssertEqual(PRLifecycle(inferState: "nonsense"), .unknown)
+    }
+
+    func testReviewFromInferStrings() {
+        XCTAssertEqual(ReviewState(inferReview: "approved"), .approved)
+        XCTAssertEqual(ReviewState(inferReview: "changes"), .changesRequested)
+        XCTAssertEqual(ReviewState(inferReview: "required"), .required)
+        XCTAssertEqual(ReviewState(inferReview: "none"), .none)
+    }
+
+    func testCIFromInferStrings() {
+        XCTAssertEqual(CIState(inferCI: "pass"), .success)
+        XCTAssertEqual(CIState(inferCI: "fail"), .failure)
+        XCTAssertEqual(CIState(inferCI: "pending"), .pending)
+        XCTAssertEqual(CIState(inferCI: "none"), .none)
+        XCTAssertEqual(CIState(inferCI: ""), .none)
+    }
+
+    func testRowStateLabels() {
+        XCTAssertEqual(RowState.merged.label, "Merged")
+        XCTAssertEqual(RowState.closed.label, "Closed")
+    }
+
     // MARK: - buildStackForest
 
     func testStackForestChainOrderedRootToTop() {

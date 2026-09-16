@@ -8,15 +8,74 @@ public enum CIState: String, Sendable {
     case success, failure, pending, none
 }
 
+public enum PRLifecycle: String, Sendable {
+    case open, draft, merged, closed, unknown
+
+    public init(inferState: String) {
+        self = PRLifecycle(rawValue: inferState.lowercased()) ?? .unknown
+    }
+}
+
+public enum ReviewState: String, Sendable {
+    case approved, changesRequested, required, none
+
+    public init(inferReview: String) {
+        switch inferReview.lowercased() {
+        case "approved": self = .approved
+        case "changes", "changes_requested": self = .changesRequested
+        case "required", "review_required": self = .required
+        default: self = .none
+        }
+    }
+
+    public init(decision: String) {
+        switch decision.uppercased() {
+        case "APPROVED": self = .approved
+        case "CHANGES_REQUESTED": self = .changesRequested
+        case "REVIEW_REQUIRED": self = .required
+        default: self = .none
+        }
+    }
+}
+
+extension CIState {
+    public init(inferCI: String) {
+        switch inferCI.lowercased() {
+        case "pass", "success": self = .success
+        case "fail", "failure": self = .failure
+        case "pending", "running": self = .pending
+        default: self = .none
+        }
+    }
+}
+
 public enum RowState {
-    case draft, changesRequested, approved, open
+    case merged, closed, draft, changesRequested, approved, open
 
     public var label: String {
         switch self {
+        case .merged: return "Merged"
+        case .closed: return "Closed"
         case .draft: return "Draft"
         case .changesRequested: return "Changes requested"
         case .approved: return "Approved"
         case .open: return "Open"
+        }
+    }
+}
+
+// Where the PR is in its life comes first: a merged or closed PR keeps the
+// review it had, but that review no longer says what to do with it.
+public func rowState(lifecycle: PRLifecycle, review: ReviewState) -> RowState {
+    switch lifecycle {
+    case .merged: return .merged
+    case .closed: return .closed
+    case .draft: return .draft
+    case .open, .unknown:
+        switch review {
+        case .changesRequested: return .changesRequested
+        case .approved: return .approved
+        case .required, .none: return .open
         }
     }
 }
@@ -49,12 +108,8 @@ public struct PullRequest: Identifiable, Sendable {
     public var owner: String { repo.split(separator: "/").first.map(String.init) ?? repo }
 
     public var rowState: RowState {
-        if isDraft { return .draft }
-        switch reviewDecision {
-        case "CHANGES_REQUESTED": return .changesRequested
-        case "APPROVED": return .approved
-        default: return .open
-        }
+        DevmachineCore.rowState(lifecycle: isDraft ? .draft : .open,
+                                review: ReviewState(decision: reviewDecision))
     }
 }
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import DevmachineCore
 
 enum ContextTab: String, CaseIterable {
     case context
@@ -231,17 +232,34 @@ struct ContextPanel: View {
     }
 
     private func prRow(_ pr: ContextState.PR) -> some View {
-        HStack(spacing: 8) {
-            Text(verbatim: "#\(pr.number)")
-                .font(.dm(12, design: .monospaced))
-                .foregroundStyle(Color(hex: 0x5AA9E6))
-            Text(pr.repo)
-                .font(.dm(12))
-                .foregroundStyle(Color.dmRowText)
-                .lineLimit(1)
-            Spacer()
-            ciPill(pr.ci)
-            reviewMark(pr.review)
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: pr.rowState.glyph)
+                .font(.dm(11, weight: .semibold))
+                .foregroundStyle(pr.rowState.color)
+                .frame(width: 14)
+                .help(pr.rowState.label)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(verbatim: "#\(pr.number)")
+                        .font(.dm(12, design: .monospaced))
+                        .foregroundStyle(Color(hex: 0x5AA9E6))
+                    Text(pr.repo)
+                        .font(.dm(12))
+                        .foregroundStyle(Color.dmRowText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                if !pr.title.isEmpty {
+                    Text(pr.title)
+                        .font(.dm(11))
+                        .foregroundStyle(Color.dmMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            Spacer(minLength: 4)
+            threadsMark(pr.threads)
+            ciMark(pr.ciState)
         }
         .padding(.vertical, 5)
         .contentShape(Rectangle())
@@ -254,30 +272,28 @@ struct ContextPanel: View {
     }
 
     @ViewBuilder
-    private func ciPill(_ ci: String) -> some View {
-        switch ci {
-        case "pass":
-            DMPill(text: "CI", color: .green)
-        case "fail":
-            DMPill(text: "CI", color: .red)
-        case "pending":
-            DMPill(text: "CI", color: .yellow)
-        default:
-            EmptyView()
+    private func ciMark(_ ci: CIState) -> some View {
+        if ci != .none {
+            Image(systemName: ci.glyph)
+                .font(.dm(10, weight: .semibold))
+                .foregroundStyle(ci.color)
+                .frame(width: 18, height: 18)
+                .background(ci.color.opacity(0.12))
+                .clipShape(Circle())
+                .help(ci.help)
         }
     }
 
     @ViewBuilder
-    private func reviewMark(_ review: String) -> some View {
-        switch review {
-        case "approved":
-            Text("✓").font(.dm(12, weight: .semibold)).foregroundStyle(.green)
-        case "changes":
-            Text("✗").font(.dm(12, weight: .semibold)).foregroundStyle(.red)
-        case "required":
-            Text("!").font(.dm(12, weight: .semibold)).foregroundStyle(.yellow)
-        default:
-            EmptyView()
+    private func threadsMark(_ threads: Int?) -> some View {
+        if let count = threads, count > 0 {
+            HStack(spacing: 2) {
+                Image(systemName: "bubble.left.fill").font(.dm(9))
+                Text(verbatim: "\(count)").font(.dm(10, design: .monospaced))
+            }
+            .foregroundStyle(Color(hex: 0xE0B341))
+            .help(count == 1 ? "1 review comment to answer" : "\(count) review comments to answer")
+            .padding(.top, 2)
         }
     }
 

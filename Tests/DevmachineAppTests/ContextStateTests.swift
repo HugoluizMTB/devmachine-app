@@ -1,5 +1,6 @@
 import XCTest
 @testable import DevmachineApp
+import DevmachineCore
 
 final class ContextStateTests: XCTestCase {
     func testDecodesSample() throws {
@@ -46,6 +47,46 @@ final class ContextStateTests: XCTestCase {
             ci: "none", review: "none", state: "open")
         XCTAssertNotEqual(dash.id, engineering.id)
         XCTAssertEqual(dash.id, "acme/dash#11062")
+    }
+
+    func testPRStateMapsToRowState() {
+        func make(_ state: String, _ review: String, _ ci: String) -> ContextState.PR {
+            ContextState.PR(number: 1, repo: "acme/dash", title: "t", url: "u",
+                            ci: ci, review: review, state: state)
+        }
+        XCTAssertEqual(make("merged", "approved", "pass").rowState, .merged)
+        XCTAssertEqual(make("closed", "none", "none").rowState, .closed)
+        XCTAssertEqual(make("draft", "approved", "pending").rowState, .draft)
+        XCTAssertEqual(make("open", "changes", "fail").rowState, .changesRequested)
+        XCTAssertEqual(make("open", "none", "pending").rowState, .open)
+        XCTAssertEqual(make("open", "none", "pending").ciState, .pending)
+        XCTAssertEqual(make("open", "none", "pass").ciState, .success)
+    }
+
+    func testDecodesThreadCount() throws {
+        let json = """
+        {"cwd":"/home/dev","isClaude":true,"updatedAt":"2026-09-12T10:00:00Z",
+         "plan":null,"links":[],
+         "prs":[{"number":7,"repo":"acme/dash","title":"t","url":"u",
+                 "ci":"pass","review":"changes","state":"open","threads":3}]}
+        """.data(using: .utf8)!
+
+        let state = try JSONDecoder().decode(ContextState.self, from: json)
+
+        XCTAssertEqual(state.prs.first?.threads, 3)
+    }
+
+    func testThreadCountIsOptional() throws {
+        let json = """
+        {"cwd":"/home/dev","isClaude":true,"updatedAt":"2026-09-12T10:00:00Z",
+         "plan":null,"links":[],
+         "prs":[{"number":7,"repo":"acme/dash","title":"t","url":"u",
+                 "ci":"pass","review":"none","state":"open"}]}
+        """.data(using: .utf8)!
+
+        let state = try JSONDecoder().decode(ContextState.self, from: json)
+
+        XCTAssertNil(state.prs.first?.threads)
     }
 
     func testDecodesMonitorsAndShells() throws {

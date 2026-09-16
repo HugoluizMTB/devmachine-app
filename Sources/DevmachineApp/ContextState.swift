@@ -1,4 +1,5 @@
 import Foundation
+import DevmachineCore
 
 struct ContextState: Codable, Equatable, Sendable {
     struct Plan: Codable, Equatable, Sendable {
@@ -8,9 +9,16 @@ struct ContextState: Codable, Equatable, Sendable {
     struct PR: Codable, Equatable, Sendable, Identifiable {
         let number: Int; let repo: String; let title: String; let url: String
         let ci: String; let review: String; let state: String
+        var threads: Int?
         /// Two repositories can share a number, so the number alone is not an
         /// identity: a list keyed by it renders one row twice.
         var id: String { "\(repo)#\(number)" }
+        var lifecycle: PRLifecycle { PRLifecycle(inferState: state) }
+        var reviewState: ReviewState { ReviewState(inferReview: review) }
+        var ciState: CIState { CIState(inferCI: ci) }
+        var rowState: RowState {
+            DevmachineCore.rowState(lifecycle: lifecycle, review: reviewState)
+        }
     }
     struct Link: Codable, Equatable, Sendable { let url: String; let label: String; let kind: String }
     struct Agent: Codable, Equatable, Sendable { let label: String; let status: String }
