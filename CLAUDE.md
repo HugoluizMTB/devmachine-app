@@ -140,6 +140,11 @@ segmented control.
   click was the only thing marking a frame dirty.
 - Terminal layout is explicit (`TerminalContainerView.layout()`), not autoresizing
   masks — they lost the insets after SwiftUI's first sizing pass.
+- **The viewer reads, never writes.** `FileViewerStore` asks for size plus the
+  first 2 MB in base64 (`FilePreviewReader.command`), decides in Core what the
+  file is (code, markdown, image, binary, too large) and shows it. Highlighting
+  stops above 200 KB, where highlight.js blocks the interface long enough to
+  look broken.
 - **A panel reads through `CommandTarget`, never through an alias.** `HostRunner`
   runs the same command over ssh (in the tmux pane's folder) or here on the Mac
   (in the folder `zmx ls` reports), so Context, Files and Git work for a local
