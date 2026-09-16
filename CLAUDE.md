@@ -117,6 +117,11 @@ segmented control.
   large transparent layer is expensive to blend. Painting in both places at full
   alpha stacks them and the pane reads almost solid, so each gets the share that
   combines to the setting. A day went into this; don't collapse it back to one layer.
+- **The terminal fills its card: no padding ring, no stroke.** A ring around the
+  terminal carries only the container's share of the translucent colour, so it
+  reads lighter than the text area — a second border. Masking the container to
+  the ring is not the fix: a layer mask clips sublayers too, so it hid every
+  terminal and the app came up with no panes at all.
 - **A pane that returns unchanged gets no size change, so nothing redraws it.**
   Switching sessions, closing a page, coming back from the stack: the program was
   never told anything happened. The app asks explicitly — `tmux refresh-client` for
