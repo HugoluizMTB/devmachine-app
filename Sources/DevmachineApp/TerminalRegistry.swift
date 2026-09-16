@@ -7,7 +7,7 @@ import DevmachineCore
 /// SwiftUI containers come and go — single pane, stack grid — and re-attach
 /// the same view, so switching layouts never reconnects.
 @MainActor
-final class TerminalRegistry: NSObject, ObservableObject {
+final class TerminalRegistry: NSObject {
     static let shared = TerminalRegistry()
     /// How many detached terminals (and their clients) to keep around. Settable,
     /// because the right number is one per workspace plus the local ones: at
@@ -82,23 +82,6 @@ final class TerminalRegistry: NSObject, ObservableObject {
         }
     }
 
-    /// Sessions that wrote something in the last moment. Published so a row can
-    /// show it; coarse on purpose, since the point is "this one is working",
-    /// not how much.
-    @Published private(set) var working: Set<TerminalKind> = []
-    private var quietTimers: [TerminalKind: Timer] = [:]
-
-    func noteOutput(_ kind: TerminalKind) {
-        working.insert(kind)
-        quietTimers[kind]?.invalidate()
-        quietTimers[kind] = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { _ in
-            Task { @MainActor in
-                TerminalRegistry.shared.working.remove(kind)
-                TerminalRegistry.shared.quietTimers[kind] = nil
-            }
-        }
-    }
-
     /// The terminal that currently owns the keyboard, if any.
     private func focusedTerminal() -> LocalProcessTerminalView? {
         focusedEntry()?.view
@@ -146,7 +129,6 @@ final class TerminalRegistry: NSObject, ObservableObject {
             return live
         }
         let term = LegacyKeyboardTerminalView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
-        term.kind = kind
         term.processDelegate = self
         term.optionAsMetaKey = false
         awaitingSize.insert(kind)
@@ -351,17 +333,6 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
 // SwiftTerm's kitty encoding still breaks Enter and dead keys, so the view
 // drops both replies: programs keep the legacy encoding this app always ran.
 final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
-    /// What this view is showing, so output can be reported as activity.
-    var kind: TerminalKind?
-
-    /// Every byte the program writes passes here. The app uses only the fact
-    /// that something arrived, to mark the session as working in the sidebar.
-    override func dataReceived(slice: ArraySlice<UInt8>) {
-        super.dataReceived(slice: slice)
-        guard let kind else { return }
-        Task { @MainActor in TerminalRegistry.shared.noteOutput(kind) }
-    }
-
     /// The rows and columns handed to the program, logged as they are. An
     /// earlier version refused small sizes and returned the last good one; that
     /// made SwiftTerm believe the program had already been told the real size,

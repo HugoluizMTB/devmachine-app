@@ -5,7 +5,6 @@ import DevmachineCore
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
-    @ObservedObject private var registry = TerminalRegistry.shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -233,9 +232,7 @@ struct SidebarView: View {
     private func localSessionRow(session s: LocalSession) -> some View {
         let item = SidebarItem.localSession(name: s.name, path: s.path)
         let isOpen = model.activePage == nil && model.selection == item
-        return row(
-            title: s.name, claude: false, windows: 1, selected: isOpen,
-            working: registry.working.contains(.local(session: s.name, path: s.path)))
+        return row(title: s.name, claude: false, windows: 1, selected: isOpen)
             .contentShape(Rectangle())
             .onTapGesture { model.selection = item }
             .help(s.path)
@@ -269,8 +266,7 @@ struct SidebarView: View {
             title: s.name,
             claude: s.hasClaude,
             windows: s.windows,
-            selected: isOpen || isMultiSelected || model.isStacked(ref),
-            working: registry.working.contains(.remote(alias: alias, session: s.name))
+            selected: isOpen || isMultiSelected || model.isStacked(ref)
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -305,19 +301,15 @@ struct SidebarView: View {
         }
     }
 
-    private func row(
-        title: String, claude: Bool, windows: Int?, selected: Bool, working: Bool = false
-    ) -> some View {
+    private func row(title: String, claude: Bool, windows: Int?, selected: Bool) -> some View {
         DMRow(
             systemImage: claude ? "circle.fill" : "circle",
             iconColor: claude ? .orange : .dmMuted,
             title: title,
             selected: selected,
-            trailing: working
-                ? AnyView(WorkingIndicator())
-                : windows.map { count in
-                    AnyView(Text(verbatim: "\(count)").font(.dm(11)).foregroundStyle(Color.dmMuted))
-                }
+            trailing: windows.map { count in
+                AnyView(Text(verbatim: "\(count)").font(.dm(11)).foregroundStyle(Color.dmMuted))
+            }
         )
     }
 }
