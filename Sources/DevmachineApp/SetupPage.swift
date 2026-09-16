@@ -2,6 +2,46 @@ import SwiftUI
 import AppKit
 import DevmachineCore
 
+/// The panes of Settings. One column held every field before, which made a
+/// change to the font size a scroll past every wallpaper.
+enum SettingsSection: String, CaseIterable {
+    case connection, workspaces, appearance, terminal, advanced
+
+    var title: String {
+        switch self {
+        case .connection: return "Connection"
+        case .workspaces: return "Workspaces"
+        case .appearance: return "Appearance"
+        case .terminal: return "Terminal"
+        case .advanced: return "Advanced"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .connection: return "The host this app talks to, and the ops repo it applies."
+        case .workspaces: return "Which workspaces the sidebar shows and the app reaches."
+        case .appearance: return "The wallpaper behind the panes, and the size of the interface."
+        case .terminal: return "How a terminal looks, and how many stay connected."
+        case .advanced: return "Things to turn on only while chasing a problem."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .connection: return "network"
+        case .workspaces: return "square.grid.2x2"
+        case .appearance: return "photo"
+        case .terminal: return "terminal"
+        case .advanced: return "wrench.and.screwdriver"
+        }
+    }
+
+    /// Every field that can fail validation lives in Connection, so that is the
+    /// pane the rail marks when something is wrong.
+    var showsValidation: Bool { self == .connection }
+}
+
 struct SetupPage: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var settingsStore: SettingsStore
@@ -43,39 +83,148 @@ struct SetupPage: View {
 
     private var isFirstRun: Bool { !settingsStore.isConfigured }
 
+    @State private var section = SettingsSection.connection
+
     var body: some View {
         ZStack {
             WallpaperBackground(style: .photo, choice: wallpaper)
-            // The wallpaper grid can outgrow a 560pt window; scroll only then.
-            ViewThatFits(in: .vertical) {
-                cardBox
-                ScrollView(.vertical) { cardBox }
-                    .scrollIndicators(.hidden)
-            }
+            card
+                .frame(maxWidth: 940, maxHeight: 640)
+                .padding(24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onAppear { load() }
     }
 
-    private var cardBox: some View {
-        card
-            .frame(maxWidth: 480)
-            .padding(24)
+    private var card: some View {
+        HStack(spacing: 0) {
+            rail
+            Divider().overlay(Color.white.opacity(0.12))
+            VStack(spacing: 0) {
+                sectionBody
+                Divider().overlay(Color.white.opacity(0.12))
+                footer
+            }
+        }
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.14), lineWidth: 0.5)
+        )
+        .environment(\.colorScheme, .dark)
     }
 
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
+    /// The list of sections. Everything used to be one column, so a change to
+    /// the font size meant scrolling past every wallpaper.
+    private var rail: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(isFirstRun ? "Welcome" : "Settings")
-                    .font(.dm(26, weight: .semibold))
+                    .font(.dm(18, weight: .semibold))
                     .foregroundStyle(.white)
-                Text("The app talks to one host through ssh and keeps its ops repo on this Mac. Tell it where both are.")
-                    .font(.dm(12.5))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(isFirstRun ? "Tell the app where the host is." : "Devmachine")
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.5))
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
 
+            ForEach(SettingsSection.allCases, id: \.self) { item in
+                railRow(item)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(width: 208)
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private func railRow(_ item: SettingsSection) -> some View {
+        let selected = section == item
+        let broken = item.showsValidation && !issues.isEmpty
+        return HStack(spacing: 8) {
+            Image(systemName: item.systemImage)
+                .font(.dm(11))
+                .frame(width: 16)
+                .foregroundStyle(selected ? .white : .white.opacity(0.6))
+            Text(item.title)
+                .font(.dm(12.5))
+                .foregroundStyle(selected ? .white : .white.opacity(0.75))
+            Spacer(minLength: 4)
+            if broken {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.dm(10))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(selected ? Color.white.opacity(0.14) : .clear)
+        )
+        .padding(.horizontal, 8)
+        .contentShape(Rectangle())
+        .onTapGesture { section = item }
+    }
+
+    private var sectionBody: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(section.title)
+                        .font(.dm(15, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Text(section.subtitle)
+                        .font(.dm(11))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                switch section {
+                case .connection: connectionBlock
+                case .workspaces: workspacesBlock
+                case .appearance: wallpaperBlock
+                case .terminal: terminalBlock
+                case .advanced: advancedBlock
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollIndicators(.automatic)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            if let issue = issues.first {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.dm(11))
+                    .foregroundStyle(.orange)
+                Text(issue.message)
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
+            Spacer()
+            if !isFirstRun {
+                Button("Cancel") { model.activePage = nil }
+                    .keyboardShortcut(.cancelAction)
+            }
+            Button(isFirstRun ? "Start devmachine" : "Save") { save() }
+                .buttonStyle(.borderedProminent)
+                .disabled(!issues.isEmpty)
+                .keyboardShortcut(.defaultAction)
+        }
+        .controlSize(.regular)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
+    private var connectionBlock: some View {
+        VStack(alignment: .leading, spacing: 16) {
             field(
                 title: "Ops repo folder",
                 hint: "Holds \(AppSettings.opsRepoMarker) — the Ansible playbook this app applies.",
@@ -119,34 +268,7 @@ struct SetupPage: View {
                     .textFieldStyle(.plain)
                     .setupField()
             }
-
-            workspacesBlock
-            wallpaperBlock
-            appearanceBlock
-
-            HStack(spacing: 10) {
-                Spacer()
-                Button("Start devmachine") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!issues.isEmpty)
-                    .keyboardShortcut(.defaultAction)
-                if !isFirstRun {
-                    Button("") { model.activePage = nil }
-                        .keyboardShortcut(.cancelAction)
-                        .hidden()
-                        .frame(width: 0, height: 0)
-                }
-            }
-            .controlSize(.large)
         }
-        .padding(28)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.14), lineWidth: 0.5)
-        )
-        .environment(\.colorScheme, .dark)
     }
 
     @ViewBuilder
@@ -179,12 +301,12 @@ struct SetupPage: View {
     /// in `~/.ssh/config` later is visible without anyone opening Settings.
     @ViewBuilder
     private var workspacesBlock: some View {
-        if !model.workspaces.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(verbatim: "Workspaces")
-                    .font(.dm(11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.7))
-
+        if model.workspaces.isEmpty {
+            note("No workspace yet. They are the ssh aliases ending in "
+                + "-\(hostAlias.isEmpty ? "alias" : hostAlias); the app reads them from "
+                + "~/.ssh/config once the host above is set.")
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(model.workspaces, id: \.alias) { workspace in
                     Toggle(isOn: Binding(
                         get: {
@@ -196,32 +318,28 @@ struct SetupPage: View {
                                 workspace.alias, in: hiddenWorkspaces)
                         }
                     )) {
-                        Text(workspace.name)
-                            .font(.dm(12))
-                            .foregroundStyle(.white.opacity(0.85))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(workspace.name)
+                                .font(.dm(12.5))
+                                .foregroundStyle(.white.opacity(0.9))
+                            Text(workspace.alias)
+                                .font(.dm(10, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.4))
+                        }
                     }
                     .toggleStyle(.switch)
                     .controlSize(.small)
                 }
-
-                Text(verbatim: "A workspace turned off leaves the sidebar, and "
-                    + "the app stops reaching its host: no ssh, no mosh, no "
-                    + "poll. Its sessions keep running on the host and come "
-                    + "back the moment you turn it on again. This Mac cannot "
-                    + "be turned off.")
-                    .font(.dm(10))
-                    .foregroundStyle(.white.opacity(0.45))
-                    .fixedSize(horizontal: false, vertical: true)
+                note("A workspace turned off leaves the sidebar, and the app stops "
+                    + "reaching its host: no ssh, no mosh, no poll. Its sessions keep "
+                    + "running on the host and come back the moment you turn it on "
+                    + "again. This Mac cannot be turned off.")
             }
         }
     }
 
-    private var appearanceBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(verbatim: "Appearance")
-                .font(.dm(11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
-
+    private var terminalBlock: some View {
+        VStack(alignment: .leading, spacing: 14) {
             slider(
                 title: "Terminal transparency",
                 value: $terminalOpacity,
@@ -237,14 +355,6 @@ struct SetupPage: View {
                 reading: "\(Int(terminalFontSize.rounded())) pt"
             )
             slider(
-                title: "App font size",
-                value: $uiFontScale,
-                range: Appearance.uiFontScaleRange,
-                step: 0.05,
-                reading: "\(Int((uiFontScale * 100).rounded()))%"
-            )
-
-            slider(
                 title: "Sessions kept connected",
                 value: Binding(
                     get: { Double(keptTerminals) },
@@ -254,6 +364,17 @@ struct SetupPage: View {
                 step: 1,
                 reading: "\(keptTerminals)"
             )
+            note("A session you are not looking at stays connected, so switching "
+                + "back to it is instant. Each one costs a client process and its "
+                + "scrollback. Past this many, the one left alone the longest is "
+                + "disconnected; the session on the other side keeps running and "
+                + "reconnects when you return. Keep it above your number of "
+                + "workspaces.")
+        }
+    }
+
+    private var advancedBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
             Toggle(isOn: $debugLogging) {
                 Text(verbatim: "Debug logging")
                     .font(.dm(12))
@@ -261,25 +382,19 @@ struct SetupPage: View {
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-            Text(verbatim: "Writes what happens around a terminal — the size a "
-                + "program is given, when it starts, when a pane is put away and "
-                + "brought back — to ~/.devmachine-app/terminal.log. Turn it on "
-                + "only while chasing something; off, nothing is written. The "
-                + "file keeps itself under a megabyte.")
-                .font(.dm(10))
-                .foregroundStyle(.white.opacity(0.45))
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(verbatim: "A session you are not looking at stays connected, "
-                + "so switching back to it is instant. Each one costs a client "
-                + "process and its scrollback. Past this many, the one left "
-                + "alone the longest is disconnected; the session on the other "
-                + "side keeps running and reconnects when you return. Keep it "
-                + "above your number of workspaces.")
-                .font(.dm(10))
-                .foregroundStyle(.white.opacity(0.45))
-                .fixedSize(horizontal: false, vertical: true)
+            note("Writes what happens around a terminal — the size a program is "
+                + "given, when it starts, when a pane is put away and brought back "
+                + "— to ~/.devmachine-app/terminal.log. Turn it on only while "
+                + "chasing something; off, nothing is written. The file keeps "
+                + "itself under a megabyte.")
         }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(.dm(10))
+            .foregroundStyle(.white.opacity(0.45))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func slider(
@@ -301,7 +416,14 @@ struct SetupPage: View {
     }
 
     private var wallpaperBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 14) {
+            slider(
+                title: "App font size",
+                value: $uiFontScale,
+                range: Appearance.uiFontScaleRange,
+                step: 0.05,
+                reading: "\(Int((uiFontScale * 100).rounded()))%"
+            )
             Text(verbatim: "Wallpaper")
                 .font(.dm(11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
