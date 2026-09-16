@@ -63,8 +63,12 @@ struct TerminalPaneView: NSViewRepresentable {
             guard let container, let term, term.superview === container else { return }
             term.frame = container.contentFrame
             term.needsDisplay = true
+            // Frame and grid together: when the content stops halfway down the
+            // pane, these two disagree, and the pair says which one is wrong.
+            let grid = term.getWindowSize()
             PaneLog.log(
-                "sized pane=\(kind) frame=\(Int(term.frame.width))x\(Int(term.frame.height))")
+                "sized pane=\(kind) frame=\(Int(term.frame.width))x\(Int(term.frame.height))"
+                + " grid=\(grid.ws_col)x\(grid.ws_row)")
             // Only now may the process start: it reads its size at startup.
             TerminalRegistry.shared.viewDidSize(kind)
         }
