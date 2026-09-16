@@ -12,7 +12,7 @@ struct HomeView: View {
     private var claudeSessions: Int {
         model.sessionsByAlias.values.reduce(0) { $0 + $1.filter(\.hasClaude).count }
     }
-    private var workspaceCount: Int { model.workspaces.count }
+    private var workspaceCount: Int { model.visibleWorkspaces.count }
 
     private var systemName: String {
         Host.current().localizedName ?? ProcessInfo.processInfo.hostName

@@ -32,6 +32,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var keptTerminals: Int
     /// Writes what happens around a terminal pane to a file. Off by default.
     public var debugLogging: Bool
+    /// Workspaces left out of the sidebar, by ssh alias. A list of what to
+    /// hide, not of what to show: a workspace added to `~/.ssh/config` later
+    /// appears on its own, which is what you want from a machine that gains
+    /// contexts over time.
+    public var hiddenWorkspaces: [String]
 
     public init(
         opsRepoPath: String,
@@ -43,7 +48,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         terminalFontSize: Double = Appearance.defaultTerminalFontSize,
         uiFontScale: Double = Appearance.defaultUIFontScale,
         keptTerminals: Int = Appearance.defaultKeptTerminals,
-        debugLogging: Bool = false
+        debugLogging: Bool = false,
+        hiddenWorkspaces: [String] = []
     ) {
         self.opsRepoPath = opsRepoPath
         self.hostAlias = hostAlias
@@ -55,11 +61,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.uiFontScale = Appearance.clampUIFontScale(uiFontScale)
         self.keptTerminals = Appearance.clampKeptTerminals(keptTerminals)
         self.debugLogging = debugLogging
+        self.hiddenWorkspaces = hiddenWorkspaces
     }
 
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, wallpaper
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging
+        case hiddenWorkspaces
     }
 
     public init(from decoder: Decoder) throws {
@@ -83,6 +91,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             try values.decodeIfPresent(Int.self, forKey: .keptTerminals)
                 ?? Appearance.defaultKeptTerminals)
         debugLogging = try values.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? false
+        hiddenWorkspaces =
+            try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
     }
 
     public static let empty = AppSettings(opsRepoPath: "", hostAlias: "", publicIP: "", baseDomain: "")

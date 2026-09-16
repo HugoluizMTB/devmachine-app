@@ -287,6 +287,14 @@ final class TerminalRegistry: NSObject {
         }
     }
 
+    /// Every pane of one workspace, closed together: hiding a workspace should
+    /// end the connections it holds, not only stop drawing them.
+    func closeWorkspace(alias: String) {
+        for kind in Array(terminals.keys) {
+            if case let .remote(paneAlias, _) = kind, paneAlias == alias { close(kind) }
+        }
+    }
+
     func closeAll() {
         for kind in Array(terminals.keys) { close(kind) }
     }

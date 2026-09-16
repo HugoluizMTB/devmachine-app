@@ -552,6 +552,56 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAHiddenWorkspaceLeavesTheSidebarAndThePoll() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "initech", alias: "initech-devmachine"),
+        ]
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", hiddenWorkspaces: ["initech-devmachine"])
+
+        XCTAssertEqual(model.visibleWorkspaces.map(\.name), ["acme"])
+        XCTAssertEqual(model.sidebarWorkspaces.map(\.name), ["acme", Workspace.local.name])
+    }
+
+    @MainActor
+    func testHidingAWorkspaceForgetsItsSessionsAndSelection() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [Workspace(name: "initech", alias: "initech-devmachine")]
+        model.sessionsByAlias["initech-devmachine"] = [
+            TmuxSession(name: "main", windows: 1, hasClaude: false)
+        ]
+        model.selection = .session(alias: "initech-devmachine", name: "main")
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", hiddenWorkspaces: ["initech-devmachine"])
+
+        model.applyHiddenWorkspaces()
+
+        XCTAssertNil(model.sessionsByAlias["initech-devmachine"])
+        XCTAssertNil(model.selection)
+        XCTAssertNil(model.selectionPollTarget)
+    }
+
+    @MainActor
+    func testAVisibleWorkspaceIsUntouchedByHiding() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        model.sessionsByAlias["acme-devmachine"] = [
+            TmuxSession(name: "dash", windows: 1, hasClaude: false)
+        ]
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", hiddenWorkspaces: ["initech-devmachine"])
+
+        model.applyHiddenWorkspaces()
+
+        XCTAssertEqual(model.sessionsByAlias["acme-devmachine"]?.count, 1)
+    }
+
+    @MainActor
     func testARemoteReferenceStaysRemote() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         let kind = model.terminalKind(for: SessionRef(alias: "acme-devmachine", name: "dash"))

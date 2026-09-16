@@ -24,10 +24,18 @@ final class AppModel: ObservableObject {
     /// terminal key monitor — can report progress without being handed it.
     private(set) static weak var shared: AppModel?
 
+    /// Every workspace in `~/.ssh/config`, hidden ones included: Settings needs
+    /// the whole list to offer the choice.
     @Published var workspaces: [Workspace] = []
 
+    /// The workspaces in use. Everything else in the app reads this one, so a
+    /// hidden workspace costs no row, no ssh and no mosh.
+    var visibleWorkspaces: [Workspace] {
+        WorkspaceVisibility.visible(workspaces, hidden: settings?.hiddenWorkspaces ?? [])
+    }
+
     /// The sidebar list: the ssh workspaces, then this Mac, always last.
-    var sidebarWorkspaces: [Workspace] { workspaces + [.local] }
+    var sidebarWorkspaces: [Workspace] { visibleWorkspaces + [.local] }
 
     /// Sessions of the local workspace: the Operator shell plus whatever
     /// folders you added. The list is remembered, the shells are not — without
@@ -288,6 +296,33 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Hiding a workspace has to cost nothing at once, not at the next restart:
+    /// its panes are closed, which ends the mosh or ssh they hold, its sessions
+    /// are forgotten, and the poll has nothing left to visit.
+    func applyHiddenWorkspaces() {
+        let hidden = settings?.hiddenWorkspaces ?? []
+        guard !hidden.isEmpty else { return }
+        for alias in hidden where WorkspaceVisibility.isHidden(alias, hidden: hidden) {
+            for session in sessionsByAlias[alias] ?? [] {
+                drop(SessionRef(alias: alias, name: session.name),
+                     item: .session(alias: alias, name: session.name))
+            }
+            TerminalRegistry.shared.closeWorkspace(alias: alias)
+            sessionsByAlias[alias] = nil
+            offlineAliases.remove(alias)
+            if selectionPollAlias == alias {
+                selectionPollTimer?.invalidate()
+                selectionPollTimer = nil
+                selectionPollAlias = nil
+            }
+        }
+        if case let .session(alias, _) = selection,
+           WorkspaceVisibility.isHidden(alias, hidden: hidden) {
+            selection = nil
+        }
+        syncContext()
+    }
+
     /// A session that ended (`exit`) leaves no pane behind: the row goes, the
     /// stack closes over the gap, and the selection moves off it.
     func sessionEnded(_ kind: TerminalKind) {
@@ -451,7 +486,7 @@ final class AppModel: ObservableObject {
     }
 
     func flattenedSessions() -> [SessionRef] {
-        workspaces.flatMap { ws in
+        visibleWorkspaces.flatMap { ws in
             (sessionsByAlias[ws.alias] ?? []).map { SessionRef(alias: ws.alias, name: $0.name) }
         }
     }
@@ -476,7 +511,7 @@ final class AppModel: ObservableObject {
     }
 
     func paletteItems() -> [PaletteItem] {
-        var items = workspaces.flatMap { ws in
+        var items = visibleWorkspaces.flatMap { ws in
             (sessionsByAlias[ws.alias] ?? []).map { s in
                 PaletteItem(
                     id: "\(ws.alias)/\(s.name)",
@@ -685,7 +720,7 @@ final class AppModel: ObservableObject {
     // one second, which is a fail2ban ban of this Mac.
     func refreshAll() {
         guard Date() >= pollPausedUntil, !sweepInFlight else { return }
-        let targets = workspaces.filter { !refreshingAliases.contains($0.alias) }
+        let targets = visibleWorkspaces.filter { !refreshingAliases.contains($0.alias) }
         guard !targets.isEmpty else { return }
         sweepInFlight = true
         sweepTotal = targets.count
@@ -720,7 +755,7 @@ final class AppModel: ObservableObject {
 
     func refresh(alias: String) {
         guard Date() >= pollPausedUntil,
-              let ws = workspaces.first(where: { $0.alias == alias }) else { return }
+              let ws = visibleWorkspaces.first(where: { $0.alias == alias }) else { return }
         // A tick that arrives while the previous ssh for this alias is still
         // running is dropped: a slow host would otherwise stack one blocked
         // process per 5s tick.

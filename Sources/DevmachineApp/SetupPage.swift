@@ -21,6 +21,7 @@ struct SetupPage: View {
     @State private var uiFontScale = Appearance.defaultUIFontScale
     @State private var keptTerminals = Appearance.defaultKeptTerminals
     @State private var debugLogging = false
+    @State private var hiddenWorkspaces: [String] = []
 
     private var draft: AppSettings {
         AppSettings(
@@ -33,7 +34,8 @@ struct SetupPage: View {
             terminalFontSize: terminalFontSize,
             uiFontScale: uiFontScale,
             keptTerminals: keptTerminals,
-            debugLogging: debugLogging
+            debugLogging: debugLogging,
+            hiddenWorkspaces: hiddenWorkspaces
         )
     }
 
@@ -118,6 +120,7 @@ struct SetupPage: View {
                     .setupField()
             }
 
+            workspacesBlock
             wallpaperBlock
             appearanceBlock
 
@@ -167,6 +170,47 @@ struct SetupPage: View {
                 Text(hint)
                     .font(.dm(11))
                     .foregroundStyle(.white.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// A list of what to hide, never of what to show: a workspace that appears
+    /// in `~/.ssh/config` later is visible without anyone opening Settings.
+    @ViewBuilder
+    private var workspacesBlock: some View {
+        if !model.workspaces.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(verbatim: "Workspaces")
+                    .font(.dm(11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+
+                ForEach(model.workspaces, id: \.alias) { workspace in
+                    Toggle(isOn: Binding(
+                        get: {
+                            !WorkspaceVisibility.isHidden(
+                                workspace.alias, hidden: hiddenWorkspaces)
+                        },
+                        set: { _ in
+                            hiddenWorkspaces = WorkspaceVisibility.toggling(
+                                workspace.alias, in: hiddenWorkspaces)
+                        }
+                    )) {
+                        Text(workspace.name)
+                            .font(.dm(12))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                }
+
+                Text(verbatim: "A workspace turned off leaves the sidebar, and "
+                    + "the app stops reaching its host: no ssh, no mosh, no "
+                    + "poll. Its sessions keep running on the host and come "
+                    + "back the moment you turn it on again. This Mac cannot "
+                    + "be turned off.")
+                    .font(.dm(10))
+                    .foregroundStyle(.white.opacity(0.45))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -413,6 +457,7 @@ struct SetupPage: View {
             uiFontScale = current.uiFontScale
             keptTerminals = current.keptTerminals
             debugLogging = current.debugLogging
+            hiddenWorkspaces = current.hiddenWorkspaces
             return
         }
 
@@ -449,6 +494,9 @@ struct SetupPage: View {
         settingsStore.settings = value
         model.settings = value
         model.activePage = nil
+        // Before reloading: the panes of a workspace you just hid have to go
+        // now, and the reload must not bring their poll back.
+        model.applyHiddenWorkspaces()
         model.loadWorkspaces()
     }
 }
