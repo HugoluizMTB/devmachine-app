@@ -2,6 +2,19 @@ import SwiftUI
 import AppKit
 import DevmachineCore
 
+/// What a background row is doing, from the word the engine reports.
+enum RunningStatus: Equatable {
+    case running, done, failed
+
+    init(_ raw: String) {
+        switch raw.lowercased() {
+        case "done", "completed", "finished": self = .done
+        case "failed", "error", "killed": self = .failed
+        default: self = .running
+        }
+    }
+}
+
 enum ContextTab: String, CaseIterable {
     case context
     case files
@@ -175,8 +188,22 @@ struct ContextPanel: View {
 
     private func agentRow(_ agent: ContextState.Agent) -> some View {
         HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
+            // The spinner is for work still going. Everything spun before,
+            // which made finished work look stuck for ever.
+            switch RunningStatus(agent.status) {
+            case .running:
+                ProgressView().controlSize(.small)
+            case .done:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.dm(11))
+                    .foregroundStyle(.green)
+                    .frame(width: 16)
+            case .failed:
+                Image(systemName: "xmark.circle.fill")
+                    .font(.dm(11))
+                    .foregroundStyle(.red)
+                    .frame(width: 16)
+            }
             Text(agent.label)
                 .font(.dm(12))
                 .foregroundStyle(Color.dmRowText)

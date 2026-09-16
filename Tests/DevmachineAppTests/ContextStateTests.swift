@@ -125,3 +125,18 @@ final class ContextStateTests: XCTestCase {
         XCTAssertNotEqual(Color.dmTag("github"), Color.dmTag("openai"))
     }
 }
+
+final class RunningStatusTests: XCTestCase {
+    func testTheEngineWordDecidesTheIcon() {
+        XCTAssertEqual(RunningStatus("running"), .running)
+        XCTAssertEqual(RunningStatus("done"), .done)
+        XCTAssertEqual(RunningStatus("completed"), .done)
+        XCTAssertEqual(RunningStatus("failed"), .failed)
+        XCTAssertEqual(RunningStatus("killed"), .failed)
+    }
+
+    func testAnUnknownWordKeepsTheRowSpinning() {
+        XCTAssertEqual(RunningStatus(""), .running)
+        XCTAssertEqual(RunningStatus("whatever"), .running)
+    }
+}
