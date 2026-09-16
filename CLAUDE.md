@@ -110,6 +110,24 @@ segmented control.
   owner's live sessions.
 - SwiftTerm is pinned by revision (`9fc2d2f`, 2026-09-04: kitty encoding fixes);
   upstream `main` after 2026-09-09 does not link (`MetalError`). Bump on purpose only.
+- **A translucent pane is painted by BOTH layers, each at `Appearance.layerOpacity`.**
+  The terminal must paint its own background: handing it `.clear` so the container
+  could paint instead leaves every cell the terminal does not redraw showing what
+  was there before, which is a screen half old and half missing, and slow, since a
+  large transparent layer is expensive to blend. Painting in both places at full
+  alpha stacks them and the pane reads almost solid, so each gets the share that
+  combines to the setting. A day went into this; don't collapse it back to one layer.
+- **A pane that returns unchanged gets no size change, so nothing redraws it.**
+  Switching sessions, closing a page, coming back from the stack: the program was
+  never told anything happened. The app asks explicitly — `tmux refresh-client` for
+  a remote session, the window-changed signal to the foreground process group for a
+  local one (`TerminalRegistry.requestRepaint`). Do not fake a resize instead: an
+  earlier version shrank the pane a row and restored it, which left the last row
+  unpainted, and another killed the local client and restarted it, which left the
+  keyboard wired to the process that had just died.
+- **A process starts only after its pane has the size it will be drawn at**
+  (`viewDidSize`). Started earlier it learns a placeholder geometry, and a program
+  that repaints only what changed never corrects it.
 - Terminal layout is explicit (`TerminalContainerView.layout()`), not autoresizing
   masks — they lost the insets after SwiftUI's first sizing pass.
 
