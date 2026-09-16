@@ -140,6 +140,12 @@ segmented control.
   click was the only thing marking a frame dirty.
 - Terminal layout is explicit (`TerminalContainerView.layout()`), not autoresizing
   masks — they lost the insets after SwiftUI's first sizing pass.
+- **A panel reads through `CommandTarget`, never through an alias.** `HostRunner`
+  runs the same command over ssh (in the tmux pane's folder) or here on the Mac
+  (in the folder `zmx ls` reports), so Context, Files and Git work for a local
+  session. Two commands are not portable and have a local form: `find -printf`
+  is GNU only, so a local listing uses `ls -Ap1` with
+  `FileTreeParser.parseNames`.
 - **Hiding a workspace is a list of what to hide, not of what to show**
   (`AppSettings.hiddenWorkspaces`, filtered by `WorkspaceVisibility`). A new
   alias in `~/.ssh/config` shows up without anyone opening Settings. Everything
