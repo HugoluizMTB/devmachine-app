@@ -46,7 +46,7 @@ struct TerminalPaneView: NSViewRepresentable {
         DispatchQueue.main.async { [weak container, weak term] in
             guard let container, let term, term.superview === container else { return }
             term.frame = container.contentFrame
-            term.needsDisplay = true
+            term.requestRedraw()
             // Frame and grid together: when the content stops halfway down the
             // pane, these two disagree, and the pair says which one is wrong.
             let grid = term.getWindowSize()
@@ -95,7 +95,7 @@ struct TerminalPaneView: NSViewRepresentable {
             NSColor(srgbRed: 0xC9 / 255, green: 0xCE / 255, blue: 0xD4 / 255, alpha: 1)
         term.wantsLayer = true
         term.layer?.isOpaque = !translucent
-        term.needsDisplay = true
+        term.requestRedraw()
         container.wantsLayer = true
         container.layer?.isOpaque = !translucent
         container.layer?.backgroundColor = background.cgColor
@@ -130,7 +130,14 @@ struct TerminalPaneView: NSViewRepresentable {
         override func layout() {
             super.layout()
             content?.frame = contentFrame
-            content?.needsDisplay = true
+            redrawContent()
+        }
+
+        /// `needsDisplay` is dropped on the floor by SwiftTerm's Metal
+        /// renderer: `draw(_:)` returns at once and frames come from its own
+        /// driver, so only `requestRedraw()` marks a frame.
+        func redrawContent() {
+            (content as? TerminalView)?.requestRedraw()
         }
 
         /// Kept as a no-op: masking the container to the ring also clipped the
@@ -140,7 +147,7 @@ struct TerminalPaneView: NSViewRepresentable {
 
         override func resizeSubviews(withOldSize oldSize: NSSize) {
             content?.frame = contentFrame
-            content?.needsDisplay = true
+            redrawContent()
         }
     }
 }

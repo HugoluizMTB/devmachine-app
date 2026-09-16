@@ -37,8 +37,20 @@ final class AppModel: ObservableObject {
         didSet { AppModel.writeLocalSessions(addedLocalSessions) }
     }
 
+    /// Renames the sidebar shows, by handle. Kept apart from the stored list so
+    /// the Operator session, which is not in that list, can be renamed too.
+    @Published private(set) var localSessionNames: [String: String] =
+        UserDefaults.standard.dictionary(forKey: AppModel.localNamesKey) as? [String: String] ?? [:] {
+        didSet { UserDefaults.standard.set(localSessionNames, forKey: AppModel.localNamesKey) }
+    }
+
     var localSessions: [LocalSession] {
-        [LocalSession(name: Workspace.operatorSession, path: operatorPath)] + addedLocalSessions
+        let all = [LocalSession(name: Workspace.operatorSession, path: operatorPath)]
+            + addedLocalSessions
+        return all.map { session in
+            guard let shown = localSessionNames[session.handle] else { return session }
+            return LocalSession(handle: session.handle, name: shown, path: session.path)
+        }
     }
 
     private var operatorPath: String {
@@ -54,17 +66,33 @@ final class AppModel: ObservableObject {
         selection = .localSession(name: name, path: path)
     }
 
-    func removeLocalSession(name: String) {
-        guard let s = addedLocalSessions.first(where: { $0.name == name }) else { return }
-        TerminalRegistry.shared.close(.local(session: s.name, path: s.path))
+    func removeLocalSession(handle: String) {
+        guard let s = addedLocalSessions.first(where: { $0.handle == handle }) else { return }
+        TerminalRegistry.shared.close(.local(session: s.handle, path: s.path))
         // Closing the pane only drops this app's client; the multiplexer would
         // keep the shell running with nothing pointing at it.
-        TerminalRegistry.shared.killLocalSession(named: s.name)
-        addedLocalSessions.removeAll { $0.name == name }
-        if selection == .localSession(name: s.name, path: s.path) { selection = nil }
+        TerminalRegistry.shared.killLocalSession(named: s.handle)
+        addedLocalSessions.removeAll { $0.handle == handle }
+        localSessionNames[handle] = nil
+        if selection == .localSession(name: s.handle, path: s.path) { selection = nil }
+    }
+
+    /// Only the sidebar name changes: the shell keeps running under the handle
+    /// it was created with, because the multiplexer cannot rename a session.
+    func renameLocalSession(handle: String, to newName: String) {
+        pendingLocalRename = nil
+        let clean = newName.trimmingCharacters(in: .whitespaces)
+        guard !clean.isEmpty else { return }
+        guard localSessions.contains(where: { $0.handle == handle }) else { return }
+        if clean == handle {
+            localSessionNames[handle] = nil
+        } else {
+            localSessionNames[handle] = String(clean.prefix(40))
+        }
     }
 
     private static let localSessionsKey = "localSessions"
+    private static let localNamesKey = "localSessionNames"
 
     private static func readLocalSessions() -> [LocalSession] {
         guard let data = UserDefaults.standard.data(forKey: localSessionsKey),
@@ -147,6 +175,7 @@ final class AppModel: ObservableObject {
     }
     @Published var pendingNewSessionAlias: String? = nil
     @Published var pendingRename: (alias: String, old: String)? = nil
+    @Published var pendingLocalRename: (handle: String, current: String)? = nil
     @Published var pendingDelete: (alias: String, name: String)? = nil
     @Published var pendingBulkDelete: [SessionRef]? = nil
     @Published var selectedSessions: Set<SessionRef> = []
@@ -227,7 +256,7 @@ final class AppModel: ObservableObject {
 
     func stackWorkspace(_ alias: String) {
         let refs = alias == Workspace.local.alias
-            ? localSessions.map { SessionRef(alias: alias, name: $0.name) }
+            ? localSessions.map { SessionRef(alias: alias, name: $0.handle) }
             : (sessionsByAlias[alias] ?? []).map { SessionRef(alias: alias, name: $0.name) }
         stackSessions(refs)
     }
@@ -238,8 +267,15 @@ final class AppModel: ObservableObject {
         guard ref.alias == Workspace.local.alias else {
             return .remote(alias: ref.alias, session: ref.name)
         }
-        let path = localSessions.first { $0.name == ref.name }?.path ?? NSHomeDirectory()
+        let path = localSessions.first { $0.handle == ref.name }?.path ?? NSHomeDirectory()
         return .local(session: ref.name, path: path)
+    }
+
+    /// What a session is called on screen. A local session keeps its handle as
+    /// a reference, so the name has to be looked up.
+    func displayName(for ref: SessionRef) -> String {
+        guard ref.alias == Workspace.local.alias else { return ref.name }
+        return localSessions.first { $0.handle == ref.name }?.name ?? ref.name
     }
 
     func isStacked(_ ref: SessionRef) -> Bool {
@@ -347,10 +383,10 @@ final class AppModel: ObservableObject {
         }
         for s in localSessions {
             items.append(PaletteItem(
-                id: "local/\(s.name)",
+                id: "local/\(s.handle)",
                 title: s.name,
                 subtitle: Workspace.local.name,
-                target: .localSession(name: s.name, path: s.path),
+                target: .localSession(name: s.handle, path: s.path),
                 claude: false
             ))
         }

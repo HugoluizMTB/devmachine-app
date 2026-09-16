@@ -89,6 +89,15 @@ struct ContentView: View {
                     .environmentObject(model)
             }
         }
+        .sheet(isPresented: Binding(
+            get: { model.pendingLocalRename != nil },
+            set: { if !$0 { model.pendingLocalRename = nil } }
+        )) {
+            if let pending = model.pendingLocalRename {
+                LocalRenameSheet(handle: pending.handle, currentName: pending.current)
+                    .environmentObject(model)
+            }
+        }
         .confirmationDialog(
             "Delete session \(model.pendingDelete?.name ?? "")? This kills its tmux session.",
             isPresented: Binding(
@@ -308,6 +317,36 @@ private struct RenameSheet: View {
                 Spacer()
                 Button("Cancel") { model.pendingRename = nil }
                 Button("Rename") { model.renameSession(alias: alias, old: oldName, new: name) }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+    }
+}
+
+private struct LocalRenameSheet: View {
+    @EnvironmentObject var model: AppModel
+    let handle: String
+    let currentName: String
+    @State private var name: String
+
+    init(handle: String, currentName: String) {
+        self.handle = handle
+        self.currentName = currentName
+        _name = State(initialValue: currentName)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Rename \(currentName)").font(.headline)
+            TextField("new name", text: $name).frame(width: 240)
+            Text("Only the name in the sidebar changes. The shell keeps running.")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+            HStack {
+                Spacer()
+                Button("Cancel") { model.pendingLocalRename = nil }
+                Button("Rename") { model.renameLocalSession(handle: handle, to: name) }
                     .keyboardShortcut(.defaultAction)
             }
         }

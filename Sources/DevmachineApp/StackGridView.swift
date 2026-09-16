@@ -53,7 +53,7 @@ struct StackGridView: View {
         )
             .overlay(alignment: .topLeading) {
                 Text(ref.alias == Workspace.local.alias
-                     ? ref.name : "\(ref.alias) / \(ref.name)")
+                     ? model.displayName(for: ref) : "\(ref.alias) / \(ref.name)")
                     .font(.dm(11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 8)

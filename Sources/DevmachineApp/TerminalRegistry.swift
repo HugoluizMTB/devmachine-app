@@ -159,7 +159,10 @@ final class TerminalRegistry: NSObject {
 
     /// A pane just put the shared view back in a window.
     func viewDidAttach(_ kind: TerminalKind) {
-        if let view = terminals[kind] { reviveIfDead(kind, view: view) }
+        if let view = terminals[kind] {
+            reviveIfDead(kind, view: view)
+            view.requestRedraw()
+        }
         guard pendingFocusKind == kind else { return }
         // Next runloop: SwiftUI is still mid-layout, and taking first responder
         // inside it is what used to make the sidebar unclickable.
@@ -201,6 +204,7 @@ final class TerminalRegistry: NSObject {
     }
 
     private func redrawAfterReattach(_ kind: TerminalKind) {
+        terminals[kind]?.requestRedraw()
         guard reattached.remove(kind) != nil else { return }
         switch kind {
         case let .remote(alias, session):

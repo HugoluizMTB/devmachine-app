@@ -325,7 +325,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.localSessions.map(\.name), ["Operator", "acme"])
         XCTAssertEqual(
             model.selection, .localSession(name: "acme", path: "/Users/alice/dev/acme"))
-        model.removeLocalSession(name: "acme")
+        model.removeLocalSession(handle: "acme")
     }
 
     @MainActor
@@ -335,15 +335,15 @@ final class AppModelTests: XCTestCase {
         model.addLocalSession(path: "/Users/alice/dev/acme")
 
         XCTAssertEqual(model.localSessions.map(\.name), ["Operator", "acme", "acme 2"])
-        model.removeLocalSession(name: "acme")
-        model.removeLocalSession(name: "acme 2")
+        model.removeLocalSession(handle: "acme")
+        model.removeLocalSession(handle: "acme 2")
     }
 
     @MainActor
     func testRemovingALocalSessionDropsItAndClearsTheSelection() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.addLocalSession(path: "/Users/alice/dev/acme")
-        model.removeLocalSession(name: "acme")
+        model.removeLocalSession(handle: "acme")
 
         XCTAssertEqual(model.localSessions.map(\.name), ["Operator"])
         XCTAssertNil(model.selection)
@@ -352,7 +352,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testTheOperatorSessionCannotBeRemoved() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
-        model.removeLocalSession(name: Workspace.operatorSession)
+        model.removeLocalSession(handle: Workspace.operatorSession)
 
         XCTAssertEqual(model.localSessions.map(\.name), ["Operator"])
     }
@@ -441,7 +441,7 @@ final class AppModelTests: XCTestCase {
             return XCTFail("the local workspace did not open as a stack")
         }
         XCTAssertEqual(refs.map(\.name), ["Operator", "acme"])
-        model.removeLocalSession(name: "acme")
+        model.removeLocalSession(handle: "acme")
     }
 
     @MainActor
@@ -452,7 +452,54 @@ final class AppModelTests: XCTestCase {
         let kind = model.terminalKind(
             for: SessionRef(alias: Workspace.local.alias, name: "acme"))
         XCTAssertEqual(kind, .local(session: "acme", path: "/Users/alice/dev/acme"))
-        model.removeLocalSession(name: "acme")
+        model.removeLocalSession(handle: "acme")
+    }
+
+    @MainActor
+    func testRenamingALocalSessionKeepsItsHandleAndItsTerminal() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+
+        model.renameLocalSession(handle: "acme", to: "Client work")
+
+        XCTAssertEqual(model.localSessions.map(\.name), ["Operator", "Client work"])
+        XCTAssertEqual(model.localSessions.map(\.handle), ["Operator", "acme"])
+        let kind = model.terminalKind(
+            for: SessionRef(alias: Workspace.local.alias, name: "acme"))
+        XCTAssertEqual(kind, .local(session: "acme", path: "/Users/alice/dev/acme"))
+        model.removeLocalSession(handle: "acme")
+    }
+
+    @MainActor
+    func testTheOperatorSessionCanBeRenamed() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.renameLocalSession(handle: Workspace.operatorSession, to: "Ops")
+        XCTAssertEqual(model.localSessions.first?.name, "Ops")
+        XCTAssertEqual(model.localSessions.first?.handle, Workspace.operatorSession)
+
+        model.renameLocalSession(handle: Workspace.operatorSession, to: Workspace.operatorSession)
+        XCTAssertEqual(model.localSessions.first?.name, Workspace.operatorSession)
+    }
+
+    @MainActor
+    func testAnEmptyNameLeavesTheSessionAlone() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.renameLocalSession(handle: "acme", to: "   ")
+        XCTAssertEqual(model.localSessions.map(\.name), ["Operator", "acme"])
+        model.removeLocalSession(handle: "acme")
+    }
+
+    @MainActor
+    func testRemovingASessionForgetsItsRename() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.renameLocalSession(handle: "acme", to: "Client work")
+        model.removeLocalSession(handle: "acme")
+
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        XCTAssertEqual(model.localSessions.map(\.name), ["Operator", "acme"])
+        model.removeLocalSession(handle: "acme")
     }
 
     @MainActor

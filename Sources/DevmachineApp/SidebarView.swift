@@ -230,15 +230,18 @@ struct SidebarView: View {
     }
 
     private func localSessionRow(session s: LocalSession) -> some View {
-        let item = SidebarItem.localSession(name: s.name, path: s.path)
+        let item = SidebarItem.localSession(name: s.handle, path: s.path)
         let isOpen = model.activePage == nil && model.selection == item
         return row(title: s.name, claude: false, windows: 1, selected: isOpen)
             .contentShape(Rectangle())
             .onTapGesture { model.selection = item }
             .help(s.path)
             .contextMenu {
-                if s.name != Workspace.operatorSession {
-                    Button("Remove") { model.removeLocalSession(name: s.name) }
+                Button("Rename…") {
+                    model.pendingLocalRename = (handle: s.handle, current: s.name)
+                }
+                if s.handle != Workspace.operatorSession {
+                    Button("Remove") { model.removeLocalSession(handle: s.handle) }
                 }
             }
     }
