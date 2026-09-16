@@ -237,13 +237,20 @@ struct DMStatBubble: View {
 struct DMToastCard: View {
     let task: BGTask
 
+    /// The card is as wide as its bar, and no wider. The `Spacer` that pushes
+    /// the count to the right would otherwise take every point on offer, and the
+    /// card stretched to the window's edge with a short bar sitting in it.
+    static let width: CGFloat = 220
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Text(task.label)
                     .font(.dm(12, weight: .semibold))
                     .foregroundStyle(.primary)
-                Spacer()
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 6)
                 if task.completed >= task.total {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -259,8 +266,8 @@ struct DMToastCard: View {
             // ProgressView drew its track across the window while the fill
             // stopped short.
             DMProgressBar(done: task.completed, total: task.total, fillColor: .accentColor)
-                .frame(width: 200)
         }
+        .frame(width: DMToastCard.width, alignment: .leading)
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
         .overlay(
