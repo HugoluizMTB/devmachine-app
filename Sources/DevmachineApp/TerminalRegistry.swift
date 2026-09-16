@@ -336,22 +336,12 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
 // SwiftTerm's kitty encoding still breaks Enter and dead keys, so the view
 // drops both replies: programs keep the legacy encoding this app always ran.
 final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
-    /// The last size worth giving a program.
-    private var lastUsableSize: winsize?
-
-    /// SwiftUI measures a pane several times before it settles, and the sizes in
-    /// between are nonsense — two columns by one row, at worst. A program told
-    /// that draws its whole screen for it, and a program that repaints only what
-    /// changes never recovers: the footer stays missing and stray numbers sit
-    /// where the screen used to be. So a size that could not hold a screen is
-    /// refused, and the last usable one stands.
+    /// The rows and columns handed to the program, logged as they are. An
+    /// earlier version refused small sizes and returned the last good one; that
+    /// made SwiftTerm believe the program had already been told the real size,
+    /// so when the pane settled nothing was sent and every pane stayed blank.
     override func getWindowSize() -> winsize {
         let size = super.getWindowSize()
-        guard TerminalSizeGuard.isUsable(cols: Int(size.ws_col), rows: Int(size.ws_row)) else {
-            PaneLog.log("window size refused cols=\(size.ws_col) rows=\(size.ws_row)")
-            return lastUsableSize ?? size
-        }
-        lastUsableSize = size
         PaneLog.log("window size cols=\(size.ws_col) rows=\(size.ws_row)")
         return size
     }
