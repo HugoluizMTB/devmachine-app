@@ -8,6 +8,8 @@ import DevmachineCore
 struct FileSearchPaletteView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: FileSearchStore
+    @EnvironmentObject var viewerStore: FileViewerStore
+    @Environment(\.openWindow) private var openWindow
     let target: CommandTarget
 
     @State private var index = 0
@@ -35,7 +37,14 @@ struct FileSearchPaletteView: View {
             return .handled
         }
         .onKeyPress(.upArrow) { index = max(index - 1, 0); return .handled }
-        .onKeyPress(.return) { typeSelected(); return .handled }
+        .onKeyPress(keys: [.return], phases: .down) { press in
+            if press.modifiers.contains(.option) {
+                openSelected()
+            } else {
+                typeSelected()
+            }
+            return .handled
+        }
         .onKeyPress(.escape) { model.showFileSearch = false; return .handled }
     }
 
@@ -80,7 +89,7 @@ struct FileSearchPaletteView: View {
 
     private var footer: some View {
         HStack {
-            Text(verbatim: "Type in session  ⏎")
+            Text(verbatim: "Type in session  ⏎     Open  ⌥⏎")
                 .font(.dm(10))
                 .foregroundStyle(.secondary)
             Spacer()
@@ -134,6 +143,16 @@ struct FileSearchPaletteView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
+    }
+
+    /// Reading before sending: Option+Return opens the file instead of putting
+    /// its path in the prompt.
+    private func openSelected() {
+        guard store.hits.indices.contains(index) else { return }
+        let path = absolute(store.hits[index].path)
+        model.showFileSearch = false
+        viewerStore.open(target, path: path)
+        openWindow(id: "viewer")
     }
 
     private func typeSelected() {

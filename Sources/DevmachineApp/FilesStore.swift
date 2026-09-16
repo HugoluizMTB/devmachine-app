@@ -161,6 +161,12 @@ final class FilesStore: ObservableObject {
         }
     }
 
+    /// The full path of an entry in the folder now open, which is what the
+    /// viewer reads.
+    func absolutePath(of entry: FileEntry) -> String {
+        joinedPath(entry.name)
+    }
+
     private func joinedPath(_ name: String, base: String? = nil) -> String {
         let base = base ?? path
         if base == "." {

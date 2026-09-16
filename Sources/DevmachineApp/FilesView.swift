@@ -3,6 +3,8 @@ import DevmachineCore
 
 struct FilesView: View {
     @EnvironmentObject var store: FilesStore
+    @EnvironmentObject var viewerStore: FileViewerStore
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -111,6 +113,12 @@ struct FilesView: View {
         }
     }
 
+    private func open(_ entry: FileEntry) {
+        guard let target = store.target else { return }
+        viewerStore.open(target, path: store.absolutePath(of: entry))
+        openWindow(id: "viewer")
+    }
+
     private func row(for entry: FileEntry) -> some View {
         DMRow(
             systemImage: entry.isDir ? "folder" : "doc",
@@ -125,10 +133,12 @@ struct FilesView: View {
                 .buttonStyle(.plain)
                 .help("Download")
             ),
-            tap: entry.isDir ? { store.cd(entry) } : nil
+            tap: entry.isDir ? { store.cd(entry) } : { open(entry) }
         )
         .contextMenu {
             if !entry.isDir {
+                Button("Open") { open(entry) }
+                Divider()
                 Button(store.target?.isLocal == true ? "Reveal in Finder" : "Download") {
                     store.download(entry)
                 }

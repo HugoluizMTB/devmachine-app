@@ -13,7 +13,9 @@ let package = Package(
         .executable(name: "DevmachineApp", targets: ["DevmachineApp"])
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", revision: "9fc2d2fc627f291727e82d5449ec22df76320671")
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", revision: "9fc2d2fc627f291727e82d5449ec22df76320671"),
+        .package(url: "https://github.com/appstefan/HighlightSwift.git", from: "1.1.0"),
+        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0")
     ],
     targets: [
         .target(name: "DevmachineCore"),
@@ -23,7 +25,9 @@ let package = Package(
             dependencies: [
                 "DevmachineCore",
                 "ClaudeUsageKit",
-                .product(name: "SwiftTerm", package: "SwiftTerm")
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
+                .product(name: "HighlightSwift", package: "HighlightSwift"),
+                .product(name: "MarkdownUI", package: "swift-markdown-ui")
             ]
         ),
         .testTarget(

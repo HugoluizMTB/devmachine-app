@@ -14,6 +14,7 @@ struct DevmachineApp: App {
     @StateObject private var usageStore = ClaudeUsageStore()
     @StateObject private var settingsStore = SettingsStore.shared
     @StateObject private var wallpaperStore = WallpaperStore()
+    @StateObject private var viewerStore = FileViewerStore()
 
     var body: some Scene {
         // Single main window (Window, not WindowGroup) so the menubar "Open"
@@ -33,6 +34,7 @@ struct DevmachineApp: App {
                     DMFont.scale = scale ?? 1
                 }
                 .environmentObject(wallpaperStore)
+                .environmentObject(viewerStore)
                 .frame(minWidth: 900, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
         }
         .windowStyle(.hiddenTitleBar)
@@ -72,8 +74,20 @@ struct DevmachineApp: App {
         Window("Files", id: "files") {
             FilesView()
                 .environmentObject(filesStore)
+                .environmentObject(viewerStore)
+                .environmentObject(model)
         }
         .defaultSize(width: 520, height: 600)
+
+        // Reading only, in a window of its own: a file can sit beside the
+        // session it came from instead of covering it.
+        Window("Viewer", id: "viewer") {
+            FileViewerView()
+                .environmentObject(viewerStore)
+                .environmentObject(model)
+                .frame(minWidth: 480, minHeight: 320)
+        }
+        .defaultSize(width: 860, height: 700)
 
         MenuBarExtra {
             MenuBarPanel()

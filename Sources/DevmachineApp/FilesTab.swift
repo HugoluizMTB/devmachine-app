@@ -29,6 +29,7 @@ struct FilesTab: View {
     let target: CommandTarget
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
+    @EnvironmentObject var viewerStore: FileViewerStore
     @Environment(\.openWindow) private var openWindow
     @State private var selected: String?
 
@@ -98,7 +99,8 @@ struct FilesTab: View {
                             copyRelativePath: {
                                 copy(store.relativePath(of: row.path), label: "Copied path")
                             },
-                            openInFilesWindow: row.isDirectory ? nil : { openInFilesWindow(row) }
+                            openInFilesWindow: row.isDirectory ? nil : { openInFilesWindow(row) },
+                            openInViewer: row.isDirectory ? nil : { openInViewer(row) }
                         )
                     }
                 }
@@ -147,6 +149,13 @@ struct FilesTab: View {
 
     /// The Files window reads a host over ssh, so it has nothing to open for a
     /// session that runs on this Mac — Finder does that job here.
+    /// Reading a file is a window of its own, beside the session it came from.
+    private func openInViewer(_ row: FileTreeRow) {
+        selected = row.path
+        viewerStore.open(target, path: row.path)
+        openWindow(id: "viewer")
+    }
+
     private func openInFilesWindow(_ row: FileTreeRow) {
         filesStore.open(target, path: store.parentPath(of: row.path))
         openWindow(id: "files")
@@ -179,6 +188,7 @@ private struct FileTreeRowView: View {
     let copyPath: () -> Void
     let copyRelativePath: () -> Void
     let openInFilesWindow: (() -> Void)?
+    let openInViewer: (() -> Void)?
     @State private var hovering = false
 
     private static let accent = Color(hex: 0x5AA9E6)
@@ -207,8 +217,13 @@ private struct FileTreeRowView: View {
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        .onTapGesture(count: 2) { (openInViewer ?? tap)() }
         .onTapGesture { tap() }
         .contextMenu {
+            if let openInViewer {
+                Button("Open") { openInViewer() }
+                Divider()
+            }
             Button("Copy path") { copyPath() }
             Button("Copy relative path") { copyRelativePath() }
             if let openInFilesWindow {

@@ -92,6 +92,7 @@ final class FilesTabTests: XCTestCase {
     private func render(_ store: FileTreeStore) throws -> NSImage {
         let view = FilesTab(store: store, target: .remote(alias: "acme-devmachine", session: "dash"))
             .environmentObject(AppModel(store: SessionStore(runner: SilentRunner())))
+            .environmentObject(FileViewerStore())
             .environmentObject(FilesStore(service: FileService(host: HostRunner(remote: RemoteService(runner: SilentRunner()))), runner: SilentRunner()))
             .frame(width: 300, height: 420)
         return try XCTUnwrap(ImageRenderer(content: view).nsImage)
