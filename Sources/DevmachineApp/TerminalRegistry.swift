@@ -252,6 +252,10 @@ final class TerminalRegistry: NSObject {
         start(kind, in: view)
     }
 
+    /// Told when a session ends for good, so the app can drop its row and let
+    /// the layout close over the gap.
+    var onSessionEnded: ((TerminalKind) -> Void)?
+
     func close(_ kind: TerminalKind) {
         PaneLog.log("close pane=\(kind)")
         dead.remove(kind)
@@ -351,11 +355,40 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
         // The view stays: the session it was showing usually outlived the
         // client (tmux and zmx both do), so coming back should reconnect rather
         // than leave a dead screen or lose the pane.
-        if let kind = terminals.first(where: { $0.value === source })?.key {
-            PaneLog.log("process ended pane=\(kind) exit=\(exitCode.map(String.init) ?? "-")")
-            dead.insert(kind)
-            detachedAt[kind] = nil
+        guard let kind = terminals.first(where: { $0.value === source })?.key else { return }
+        PaneLog.log("process ended pane=\(kind) exit=\(exitCode.map(String.init) ?? "-")")
+        dead.insert(kind)
+        detachedAt[kind] = nil
+        if case let .local(session, _) = kind {
+            closeIfSessionIsGone(kind, session: session)
         }
+    }
+
+    /// Telling the two endings apart: the client stopped, or the shell itself
+    /// ended (`exit`). Only the multiplexer knows, so it is asked. A session
+    /// that is gone takes its pane with it.
+    private func closeIfSessionIsGone(_ kind: TerminalKind, session: String) {
+        guard let zmx = LocalTools.zmxPath() else {
+            // No multiplexer: the shell was the session, so it ended with it.
+            sessionDidEnd(kind)
+            return
+        }
+        let socketDirectory = Zmx.socketDirectory()
+        let name = Zmx.sessionName(from: session, socketDirectory: socketDirectory)
+        Task.detached {
+            let listing = (try? ProcessRunner().run(
+                executable: zmx, args: Zmx.listArguments,
+                environment: ["ZMX_DIR": socketDirectory])) ?? ""
+            let alive = ZmxListParser.parse(listing).contains { $0.name == name }
+            guard !alive else { return }
+            await MainActor.run { TerminalRegistry.shared.sessionDidEnd(kind) }
+        }
+    }
+
+    private func sessionDidEnd(_ kind: TerminalKind) {
+        PaneLog.log("session ended pane=\(kind)")
+        close(kind)
+        onSessionEnded?(kind)
     }
 }
 

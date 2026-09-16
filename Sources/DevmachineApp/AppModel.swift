@@ -283,6 +283,55 @@ final class AppModel: ObservableObject {
         self.store = store
         AppModel.shared = self
         observeWake()
+        TerminalRegistry.shared.onSessionEnded = { [weak self] kind in
+            self?.sessionEnded(kind)
+        }
+    }
+
+    /// A session that ended (`exit`) leaves no pane behind: the row goes, the
+    /// stack closes over the gap, and the selection moves off it.
+    func sessionEnded(_ kind: TerminalKind) {
+        switch kind {
+        case let .local(handle, path):
+            addedLocalSessions.removeAll { $0.handle == handle }
+            localSessionNames[handle] = nil
+            liveLocalSessions.removeAll {
+                $0.name == Zmx.sessionName(from: handle, socketDirectory: Zmx.socketDirectory())
+            }
+            drop(SessionRef(alias: Workspace.local.alias, name: handle),
+                 item: .localSession(name: handle, path: path))
+        case let .remote(alias, session):
+            drop(SessionRef(alias: alias, name: session),
+                 item: .session(alias: alias, name: session))
+        }
+    }
+
+    private func drop(_ ref: SessionRef, item: SidebarItem) {
+        if case let .stack(refs) = activePage, refs.contains(ref) {
+            let left = refs.filter { $0 != ref }
+            activePage = left.isEmpty ? nil : .stack(left)
+        }
+        selectedSessions.remove(ref)
+        if selectionAnchor == ref { selectionAnchor = nil }
+        if selection == item { selection = nil }
+        TerminalRegistry.shared.close(item.terminalKind)
+    }
+
+    /// Sessions this app still shows for a workspace that the workspace itself
+    /// no longer has: killed from another client, or ended with `exit`.
+    private func dropMissingSessions(alias: String, present: [TmuxSession]) {
+        let names = Set(present.map(\.name))
+        var refs: [SessionRef] = []
+        if case let .stack(stacked) = activePage {
+            refs += stacked.filter { $0.alias == alias && !names.contains($0.name) }
+        }
+        if case let .session(selectedAlias, name) = selection,
+           selectedAlias == alias, !names.contains(name) {
+            refs.append(SessionRef(alias: alias, name: name))
+        }
+        for ref in Set(refs) {
+            drop(ref, item: .session(alias: ref.alias, name: ref.name))
+        }
     }
 
     var hasSelectionPollTimer: Bool { selectionPollTimer != nil }
@@ -695,6 +744,7 @@ final class AppModel: ObservableObject {
             // exactly what is already on screen.
             if sessionsByAlias[alias] != result {
                 sessionsByAlias[alias] = result
+                dropMissingSessions(alias: alias, present: result)
             }
             if offlineAliases.contains(alias) {
                 offlineAliases.remove(alias)

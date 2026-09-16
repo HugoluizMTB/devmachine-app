@@ -503,6 +503,55 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testALocalSessionThatEndsLosesItsRowAndItsStackCell() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.stackWorkspace(Workspace.local.alias)
+
+        model.sessionEnded(.local(session: "acme", path: "/Users/alice/dev/acme"))
+
+        XCTAssertEqual(model.localSessions.map(\.handle), ["Operator"])
+        guard case let .stack(refs) = model.activePage else {
+            return XCTFail("the stack closed entirely")
+        }
+        XCTAssertEqual(refs.map(\.name), ["Operator"])
+    }
+
+    @MainActor
+    func testTheLastSessionOfAStackClosesThePage() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.stackSessions([SessionRef(alias: "acme-devmachine", name: "dash")])
+
+        model.sessionEnded(.remote(alias: "acme-devmachine", session: "dash"))
+
+        XCTAssertNil(model.activePage)
+    }
+
+    @MainActor
+    func testAnEndedSessionIsNoLongerSelected() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        XCTAssertEqual(model.selection, .localSession(name: "acme", path: "/Users/alice/dev/acme"))
+
+        model.sessionEnded(.local(session: "acme", path: "/Users/alice/dev/acme"))
+
+        XCTAssertNil(model.selection)
+    }
+
+    @MainActor
+    func testAnEndedSessionForgetsItsRename() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.renameLocalSession(handle: "acme", to: "Client work")
+
+        model.sessionEnded(.local(session: "acme", path: "/Users/alice/dev/acme"))
+
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        XCTAssertEqual(model.localSessions.map(\.name), ["Operator", "acme"])
+        model.removeLocalSession(handle: "acme")
+    }
+
+    @MainActor
     func testARemoteReferenceStaysRemote() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         let kind = model.terminalKind(for: SessionRef(alias: "acme-devmachine", name: "dash"))
