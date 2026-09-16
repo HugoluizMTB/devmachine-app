@@ -140,6 +140,10 @@ segmented control.
   click was the only thing marking a frame dirty.
 - Terminal layout is explicit (`TerminalContainerView.layout()`), not autoresizing
   masks — they lost the insets after SwiftUI's first sizing pass.
+- **The Local workspace lists what `zmx ls` reports**, merged with what the app
+  remembers (`LocalSessionScan.merge`): a session started outside the app shows
+  up, and a remembered one that has no shell yet shows without a client count.
+  One `ps -axo pid=,ppid=,comm=` per poll says which sessions hold a Claude.
 - **A local session is renamed in the sidebar only.** `zmx` has no rename and its
   socket is named after the session, so `LocalSession.handle` (the multiplexer
   name, and the registry key) never changes; `name` is what the sidebar shows.
