@@ -78,7 +78,8 @@ struct TerminalPaneView: NSViewRepresentable {
         let opacity = Appearance.clampTerminalOpacity(
             settings?.terminalOpacity ?? Appearance.defaultTerminalOpacity)
         let background = translucent
-            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255, alpha: opacity)
+            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255,
+                      alpha: Appearance.layerOpacity(forCombined: opacity))
             : NSColor(srgbRed: 0x14 / 255, green: 0x19 / 255, blue: 0x1F / 255, alpha: 1)
         let size = Appearance.clampTerminalFontSize(
             settings?.terminalFontSize ?? Appearance.defaultTerminalFontSize)
@@ -93,11 +94,10 @@ struct TerminalPaneView: NSViewRepresentable {
         term.needsDisplay = true
         container.wantsLayer = true
         container.layer?.isOpaque = !translucent
-        // Behind a translucent terminal the container paints nothing: its colour
-        // would sit under the terminal's own and the two alphas would add up,
-        // which is why the pane looked solid at any setting. Opaque panes still
-        // get it, so the ring of padding matches the text area.
-        container.layer?.backgroundColor = translucent ? NSColor.clear.cgColor : background.cgColor
+        // Both layers paint, at the share that adds up to the setting: the
+        // terminal so no cell is left showing what was there before, the
+        // container so the ring of padding matches the text area.
+        container.layer?.backgroundColor = background.cgColor
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: ()) {

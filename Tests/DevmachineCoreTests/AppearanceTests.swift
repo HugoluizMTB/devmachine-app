@@ -80,3 +80,21 @@ extension AppearanceTests {
         XCTAssertTrue(read.debugLogging)
     }
 }
+
+extension AppearanceTests {
+    func testTwoLayersAddUpToTheOpacityAsked() {
+        for wanted in [0.2, 0.4, 0.66, 0.9, 1.0] {
+            let each = Appearance.layerOpacity(forCombined: wanted)
+            let combined = 1 - (1 - each) * (1 - each)
+            XCTAssertEqual(combined, wanted, accuracy: 0.0001)
+        }
+    }
+
+    func testEachLayerIsLighterThanTheResult() {
+        XCTAssertLessThan(Appearance.layerOpacity(forCombined: 0.66), 0.66)
+    }
+
+    func testAnOpaquePaneStaysOpaque() {
+        XCTAssertEqual(Appearance.layerOpacity(forCombined: 1.0), 1.0)
+    }
+}
