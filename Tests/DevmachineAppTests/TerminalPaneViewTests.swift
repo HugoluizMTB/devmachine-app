@@ -50,21 +50,3 @@ final class TerminalContainerViewTests: XCTestCase {
     }
 
 }
-
-extension TerminalContainerViewTests {
-    func testATranslucentPaneMasksItsPaintToTheRing() {
-        let (container, _) = container(width: 400, height: 300)
-        container.hasRingMask = true
-        container.layout()
-
-        XCTAssertNotNil(container.layer?.mask)
-    }
-
-    func testAnOpaquePaneNeedsNoMask() {
-        let (container, _) = container(width: 400, height: 300)
-        container.hasRingMask = false
-        container.layout()
-
-        XCTAssertNil(container.layer?.mask)
-    }
-}

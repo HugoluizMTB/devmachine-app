@@ -77,10 +77,10 @@ struct TerminalPaneView: NSViewRepresentable {
         let settings = SettingsStore.shared.settings
         let opacity = Appearance.clampTerminalOpacity(
             settings?.terminalOpacity ?? Appearance.defaultTerminalOpacity)
-        // One coat everywhere: the terminal paints the text area, the container
-        // paints only the ring around it, both at the value from Settings.
+        // Both layers paint, each at the share that combines to the setting.
         let background = translucent
-            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255, alpha: opacity)
+            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255,
+                      alpha: Appearance.layerOpacity(forCombined: opacity))
             : NSColor(srgbRed: 0x14 / 255, green: 0x19 / 255, blue: 0x1F / 255, alpha: 1)
         let size = Appearance.clampTerminalFontSize(
             settings?.terminalFontSize ?? Appearance.defaultTerminalFontSize)
@@ -96,10 +96,6 @@ struct TerminalPaneView: NSViewRepresentable {
         container.wantsLayer = true
         container.layer?.isOpaque = !translucent
         container.layer?.backgroundColor = background.cgColor
-        if let box = container as? TerminalContainerView {
-            box.hasRingMask = translucent
-            box.updateRingMask()
-        }
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: ()) {
@@ -132,37 +128,16 @@ struct TerminalPaneView: NSViewRepresentable {
             super.layout()
             content?.frame = contentFrame
             content?.needsDisplay = true
-            updateRingMask()
         }
 
-        /// The container paints only the ring of padding, never the area behind
-        /// the terminal. Both regions then carry one coat of colour: the ring
-        /// from here, the text area from the terminal itself. Painting the whole
-        /// container instead left the ring a shade lighter than the middle,
-        /// which read as a double border.
-        func updateRingMask() {
-            guard hasRingMask else {
-                layer?.mask = nil
-                return
-            }
-            let path = CGMutablePath()
-            path.addRect(bounds)
-            path.addRect(contentFrame)
-            let mask = (layer?.mask as? CAShapeLayer) ?? CAShapeLayer()
-            mask.fillRule = .evenOdd
-            mask.frame = bounds
-            mask.path = path
-            layer?.mask = mask
-        }
-
-        /// Only a translucent pane needs it: an opaque one has nothing showing
-        /// through, so the extra layer would cost without changing anything.
+        /// Kept as a no-op: masking the container to the ring also clipped the
+        /// terminal inside it, and every pane went blank.
+        func updateRingMask() {}
         var hasRingMask = false
 
         override func resizeSubviews(withOldSize oldSize: NSSize) {
             content?.frame = contentFrame
             content?.needsDisplay = true
-            updateRingMask()
         }
     }
 }
