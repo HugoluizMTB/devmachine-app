@@ -336,6 +336,14 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
 // SwiftTerm's kitty encoding still breaks Enter and dead keys, so the view
 // drops both replies: programs keep the legacy encoding this app always ran.
 final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
+    /// The rows and columns actually handed to the program. This is the number a
+    /// half-drawn screen is made of, and the only one worth logging.
+    override func getWindowSize() -> winsize {
+        let size = super.getWindowSize()
+        PaneLog.log("window size cols=\(size.ws_col) rows=\(size.ws_row)")
+        return size
+    }
+
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {
         let filtered = TerminalReplyFilter.strip(Array(data))
         guard !filtered.isEmpty else { return }
