@@ -134,6 +134,7 @@ final class TerminalRegistry: NSObject {
     /// session server-side, so opening it again reconnects.
     func detach(_ kind: TerminalKind) {
         guard terminals[kind] != nil else { return }
+        PaneLog.log("detach pane=\(kind)")
         detachedAt[kind] = Date()
         for stale in LRUEviction.keysToEvict(detachedAt: detachedAt, cap: Self.detachedLimit) {
             close(stale)
@@ -172,11 +173,13 @@ final class TerminalRegistry: NSObject {
     /// shows the session instead of the message its client left behind.
     private func reviveIfDead(_ kind: TerminalKind, view: LocalProcessTerminalView) {
         guard dead.contains(kind) else { return }
+        PaneLog.log("revive pane=\(kind)")
         dead.remove(kind)
         start(kind, in: view)
     }
 
     func close(_ kind: TerminalKind) {
+        PaneLog.log("close pane=\(kind)")
         dead.remove(kind)
         detachedAt[kind] = nil
         if pendingFocusKind == kind { pendingFocusKind = nil }
@@ -209,6 +212,7 @@ final class TerminalRegistry: NSObject {
     }
 
     private func start(_ kind: TerminalKind, in term: LocalProcessTerminalView) {
+        PaneLog.log("start pane=\(kind)")
         switch kind {
         case let .remote(alias, session):
             // Interactive: mosh (survives roaming/drops). Tailscale only
@@ -266,6 +270,7 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
         // client (tmux and zmx both do), so coming back should reconnect rather
         // than leave a dead screen or lose the pane.
         if let kind = terminals.first(where: { $0.value === source })?.key {
+            PaneLog.log("process ended pane=\(kind) exit=\(exitCode.map(String.init) ?? "-")")
             dead.insert(kind)
             detachedAt[kind] = nil
         }

@@ -55,21 +55,16 @@ struct TerminalPaneView: NSViewRepresentable {
         container.addSubview(term)
         container.content = term
         TerminalRegistry.shared.viewDidAttach(kind)
-        // A program that draws the whole screen once, like tmux, has no reason
-        // to draw it again when this view is re-parented: it was never told
-        // anything changed, so the pane stays blank until something resizes it.
-        // Resizing the sidebar was the manual workaround; this does the same on
-        // purpose, one row smaller and back, which reaches the program as the
-        // size change that makes it repaint.
+        // Lay out once more after SwiftUI's first sizing pass, at the size the
+        // pane actually has. An earlier version shrank the pane by a row and
+        // restored it to force a repaint; that left the last row unpainted,
+        // which is worse than the blank pane it was meant to fix.
         DispatchQueue.main.async { [weak container, weak term] in
             guard let container, let term, term.superview === container else { return }
-            let target = container.contentFrame
-            term.frame = TerminalPaneView.nudged(target)
-            DispatchQueue.main.async {
-                guard term.superview === container else { return }
-                term.frame = target
-                term.needsDisplay = true
-            }
+            term.frame = container.contentFrame
+            term.needsDisplay = true
+            PaneLog.log(
+                "attach pane=\(kind) frame=\(Int(term.frame.width))x\(Int(term.frame.height))")
         }
         return container
     }
@@ -85,16 +80,6 @@ struct TerminalPaneView: NSViewRepresentable {
         if let kind = container.kind {
             TerminalRegistry.shared.detach(kind)
         }
-    }
-
-    /// One text row shorter, and never below a usable size. The height is what
-    /// changes, not the width: a narrower terminal rewraps every long line,
-    /// while one row fewer only scrolls.
-    static let nudgeHeight: CGFloat = 20
-
-    static func nudged(_ frame: NSRect) -> NSRect {
-        NSRect(x: frame.origin.x, y: frame.origin.y, width: frame.width,
-               height: max(1, frame.height - nudgeHeight))
     }
 
     // Autoresizing masks did not keep the insets: after SwiftUI's first sizing
