@@ -328,14 +328,12 @@ struct ContextPanel: View {
 
     private func linkRow(_ link: ContextState.Link) -> some View {
         HStack(spacing: 8) {
-            if link.kind == "linear" {
-                DMPill(
-                    text: "LINEAR",
-                    color: Color(hex: 0xB07FD0),
-                    font: .dm(9, weight: .semibold),
-                    backgroundOpacity: 0.18
-                )
-            }
+            DMPill(
+                text: link.kind.uppercased(),
+                color: .dmTag(link.kind),
+                font: .dm(9, weight: .semibold),
+                backgroundOpacity: 0.18
+            )
             Text(link.label)
                 .font(.dm(12))
                 .foregroundStyle(Color(hex: 0x5AA9E6))

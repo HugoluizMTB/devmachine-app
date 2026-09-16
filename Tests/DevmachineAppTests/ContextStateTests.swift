@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import DevmachineApp
 import DevmachineCore
@@ -116,5 +117,11 @@ final class ContextStateTests: XCTestCase {
 
         XCTAssertEqual(state.monitors, [])
         XCTAssertEqual(state.shells, [])
+    }
+
+    func testTagColourIsStablePerName() {
+        XCTAssertEqual(Color.dmTag("linear"), Color.dmTag("linear"))
+        XCTAssertNotEqual(Color.dmTag("linear"), Color.dmTag("atlassian"))
+        XCTAssertNotEqual(Color.dmTag("github"), Color.dmTag("openai"))
     }
 }

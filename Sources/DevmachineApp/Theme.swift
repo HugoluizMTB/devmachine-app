@@ -16,3 +16,15 @@ extension Color {
     static let dmHover = Color.white.opacity(0.04)
     static let dmDivider = Color.white.opacity(0.06)
 }
+
+extension Color {
+    /// A stable colour for a name, so every tracker/site gets its own without a
+    /// hard-coded list. Same name, same hue, on every launch.
+    static func dmTag(_ name: String) -> Color {
+        var hash: UInt64 = 5381
+        for byte in name.utf8 {
+            hash = (hash &* 33) &+ UInt64(byte)
+        }
+        return Color(hue: Double(hash % 360) / 360, saturation: 0.45, brightness: 0.85)
+    }
+}
