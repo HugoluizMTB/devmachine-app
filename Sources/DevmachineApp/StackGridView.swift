@@ -47,7 +47,9 @@ struct StackGridView: View {
         TerminalPaneView(
             kind: model.terminalKind(for: ref),
             translucent: true,
-            contentInsets: NSEdgeInsets(top: 34, left: 10, bottom: 8, right: 10)
+            // Room for the title, which sits over the top edge. No side or
+            // bottom padding, for the same reason the single pane has none.
+            contentInsets: NSEdgeInsets(top: 26, left: 0, bottom: 0, right: 0)
         )
             .overlay(alignment: .topLeading) {
                 Text(ref.alias == Workspace.local.alias

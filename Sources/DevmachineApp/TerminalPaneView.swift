@@ -14,7 +14,10 @@ enum TerminalKind: Hashable {
 struct TerminalPaneView: NSViewRepresentable {
     let kind: TerminalKind
     var translucent: Bool = false
-    var contentInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+    /// The terminal fills the card. A ring of padding around it would carry a
+    /// different share of the translucent colour than the text area, and read as
+    /// a second border; text touching the edge is the better trade.
+    var contentInsets = NSEdgeInsets()
 
     func makeNSView(context: Context) -> NSView {
         // Container with no intrinsic size: SwiftUI stretches it; the container
