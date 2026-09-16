@@ -6,8 +6,10 @@ struct ContentView: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var fileSearch = FileSearchStore()
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var viewerStore: FileViewerStore
     @State private var dragStartWidth: CGFloat? = nil
-    @State private var contextDragStartWidth: CGFloat? = nil
+    @State private var contextDragStartWidth: CGFloat?
+    @State private var viewerDragStartWidth: CGFloat? = nil
 
     private var isClaudeSession: Bool {
         guard case let .session(alias, name) = model.selection else { return false }
@@ -138,6 +140,9 @@ struct ContentView: View {
                 sidebarDivider
             }
             centerPane
+            if model.activePage == nil {
+                viewerArea
+            }
             if isClaudeSession && model.activePage == nil {
                 contextArea
             }
@@ -172,6 +177,24 @@ struct ContentView: View {
                     .background(Color.dmContentBg)
                     .transition(.opacity)
             }
+        }
+    }
+
+    /// The file pane: it sits beside the terminal, the way an editor puts a
+    /// file next to a shell, instead of taking a window of its own.
+    @ViewBuilder
+    private var viewerArea: some View {
+        if viewerStore.isOpen {
+            ResizeHandle(
+                onDrag: { dx in
+                    let base = viewerDragStartWidth ?? model.viewerWidth
+                    if viewerDragStartWidth == nil { viewerDragStartWidth = base }
+                    model.setViewerWidth(base - dx)
+                },
+                onEnd: { viewerDragStartWidth = nil }
+            )
+            FileViewerView()
+                .frame(width: model.viewerWidth)
         }
     }
 

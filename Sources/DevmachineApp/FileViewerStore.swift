@@ -11,6 +11,8 @@ final class FileViewerStore: ObservableObject {
     @Published private(set) var errorText: String?
     /// Markdown starts rendered; the switch shows the source instead.
     @Published var showsSource = false
+    /// The pane is on screen only while it holds a file.
+    @Published private(set) var isOpen = false
 
     private let host: HostRunner
     private var current: (target: CommandTarget, path: String)?
@@ -23,10 +25,18 @@ final class FileViewerStore: ObservableObject {
 
     func open(_ target: CommandTarget, path: String) {
         current = (target, path)
+        isOpen = true
         preview = nil
         errorText = nil
         showsSource = false
         load()
+    }
+
+    func close() {
+        isOpen = false
+        current = nil
+        preview = nil
+        errorText = nil
     }
 
     func reload() {

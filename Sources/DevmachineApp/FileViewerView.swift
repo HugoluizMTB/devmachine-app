@@ -21,46 +21,65 @@ struct FileViewerView: View {
         .environment(\.colorScheme, .dark)
     }
 
+    /// A tab with the file's name, the way an editor labels what is open, and
+    /// the path under it so two files with one name stay apart.
     private var header: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.dm(12, weight: .semibold))
-                .foregroundStyle(Color(hex: 0x5AA9E6))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(store.preview?.name ?? (store.path as NSString?)?.lastPathComponent ?? "Viewer")
-                    .font(.dm(13, weight: .semibold))
-                    .foregroundStyle(.white)
-                if let path = store.path {
-                    Text(path)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
                         .font(.dm(10))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(Color(hex: 0x5AA9E6))
+                    Text(store.preview?.name
+                        ?? (store.path as NSString?)?.lastPathComponent ?? "Viewer")
+                        .font(.dm(11.5))
+                        .foregroundStyle(.white.opacity(0.9))
                         .lineLimit(1)
-                        .truncationMode(.head)
-                }
-            }
-            Spacer()
-            if store.preview?.kind == .markdown {
-                Toggle(isOn: $store.showsSource) {
-                    Text(verbatim: "Source").font(.dm(11))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .foregroundStyle(.white.opacity(0.7))
-            }
-            if let preview = store.preview {
-                Text(Self.size(preview.byteCount))
-                    .font(.dm(10, design: .monospaced))
+                    Button { store.close() } label: {
+                        Image(systemName: "xmark").font(.dm(9, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
                     .foregroundStyle(.white.opacity(0.45))
+                    .help("Close the file")
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.dmContentBg)
+                Spacer(minLength: 0)
             }
-            Button { store.reload() } label: {
-                Image(systemName: "arrow.clockwise").font(.dm(11, weight: .semibold))
+            .background(Color.dmSidebarBg)
+
+            HStack(spacing: 8) {
+                Text(store.path ?? "")
+                    .font(.dm(10))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                Spacer(minLength: 4)
+                if store.preview?.kind == .markdown {
+                    Toggle(isOn: $store.showsSource) {
+                        Text(verbatim: "Source").font(.dm(10))
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .foregroundStyle(.white.opacity(0.6))
+                }
+                if let preview = store.preview {
+                    Text(Self.size(preview.byteCount))
+                        .font(.dm(10, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+                Button { store.reload() } label: {
+                    Image(systemName: "arrow.clockwise").font(.dm(10, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(0.5))
+                .help("Read the file again")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white.opacity(0.6))
-            .help("Read the file again")
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.dmContentBg)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
     }
 
     @ViewBuilder
@@ -95,10 +114,13 @@ struct FileViewerView: View {
             }
         case .text:
             scroll {
-                Text(preview.text ?? "")
-                    .font(.dm(12, design: .monospaced))
-                    .foregroundStyle(Color.dmRowText)
-                    .textSelection(.enabled)
+                numbered(preview.text ?? "") {
+                    Text(preview.text ?? "")
+                        .font(.dm(12, design: .monospaced))
+                        .foregroundStyle(Color.dmRowText)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
         case .image:
             imageBody(preview)
@@ -124,13 +146,35 @@ struct FileViewerView: View {
         }
     }
 
+    /// Numbers in their own column, beside the text rather than inside it, so
+    /// what you select and copy is the code alone.
+    private func numbered<Content: View>(
+        _ text: String, @ViewBuilder content: () -> Content
+    ) -> some View {
+        let body = text.hasSuffix("\n") ? String(text.dropLast()) : text
+        let count = body.split(separator: "\n", omittingEmptySubsequences: false).count
+        return HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .trailing, spacing: 0) {
+                ForEach(1...max(count, 1), id: \.self) { number in
+                    Text(verbatim: "\(number)")
+                        .font(.dm(12, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.25))
+                }
+            }
+            .fixedSize()
+            content()
+        }
+    }
+
     private func code(_ text: String, language: String?) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            CodeText(text)
+        let body = text.hasSuffix("\n") ? String(text.dropLast()) : text
+        return numbered(body) {
+            CodeText(body)
                 .highlightLanguage(language.flatMap(HighlightLanguage.init(rawValue:)) ?? .plaintext)
                 .codeTextColors(.theme(.atomOne))
                 .font(.dm(12, design: .monospaced))
                 .textSelection(.enabled)
+                .fixedSize(horizontal: true, vertical: false)
         }
     }
 

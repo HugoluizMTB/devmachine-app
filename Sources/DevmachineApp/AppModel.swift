@@ -109,7 +109,14 @@ final class AppModel: ObservableObject {
             await MainActor.run {
                 self.localScanInFlight = false
                 if self.liveLocalSessions != sessions { self.liveLocalSessions = sessions }
-                if self.localClaudeSessions != withClaude { self.localClaudeSessions = withClaude }
+                if self.localClaudeSessions != withClaude {
+                    self.localClaudeSessions = withClaude
+                    // The context panel asks for a session that holds a Claude.
+                    // The first scan lands after the session is already picked,
+                    // so without this the panel stays empty until the next
+                    // click.
+                    self.syncContext()
+                }
             }
         }
     }
@@ -269,6 +276,16 @@ final class AppModel: ObservableObject {
     }() {
         didSet { UserDefaults.standard.set(Double(contextWidth), forKey: "contextWidth") }
     }
+    @Published var viewerWidth: CGFloat =
+        CGFloat(UserDefaults.standard.double(forKey: "viewerWidth") == 0
+            ? 640 : UserDefaults.standard.double(forKey: "viewerWidth")) {
+        didSet { UserDefaults.standard.set(Double(viewerWidth), forKey: "viewerWidth") }
+    }
+
+    func setViewerWidth(_ width: CGFloat) {
+        viewerWidth = min(max(width, 320), 1200)
+    }
+
     @Published var contextTab: ContextTab =
         ContextTab(rawValue: UserDefaults.standard.string(forKey: "contextTab") ?? "") ?? .context {
         didSet {

@@ -79,16 +79,6 @@ struct DevmachineApp: App {
         }
         .defaultSize(width: 520, height: 600)
 
-        // Reading only, in a window of its own: a file can sit beside the
-        // session it came from instead of covering it.
-        Window("Viewer", id: "viewer") {
-            FileViewerView()
-                .environmentObject(viewerStore)
-                .environmentObject(model)
-                .frame(minWidth: 480, minHeight: 320)
-        }
-        .defaultSize(width: 860, height: 700)
-
         MenuBarExtra {
             MenuBarPanel()
                 .environmentObject(prStore)

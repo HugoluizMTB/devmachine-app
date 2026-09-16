@@ -116,7 +116,8 @@ struct FilesView: View {
     private func open(_ entry: FileEntry) {
         guard let target = store.target else { return }
         viewerStore.open(target, path: store.absolutePath(of: entry))
-        openWindow(id: "viewer")
+        // The pane lives in the main window, so that is the one to raise.
+        openWindow(id: "main")
     }
 
     private func row(for entry: FileEntry) -> some View {

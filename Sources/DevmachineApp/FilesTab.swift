@@ -153,7 +153,6 @@ struct FilesTab: View {
     private func openInViewer(_ row: FileTreeRow) {
         selected = row.path
         viewerStore.open(target, path: row.path)
-        openWindow(id: "viewer")
     }
 
     private func openInFilesWindow(_ row: FileTreeRow) {

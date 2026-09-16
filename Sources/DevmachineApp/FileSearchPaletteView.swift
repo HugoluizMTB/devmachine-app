@@ -152,7 +152,6 @@ struct FileSearchPaletteView: View {
         let path = absolute(store.hits[index].path)
         model.showFileSearch = false
         viewerStore.open(target, path: path)
-        openWindow(id: "viewer")
     }
 
     private func typeSelected() {
