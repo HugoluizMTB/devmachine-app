@@ -56,10 +56,10 @@ final class GitStoreTests: XCTestCase {
     """
 
     func testStartReadsTheSnapshot() async throws {
-        let store = GitStore(remote: RemoteService(runner: GitRunner(output: snapshotOutput)))
+        let store = GitStore(host: HostRunner(remote: RemoteService(runner: GitRunner(output: snapshotOutput))))
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.snapshot != nil }
 
         let snapshot = try XCTUnwrap(store.snapshot)
@@ -74,10 +74,10 @@ final class GitStoreTests: XCTestCase {
 
     func testRefreshWithTheSameOutputDoesNotRepublish() async throws {
         let runner = GitRunner(output: snapshotOutput)
-        let store = GitStore(remote: RemoteService(runner: runner))
+        let store = GitStore(host: HostRunner(remote: RemoteService(runner: runner)))
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.snapshot != nil }
 
         let changes = ChangeCounter()
@@ -94,10 +94,10 @@ final class GitStoreTests: XCTestCase {
 
     func testRefreshSkipsTheTickWhileTheSameSessionIsInFlight() async throws {
         let runner = BlockingRunner(output: snapshotOutput)
-        let store = GitStore(remote: RemoteService(runner: runner))
+        let store = GitStore(host: HostRunner(remote: RemoteService(runner: runner)))
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { runner.callCount == 1 }
         XCTAssertTrue(store.isLoading)
 
@@ -111,9 +111,9 @@ final class GitStoreTests: XCTestCase {
     }
 
     func testStopClearsTheSnapshot() async throws {
-        let store = GitStore(remote: RemoteService(runner: GitRunner(output: snapshotOutput)))
+        let store = GitStore(host: HostRunner(remote: RemoteService(runner: GitRunner(output: snapshotOutput))))
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.snapshot != nil }
         store.stop()
 
@@ -129,10 +129,10 @@ final class GitStoreTests: XCTestCase {
 
     func testOutputWithoutARepositoryLeavesNoSnapshotAndNoError() async throws {
         let runner = GitRunner(output: "")
-        let store = GitStore(remote: RemoteService(runner: runner))
+        let store = GitStore(host: HostRunner(remote: RemoteService(runner: runner)))
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { runner.callCount == 1 && !store.isLoading }
 
         XCTAssertNil(store.snapshot)

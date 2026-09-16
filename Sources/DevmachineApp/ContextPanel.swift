@@ -35,20 +35,34 @@ struct ContextPanel: View {
         return (alias, name)
     }
 
+    /// Where the Files and Git tabs read from: the host for a remote session,
+    /// this Mac for a local one.
+    private var commandTarget: CommandTarget? {
+        switch model.selection {
+        case let .session(alias, name):
+            return .remote(alias: alias, session: name)
+        case let .localSession(name, path):
+            let session = model.localSessions.first { $0.handle == name }
+            return .local(path: session.flatMap(model.localWorkingDirectory) ?? path)
+        case nil:
+            return nil
+        }
+    }
+
     @ViewBuilder
     private var tabBody: some View {
         switch model.contextTab {
         case .context:
             contextBody
         case .files:
-            if let session {
-                FilesTab(store: fileTreeStore, alias: session.alias, session: session.name)
+            if let commandTarget {
+                FilesTab(store: fileTreeStore, target: commandTarget)
             } else {
                 message("No session")
             }
         case .git:
-            if let session {
-                GitTab(store: gitStore, alias: session.alias, session: session.name)
+            if let commandTarget {
+                GitTab(store: gitStore, target: commandTarget)
             } else {
                 message("No session")
             }

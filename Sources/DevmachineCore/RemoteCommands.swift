@@ -65,27 +65,50 @@ public enum RemoteCommands {
         "tmux kill-session -t \(shellSingleQuoted(name))"
     }
 
+    /// Moves to the folder a session is in, so a command reads what the person
+    /// in that session sees.
+    public static func inSessionDirectory(session: String, command: String) -> String {
+        "cd \"$(tmux display -p -t \(shellSingleQuoted(session)) '#{pane_current_path}')\""
+            + " && " + command
+    }
+
+    /// The same, for a folder that is already known — a session this Mac hosts,
+    /// where there is no tmux to ask.
+    public static func inDirectory(path: String, command: String) -> String {
+        "cd \(shellSingleQuoted(path)) && " + command
+    }
+
     // One round trip for the whole panel: the three git reads are joined by a
     // record separator, and `rev-parse` failing first is how "not a repo" is reported.
+    public static let gitSnapshotBody =
+        "git rev-parse --show-toplevel"
+        + " && git status --porcelain=v2 --branch"
+        + " && printf '\\x1e'"
+        + " && git worktree list --porcelain"
+        + " && printf '\\x1e'"
+        + " && git log --format='%h%x1f%s%x1f%an%x1f%ar%x1f%D' -n 80"
+
     public static func gitSnapshot(session: String) -> String {
-        "cd \"$(tmux display -p -t \(shellSingleQuoted(session)) '#{pane_current_path}')\""
-            + " && git rev-parse --show-toplevel"
-            + " && git status --porcelain=v2 --branch"
-            + " && printf '\\x1e'"
-            + " && git worktree list --porcelain"
-            + " && printf '\\x1e'"
-            + " && git log --format='%h%x1f%s%x1f%an%x1f%ar%x1f%D' -n 80"
+        inSessionDirectory(session: session, command: gitSnapshotBody)
     }
 
     // The pane's cwd is the starting point, but the tree is rooted at the
     // repository so a session sitting in a subdirectory still shows the project.
+    public static let fileTreeRootBody = "(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
     public static func fileTreeRoot(session: String) -> String {
-        "cd \"$(tmux display -p -t \(shellSingleQuoted(session)) '#{pane_current_path}')\""
-            + " && (git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        inSessionDirectory(session: session, command: fileTreeRootBody)
     }
 
     public static func listDirectory(path: String) -> String {
         "find \(shellSingleQuoted(path)) -mindepth 1 -maxdepth 1 -printf '%y\\t%f\\n' | sort -f"
+    }
+
+    /// The same listing where `find` has no `-printf`, which is every BSD
+    /// system, this Mac included. `-p` marks a directory with a trailing
+    /// slash, and that is the only type this tree needs to tell apart.
+    public static func listDirectoryPortable(path: String) -> String {
+        "ls -Ap1 -- \(shellSingleQuoted(path))"
     }
 
     /// Every file under the root, for the search field. Asks git first, which

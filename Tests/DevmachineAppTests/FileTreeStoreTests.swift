@@ -94,14 +94,14 @@ final class FileTreeStoreTests: XCTestCase {
             listings: listings ?? self.listings,
             rootError: rootError
         )
-        return (FileTreeStore(remote: RemoteService(runner: runner)), runner)
+        return (FileTreeStore(host: HostRunner(remote: RemoteService(runner: runner))), runner)
     }
 
     func testStartResolvesTheRootAndListsIt() async throws {
         let (store, _) = makeStore()
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.children[self.root] != nil }
 
         XCTAssertEqual(store.root, root)
@@ -116,7 +116,7 @@ final class FileTreeStoreTests: XCTestCase {
         let (store, _) = makeStore(root: "/home/alice", listings: ["/home/alice": "d\tdev\n"])
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "shell")
+        store.start(.remote(alias: "acme-devmachine", session: "shell"))
         try await waitUntil { store.root != nil }
 
         XCTAssertEqual(store.root, "/home/alice")
@@ -127,7 +127,7 @@ final class FileTreeStoreTests: XCTestCase {
         let (store, _) = makeStore(root: "", listings: [:], rootError: "no server running\n")
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "gone")
+        store.start(.remote(alias: "acme-devmachine", session: "gone"))
         try await waitUntil { store.errorText != nil }
 
         XCTAssertNil(store.root)
@@ -139,7 +139,7 @@ final class FileTreeStoreTests: XCTestCase {
         let (store, _) = makeStore(root: "", listings: [:])
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "gone")
+        store.start(.remote(alias: "acme-devmachine", session: "gone"))
         try await waitUntil { !store.isLoading }
 
         XCTAssertNil(store.root)
@@ -151,7 +151,7 @@ final class FileTreeStoreTests: XCTestCase {
         defer { store.stop() }
         let sources = root + "/Sources"
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.children[self.root] != nil }
 
         store.toggle(sources)
@@ -175,7 +175,7 @@ final class FileTreeStoreTests: XCTestCase {
         defer { store.stop() }
         let tests = root + "/Tests"
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.children[self.root] != nil }
         store.toggle(tests)
         try await waitUntil { store.children[tests] != nil }
@@ -192,7 +192,7 @@ final class FileTreeStoreTests: XCTestCase {
         defer { store.stop() }
         let sources = root + "/Sources"
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.children[self.root] != nil }
         store.toggle(sources)
         try await waitUntil { store.children[sources] != nil }
@@ -211,7 +211,7 @@ final class FileTreeStoreTests: XCTestCase {
         let (store, _) = makeStore()
         let sources = root + "/Sources"
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.children[self.root] != nil }
         store.toggle(sources)
         try await waitUntil { store.children[sources] != nil }
@@ -224,7 +224,7 @@ final class FileTreeStoreTests: XCTestCase {
         let other = "/home/alice/dev/site"
         let (second, _) = makeStore(root: other, listings: [other: "f\tindex.html\n"])
         defer { second.stop() }
-        second.start(alias: "acme-devmachine", session: "site")
+        second.start(.remote(alias: "acme-devmachine", session: "site"))
         try await waitUntil { second.children[other] != nil }
 
         XCTAssertEqual(second.visibleRows.map(\.name), ["index.html"])
@@ -234,9 +234,9 @@ final class FileTreeStoreTests: XCTestCase {
         let (store, runner) = makeStore()
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.children[self.root] != nil }
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertEqual(runner.rootCount, 1)
@@ -246,7 +246,7 @@ final class FileTreeStoreTests: XCTestCase {
         let (store, _) = makeStore()
         defer { store.stop() }
 
-        store.start(alias: "acme-devmachine", session: "dash")
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         try await waitUntil { store.root != nil }
 
         XCTAssertEqual(store.relativePath(of: root + "/Sources/App.swift"), "Sources/App.swift")

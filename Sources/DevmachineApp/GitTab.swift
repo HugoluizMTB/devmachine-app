@@ -4,16 +4,13 @@ import DevmachineCore
 
 struct GitTab: View {
     @ObservedObject var store: GitStore
-    let alias: String
-    let session: String
+    let target: CommandTarget
     @EnvironmentObject var model: AppModel
 
     private static let sectionPadding = EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
     private static let rowHeight: CGFloat = 26
     private static let dotSize: CGFloat = 6
     private static let accent = Color(hex: 0x5AA9E6)
-
-    private var target: String { "\(alias)/\(session)" }
 
     var body: some View {
         Group {
@@ -23,9 +20,9 @@ struct GitTab: View {
                 stateMessage
             }
         }
-        .onAppear { store.start(alias: alias, session: session) }
+        .onAppear { store.start(target) }
         .onDisappear { store.stop() }
-        .onChange(of: target) { _, _ in store.start(alias: alias, session: session) }
+        .onChange(of: target.key) { _, _ in store.start(target) }
     }
 
     private func content(_ snapshot: GitSnapshot) -> some View {

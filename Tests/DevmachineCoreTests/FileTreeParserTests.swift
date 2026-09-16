@@ -79,3 +79,25 @@ final class FileTreeParserTests: XCTestCase {
         XCTAssertTrue(RemoteCommands.listDirectory(path: "x'y").contains("'x'\\''y'"))
     }
 }
+
+final class PortableFileListingTests: XCTestCase {
+    func testATrailingSlashMarksADirectory() {
+        let entries = FileTreeParser.parseNames("Sources/\nPackage.swift\nREADME.md\n")
+        XCTAssertEqual(entries.map(\.name), ["Sources", "Package.swift", "README.md"])
+        XCTAssertEqual(entries.first?.kind, .directory)
+        XCTAssertEqual(entries.last?.kind, .file)
+    }
+
+    func testDirectoriesComeFirstThenNamesInOrder() {
+        let entries = FileTreeParser.parseNames("b.swift\nTests/\na.swift\nSources/\n")
+        XCTAssertEqual(entries.map(\.name), ["Sources", "Tests", "a.swift", "b.swift"])
+    }
+
+    func testTheGitFolderIsLeftOut() {
+        XCTAssertEqual(FileTreeParser.parseNames(".git/\nsrc/\n").map(\.name), ["src"])
+    }
+
+    func testDotEntriesAndBlankLinesAreIgnored() {
+        XCTAssertTrue(FileTreeParser.parseNames("./\n../\n\n  \n").isEmpty)
+    }
+}

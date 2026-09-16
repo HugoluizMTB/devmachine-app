@@ -68,8 +68,8 @@ final class FilesTabTests: XCTestCase {
     // The tab's onAppear starts the store, which would wipe seeded state — so
     // the fixture starts it first and lets that resolution land.
     private func seededStore() async throws -> FileTreeStore {
-        let store = FileTreeStore(remote: RemoteService(runner: SilentRunner()))
-        store.start(alias: "acme-devmachine", session: "dash")
+        let store = FileTreeStore(host: HostRunner(remote: RemoteService(runner: SilentRunner())))
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
         let deadline = Date().addingTimeInterval(2)
         while store.isLoading, Date() < deadline {
             try await Task.sleep(nanoseconds: 5_000_000)
@@ -90,7 +90,7 @@ final class FilesTabTests: XCTestCase {
     }
 
     private func render(_ store: FileTreeStore) throws -> NSImage {
-        let view = FilesTab(store: store, alias: "acme-devmachine", session: "dash")
+        let view = FilesTab(store: store, target: .remote(alias: "acme-devmachine", session: "dash"))
             .environmentObject(AppModel(store: SessionStore(runner: SilentRunner())))
             .environmentObject(FilesStore(service: FileService(remote: RemoteService(runner: SilentRunner())), runner: SilentRunner()))
             .frame(width: 300, height: 420)
@@ -107,10 +107,10 @@ final class FilesTabTests: XCTestCase {
             ["Sources", "App.swift", "Tests", "empty", ".gitignore", "README.md"]
         )
 
-        let noPath = FileTreeStore(remote: RemoteService(runner: SilentRunner()))
+        let noPath = FileTreeStore(host: HostRunner(remote: RemoteService(runner: SilentRunner())))
         XCTAssertEqual(try render(noPath).size.width, 300)
 
-        let failed = FileTreeStore(remote: RemoteService(runner: SilentRunner()))
+        let failed = FileTreeStore(host: HostRunner(remote: RemoteService(runner: SilentRunner())))
         failed.errorText = "Could not reach the host"
         XCTAssertEqual(try render(failed).size.width, 300)
     }

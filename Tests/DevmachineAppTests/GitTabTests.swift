@@ -10,7 +10,7 @@ private final class SilentRunner: CommandRunner, @unchecked Sendable {
 @MainActor
 final class GitTabTests: XCTestCase {
     private func store(snapshot: GitSnapshot?) -> GitStore {
-        let store = GitStore(remote: RemoteService(runner: SilentRunner()))
+        let store = GitStore(host: HostRunner(remote: RemoteService(runner: SilentRunner())))
         store.snapshot = snapshot
         return store
     }
@@ -57,7 +57,7 @@ final class GitTabTests: XCTestCase {
     }
 
     private func render(_ store: GitStore) throws -> NSImage {
-        let view = GitTab(store: store, alias: "acme-devmachine", session: "dash")
+        let view = GitTab(store: store, target: .remote(alias: "acme-devmachine", session: "dash"))
             .environmentObject(AppModel(store: SessionStore(runner: SilentRunner())))
             .frame(width: 300, height: 420)
         return try XCTUnwrap(ImageRenderer(content: view).nsImage)

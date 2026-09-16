@@ -26,14 +26,11 @@ enum FileTreeIcon {
 
 struct FilesTab: View {
     @ObservedObject var store: FileTreeStore
-    let alias: String
-    let session: String
+    let target: CommandTarget
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
     @Environment(\.openWindow) private var openWindow
     @State private var selected: String?
-
-    private var target: String { "\(alias)/\(session)" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -50,9 +47,9 @@ struct FilesTab: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onAppear { store.start(alias: alias, session: session) }
+        .onAppear { store.start(target) }
         .onDisappear { store.stop() }
-        .onChange(of: target) { _, _ in store.start(alias: alias, session: session) }
+        .onChange(of: target.key) { _, _ in store.start(target) }
     }
 
     private func header(_ root: String) -> some View {
@@ -148,9 +145,17 @@ struct FilesTab: View {
         }
     }
 
+    /// The Files window reads a host over ssh, so it has nothing to open for a
+    /// session that runs on this Mac — Finder does that job here.
     private func openInFilesWindow(_ row: FileTreeRow) {
-        filesStore.open(alias: alias, path: store.parentPath(of: row.path))
-        openWindow(id: "files")
+        switch target {
+        case let .remote(alias, _):
+            filesStore.open(alias: alias, path: store.parentPath(of: row.path))
+            openWindow(id: "files")
+        case .local:
+            NSWorkspace.shared.selectFile(
+                row.path, inFileViewerRootedAtPath: store.parentPath(of: row.path))
+        }
     }
 
     private func copy(_ text: String, label: String) {

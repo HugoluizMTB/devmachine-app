@@ -27,17 +27,17 @@ final class FileTreeStore: ObservableObject {
 
     private static let rootKey = "\u{1}root"
 
-    private let remote: RemoteService
-    private var current: (alias: String, session: String)?
+    private let host: HostRunner
+    private var current: CommandTarget?
     private var inFlight: Set<String> = []
 
-    init(remote: RemoteService = RemoteService()) {
-        self.remote = remote
+    init(host: HostRunner = HostRunner()) {
+        self.host = host
     }
 
-    func start(alias: String, session: String) {
-        if let cur = current, cur.alias == alias, cur.session == session { return }
-        current = (alias, session)
+    func start(_ target: CommandTarget) {
+        if current == target { return }
+        current = target
         clear()
         resolveRoot(keepingExpanded: false)
     }
@@ -114,33 +114,27 @@ final class FileTreeStore: ObservableObject {
     }
 
     private func resolveRoot(keepingExpanded: Bool) {
-        guard let (alias, session) = current else { return }
+        guard let target = current else { return }
         guard !inFlight.contains(Self.rootKey) else { return }
         inFlight.insert(Self.rootKey)
         setLoading(root == nil)
-        let remote = self.remote
-        let command = RemoteCommands.fileTreeRoot(session: session)
+        let host = self.host
+
         Task.detached {
-            let result = try? remote.runCapturing(alias: alias, args: [command])
+            let result = try? host.runCapturing(target, RemoteCommands.fileTreeRootBody)
             await MainActor.run {
-                self.applyRoot(
-                    result,
-                    alias: alias,
-                    session: session,
-                    keepingExpanded: keepingExpanded
-                )
+                self.applyRoot(result, target: target, keepingExpanded: keepingExpanded)
             }
         }
     }
 
     private func applyRoot(
         _ result: (stdout: String, stderr: String, exitCode: Int32)?,
-        alias: String,
-        session: String,
+        target: CommandTarget,
         keepingExpanded: Bool
     ) {
         inFlight.remove(Self.rootKey)
-        guard let cur = current, cur.alias == alias, cur.session == session else { return }
+        guard current == target else { return }
         setLoading(false)
 
         guard let path = Self.firstLine(result?.stdout) else {
@@ -162,35 +156,40 @@ final class FileTreeStore: ObservableObject {
     }
 
     private func list(_ path: String) {
-        guard let (alias, _) = current else { return }
+        guard let target = current else { return }
         guard !inFlight.contains(path) else { return }
         inFlight.insert(path)
         loading.insert(path)
-        let remote = self.remote
-        let command = RemoteCommands.listDirectory(path: path)
+        let host = self.host
+        // `find -printf` is GNU only, so this Mac gets the `ls` form.
+        let command = target.isLocal
+            ? RemoteCommands.listDirectoryPortable(path: path)
+            : RemoteCommands.listDirectory(path: path)
         Task.detached {
-            let result = try? remote.runCapturing(alias: alias, args: [command])
+            let result = try? host.runCapturingAnywhere(target, command)
             await MainActor.run {
-                self.applyListing(result, alias: alias, path: path)
+                self.applyListing(result, target: target, path: path)
             }
         }
     }
 
     private func applyListing(
         _ result: (stdout: String, stderr: String, exitCode: Int32)?,
-        alias: String,
+        target: CommandTarget,
         path: String
     ) {
         inFlight.remove(path)
         if loading.contains(path) { loading.remove(path) }
-        guard let cur = current, cur.alias == alias else { return }
+        guard current == target else { return }
         guard let root, path == root || path.hasPrefix(root + "/") else { return }
 
         guard let result else {
-            setError("Could not reach the host")
+            setError("Could not read the folder")
             return
         }
-        let entries = FileTreeParser.parse(result.stdout)
+        let entries = target.isLocal
+            ? FileTreeParser.parseNames(result.stdout)
+            : FileTreeParser.parse(result.stdout)
         if children[path] != entries { children[path] = entries }
         // An unreadable directory lists nothing, so its message is the only
         // sign the listing is empty for a reason.
