@@ -205,13 +205,10 @@ final class TerminalRegistry: NSObject {
                     environment: RemoteCommands.sshEnvironment())
             }
         case .local:
-            // zmx has no refresh command, but attaching again replays the whole
-            // screen, and locally that costs nothing.
-            guard let term = terminals[kind] else { return }
-            PaneLog.log("reattach pane=\(kind)")
-            term.terminate()
-            dead.remove(kind)
-            start(kind, in: term)
+            // Nothing: an earlier version killed the client and started another
+            // in the same view, which left the keyboard wired to the process
+            // that had just died — the pane stopped accepting input entirely.
+            break
         }
     }
 
