@@ -24,7 +24,6 @@ struct ContentView: View {
                 mainRow
                 if model.sidebarCollapsed { collapsedSidebarButton }
             }
-            shortcutButtons
         }
         .background(Color.dmSidebarBg)
         .overlay {
@@ -212,26 +211,6 @@ struct ContentView: View {
         .padding(.leading, 14)
     }
 
-    private var shortcutButtons: some View {
-        ZStack {
-            Button("") {
-                withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed.toggle() }
-            }
-            .keyboardShortcut("b", modifiers: .command)
-            Button("") { model.showFileSearch.toggle() }
-                .keyboardShortcut("p", modifiers: .command)
-            Button("") { model.showCommandPalette.toggle() }
-                .keyboardShortcut("k", modifiers: .command)
-            Button("") {
-                withAnimation(.easeInOut(duration: 0.18)) { model.contextCollapsed.toggle() }
-            }
-            .keyboardShortcut("j", modifiers: .command)
-            Button("") { model.toggleMaximize() }
-                .keyboardShortcut(.return, modifiers: [.command, .shift])
-        }
-        .hidden()
-        .frame(width: 0, height: 0)
-    }
 }
 
 private struct PageHost: View {
