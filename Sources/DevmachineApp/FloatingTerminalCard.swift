@@ -9,13 +9,11 @@ enum FloatingCardLayout {
 
 struct FloatingTerminalCard: ViewModifier {
     func body(content: Content) -> some View {
+        // No stroke around the card: with a translucent pane it read as a second
+        // border, next to the ring of padding, and the pane is meant to look
+        // like one surface.
         content
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                    .allowsHitTesting(false)
-            )
     }
 }
 

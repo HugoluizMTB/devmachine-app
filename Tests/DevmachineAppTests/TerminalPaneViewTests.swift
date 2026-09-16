@@ -10,6 +10,7 @@ final class TerminalContainerViewTests: XCTestCase {
     private func container(width: CGFloat, height: CGFloat) -> (TerminalPaneView.TerminalContainerView, NSView) {
         let container = TerminalPaneView.TerminalContainerView(
             frame: NSRect(x: 0, y: 0, width: width, height: height))
+        container.wantsLayer = true
         container.contentInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
         let content = NSView(frame: .zero)
         container.addSubview(content)
@@ -48,4 +49,22 @@ final class TerminalContainerViewTests: XCTestCase {
         XCTAssertEqual(container.contentFrame.height, 1)
     }
 
+}
+
+extension TerminalContainerViewTests {
+    func testATranslucentPaneMasksItsPaintToTheRing() {
+        let (container, _) = container(width: 400, height: 300)
+        container.hasRingMask = true
+        container.layout()
+
+        XCTAssertNotNil(container.layer?.mask)
+    }
+
+    func testAnOpaquePaneNeedsNoMask() {
+        let (container, _) = container(width: 400, height: 300)
+        container.hasRingMask = false
+        container.layout()
+
+        XCTAssertNil(container.layer?.mask)
+    }
 }
