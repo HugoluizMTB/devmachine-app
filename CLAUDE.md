@@ -133,8 +133,16 @@ segmented control.
 - **A process starts only after its pane has the size it will be drawn at**
   (`viewDidSize`). Started earlier it learns a placeholder geometry, and a program
   that repaints only what changed never corrects it.
+- **`needsDisplay` never repaints a terminal. Call `requestRedraw()`.** SwiftTerm
+  draws through a Metal render loop by default on macOS: `draw(_:)` returns at
+  once and frames come from its own driver, so an AppKit invalidation is dropped
+  without a word. That is why panes came back blank and a click fixed them — the
+  click was the only thing marking a frame dirty.
 - Terminal layout is explicit (`TerminalContainerView.layout()`), not autoresizing
   masks — they lost the insets after SwiftUI's first sizing pass.
+- **A local session is renamed in the sidebar only.** `zmx` has no rename and its
+  socket is named after the session, so `LocalSession.handle` (the multiplexer
+  name, and the registry key) never changes; `name` is what the sidebar shows.
 
 ## Performance rules (learned from a 2 GB footprint)
 - Poll only while a view is visible (`onAppear`/`onDisappear` begin/end, refcount),
