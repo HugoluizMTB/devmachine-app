@@ -140,6 +140,12 @@ segmented control.
   click was the only thing marking a frame dirty.
 - Terminal layout is explicit (`TerminalContainerView.layout()`), not autoresizing
   masks — they lost the insets after SwiftUI's first sizing pass.
+- **Hiding a workspace is a list of what to hide, not of what to show**
+  (`AppSettings.hiddenWorkspaces`, filtered by `WorkspaceVisibility`). A new
+  alias in `~/.ssh/config` shows up without anyone opening Settings. Everything
+  except Settings reads `AppModel.visibleWorkspaces`, so a hidden workspace
+  costs no row, no poll and no ssh; hiding also closes its panes at once
+  (`TerminalRegistry.closeWorkspace`), which is what ends the mosh it held.
 - **The Local workspace lists what `zmx ls` reports**, merged with what the app
   remembers (`LocalSessionScan.merge`): a session started outside the app shows
   up, and a remembered one that has no shell yet shows without a client count.
