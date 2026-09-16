@@ -273,7 +273,13 @@ final class TerminalRegistry: NSObject {
 }
 
 extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
-    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+    /// The size the program itself is told. The pane's frame in points is not
+    /// that number, and the difference is what a half-drawn screen is made of.
+    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
+        let kind = terminals.first { $0.value === source }?.key
+        PaneLog.log("pty size pane=\(kind.map(String.init(describing:)) ?? "?") "
+            + "cols=\(newCols) rows=\(newRows)")
+    }
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
 
