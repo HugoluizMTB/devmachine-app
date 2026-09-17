@@ -43,28 +43,30 @@ struct StackGridView: View {
         refs.map { "\($0.alias)/\($0.name):\(model.stackCellSize($0).rawValue)" }.joined(separator: ",")
     }
 
+    /// The title is a row of its own, not a badge floating over the terminal.
+    /// As an overlay it needed a matching inset below it, and that number was
+    /// fixed while the title's own height follows the app font size — so the
+    /// first line of the session ended up under the badge.
     private func cell(_ ref: SessionRef) -> some View {
-        TerminalPaneView(
-            kind: model.terminalKind(for: ref),
-            translucent: true,
-            // Room for the title, which sits over the top edge. No side or
-            // bottom padding, for the same reason the single pane has none.
-            contentInsets: NSEdgeInsets(top: 26, left: 0, bottom: 0, right: 0)
-        )
-            .overlay(alignment: .topLeading) {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
                 Text(ref.alias == Workspace.local.alias
                      ? model.displayName(for: ref) : "\(ref.alias) / \(ref.name)")
                     .font(.dm(11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.85))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(8)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
+                controlStrip(ref)
             }
-            .overlay(alignment: .topTrailing) {
-                controlStrip(ref).padding(8)
-            }
-            .floatingCard()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            TerminalPaneView(
+                kind: model.terminalKind(for: ref),
+                translucent: true
+            )
+        }
+        .floatingCard()
     }
 
     private func controlStrip(_ ref: SessionRef) -> some View {
