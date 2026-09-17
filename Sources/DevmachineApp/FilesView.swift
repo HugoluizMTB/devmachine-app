@@ -4,6 +4,7 @@ import DevmachineCore
 struct FilesView: View {
     @EnvironmentObject var store: FilesStore
     @EnvironmentObject var viewerStore: FileViewerStore
+    @EnvironmentObject var model: AppModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -115,7 +116,9 @@ struct FilesView: View {
 
     private func open(_ entry: FileEntry) {
         guard let target = store.target else { return }
-        viewerStore.open(target, path: store.absolutePath(of: entry))
+        let path = store.absolutePath(of: entry)
+        viewerStore.open(target, path: path)
+        model.openedFile(at: path)
         // The pane lives in the main window, so that is the one to raise.
         openWindow(id: "main")
     }

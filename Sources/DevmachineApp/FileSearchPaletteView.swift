@@ -38,7 +38,7 @@ struct FileSearchPaletteView: View {
         }
         .onKeyPress(.upArrow) { index = max(index - 1, 0); return .handled }
         .onKeyPress(keys: [.return], phases: .down) { press in
-            if press.modifiers.contains(.option) {
+            if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
                 openSelected()
             } else {
                 typeSelected()
@@ -89,7 +89,7 @@ struct FileSearchPaletteView: View {
 
     private var footer: some View {
         HStack {
-            Text(verbatim: "Type in session  ⏎     Open  ⌥⏎")
+            Text(verbatim: "Type in session  ⏎     Open file  ⇧⏎")
                 .font(.dm(10))
                 .foregroundStyle(.secondary)
             Spacer()
@@ -108,6 +108,18 @@ struct FileSearchPaletteView: View {
             highlighted(parts.name, weight: .medium, base: .primary)
             highlighted(parts.folder, weight: .regular, base: .secondary)
             Spacer(minLength: 4)
+            // The row says both things it can do, so neither is a secret.
+            if i == index {
+                Button("Open") { index = i; openSelected() }
+                    .buttonStyle(.plain)
+                    .font(.dm(10, weight: .medium))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.14)))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .help("Open the file (⇧⏎)")
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -118,6 +130,8 @@ struct FileSearchPaletteView: View {
         .contentShape(Rectangle())
         .onTapGesture { index = i; typeSelected() }
         .contextMenu {
+            Button("Open") { index = i; openSelected() }
+            Button("Type in session") { index = i; typeSelected() }
             Button("Copy path") { copy(hit.path) }
         }
     }
@@ -152,6 +166,7 @@ struct FileSearchPaletteView: View {
         let path = absolute(store.hits[index].path)
         model.showFileSearch = false
         viewerStore.open(target, path: path)
+        model.openedFile(at: path)
     }
 
     private func typeSelected() {

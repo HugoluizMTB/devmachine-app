@@ -33,7 +33,7 @@ struct ContextPanel: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: ContextStore
     @StateObject private var gitStore = GitStore()
-    @StateObject private var fileTreeStore = FileTreeStore()
+    @EnvironmentObject private var fileTreeStore: FileTreeStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

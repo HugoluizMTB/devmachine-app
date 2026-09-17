@@ -254,4 +254,45 @@ final class FileTreeStoreTests: XCTestCase {
         XCTAssertEqual(store.parentPath(of: root + "/Sources/App.swift"), root + "/Sources")
         XCTAssertEqual(store.parentPath(of: "/top"), "/")
     }
+
+    @MainActor
+    func testRevealingAFileOpensEveryFolderAboveIt() async throws {
+        let (store, runner) = makeStore()
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
+        try await waitUntil { store.root != nil }
+
+        store.reveal("/home/alice/dev/dash/Sources/App/Deep/Main.swift")
+
+        XCTAssertEqual(store.selected, "/home/alice/dev/dash/Sources/App/Deep/Main.swift")
+        XCTAssertTrue(store.expanded.contains("/home/alice/dev/dash/Sources"))
+        XCTAssertTrue(store.expanded.contains("/home/alice/dev/dash/Sources/App"))
+        XCTAssertTrue(store.expanded.contains("/home/alice/dev/dash/Sources/App/Deep"))
+        XCTAssertFalse(store.expanded.contains("/home/alice/dev/dash"))
+        _ = runner
+    }
+
+    @MainActor
+    func testRevealingSomethingOutsideTheRootOnlySelectsIt() async throws {
+        let (store, _) = makeStore()
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
+        try await waitUntil { store.root != nil }
+
+        store.reveal("/elsewhere/file.swift")
+
+        XCTAssertEqual(store.selected, "/elsewhere/file.swift")
+        XCTAssertTrue(store.expanded.isEmpty)
+    }
+
+    @MainActor
+    func testTheHeaderButtonClosesEverythingThatIsOpen() async throws {
+        let (store, _) = makeStore()
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
+        try await waitUntil { store.root != nil }
+        store.reveal("/home/alice/dev/dash/Sources/App/Main.swift")
+        XCTAssertTrue(store.hasExpandedFolders)
+
+        store.toggleAll()
+
+        XCTAssertFalse(store.hasExpandedFolders)
+    }
 }

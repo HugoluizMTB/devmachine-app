@@ -24,6 +24,8 @@ final class FileTreeStore: ObservableObject {
     @Published var loading: Set<String> = []
     @Published var errorText: String?
     @Published var isLoading = false
+    /// The row the tree points at, so revealing a file can move it.
+    @Published var selected: String?
 
     private static let rootKey = "\u{1}root"
 
@@ -50,6 +52,45 @@ final class FileTreeStore: ObservableObject {
 
     func refresh() {
         resolveRoot(keepingExpanded: true)
+    }
+
+    /// Opens every folder from the root down to `path` and marks it, so a file
+    /// opened somewhere else shows up in the tree where it lives.
+    func reveal(_ path: String) {
+        selected = path
+        guard let root, path.hasPrefix(root) else { return }
+        var directory = parentPath(of: path)
+        var chain: [String] = []
+        while directory.hasPrefix(root), directory != root {
+            chain.append(directory)
+            directory = parentPath(of: directory)
+        }
+        for folder in chain.reversed() where !expanded.contains(folder) {
+            expanded.insert(folder)
+        }
+        for folder in chain where children[folder] == nil {
+            list(folder)
+        }
+    }
+
+    /// True while any folder is open, which is what the button in the header
+    /// switches on.
+    var hasExpandedFolders: Bool { !expanded.isEmpty }
+
+    /// Closes everything, or opens every folder already read. Opening cannot
+    /// reach what was never listed: a tree is read one folder at a time, and
+    /// walking a whole repository would be one command per directory.
+    func toggleAll() {
+        if hasExpandedFolders {
+            expanded = []
+            return
+        }
+        expanded = Set(
+            children.flatMap { directory, entries in
+                entries.filter(\.isDirectory).map { Self.join(directory, $0.name) }
+            }
+        )
+        for folder in expanded where children[folder] == nil { list(folder) }
     }
 
     func toggle(_ path: String) {

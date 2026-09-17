@@ -30,27 +30,45 @@ struct FilesTab: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
     @EnvironmentObject var viewerStore: FileViewerStore
+    @EnvironmentObject var search: FileSearchStore
     @Environment(\.openWindow) private var openWindow
-    @State private var selected: String?
+    @State private var query = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let root = store.root {
                 header(root)
+                searchField
                 if let error = store.errorText {
                     message(error)
                         .padding(.horizontal, 14)
                         .padding(.top, 10)
                 }
-                tree
+                if query.isEmpty {
+                    tree
+                } else {
+                    results
+                }
             } else {
                 stateMessage
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onAppear { store.start(target) }
+        .onAppear {
+            store.start(target)
+            search.open(target)
+        }
         .onDisappear { store.stop() }
-        .onChange(of: target.key) { _, _ in store.start(target) }
+        .onChange(of: target.key) { _, _ in
+            store.start(target)
+            search.open(target)
+        }
+        .onChange(of: query) { _, value in search.query = value }
+        .onChange(of: model.revealInTree) { _, path in
+            guard let path else { return }
+            store.reveal(path)
+            model.revealInTree = nil
+        }
     }
 
     private func header(_ root: String) -> some View {
@@ -82,6 +100,89 @@ struct FilesTab: View {
         )
     }
 
+    /// The same engine as ⌘P, in the panel: a field that finds a file anywhere
+    /// in the repository, without opening the tree folder by folder.
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.dm(10))
+                .foregroundStyle(Color.dmMuted)
+            TextField("Find a file", text: $query)
+                .textFieldStyle(.plain)
+                .font(.dm(11.5))
+                .foregroundStyle(Color.dmRowText)
+                .onSubmit { openFirstHit() }
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").font(.dm(10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.dmMuted)
+            }
+            Button { store.toggleAll() } label: {
+                Image(systemName: store.hasExpandedFolders
+                      ? "arrow.down.right.and.arrow.up.left"
+                      : "arrow.up.left.and.arrow.down.right")
+                    .font(.dm(10))
+                    .foregroundStyle(Color.dmMuted)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(store.hasExpandedFolders ? "Collapse every folder" : "Expand the folders read so far")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.dmDivider), alignment: .bottom)
+    }
+
+    /// What the field found. Opening a hit also points the tree at it, so the
+    /// file's place in the repository is not lost.
+    private var results: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if search.hits.isEmpty {
+                    message(search.isLoading ? "Listing files…" : "No file matches")
+                        .padding(.top, 12)
+                } else {
+                    ForEach(search.hits, id: \.id) { hit in
+                        Button { open(hit.path) } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text((hit.path as NSString).lastPathComponent)
+                                    .font(.dm(12))
+                                    .foregroundStyle(Color.dmRowText)
+                                    .lineLimit(1)
+                                Text(hit.path)
+                                    .font(.dm(10))
+                                    .foregroundStyle(Color.dmMuted)
+                                    .lineLimit(1)
+                                    .truncationMode(.head)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 5)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func openFirstHit() {
+        guard let hit = search.hits.first else { return }
+        open(hit.path)
+    }
+
+    private func open(_ path: String) {
+        let full = path.hasPrefix("/") || search.root.isEmpty
+            ? path : search.root + "/" + path
+        viewerStore.open(target, path: full)
+        store.reveal(full)
+    }
+
     private var tree: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
@@ -93,7 +194,7 @@ struct FilesTab: View {
                             row: row,
                             expanded: store.expanded.contains(row.path),
                             loading: store.loading.contains(row.path),
-                            selected: selected == row.path,
+                            selected: store.selected == row.path,
                             tap: { tapped(row) },
                             copyPath: { copy(row.path, label: "Copied path") },
                             copyRelativePath: {
@@ -143,7 +244,7 @@ struct FilesTab: View {
         if row.isDirectory {
             store.toggle(row.path)
         } else {
-            selected = row.path
+            store.selected = row.path
         }
     }
 
@@ -151,7 +252,7 @@ struct FilesTab: View {
     /// session that runs on this Mac — Finder does that job here.
     /// Reading a file is a window of its own, beside the session it came from.
     private func openInViewer(_ row: FileTreeRow) {
-        selected = row.path
+        store.selected = row.path
         viewerStore.open(target, path: row.path)
     }
 

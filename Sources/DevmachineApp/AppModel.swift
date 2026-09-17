@@ -905,6 +905,15 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Asked for by whoever opens a file, so the tree follows it. The panel
+    /// owns the tree, so it listens for this instead of being called directly.
+    @Published var revealInTree: String?
+
+    func openedFile(at path: String) {
+        contextTab = .files
+        revealInTree = path
+    }
+
     /// Where a panel or the search field reads from, for whatever is selected.
     /// The one place that turns a sidebar row into a target.
     func commandTarget(for item: SidebarItem?) -> CommandTarget? {

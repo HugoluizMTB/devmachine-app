@@ -4,7 +4,7 @@ import AppKit
 
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
-    @StateObject private var fileSearch = FileSearchStore()
+    @EnvironmentObject private var fileSearch: FileSearchStore
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var viewerStore: FileViewerStore
     @State private var dragStartWidth: CGFloat? = nil

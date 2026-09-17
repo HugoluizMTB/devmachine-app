@@ -15,6 +15,8 @@ struct DevmachineApp: App {
     @StateObject private var settingsStore = SettingsStore.shared
     @StateObject private var wallpaperStore = WallpaperStore()
     @StateObject private var viewerStore = FileViewerStore()
+    @StateObject private var fileTreeStore = FileTreeStore()
+    @StateObject private var fileSearchStore = FileSearchStore()
 
     var body: some Scene {
         // Single main window (Window, not WindowGroup) so the menubar "Open"
@@ -35,6 +37,8 @@ struct DevmachineApp: App {
                 }
                 .environmentObject(wallpaperStore)
                 .environmentObject(viewerStore)
+                .environmentObject(fileTreeStore)
+                .environmentObject(fileSearchStore)
                 .frame(minWidth: 900, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
         }
         .windowStyle(.hiddenTitleBar)
@@ -75,6 +79,7 @@ struct DevmachineApp: App {
             FilesView()
                 .environmentObject(filesStore)
                 .environmentObject(viewerStore)
+                .environmentObject(fileTreeStore)
                 .environmentObject(model)
         }
         .defaultSize(width: 520, height: 600)
