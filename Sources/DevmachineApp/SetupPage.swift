@@ -5,12 +5,13 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case connection, workspaces, appearance, terminal, advanced
+    case connection, workspaces, agents, appearance, terminal, advanced
 
     var title: String {
         switch self {
         case .connection: return "Connection"
         case .workspaces: return "Workspaces"
+        case .agents: return "Agents"
         case .appearance: return "Appearance"
         case .terminal: return "Terminal"
         case .advanced: return "Advanced"
@@ -21,6 +22,7 @@ enum SettingsSection: String, CaseIterable {
         switch self {
         case .connection: return "The host this app talks to, and the ops repo it applies."
         case .workspaces: return "Which workspaces the sidebar shows and the app reaches."
+        case .agents: return "What a session you create starts with."
         case .appearance: return "The wallpaper behind the panes, and the size of the interface."
         case .terminal: return "How a terminal looks, and how many stay connected."
         case .advanced: return "Things to turn on only while chasing a problem."
@@ -31,6 +33,7 @@ enum SettingsSection: String, CaseIterable {
         switch self {
         case .connection: return "network"
         case .workspaces: return "square.grid.2x2"
+        case .agents: return "sparkles"
         case .appearance: return "photo"
         case .terminal: return "terminal"
         case .advanced: return "wrench.and.screwdriver"
@@ -62,6 +65,7 @@ struct SetupPage: View {
     @State private var keptTerminals = Appearance.defaultKeptTerminals
     @State private var debugLogging = false
     @State private var hiddenWorkspaces: [String] = []
+    @State private var newSessionProgram = NewSessionProgram.shell
 
     private var draft: AppSettings {
         AppSettings(
@@ -75,7 +79,8 @@ struct SetupPage: View {
             uiFontScale: uiFontScale,
             keptTerminals: keptTerminals,
             debugLogging: debugLogging,
-            hiddenWorkspaces: hiddenWorkspaces
+            hiddenWorkspaces: hiddenWorkspaces,
+            newSessionProgram: newSessionProgram
         )
     }
 
@@ -185,6 +190,7 @@ struct SetupPage: View {
                 switch section {
                 case .connection: connectionBlock
                 case .workspaces: workspacesBlock
+                case .agents: agentsBlock
                 case .appearance: wallpaperBlock
                 case .terminal: terminalBlock
                 case .advanced: advancedBlock
@@ -335,6 +341,29 @@ struct SetupPage: View {
                     + "running on the host and come back the moment you turn it on "
                     + "again. This Mac cannot be turned off.")
             }
+        }
+    }
+
+    private var agentsBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker(selection: $newSessionProgram) {
+                ForEach(NewSessionProgram.allCases, id: \.self) { program in
+                    Text(program.title).tag(program)
+                }
+            } label: {
+                Text(verbatim: "When opening a new terminal session")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .frame(maxWidth: 420, alignment: .leading)
+
+            note("This applies to a session you create from the app, here or on "
+                + "the host. Claude Code is typed into the shell rather than run "
+                + "as the session itself, so leaving the agent leaves you a "
+                + "shell instead of closing the session. A session that already "
+                + "exists is never touched.")
         }
     }
 
@@ -580,6 +609,7 @@ struct SetupPage: View {
             keptTerminals = current.keptTerminals
             debugLogging = current.debugLogging
             hiddenWorkspaces = current.hiddenWorkspaces
+            newSessionProgram = current.newSessionProgram
             return
         }
 

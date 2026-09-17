@@ -17,6 +17,31 @@ public struct SettingsIssue: Equatable, Sendable {
     }
 }
 
+/// What a session runs when it is created. A shell is a shell; the other one
+/// starts the agent in it, so a new session is already a conversation.
+public enum NewSessionProgram: String, Codable, Sendable, CaseIterable {
+    case shell
+    case claude
+
+    public var title: String {
+        switch self {
+        case .shell: return "Normal terminal"
+        case .claude: return "Claude Code session"
+        }
+    }
+
+    /// The line typed into a fresh session, or nothing for a plain shell. It is
+    /// typed into the shell rather than run as the session's own command, so
+    /// the session outlives the agent: quitting Claude leaves a shell, not a
+    /// dead pane.
+    public var startupLine: String? {
+        switch self {
+        case .shell: return nil
+        case .claude: return "claude"
+        }
+    }
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
     public var opsRepoPath: String
     public var hostAlias: String
@@ -37,6 +62,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// appears on its own, which is what you want from a machine that gains
     /// contexts over time.
     public var hiddenWorkspaces: [String]
+    /// What a session created from the app starts with.
+    public var newSessionProgram: NewSessionProgram
 
     public init(
         opsRepoPath: String,
@@ -49,7 +76,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         uiFontScale: Double = Appearance.defaultUIFontScale,
         keptTerminals: Int = Appearance.defaultKeptTerminals,
         debugLogging: Bool = false,
-        hiddenWorkspaces: [String] = []
+        hiddenWorkspaces: [String] = [],
+        newSessionProgram: NewSessionProgram = .shell
     ) {
         self.opsRepoPath = opsRepoPath
         self.hostAlias = hostAlias
@@ -62,12 +90,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.keptTerminals = Appearance.clampKeptTerminals(keptTerminals)
         self.debugLogging = debugLogging
         self.hiddenWorkspaces = hiddenWorkspaces
+        self.newSessionProgram = newSessionProgram
     }
 
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, wallpaper
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging
-        case hiddenWorkspaces
+        case hiddenWorkspaces, newSessionProgram
     }
 
     public init(from decoder: Decoder) throws {
@@ -93,6 +122,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         debugLogging = try values.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? false
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
+        newSessionProgram =
+            try values.decodeIfPresent(NewSessionProgram.self, forKey: .newSessionProgram) ?? .shell
     }
 
     public static let empty = AppSettings(opsRepoPath: "", hostAlias: "", publicIP: "", baseDomain: "")

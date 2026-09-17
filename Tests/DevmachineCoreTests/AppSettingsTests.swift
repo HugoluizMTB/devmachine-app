@@ -189,3 +189,34 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
     }
 }
+
+final class NewSessionProgramTests: XCTestCase {
+    func testAPlainTerminalTypesNothing() {
+        XCTAssertNil(NewSessionProgram.shell.startupLine)
+        XCTAssertEqual(NewSessionProgram.shell.title, "Normal terminal")
+    }
+
+    func testTheAgentIsTypedIntoTheShell() {
+        XCTAssertEqual(NewSessionProgram.claude.startupLine, "claude")
+        XCTAssertEqual(NewSessionProgram.claude.title, "Claude Code session")
+    }
+
+    func testTheSettingDefaultsToAPlainTerminal() throws {
+        let json = #"{"opsRepoPath":"/tmp","hostAlias":"h","publicIP":"203.0.113.10","baseDomain":"example.com"}"#
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.newSessionProgram, .shell)
+    }
+
+    func testTheChoiceSurvivesAWriteAndARead() throws {
+        let settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "h", publicIP: "203.0.113.10",
+            baseDomain: "example.com", newSessionProgram: .claude)
+        let round = try JSONDecoder().decode(
+            AppSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(round.newSessionProgram, .claude)
+    }
+
+    func testBothChoicesAreOffered() {
+        XCTAssertEqual(NewSessionProgram.allCases, [.shell, .claude])
+    }
+}

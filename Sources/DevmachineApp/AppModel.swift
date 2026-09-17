@@ -158,6 +158,38 @@ final class AppModel: ObservableObject {
         let name = LocalSessionNaming.name(for: path, existing: localSessions.map(\.name))
         addedLocalSessions.append(LocalSession(name: name, path: path))
         selection = .localSession(name: name, path: path)
+        startProgram(in: .local(session: name, path: path))
+    }
+
+    /// Types the startup line once the session exists. A local session is born
+    /// when its pane mounts, not when the row is added, so the line waits for
+    /// the multiplexer to list it.
+    func startProgram(in target: CommandTarget) {
+        guard let line = settings?.newSessionProgram.startupLine else { return }
+        let host = HostRunner()
+        Task.detached {
+            guard case let .local(session, _) = target else {
+                try? host.send(line, into: target)
+                return
+            }
+            let socketDirectory = Zmx.socketDirectory()
+            let name = Zmx.sessionName(from: session, socketDirectory: socketDirectory)
+            guard let zmx = await MainActor.run(body: { LocalTools.zmxPath() }) else { return }
+            let runner = ProcessRunner()
+            for _ in 0..<30 {
+                let listing = (try? runner.run(
+                    executable: zmx, args: Zmx.listArguments,
+                    environment: ["ZMX_DIR": socketDirectory])) ?? ""
+                if ZmxListParser.parse(listing).contains(where: { $0.name == name }) {
+                    // The shell prints its prompt after the socket exists; a
+                    // line typed before that is swallowed by the terminal setup.
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    try? host.send(line, into: target)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
     }
 
     func removeLocalSession(handle: String) {
@@ -746,10 +778,14 @@ final class AppModel: ObservableObject {
         // because only a session created up front can be told which directory to
         // start in, and that is what gives Claude Code its file list.
         let store = self.store
+        let startup = settings?.newSessionProgram.startupLine
         Task.detached {
             _ = try? store.run(
                 alias: alias,
                 command: RemoteCommands.createSession(name: clean, directory: directory))
+            if let startup {
+                try? HostRunner().send(startup, into: .remote(alias: alias, session: clean))
+            }
             await MainActor.run { self.selection = .session(alias: alias, name: clean) }
         }
         // With no global poll, a single refresh can race the create, so re-poll
