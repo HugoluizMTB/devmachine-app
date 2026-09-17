@@ -61,6 +61,16 @@ final class TerminalRegistry: NSObject {
                     focused.send(TerminalKeyboard.newlineBytes)
                     return true
                 }
+                // A page key is answered by the terminal itself, which scrolls
+                // its own buffer. That is right for a session running here, and
+                // wrong for one inside tmux: the buffer holds a single screen,
+                // so nothing moves and the host never sees the key.
+                if let bytes = TerminalKeyboard.pageKeyBytes(keyCode: keyCode, flags: flags),
+                   let (kind, view) = registry.focusedEntry(),
+                   case .remote = kind {
+                    view.send(bytes)
+                    return true
+                }
                 // An image on the clipboard cannot be typed into a terminal,
                 // and the agent reads the clipboard of the machine it runs on,
                 // which for a remote session is not this Mac. So the bytes are
@@ -446,6 +456,20 @@ enum TerminalKeyboard {
 
     /// Ctrl+J, which Claude Code reads as "insert a newline" in every terminal.
     static let newlineBytes: [UInt8] = [0x0A]
+
+    static let pageUpKeyCode: UInt16 = 116
+    static let pageDownKeyCode: UInt16 = 121
+
+    /// What a terminal sends for Page Up and Page Down. Plain keys only: with a
+    /// modifier they mean something else (⇧⇞ is the terminal's own scroll).
+    static func pageKeyBytes(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> [UInt8]? {
+        guard flags.intersection([.command, .control, .shift, .option]).isEmpty else { return nil }
+        switch keyCode {
+        case pageUpKeyCode: return Array("\u{1b}[5~".utf8)
+        case pageDownKeyCode: return Array("\u{1b}[6~".utf8)
+        default: return nil
+        }
+    }
 
     /// The legacy key encoding this app keeps on purpose cannot tell Shift+Enter
     /// from Enter, so the terminal sends the newline byte itself. Enter alone

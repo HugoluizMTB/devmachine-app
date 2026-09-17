@@ -45,3 +45,25 @@ final class TerminalKeyboardTests: XCTestCase {
         XCTAssertFalse(TerminalKeyboard.pastesClipboard(keyCode: 0, flags: [.command]))
     }
 }
+
+final class PageKeyTests: XCTestCase {
+    func testPageUpAndDownCarryTheirEscapeSequence() {
+        XCTAssertEqual(
+            TerminalKeyboard.pageKeyBytes(keyCode: TerminalKeyboard.pageUpKeyCode, flags: []),
+            Array("\u{1b}[5~".utf8))
+        XCTAssertEqual(
+            TerminalKeyboard.pageKeyBytes(keyCode: TerminalKeyboard.pageDownKeyCode, flags: []),
+            Array("\u{1b}[6~".utf8))
+    }
+
+    func testAModifierLeavesThePageKeyToTheTerminal() {
+        for flag in [NSEvent.ModifierFlags.shift, .command, .control, .option] {
+            XCTAssertNil(TerminalKeyboard.pageKeyBytes(
+                keyCode: TerminalKeyboard.pageUpKeyCode, flags: flag))
+        }
+    }
+
+    func testAnotherKeyIsNotAPageKey() {
+        XCTAssertNil(TerminalKeyboard.pageKeyBytes(keyCode: 36, flags: []))
+    }
+}
