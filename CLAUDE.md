@@ -139,6 +139,29 @@ segmented control.
   file is (code, markdown, image, binary, too large) and shows it. Highlighting
   stops above 200 KB, where highlight.js blocks the interface long enough to
   look broken.
+- **A feature that reads `case .session` only is a bug in waiting.** A session
+  runs on a host or on this Mac, and every path has to answer for both:
+  the context panel was gated on `.session` and never showed for a local
+  session; "maximize" tagged only remote panes and always picked the first cell;
+  the file palette and the Files window each had their own version of this.
+  Handle both cases of `TerminalKind`/`SidebarItem`, or say in a comment why one
+  is out.
+- **Never hand a live session a size that is not the pane's.** SwiftUI measures a
+  representable with sizes that are not the pane (2 by 1 cells among them), and a
+  container starts at a placeholder size; every one of those reaches the program
+  as a resize, and a remote multiplexer rewraps its screen and loses characters.
+  Sizes are applied only once the pane is in a window, and anything below
+  `TerminalSizeGuard` is ignored (`TerminalContainerView.applyContentFrame`).
+- **Page keys are swallowed by the terminal.** SwiftTerm answers an unmodified
+  Page Up/Down by scrolling its own buffer, which for a session inside a
+  multiplexer holds a single screen — so the key does nothing and the host never
+  sees it. A remote pane gets the bytes sent explicitly
+  (`TerminalKeyboard.pageKeyBytes`); a local pane keeps the terminal's own
+  scrolling, which is what it should do.
+- **A copy made on a host arrives as OSC 52**, and the terminal here is what puts
+  it on the Mac's clipboard. The chain has four links (the multiplexer's mouse
+  mode, its copy binding, `set-clipboard`, and this app); a test covers the link
+  that lives here (`ClipboardBridgeTests`).
 - **A panel reads through `CommandTarget`, never through an alias.** `HostRunner`
   runs the same command over ssh (in the tmux pane's folder) or here on the Mac
   (in the folder `zmx ls` reports), so Context, Files and Git work for a local
@@ -187,6 +210,11 @@ ssh/mosh/scp under XCTest; tests inject a fake `CommandRunner`.
 - Never send keystrokes into the app while the owner's sessions are open: `⌘K` +
   typing has landed in his live Claude sessions twice. Verify with screenshots,
   `tmux list-clients`/`capture-pane` over ssh, or ask him to try.
+
+- **`ImageRenderer` does not lay out a `ScrollView`.** A snapshot of a view whose
+  body scrolls comes back with the chrome and an empty middle, which reads as a
+  bug that is not there. Snapshot the header and the state, and check scrolled
+  content in the running app.
 
 ## Build / test
 - `swift build` and `swift test` must be green before every commit.
