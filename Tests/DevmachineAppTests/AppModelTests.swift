@@ -618,6 +618,58 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testMaximizingALocalCellOpensItAsALocalSession() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.stackWorkspace(Workspace.local.alias)
+
+        model.toggleMaximize()
+
+        XCTAssertEqual(
+            model.selection, .localSession(name: "Operator", path: model.localSessions[0].path))
+        XCTAssertTrue(model.selectedSessions.isEmpty)
+        model.removeLocalSession(handle: "acme")
+    }
+
+    @MainActor
+    func testMaximizingARemoteCellKeepsItRemote() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.stackSessions([SessionRef(alias: "acme-devmachine", name: "dash")])
+
+        model.toggleMaximize()
+
+        XCTAssertEqual(model.selection, .session(alias: "acme-devmachine", name: "dash"))
+        XCTAssertEqual(model.selectedSessions, [SessionRef(alias: "acme-devmachine", name: "dash")])
+    }
+
+    @MainActor
+    func testALocalReferenceNeverBecomesARemoteRow() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+
+        let item = model.sidebarItem(for: SessionRef(alias: Workspace.local.alias, name: "acme"))
+
+        XCTAssertEqual(item, .localSession(name: "acme", path: "/Users/alice/dev/acme"))
+        XCTAssertEqual(item.terminalKind, .local(session: "acme", path: "/Users/alice/dev/acme"))
+        model.removeLocalSession(handle: "acme")
+    }
+
+    @MainActor
+    func testMaximizingALocalSessionOpensTheLocalStack() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.selection = .localSession(name: "acme", path: "/Users/alice/dev/acme")
+
+        model.toggleMaximize()
+
+        guard case let .stack(refs) = model.activePage else {
+            return XCTFail("the local workspace did not open as a stack")
+        }
+        XCTAssertEqual(refs.map(\.alias), [Workspace.local.alias, Workspace.local.alias])
+        model.removeLocalSession(handle: "acme")
+    }
+
+    @MainActor
     func testARemoteReferenceStaysRemote() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         let kind = model.terminalKind(for: SessionRef(alias: "acme-devmachine", name: "dash"))

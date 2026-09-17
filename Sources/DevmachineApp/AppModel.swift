@@ -474,13 +474,36 @@ final class AppModel: ObservableObject {
     // single session → its workspace grid.
     func toggleMaximize() {
         if case let .stack(refs) = activePage {
-            guard let ref = FocusedTerminal.ref().flatMap({ refs.contains($0) ? $0 : nil }) ?? refs.first else { return }
-            selectedSessions = [ref]
-            selectionAnchor = ref
-            selection = .session(alias: ref.alias, name: ref.name)
+            guard let ref = FocusedTerminal.ref().flatMap({ refs.contains($0) ? $0 : nil })
+                ?? refs.first else { return }
+            // A local reference is not a remote one: opening it as `.session`
+            // sent the Local workspace's alias to mosh, which then looked for a
+            // host called "local".
+            let item = sidebarItem(for: ref)
+            if case .session = item {
+                selectedSessions = [ref]
+                selectionAnchor = ref
+            } else {
+                selectedSessions = []
+                selectionAnchor = nil
+            }
+            selection = item
         } else if case let .session(alias, _) = selection {
             stackWorkspace(alias)
+        } else if case .localSession = selection {
+            stackWorkspace(Workspace.local.alias)
         }
+    }
+
+    /// The sidebar row a reference stands for. The Local workspace has its own
+    /// kind of row, and mixing the two is what starts a remote client for a
+    /// session that runs here.
+    func sidebarItem(for ref: SessionRef) -> SidebarItem {
+        guard ref.alias == Workspace.local.alias else {
+            return .session(alias: ref.alias, name: ref.name)
+        }
+        let path = localSessions.first { $0.handle == ref.name }?.path ?? NSHomeDirectory()
+        return .localSession(name: ref.name, path: path)
     }
 
     private static func stackCellKey(_ ref: SessionRef) -> String {
