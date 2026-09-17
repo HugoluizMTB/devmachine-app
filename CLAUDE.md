@@ -110,18 +110,12 @@ segmented control.
   owner's live sessions.
 - SwiftTerm is pinned by revision (`9fc2d2f`, 2026-09-04: kitty encoding fixes);
   upstream `main` after 2026-09-09 does not link (`MetalError`). Bump on purpose only.
-- **A translucent pane is painted by BOTH layers, each at `Appearance.layerOpacity`.**
-  The terminal must paint its own background: handing it `.clear` so the container
-  could paint instead leaves every cell the terminal does not redraw showing what
-  was there before, which is a screen half old and half missing, and slow, since a
-  large transparent layer is expensive to blend. Painting in both places at full
-  alpha stacks them and the pane reads almost solid, so each gets the share that
-  combines to the setting. A day went into this; don't collapse it back to one layer.
-- **The terminal fills its card: no padding ring, no stroke.** A ring around the
-  terminal carries only the container's share of the translucent colour, so it
-  reads lighter than the text area — a second border. Masking the container to
-  the ring is not the fix: a layer mask clips sublayers too, so it hid every
-  terminal and the app came up with no panes at all.
+- **One painter per pixel.** The terminal paints its own background at the
+  opacity from Settings; the padding around it is four strips beside the
+  terminal, never a layer under it (`TerminalContainerView.paintPadding`). Two
+  translucent layers over the same pixels can never match a strip that has one,
+  and that difference is what read as a border. The strips take their colour
+  from `nativeBackgroundColor`, so they follow whatever the program sets.
 - **A pane that returns unchanged gets no size change, so nothing redraws it.**
   Switching sessions, closing a page, coming back from the stack: the program was
   never told anything happened. The app asks explicitly — `tmux refresh-client` for

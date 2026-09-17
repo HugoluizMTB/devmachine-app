@@ -12,15 +12,6 @@ public enum Appearance {
     public static let defaultUIFontScale = 1.0
     public static let uiFontScaleRange = 0.8...1.6
 
-    /// Two layers paint a translucent pane: the terminal, so every cell is
-    /// written and nothing stale can show through, and the container behind it,
-    /// so the padding ring matches. Painted one over the other their alphas
-    /// combine, so each gets the value that adds up to the one asked for.
-    public static func layerOpacity(forCombined opacity: Double) -> Double {
-        let wanted = clampTerminalOpacity(opacity)
-        return 1 - (1 - wanted).squareRoot()
-    }
-
     public static func clampTerminalOpacity(_ value: Double) -> Double {
         clamp(value, to: terminalOpacityRange, fallback: defaultTerminalOpacity)
     }

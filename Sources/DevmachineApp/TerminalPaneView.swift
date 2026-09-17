@@ -12,12 +12,16 @@ enum TerminalKind: Hashable {
 /// Mounting attaches the shared view; unmounting only detaches it, so the
 /// connection outlives this SwiftUI node.
 struct TerminalPaneView: NSViewRepresentable {
+    /// Space around the text inside the card.
+    static let padding: CGFloat = 8
+
     let kind: TerminalKind
     var translucent: Bool = false
-    /// The terminal fills the card. A ring of padding around it would carry a
-    /// different share of the translucent colour than the text area, and read as
-    /// a second border; text touching the edge is the better trade.
-    var contentInsets = NSEdgeInsets()
+    /// Space between the card's edge and the first character, filled with the
+    /// terminal's own background colour.
+    var contentInsets = NSEdgeInsets(
+            top: TerminalPaneView.padding, left: TerminalPaneView.padding,
+            bottom: TerminalPaneView.padding, right: TerminalPaneView.padding)
 
     func makeNSView(context: Context) -> NSView {
         // Container with no intrinsic size: SwiftUI stretches it; the container
@@ -99,10 +103,12 @@ struct TerminalPaneView: NSViewRepresentable {
         let settings = SettingsStore.shared.settings
         let opacity = Appearance.clampTerminalOpacity(
             settings?.terminalOpacity ?? Appearance.defaultTerminalOpacity)
-        // Both layers paint, each at the share that combines to the setting.
+        // One painter, not two. The terminal covers its own rectangle and the
+        // padding is filled beside it, never under it: two layers stacked over
+        // the same pixels can never match the strip that has only one, and that
+        // difference is what used to read as a border around the text.
         let background = translucent
-            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255,
-                      alpha: Appearance.layerOpacity(forCombined: opacity))
+            ? NSColor(srgbRed: 0x10 / 255, green: 0x14 / 255, blue: 0x1A / 255, alpha: opacity)
             : NSColor(srgbRed: 0x14 / 255, green: 0x19 / 255, blue: 0x1F / 255, alpha: 1)
         let size = Appearance.clampTerminalFontSize(
             settings?.terminalFontSize ?? Appearance.defaultTerminalFontSize)
@@ -116,8 +122,9 @@ struct TerminalPaneView: NSViewRepresentable {
         term.layer?.isOpaque = !translucent
         term.requestRedraw()
         container.wantsLayer = true
-        container.layer?.isOpaque = !translucent
-        container.layer?.backgroundColor = background.cgColor
+        container.layer?.isOpaque = false
+        container.layer?.backgroundColor = NSColor.clear.cgColor
+        (container as? TerminalContainerView)?.paintPadding(like: term)
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: ()) {
@@ -133,7 +140,9 @@ struct TerminalPaneView: NSViewRepresentable {
     // passes the terminal ended up the container's full height, overflowing the
     // top edge and eating the first row. Explicit layout is deterministic.
     final class TerminalContainerView: NSView {
-        var contentInsets = NSEdgeInsets()
+        var contentInsets = NSEdgeInsets(
+            top: TerminalPaneView.padding, left: TerminalPaneView.padding,
+            bottom: TerminalPaneView.padding, right: TerminalPaneView.padding)
         var kind: TerminalKind?
         weak var content: NSView?
 
@@ -179,6 +188,7 @@ struct TerminalPaneView: NSViewRepresentable {
                 }
             }
             content.frame = target
+            layoutStrips()
             if let term = content as? LocalProcessTerminalView {
                 let grid = term.getWindowSize()
                 if grid.ws_col > 0, grid.ws_row > 0 {
@@ -190,10 +200,43 @@ struct TerminalPaneView: NSViewRepresentable {
             redrawContent()
         }
 
-        /// Kept as a no-op: masking the container to the ring also clipped the
-        /// terminal inside it, and every pane went blank.
-        func updateRingMask() {}
-        var hasRingMask = false
+        /// The padding is four strips around the terminal, never a layer under
+        /// it. A mask on the container clipped the terminal itself — that is
+        /// how a whole app of blank panes happened — and a background layer
+        /// under a translucent terminal paints the same pixels twice.
+        private var strips: [NSView] = []
+
+        func paintPadding(like terminal: NSView) {
+            let color = (terminal as? TerminalView)?.nativeBackgroundColor ?? .clear
+            if strips.isEmpty {
+                strips = (0..<4).map { _ in
+                    let view = NSView()
+                    view.wantsLayer = true
+                    addSubview(view, positioned: .below, relativeTo: content)
+                    return view
+                }
+            }
+            for strip in strips {
+                strip.layer?.backgroundColor = color.cgColor
+            }
+            layoutStrips()
+        }
+
+        private func layoutStrips() {
+            guard strips.count == 4 else { return }
+            let inner = contentFrame
+            // top, bottom, left, right — together they cover the card minus the
+            // terminal's own rectangle, so no pixel is painted twice.
+            strips[0].frame = NSRect(
+                x: 0, y: inner.maxY,
+                width: bounds.width, height: max(0, bounds.height - inner.maxY))
+            strips[1].frame = NSRect(x: 0, y: 0, width: bounds.width, height: inner.minY)
+            strips[2].frame = NSRect(
+                x: 0, y: inner.minY, width: inner.minX, height: inner.height)
+            strips[3].frame = NSRect(
+                x: inner.maxX, y: inner.minY,
+                width: max(0, bounds.width - inner.maxX), height: inner.height)
+        }
 
         override func resizeSubviews(withOldSize oldSize: NSSize) {
             applyContentFrame()
