@@ -30,9 +30,10 @@ struct TerminalPaneView: NSViewRepresentable {
         let container = TerminalContainerView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         container.contentInsets = contentInsets
         container.kind = kind
-        if case let .remote(alias, session) = kind {
-            container.identifier = NSUserInterfaceItemIdentifier("\(FocusedTerminal.prefix)\(alias)/\(session)")
-        }
+        // Both kinds get the tag. Without it on a local pane, "maximize" had no
+        // way to tell which cell of the grid had the keyboard, and always fell
+        // back to the first one.
+        container.identifier = NSUserInterfaceItemIdentifier(FocusedTerminal.tag(for: kind))
 
         let term = TerminalRegistry.shared.terminal(for: kind)
         TerminalPaneView.applyAppearance(to: term, container: container, translucent: translucent)

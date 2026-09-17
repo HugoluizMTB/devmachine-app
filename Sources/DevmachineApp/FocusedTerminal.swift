@@ -1,7 +1,18 @@
 import AppKit
+import DevmachineCore
 
 enum FocusedTerminal {
     static let prefix = "term:"
+
+    /// The tag a pane carries so the focused one can be named later. A local
+    /// session is tagged under the Local workspace's alias, which is what a
+    /// `SessionRef` for it uses.
+    static func tag(for kind: TerminalKind) -> String {
+        switch kind {
+        case let .remote(alias, session): return "\(prefix)\(alias)/\(session)"
+        case let .local(session, _): return "\(prefix)\(Workspace.local.alias)/\(session)"
+        }
+    }
 
     // The terminal that currently owns keyboard focus, found by walking up from the
     // window's first responder to the container tagged by TerminalPaneView.
