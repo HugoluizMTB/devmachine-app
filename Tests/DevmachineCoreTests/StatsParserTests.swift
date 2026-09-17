@@ -105,6 +105,7 @@ final class StatsParserTests: XCTestCase {
 
     func testRemoteCommandsStatsSnapshotString() {
         let expected = "echo '@@MEM@@'; free -b | awk 'NR==2{print $2, $3, $7}'; echo '@@SWAP@@'; free -b | awk 'NR==3{print $2, $3}'; echo '@@DISK@@'; df -B1 --output=used,avail,pcent / | tail -1; echo '@@LOAD@@'; cat /proc/loadavg; echo '@@DOCKER@@'; docker stats --no-stream --format '{{.Name}}|{{.MemUsage}}|{{.CPUPerc}}'; echo '@@USERS@@'; ps -eo user=,rss= | awk '{a[$1]+=$2} END{for (u in a) print u, a[u]}'"
+            + "; echo '@@OWNERS@@'; " + RemoteCommands.dockerOwners
 
         XCTAssertEqual(RemoteCommands.statsSnapshot, expected)
     }

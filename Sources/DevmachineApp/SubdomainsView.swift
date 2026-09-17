@@ -4,6 +4,7 @@ import DevmachineCore
 
 struct SubdomainsView: View {
     @EnvironmentObject var store: CaddyStore
+    @EnvironmentObject var model: AppModel
     @EnvironmentObject var settingsStore: SettingsStore
     @State private var tlsOnly = false
     @State private var showAdd = false
@@ -148,10 +149,21 @@ struct SubdomainsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// A site whose port belongs to a workspace turned off in Settings is left
+    /// out. A site the host cannot attribute — the apex, anything not started
+    /// from a home folder — stays: hiding what has no owner would hide the
+    /// machine's own pages.
+    private var visibleSites: [CaddySite] {
+        store.sites.filter { site in
+            guard let port = CaddySiteOwnership.port(of: site.target) else { return true }
+            return model.showsOwner(store.portOwners[port])
+        }
+    }
+
     private var sitesList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 2) {
-                ForEach(store.sites, id: \.address) { site in
+                ForEach(visibleSites, id: \.address) { site in
                     DMRow(
                         systemImage: site.kind == "redir" ? "arrow.uturn.right" : "globe",
                         iconColor: .dmMuted,

@@ -10,6 +10,23 @@ public enum RemoteCommands {
         + "; echo '@@LOAD@@'; cat /proc/loadavg"
         + "; echo '@@DOCKER@@'; docker stats --no-stream --format '{{.Name}}|{{.MemUsage}}|{{.CPUPerc}}'"
         + "; echo '@@USERS@@'; ps -eo user=,rss= | awk '{a[$1]+=$2} END{for (u in a) print u, a[u]}'"
+        // Who a container belongs to. Compose writes the folder it was started
+        // from, and on this host that folder is under the owner's home.
+        + "; echo '@@OWNERS@@'; " + dockerOwners
+
+    /// Compose writes the folder it was started from; the Supabase CLI writes
+    /// its own. Both are asked for, because a stack started by the CLI carries
+    /// no compose label and would otherwise have no owner.
+    public static let dockerOwners =
+        "docker ps --format '{{.Names}}|{{.Label \"com.docker.compose.project.working_dir\"}}"
+        + "{{.Label \"com.supabase.cli.workdir\"}}|{{.Ports}}'"
+
+    /// Which user is behind each listening port: a container by the folder it
+    /// was started from, anything else by the process that holds the port.
+    public static let portOwners =
+        dockerOwners
+        + "; echo '@@LISTENERS@@'; ss -lntpH"
+        + "; echo '@@PROCESSES@@'; ps -eo pid=,user="
 
     public static var onePasswordSocketPath: String {
         NSHomeDirectory() + "/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"

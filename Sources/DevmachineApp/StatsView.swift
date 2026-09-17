@@ -7,6 +7,7 @@ private func gb(_ bytes: Int64) -> String {
 
 struct StatsView: View {
     @EnvironmentObject var store: StatsStore
+    @EnvironmentObject var model: AppModel
     @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
@@ -133,7 +134,7 @@ struct StatsView: View {
         ) {
             DMStatBubble(value: "\(gb(snapshot.memUsed)) GB", label: "RAM used")
             DMStatBubble(value: "\(gb(snapshot.diskAvail)) GB", label: "Disk free")
-            DMStatBubble(value: "\(snapshot.containers.count)", label: "Containers")
+            DMStatBubble(value: "\(containers(snapshot).count)", label: "Containers")
             DMStatBubble(value: String(format: "%.2f", snapshot.load1), label: "Load 1m")
         }
         .padding(16)
@@ -212,7 +213,7 @@ struct StatsView: View {
             },
             content: {
                 VStack(alignment: .leading, spacing: 1) {
-                    ForEach(snapshot.containers, id: \.name) { container in
+                    ForEach(containers(snapshot), id: \.name) { container in
                         DMRow(
                             systemImage: "shippingbox",
                             iconColor: .dmMuted,
@@ -229,6 +230,21 @@ struct StatsView: View {
         )
     }
 
+    /// A workspace turned off in Settings is not on screen anywhere else, so
+    /// its containers and its memory do not belong in this list either.
+    private func containers(_ snapshot: StatsSnapshot) -> [ContainerStat] {
+        snapshot.containers.filter { container in
+            model.showsOwner(Ownership.owner(
+                ofContainer: container.name,
+                labelled: container.owner,
+                knownUsers: model.knownUsers))
+        }
+    }
+
+    private func users(_ snapshot: StatsSnapshot) -> [UserRAM] {
+        snapshot.users.filter { model.showsOwner($0.user) }
+    }
+
     private func usersSection(_ snapshot: StatsSnapshot) -> some View {
         DMSection(
             contentSpacing: 2,
@@ -242,7 +258,7 @@ struct StatsView: View {
             },
             content: {
                 VStack(alignment: .leading, spacing: 1) {
-                    ForEach(snapshot.users, id: \.user) { user in
+                    ForEach(users(snapshot), id: \.user) { user in
                         DMRow(
                             systemImage: "person",
                             iconColor: .dmMuted,

@@ -67,6 +67,24 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// The context users behind the workspaces still on: what Stats and the
+    /// subdomain list are allowed to show. A row the host cannot attribute to
+    /// any of them (a system container, the apex site) is left alone — hiding
+    /// what we cannot name would hide the machine itself.
+    var visibleUsers: Set<String> {
+        Set(visibleWorkspaces.map(\.name))
+    }
+
+    func showsOwner(_ owner: String?) -> Bool {
+        guard let owner, knownUsers.contains(owner) else { return true }
+        return visibleUsers.contains(owner)
+    }
+
+    /// Every context user the app knows of, hidden ones included.
+    var knownUsers: Set<String> {
+        Set(workspaces.map(\.name))
+    }
+
     /// True while the multiplexer has this session, so the sidebar can tell a
     /// shell that is running from one that only exists in the app's list.
     func localSessionIsLive(_ session: LocalSession) -> Bool {

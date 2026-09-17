@@ -4,6 +4,8 @@ import DevmachineCore
 @MainActor
 final class CaddyStore: ObservableObject {
     @Published var sites: [CaddySite] = []
+    /// Port → context user, for hiding what belongs to a workspace turned off.
+    @Published var portOwners: [Int: String] = [:]
     @Published var logs: String = ""
     @Published var isLoading = false
     @Published var errorText: String?
@@ -32,9 +34,13 @@ final class CaddyStore: ObservableObject {
         refreshTask = Task {
             do {
                 let sites = try await Task.detached { try service.sites(alias: alias) }.value
+                let owners = try await Task.detached {
+                    (try? service.portOwners(alias: alias)) ?? [:]
+                }.value
                 let logs = try await Task.detached { try service.logs(alias: alias) }.value
                 guard !Task.isCancelled else { return }
                 self.sites = sites
+                self.portOwners = owners
                 self.logs = logs
                 self.errorText = nil
             } catch {

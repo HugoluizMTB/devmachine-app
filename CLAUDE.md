@@ -151,6 +151,13 @@ segmented control.
   session. Two commands are not portable and have a local form: `find -printf`
   is GNU only, so a local listing uses `ls -Ap1` with
   `FileTreeParser.parseNames`.
+- **Hiding a workspace also empties its rows from Stats and the subdomain
+  list.** The host is what says who owns a row: a container by the folder it was
+  started from (compose or the Supabase CLI writes it, and it lives under
+  `/home/<user>`), a port by that container or by the process holding it
+  (`Ownership`). What cannot be attributed — a hand-made container, the apex
+  site, anything outside a home folder — stays on screen: hiding what has no
+  owner would hide the machine itself.
 - **Hiding a workspace is a list of what to hide, not of what to show**
   (`AppSettings.hiddenWorkspaces`, filtered by `WorkspaceVisibility`). A new
   alias in `~/.ssh/config` shows up without anyone opening Settings. Everything

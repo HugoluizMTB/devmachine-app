@@ -670,6 +670,35 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testARowOfAHiddenWorkspaceIsNotShown() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "globex", alias: "globex-devmachine"),
+        ]
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", hiddenWorkspaces: ["globex-devmachine"])
+
+        XCTAssertTrue(model.showsOwner("acme"))
+        XCTAssertFalse(model.showsOwner("globex"))
+    }
+
+    @MainActor
+    func testARowWithNoOwnerOrAnUnknownOneStays() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", hiddenWorkspaces: ["acme-devmachine"])
+
+        // Not a context user at all: a system container, or the host itself.
+        XCTAssertTrue(model.showsOwner(nil))
+        XCTAssertTrue(model.showsOwner("root"))
+        XCTAssertFalse(model.showsOwner("acme"))
+    }
+
+    @MainActor
     func testARemoteReferenceStaysRemote() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         let kind = model.terminalKind(for: SessionRef(alias: "acme-devmachine", name: "dash"))

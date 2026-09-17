@@ -4,6 +4,10 @@ public struct ContainerStat: Equatable, Sendable {
     public let name: String
     public let mem: String
     public let cpu: String
+    /// The context user the container belongs to, when the host says so.
+    /// A container started outside a home folder has none, and is shown to
+    /// everyone rather than guessed at.
+    public var owner: String?
 
     public init(name: String, mem: String, cpu: String) {
         self.name = name
@@ -90,7 +94,10 @@ public enum StatsParser {
             load1: loadValues.count > 0 ? loadValues[0] : 0,
             load5: loadValues.count > 1 ? loadValues[1] : 0,
             load15: loadValues.count > 2 ? loadValues[2] : 0,
-            containers: parseContainers(sections["@@DOCKER@@"] ?? []),
+            containers: parseContainers(
+                sections["@@DOCKER@@"] ?? [],
+                owners: Ownership.containerOwners(
+                    (sections["@@OWNERS@@"] ?? []).joined(separator: "\n"))),
             users: parseUsers(sections["@@USERS@@"] ?? [])
         )
     }
@@ -132,11 +139,14 @@ public enum StatsParser {
         return Int(last.trimmingCharacters(in: CharacterSet(charactersIn: "%"))) ?? 0
     }
 
-    private static func parseContainers(_ lines: [String]) -> [ContainerStat] {
+    private static func parseContainers(_ lines: [String], owners: [String: String])
+        -> [ContainerStat] {
         lines.compactMap { line in
             let parts = line.components(separatedBy: "|")
             guard parts.count >= 3 else { return nil }
-            return ContainerStat(name: parts[0], mem: parts[1], cpu: parts[2])
+            var stat = ContainerStat(name: parts[0], mem: parts[1], cpu: parts[2])
+            stat.owner = owners[parts[0]]
+            return stat
         }
     }
 
