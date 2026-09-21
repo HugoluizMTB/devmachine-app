@@ -127,6 +127,21 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) { model.pendingDelete = nil }
         }
         .confirmationDialog(
+            "Remove \(model.pendingLocalDelete?.name ?? "")? This ends the shell it holds.",
+            isPresented: Binding(
+                get: { model.pendingLocalDelete != nil },
+                set: { if !$0 { model.pendingLocalDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                if let pending = model.pendingLocalDelete {
+                    model.removeLocalSession(handle: pending.handle)
+                }
+            }
+            Button("Cancel", role: .cancel) { model.pendingLocalDelete = nil }
+        }
+        .confirmationDialog(
             "Delete \(model.pendingBulkDelete?.count ?? 0) sessions? This kills their tmux sessions.",
             isPresented: Binding(
                 get: { model.pendingBulkDelete != nil },

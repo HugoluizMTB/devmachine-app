@@ -249,7 +249,9 @@ struct SidebarView: View {
                     model.pendingLocalRename = (handle: s.handle, current: s.name)
                 }
                 if s.handle != Workspace.operatorSession {
-                    Button("Remove") { model.removeLocalSession(handle: s.handle) }
+                    Button("Remove", role: .destructive) {
+                        model.askToRemoveLocalSession(handle: s.handle)
+                    }
                 }
             }
     }

@@ -199,7 +199,17 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Asks before the shell dies. The Operator session is not removable, so it
+    /// is never asked about.
+    func askToRemoveLocalSession(handle: String) {
+        guard handle != Workspace.operatorSession,
+              let s = localSessions.first(where: { $0.handle == handle })
+        else { return }
+        pendingLocalDelete = (handle: s.handle, name: s.name)
+    }
+
     func removeLocalSession(handle: String) {
+        pendingLocalDelete = nil
         guard let s = localSessions.first(where: { $0.handle == handle }) else { return }
         TerminalRegistry.shared.close(.local(session: s.handle, path: s.path))
         // Closing the pane only drops this app's client; the multiplexer would
@@ -310,6 +320,9 @@ final class AppModel: ObservableObject {
     @Published var pendingNewSessionAlias: String? = nil
     @Published var pendingRename: (alias: String, old: String)? = nil
     @Published var pendingLocalRename: (handle: String, current: String)? = nil
+    /// The local session waiting for an answer. Removing one ends the shell it
+    /// holds, so it is asked for the same way a remote session is.
+    @Published var pendingLocalDelete: (handle: String, name: String)? = nil
     @Published var pendingDelete: (alias: String, name: String)? = nil
     @Published var pendingBulkDelete: [SessionRef]? = nil
     @Published var selectedSessions: Set<SessionRef> = []
