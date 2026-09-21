@@ -75,6 +75,13 @@ final class TerminalRegistry: NSObject {
                 // and the agent reads the clipboard of the machine it runs on,
                 // which for a remote session is not this Mac. So the bytes are
                 // written over there and the path is typed instead.
+                // The terminal answers ⌘F itself by doing nothing, and the
+                // pane has no other way to reach SwiftTerm's search.
+                if TerminalKeyboard.opensFind(keyCode: keyCode, flags: flags),
+                   let (kind, _) = registry.focusedEntry() {
+                    AppModel.shared?.findTarget = kind
+                    return true
+                }
                 if TerminalKeyboard.pastesClipboard(keyCode: keyCode, flags: flags),
                    let (kind, _) = registry.focusedEntry(),
                    let image = ImagePasteService.image(from: .general) {
@@ -90,6 +97,41 @@ final class TerminalRegistry: NSObject {
             }
             return handled ? nil : event
         }
+    }
+
+    /// ⌘-click opens the link, ⌘⇧-click copies it. A link that names no page
+    /// and no file on this Mac is dropped, and the log says which one: what a
+    /// terminal prints is text from elsewhere, not a command for this Mac.
+    func openLink(_ link: String, from kind: TerminalKind?, flags: NSEvent.ModifierFlags) {
+        var folder: String?
+        if case let .local(_, path) = kind { folder = path }
+        guard let target = TerminalLink.target(for: link, folder: folder) else {
+            PaneLog.log("dropped link \(link)")
+            return
+        }
+        guard !flags.contains(.shift) else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(target.text, forType: .string)
+            return
+        }
+        switch target {
+        case let .web(url): NSWorkspace.shared.open(url)
+        case let .file(path): NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        }
+    }
+
+    /// Searches the pane's own scrollback and selects the match.
+    @discardableResult
+    func find(_ term: String, in kind: TerminalKind, forward: Bool) -> Bool {
+        let clean = term.trimmingCharacters(in: .whitespaces)
+        guard !clean.isEmpty, let view = terminals[kind] else { return false }
+        return forward ? view.findNext(clean) : view.findPrevious(clean)
+    }
+
+    /// Drops the highlight and gives the keyboard back to the session.
+    func endFind(in kind: TerminalKind) {
+        terminals[kind]?.clearSearch()
+        requestFocus(kind)
     }
 
     /// The terminal that currently owns the keyboard, if any.
@@ -141,6 +183,15 @@ final class TerminalRegistry: NSObject {
         let term = LegacyKeyboardTerminalView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         term.processDelegate = self
         term.optionAsMetaKey = false
+        term.kind = kind
+        // ⌘ and a click, the way every other Mac terminal opens a link. A plain
+        // click stays what it is, so clicking a web address inside a program
+        // that reads the mouse still reaches the program.
+        term.linkHighlightMode = .hoverWithModifier
+        // Explicit hyperlinks plus bare addresses: the local multiplexer loses
+        // the hyperlink when it repaints its screen, and the text is all that
+        // is left to match.
+        term.linkReporting = .implicit
         awaitingSize.insert(kind)
         terminals[kind] = term
         return term
@@ -415,6 +466,30 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
 // SwiftTerm's kitty encoding still breaks Enter and dead keys, so the view
 // drops both replies: programs keep the legacy encoding this app always ran.
 final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
+    /// The session this view shows, so a link can be resolved in its folder.
+    var kind: TerminalKind?
+
+    override func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
+        TerminalRegistry.shared.openLink(link, from: kind, flags: NSEvent.modifierFlags)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "c")
+        menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "v")
+        menu.addItem(withTitle: "Select All", action: #selector(selectAll(_:)), keyEquivalent: "a")
+        menu.addItem(.separator())
+        let find = NSMenuItem(title: "Find…", action: #selector(openFind), keyEquivalent: "f")
+        find.target = self
+        menu.addItem(find)
+        return menu
+    }
+
+    @objc private func openFind() {
+        guard let kind else { return }
+        AppModel.shared?.findTarget = kind
+    }
+
     /// The rows and columns handed to the program, logged as they are. An
     /// earlier version refused small sizes and returned the last good one; that
     /// made SwiftTerm believe the program had already been told the real size,
@@ -451,6 +526,15 @@ enum TerminalKeyboard {
     static func optionActsAsMeta(for flags: NSEvent.ModifierFlags) -> Bool {
         flags.contains(.option) && flags.contains(.function)
     }
+
+    /// ⌘F, and only ⌘F: ⌥⌘F and ⌃⌘F belong to whatever runs in the session.
+    static func opensFind(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> Bool {
+        keyCode == findKeyCode
+            && flags.contains(.command)
+            && !flags.contains(.option) && !flags.contains(.control) && !flags.contains(.shift)
+    }
+
+    static let findKeyCode: UInt16 = 3
 
     static let returnKeyCode: UInt16 = 36
 

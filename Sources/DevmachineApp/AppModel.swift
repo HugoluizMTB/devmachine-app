@@ -52,6 +52,10 @@ final class AppModel: ObservableObject {
         didSet { UserDefaults.standard.set(localSessionNames, forKey: AppModel.localNamesKey) }
     }
 
+    /// The pane whose find bar is open, if any. ⌘F sets it for the terminal
+    /// that holds the keyboard; Esc clears it.
+    @Published var findTarget: TerminalKind?
+
     /// What `zmx ls` last reported, and which of those sessions hold a Claude.
     @Published private(set) var liveLocalSessions: [ZmxSession] = []
     @Published private(set) var localClaudeSessions: Set<String> = []

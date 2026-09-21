@@ -292,9 +292,13 @@ private struct MainPane: View {
         Group {
             switch item {
             case let .localSession(name, path):
-                TerminalPaneView(kind: .local(session: name, path: path), translucent: true)
+                let kind = TerminalKind.local(session: name, path: path)
+                TerminalPaneView(kind: kind, translucent: true)
+                    .terminalFindBar(for: kind)
             case let .session(alias, name):
-                TerminalPaneView(kind: .remote(alias: alias, session: name), translucent: true)
+                let kind = TerminalKind.remote(alias: alias, session: name)
+                TerminalPaneView(kind: kind, translucent: true)
+                    .terminalFindBar(for: kind)
             }
         }
         .id(key(item))

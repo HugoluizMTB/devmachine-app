@@ -66,4 +66,16 @@ final class PageKeyTests: XCTestCase {
     func testAnotherKeyIsNotAPageKey() {
         XCTAssertNil(TerminalKeyboard.pageKeyBytes(keyCode: 36, flags: []))
     }
+
+    func testCommandFOpensTheFindBar() {
+        XCTAssertTrue(TerminalKeyboard.opensFind(keyCode: 3, flags: [.command]))
+    }
+
+    func testFindIgnoresOtherShapesOfTheSameKey() {
+        XCTAssertFalse(TerminalKeyboard.opensFind(keyCode: 3, flags: []))
+        XCTAssertFalse(TerminalKeyboard.opensFind(keyCode: 3, flags: [.command, .option]))
+        XCTAssertFalse(TerminalKeyboard.opensFind(keyCode: 3, flags: [.command, .control]))
+        XCTAssertFalse(TerminalKeyboard.opensFind(keyCode: 3, flags: [.command, .shift]))
+        XCTAssertFalse(TerminalKeyboard.opensFind(keyCode: 9, flags: [.command]))
+    }
 }
