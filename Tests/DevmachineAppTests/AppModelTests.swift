@@ -399,12 +399,11 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testNothingConnectsBeforeASweepStarts() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
-        XCTAssertNil(model.connectingLabel)
-        XCTAssertEqual(model.sweepTotal, 0)
+        XCTAssertTrue(model.activeTasks.isEmpty)
     }
 
     @MainActor
-    func testTheSweepCountsWorkspacesWhileItRuns() {
+    func testTheSweepIsACardLikeEveryOtherJob() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.workspaces = [
             Workspace(name: "acme", alias: "acme-devmachine"),
@@ -413,44 +412,36 @@ final class AppModelTests: XCTestCase {
         ]
         model.refreshAll()
 
-        XCTAssertEqual(model.sweepTotal, 3)
-        XCTAssertEqual(model.sweepDone, 0)
-        XCTAssertEqual(model.connectingLabel, "Connecting 1 of 3 workspaces\u{2026}")
+        XCTAssertEqual(model.activeTasks.count, 1)
+        XCTAssertEqual(model.activeTasks.first?.label, "Connecting workspaces\u{2026}")
+        XCTAssertEqual(model.activeTasks.first?.total, 3)
+        XCTAssertEqual(model.activeTasks.first?.completed, 0)
     }
 
     @MainActor
-    func testTheLabelNeverCountsPastTheTotal() {
-        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
-        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
-        model.refreshAll()
-        model.sweepDoneForTesting(1)
-
-        XCTAssertEqual(model.connectingLabel, "Connecting 1 of 1 workspaces\u{2026}")
-    }
-
-
-    @MainActor
-    func testATransferShowsABarAndThenClearsIt() {
+    func testATransferShowsABarAndThenClearsIt() async throws {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.beginTransfer(label: "Sending image\u{2026}", total: 1000)
-        XCTAssertEqual(model.transfer?.done, 0)
-        XCTAssertEqual(model.transfer?.total, 1000)
+        XCTAssertEqual(model.activeTasks.first?.completed, 0)
+        XCTAssertEqual(model.activeTasks.first?.total, 1000)
+        // Bytes as "400 of 1000" says nothing, so the card shows the bar alone.
+        XCTAssertEqual(model.activeTasks.first?.showsCount, false)
 
         model.advanceTransfer(done: 400)
-        XCTAssertEqual(model.transfer?.done, 400)
-        XCTAssertEqual(model.transfer?.label, "Sending image\u{2026}")
+        XCTAssertEqual(model.activeTasks.first?.completed, 400)
+        XCTAssertEqual(model.activeTasks.first?.label, "Sending image\u{2026}")
 
         model.endTransfer()
-        XCTAssertNil(model.transfer)
+        XCTAssertEqual(model.activeTasks.first?.completed, 1000)
+        try await waitUntil { model.activeTasks.isEmpty }
     }
 
     @MainActor
     func testProgressWithoutATransferIsIgnored() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.advanceTransfer(done: 10)
-        XCTAssertNil(model.transfer)
+        XCTAssertTrue(model.activeTasks.isEmpty)
     }
-
 
     @MainActor
     func testWakingLiftsThePauseAndSweepsAgain() {

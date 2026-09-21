@@ -262,7 +262,7 @@ struct DMToastCard: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                         .font(.dm(12))
-                } else {
+                } else if task.showsCount {
                     // `Text("\(int)")` localizes: pt-BR renders 5182 as 5.182.
                     Text(verbatim: "\(task.completed) of \(task.total)")
                         .font(.dm(11))

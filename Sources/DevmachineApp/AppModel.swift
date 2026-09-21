@@ -3,11 +3,17 @@ import AppKit
 import Combine
 import DevmachineCore
 
+/// One job the app is doing, shown as a card by `DMToastCard`. Every part of
+/// the app that has to say "this is running" uses one of these, so there is a
+/// single place a job is drawn and nothing pushes the layout around.
 struct BGTask: Identifiable, Equatable {
     let id: UUID
     var label: String
     var completed: Int
     var total: Int
+    /// Bytes read as "1048576 of 2097152", which says nothing. A job counted in
+    /// bytes shows the bar alone.
+    var showsCount: Bool = true
 }
 
 struct PaletteItem: Identifiable, Hashable {
@@ -252,42 +258,25 @@ final class AppModel: ObservableObject {
     @Published var sessionsByAlias: [String: [TmuxSession]] = [:]
     @Published var offlineAliases: Set<String> = []
 
-    /// Progress of the workspace sweep, for the sidebar's connecting bar. The
-    /// total is workspaces, not sessions: how many sessions a workspace has is
-    /// only known once it answers. Zero total means no sweep is running.
-    @Published private(set) var sweepTotal = 0
-    @Published private(set) var sweepDone = 0
-
-    /// Drives the label from a test without running a sweep.
-    func sweepDoneForTesting(_ value: Int) { sweepDone = value }
-
-    /// A short job worth a bar in the sidebar: sending an image, for now.
-    /// It takes the same place as the sweep's bar and wins while it runs,
-    /// because it is the thing you just asked for.
-    struct Transfer: Equatable {
-        let label: String
-        let done: Int
-        let total: Int
-    }
-
-    @Published var transfer: Transfer?
+    /// The sweep and an image transfer are jobs like any other: they are cards
+    /// in the corner, not a strip above the sidebar. That strip had no fixed
+    /// height, so every sweep pushed the whole list down and back.
+    private var sweepTaskID: UUID?
+    private var transferTaskID: UUID?
 
     func beginTransfer(label: String, total: Int) {
-        transfer = Transfer(label: label, done: 0, total: total)
+        transferTaskID = beginTask(label: label, total: total, showsCount: false)
     }
 
     func advanceTransfer(done: Int) {
-        guard let current = transfer else { return }
-        transfer = Transfer(label: current.label, done: done, total: current.total)
+        guard let id = transferTaskID else { return }
+        setTask(id, completed: done)
     }
 
-    func endTransfer() { transfer = nil }
-
-    /// "Connecting 3 of 10 workspaces…", or nil when nothing is connecting.
-    var connectingLabel: String? {
-        guard sweepTotal > 0 else { return nil }
-        let current = min(sweepDone + 1, sweepTotal)
-        return "Connecting \(current) of \(sweepTotal) workspaces…"
+    func endTransfer() {
+        guard let id = transferTaskID else { return }
+        transferTaskID = nil
+        finishTask(id)
     }
     @Published var selection: SidebarItem? = nil {
         didSet {
@@ -681,9 +670,10 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    private func beginTask(label: String, total: Int) -> UUID {
+    func beginTask(label: String, total: Int, showsCount: Bool = true) -> UUID {
         let id = UUID()
-        activeTasks.append(BGTask(id: id, label: label, completed: 0, total: total))
+        activeTasks.append(
+            BGTask(id: id, label: label, completed: 0, total: total, showsCount: showsCount))
         return id
     }
 
@@ -693,11 +683,24 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Progress that arrives as a running total, such as bytes written.
+    func setTask(_ id: UUID, completed: Int) {
+        guard let i = activeTasks.firstIndex(where: { $0.id == id }) else { return }
+        guard activeTasks[i].completed != completed else { return }
+        activeTasks[i].completed = completed
+    }
+
+    /// Drops the card at once, for a job that finished too fast to be worth a
+    /// tick of "done": the 60s sweep would otherwise blink a card every minute.
+    func dropTask(_ id: UUID) {
+        activeTasks.removeAll { $0.id == id }
+    }
+
     func flashToast(_ label: String) {
         finishTask(beginTask(label: label, total: 1))
     }
 
-    private func finishTask(_ id: UUID) {
+    func finishTask(_ id: UUID) {
         if let i = activeTasks.firstIndex(where: { $0.id == id }) {
             activeTasks[i].completed = activeTasks[i].total
         }
@@ -842,8 +845,8 @@ final class AppModel: ObservableObject {
         let targets = visibleWorkspaces.filter { !refreshingAliases.contains($0.alias) }
         guard !targets.isEmpty else { return }
         sweepInFlight = true
-        sweepTotal = targets.count
-        sweepDone = 0
+        let sweepTask = beginTask(label: "Connecting workspaces…", total: targets.count)
+        sweepTaskID = sweepTask
         for ws in targets { refreshingAliases.insert(ws.alias) }
         Task.detached { [store] in
             var remaining = targets[...]
@@ -853,7 +856,7 @@ final class AppModel: ObservableObject {
                 let outcome = Result { try store.sessions(for: ws) }
                 let stop = await MainActor.run { () -> SSHFailure? in
                     let stop = self.apply(outcome, alias: ws.alias)
-                    self.sweepDone += 1
+                    self.bumpTask(sweepTask)
                     return stop
                 }
                 if let stop { stopped = stop; break }
@@ -870,8 +873,8 @@ final class AppModel: ObservableObject {
                 }
                 for ws in targets { self.refreshingAliases.remove(ws.alias) }
                 self.sweepInFlight = false
-                self.sweepTotal = 0
-                self.sweepDone = 0
+                self.sweepTaskID = nil
+                self.dropTask(sweepTask)
             }
         }
     }
