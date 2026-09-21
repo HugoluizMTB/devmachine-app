@@ -847,22 +847,26 @@ final class AppModel: ObservableObject {
         for ws in targets { refreshingAliases.insert(ws.alias) }
         Task.detached { [store] in
             var remaining = targets[...]
+            var stopped: SSHFailure?
             while let ws = remaining.first {
                 remaining = remaining.dropFirst()
                 let outcome = Result { try store.sessions(for: ws) }
-                let stop = await MainActor.run { () -> Bool in
+                let stop = await MainActor.run { () -> SSHFailure? in
                     let stop = self.apply(outcome, alias: ws.alias)
                     self.sweepDone += 1
                     return stop
                 }
-                if stop { break }
+                if let stop { stopped = stop; break }
             }
             // The aliases the stopped sweep never reached share the same host,
-            // so they are offline too, not "0 sessions".
+            // so an unreachable host takes them with it. A refused login says
+            // nothing about the host, so it leaves them as they were.
             let unreached = Array(remaining)
             await MainActor.run {
-                for ws in unreached where !self.offlineAliases.contains(ws.alias) {
-                    self.offlineAliases.insert(ws.alias)
+                if stopped == .unreachable {
+                    for ws in unreached where !self.offlineAliases.contains(ws.alias) {
+                        self.offlineAliases.insert(ws.alias)
+                    }
                 }
                 for ws in targets { self.refreshingAliases.remove(ws.alias) }
                 self.sweepInFlight = false
@@ -889,8 +893,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // Returns true when polling must pause: the host or the ssh agent is down.
-    private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) -> Bool {
+    // Returns the failure that must pause polling: the host or the ssh agent is
+    // down. Nil means the sweep goes on.
+    private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) -> SSHFailure? {
         switch outcome {
         case .success(let result):
             // Assign only on a real change: every write to a @Published
@@ -904,15 +909,23 @@ final class AppModel: ObservableObject {
                 offlineAliases.remove(alias)
             }
             syncContext()
-            return false
+            return nil
         case .failure(let error):
-            if !offlineAliases.contains(alias) {
+            let failure = (error as? SessionStoreError)?.failure
+            // Red means the host does not answer. A login this Mac cannot sign
+            // — a locked agent after waking — says nothing about the host, and
+            // the sessions on it keep running: the bar already says polling is
+            // paused, and a red dot on top of that is a lie that stays on
+            // screen until the next successful sweep.
+            if failure == .authDenied {
+                offlineAliases.remove(alias)
+            } else if !offlineAliases.contains(alias) {
                 offlineAliases.insert(alias)
             }
             syncContext()
-            guard let failure = (error as? SessionStoreError)?.failure else { return false }
+            guard let failure else { return nil }
             pausePolling(after: failure)
-            return true
+            return failure
         }
     }
 

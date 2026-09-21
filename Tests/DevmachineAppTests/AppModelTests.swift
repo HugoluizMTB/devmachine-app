@@ -471,6 +471,53 @@ final class AppModelTests: XCTestCase {
 
 
     @MainActor
+    func testALockedAgentIsNotAWorkspaceBeingOffline() {
+        let model = AppModel(store: SessionStore(runner: AuthDeniedRunner()))
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "beta", alias: "beta-devmachine"),
+        ]
+        model.refreshAll()
+
+        let sweep = expectation(description: "sweep")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { sweep.fulfill() }
+        wait(for: [sweep], timeout: 2)
+
+        XCTAssertTrue(model.isPollingPaused)
+        XCTAssertTrue(model.offlineAliases.isEmpty)
+    }
+
+    @MainActor
+    func testAnUnreachableHostTurnsEveryWorkspaceOnItOffline() {
+        let model = AppModel(store: SessionStore(runner: UnreachableRunner()))
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "beta", alias: "beta-devmachine"),
+        ]
+        model.refreshAll()
+
+        let sweep = expectation(description: "sweep")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { sweep.fulfill() }
+        wait(for: [sweep], timeout: 2)
+
+        XCTAssertEqual(model.offlineAliases, ["acme-devmachine", "beta-devmachine"])
+    }
+
+    @MainActor
+    func testTheAgentLockingDropsAnOlderOfflineMark() {
+        let model = AppModel(store: SessionStore(runner: AuthDeniedRunner()))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        model.offlineAliases = ["acme-devmachine"]
+        model.refreshAll()
+
+        let sweep = expectation(description: "sweep")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { sweep.fulfill() }
+        wait(for: [sweep], timeout: 2)
+
+        XCTAssertTrue(model.offlineAliases.isEmpty)
+    }
+
+    @MainActor
     func testStackingTheLocalWorkspaceUsesItsOwnSessions() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.addLocalSession(path: "/Users/alice/dev/acme")
@@ -778,6 +825,19 @@ private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
 
 }
 
+
+/// The ssh agent refusing to sign, which is what a locked 1Password does after
+/// the Mac wakes: the host is fine, this Mac just cannot log in yet.
+private final class AuthDeniedRunner: CommandRunner, @unchecked Sendable {
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        try runCapturing(executable: executable, args: args, environment: environment).stdout
+    }
+
+    func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        ("", "alice@acme: Permission denied (publickey).", 255)
+    }
+}
 
 /// ssh itself failing, the way it does while the Mac is asleep: exit 255 and a
 /// connection error, not a command that ran and failed.

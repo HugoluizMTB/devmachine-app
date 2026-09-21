@@ -314,15 +314,24 @@ struct SidebarView: View {
         }
     }
 
+    /// The row carries no mark while everything is normal. A session running
+    /// Claude Code shows an orange dot before its client count, and only under
+    /// the pointer: a sidebar of orange dots is noise, and what the owner wants
+    /// is to check one row at a time.
     private func row(title: String, claude: Bool, windows: Int?, selected: Bool) -> some View {
         DMRow(
-            systemImage: claude ? "circle.fill" : "circle",
-            iconColor: claude ? .orange : .dmMuted,
             title: title,
             selected: selected,
             trailing: windows.map { count in
                 AnyView(Text(verbatim: "\(count)").font(.dm(11)).foregroundStyle(Color.dmMuted))
-            }
+            },
+            trailingHover: claude
+                ? AnyView(
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 5, height: 5)
+                        .help("Claude Code is running in this session"))
+                : nil
         )
     }
 }

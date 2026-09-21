@@ -14,8 +14,10 @@ struct DMRowBackground: View {
 /// A leading-glyph, title, optional-trailing list row with selection/hover background.
 /// Mirrors `SidebarView`'s session/footer rows exactly.
 struct DMRow: View {
-    let systemImage: String
-    let iconColor: Color
+    /// No glyph at all when nil: a row that is fine has nothing to say, and a
+    /// column of dots down the sidebar says nothing while looking like an alarm.
+    var systemImage: String?
+    var iconColor: Color = .dmMuted
     var iconSize: CGFloat = 7
     let title: String
     var titleColor: Color = .dmRowText
@@ -25,19 +27,24 @@ struct DMRow: View {
     /// List rows (default). The ops footer passes false to hug the text.
     var fillWidth: Bool = true
     var trailing: AnyView?
+    /// Shown before `trailing`, and only while the pointer is on the row.
+    var trailingHover: AnyView?
     var tap: (() -> Void)?
     @State private var hovering = false
 
     var body: some View {
         let content = HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.dm(iconSize))
-                .foregroundStyle(iconColor)
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.dm(iconSize))
+                    .foregroundStyle(iconColor)
+            }
             Text(title)
                 .font(.dm(13))
                 .foregroundStyle(titleColor)
                 .lineLimit(1)
             if fillWidth { Spacer() }
+            if hovering, let trailingHover { trailingHover }
             if let trailing { trailing }
         }
         .padding(.horizontal, 10)
