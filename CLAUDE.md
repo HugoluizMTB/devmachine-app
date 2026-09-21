@@ -71,6 +71,17 @@ segmented control.
   `740,31M`). This bug already shipped once; don't repeat it.
 - A central page must fill the center (`.frame(maxWidth:.infinity, maxHeight:.infinity)`),
   never float at intrinsic size.
+- **A running job is a `BGTask` card, never a strip inside a layout.** Whatever
+  the app is doing — the workspace sweep, deleting sessions, sending an image,
+  adding a subdomain — registers through `AppModel.beginTask/bumpTask/setTask/
+  finishTask` and is drawn by `DMToastCard` in the bottom-right stack. A strip
+  that appears and disappears inside a `VStack` has no fixed height, so it
+  pushes everything below it down and back on every tick; the sidebar's old
+  "Connecting…" bar did that on every 60s sweep. A job counted in bytes sets
+  `showsCount = false` (the bar alone), and one that ends at once uses
+  `dropTask` so it does not blink a finished card. The small
+  `ProgressView().controlSize(.small)` inside a panel stays what it is: that
+  panel loading its own content, not a job.
 - **`.clipped()` / `.clipShape` do NOT clip hit-testing.** A `scaledToFill` image
   overflows its container and its invisible overflow still swallows clicks over
   neighboring views (this once killed the sidebar's right edge for a whole day).
