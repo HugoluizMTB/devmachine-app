@@ -155,10 +155,13 @@ final class AppModel: ObservableObject {
     /// separate session, numbered, rather than a jump to the existing one:
     /// two shells in one repository is a normal thing to want.
     func addLocalSession(path: String) {
-        let name = LocalSessionNaming.name(for: path, existing: localSessions.map(\.name))
-        addedLocalSessions.append(LocalSession(name: name, path: path))
-        selection = .localSession(name: name, path: path)
-        startProgram(in: .local(session: name, path: path))
+        // Numbered against the handles, never the sidebar names: a renamed
+        // session hides its handle, and a second session born under that same
+        // handle is one row the multiplexer and the registry cannot tell apart.
+        let handle = LocalSessionNaming.name(for: path, existing: localSessions.map(\.handle))
+        addedLocalSessions.append(LocalSession(name: handle, path: path))
+        selection = .localSession(name: handle, path: path)
+        startProgram(in: .local(session: handle, path: path))
     }
 
     /// Types the startup line once the session exists. A local session is born

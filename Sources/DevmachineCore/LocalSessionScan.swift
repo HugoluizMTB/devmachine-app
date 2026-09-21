@@ -11,13 +11,15 @@ public enum LocalSessionScan {
         stored: [LocalSession], live: [ZmxSession], fallbackPath: String,
         socketDirectory: String = Zmx.socketDirectory()
     ) -> [LocalSession] {
-        let known = Set(stored.map {
+        var seen = Set<String>()
+        let rows = stored.filter { seen.insert($0.handle).inserted }
+        let known = Set(rows.map {
             Zmx.sessionName(from: $0.handle, socketDirectory: socketDirectory)
         })
         let extra = live
             .filter { !known.contains($0.name) }
             .map { LocalSession(name: $0.name, path: $0.directory ?? fallbackPath) }
-        return stored + extra
+        return rows + extra
     }
 
     /// The multiplexer name a session runs under, which is what `zmx ls` prints.

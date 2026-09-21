@@ -340,6 +340,22 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testARenamedSessionStillBlocksItsNumberForTheNextOne() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+        model.renameLocalSession(handle: "acme 2", to: "Client work")
+
+        model.addLocalSession(path: "/Users/alice/dev/acme")
+
+        XCTAssertEqual(
+            model.localSessions.map(\.handle), ["Operator", "acme", "acme 2", "acme 3"])
+        model.removeLocalSession(handle: "acme")
+        model.removeLocalSession(handle: "acme 2")
+        model.removeLocalSession(handle: "acme 3")
+    }
+
+    @MainActor
     func testRemovingALocalSessionDropsItAndClearsTheSelection() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.addLocalSession(path: "/Users/alice/dev/acme")

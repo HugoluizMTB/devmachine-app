@@ -43,5 +43,15 @@ final class LocalSessionScanTests: XCTestCase {
         XCTAssertEqual(merged.count, 1)
         XCTAssertEqual(merged.first?.name, "Client work")
     }
-}
 
+    func testOneRowPerHandleEvenIfTheStoredListRepeatsOne() {
+        let stored = [
+            LocalSession(name: "Operator", path: "/ops"),
+            LocalSession(name: "acme", path: "/dev/acme"),
+            LocalSession(name: "acme", path: "/dev/acme"),
+        ]
+        let merged = LocalSessionScan.merge(stored: stored, live: [], fallbackPath: "/Users/alice")
+
+        XCTAssertEqual(merged.map(\.handle), ["Operator", "acme"])
+    }
+}
