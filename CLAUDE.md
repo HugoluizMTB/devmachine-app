@@ -2,7 +2,7 @@
 
 Native macOS app (Swift 6 / SwiftUI / AppKit, SwiftPM) that operates the
 `devmachine` VPS: tmux sessions per context-user, PRs, files, Caddy subdomains,
-VPS stats, Claude usage. Sibling of `~/dev/devmachine` (the ops repo).
+VPS stats, and coding-harness usage. Sibling of `~/dev/devmachine` (the ops repo).
 
 ## Language — ABSOLUTE, overrides everything
 **All code, identifiers, comments, and git commit messages are ENGLISH.** No
@@ -55,10 +55,16 @@ segmented control.
 ## Reusable structure
 - `DevmachineCore` (library): pure logic, parsers, command builders — unit-tested,
   no UI, no AppKit where avoidable.
-- `ClaudeUsageKit` (library): reusable Claude-usage data layer + views. Depends
-  only on Foundation/SwiftUI/Charts. NEVER depends on the app target; the app
-  depends on it. Reuse its views in the menubar tab, central pages, and Home.
+- `ClaudeUsageKit` is the legacy reusable usage target; the generic harness
+  usage migration renames it without moving provider rules into the app views.
+  Usage libraries depend only on Foundation/SwiftUI/Charts, never on the app.
 - `DevmachineApp` (executable): the app shell + SwiftUI views.
+- `HarnessRegistry` owns provider adapters. SwiftUI consumes descriptors and
+  facades; executable names, process matching, colors, launch commands, and
+  provider policies stay behind adapters.
+- `DevmachineServices` is the boundary for workspace, session, and context data.
+  Its current sources preserve the existing SSH and `devmachine-infer` behavior;
+  a future `devmachine-cli` source can replace them without changing views.
 - Shared UI in `Sources/DevmachineApp/Components/DMComponents.swift`
   (`DMRow`, `DMSection`, `DMPill`, `DMProgressBar`, `DMToastCard`, `DMStatBubble`)
   + `Theme.swift` (`Color.dm*`). Reuse these; match the dark palette.
@@ -108,7 +114,7 @@ segmented control.
   never terminates the process (only delete/rename/quit do).
 - Remote sessions run with `TERM=tmux-256color` (`RemoteCommands.remoteTerm`), never
   `xterm-256color`: the host's `/etc/tmux.conf` gives every `xterm*` client `extkeys`,
-  tmux then forwards the kitty keyboard protocol Claude Code 2.1.269+ turns on, and
+  tmux then forwards the kitty keyboard protocol coding harnesses can turn on, and
   SwiftTerm's kitty encoding breaks Enter and dead keys (ç, ´). Check with
   `tmux list-clients -F '#{client_termfeatures}'` on the host: the app's client must
   not list `extkeys`. `LegacyKeyboardTerminalView` also drops the kitty query answer
@@ -195,10 +201,23 @@ segmented control.
 - **The Local workspace lists what `zmx ls` reports**, merged with what the app
   remembers (`LocalSessionScan.merge`): a session started outside the app shows
   up, and a remembered one that has no shell yet shows without a client count.
-  One `ps -axo pid=,ppid=,comm=` per poll says which sessions hold a Claude.
+  One `ps -axo pid=,ppid=,comm=` per poll detects every enabled coding harness.
 - **A local session is renamed in the sidebar only.** `zmx` has no rename and its
   socket is named after the session, so `LocalSession.handle` (the multiplexer
   name, and the registry key) never changes; `name` is what the sidebar shows.
+
+## Coding harnesses
+- Multiple harnesses may be enabled globally. Enabling one validates only its
+  local CLI; a failed check does not change settings.
+- This Mac has one Terminal-or-harness default. Remote workspaces inherit one
+  remote fallback and may override it individually.
+- Remote choices are declarative. Never probe or modify a VPS to validate a
+  harness; its shell reports a missing command when the session starts.
+- Session badges, launch commands, process matching, image storage, context
+  support, and usage capabilities come from adapters/facades. Views do not
+  switch on Claude, Codex, executable names, or provider colors.
+- The Context / Files / Git panel belongs to every selected session. Unsupported
+  provider context shows an empty state while Files and Git remain available.
 
 ## Performance rules (learned from a 2 GB footprint)
 - Poll only while a view is visible (`onAppear`/`onDisappear` begin/end, refcount),

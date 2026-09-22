@@ -2,8 +2,8 @@
 
 A native macOS app (Swift 6, SwiftUI + AppKit) that operates one Linux dev host
 over ssh: tmux sessions per context user as floating terminals, stack grids per
-workspace, a context panel fed by the host, Caddy subdomains, host stats, PR and
-Claude usage in the menu bar.
+workspace, a context panel fed by the host, Caddy subdomains, host stats, PRs,
+and coding-harness usage in the menu bar.
 
 The host itself is provisioned by a separate ops repo (Ansible). The app only
 needs an ssh alias to it and the path of that repo on this Mac.
@@ -26,6 +26,11 @@ needs an ssh alias to it and the path of that repo on this Mac.
 Builds a release bundle and installs `/Applications/Devmachine.app`. The first
 launch shows a Setup card: ops repo folder, host ssh alias, public IP, base
 domain, wallpaper. Change them later with `⌘,`.
+
+Settings can enable multiple coding harnesses installed on this Mac. Each local
+or remote workspace chooses one default launch program, while remote choices
+remain declarative: the app does not install, inspect, or repair tools on the
+host.
 
 ## Development
 
