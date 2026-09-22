@@ -25,22 +25,50 @@ protocol ExecutableLocating: Sendable {
 
 struct SystemExecutableLocator: ExecutableLocating {
     private let path: String
+    private let knownDirectories: [URL]
 
-    init(path: String = ProcessInfo.processInfo.environment["PATH"] ?? "") {
+    init(
+        path: String = ProcessInfo.processInfo.environment["PATH"] ?? "",
+        knownDirectories: [URL] = SystemExecutableLocator.defaultKnownDirectories
+    ) {
         self.path = path
+        self.knownDirectories = knownDirectories
+    }
+
+    var searchDirectories: [URL] {
+        let inheritedDirectories = path.split(separator: ":", omittingEmptySubsequences: false).map {
+            URL(fileURLWithPath: $0.isEmpty ? "." : String($0))
+        }
+        var seen = Set<String>()
+        return (inheritedDirectories + knownDirectories).filter { directory in
+            seen.insert(directory.standardizedFileURL.path).inserted
+        }
     }
 
     func executable(named name: String) -> URL? {
         guard !name.isEmpty, !name.contains("/") else { return nil }
 
-        for directory in path.split(separator: ":", omittingEmptySubsequences: false) {
-            let url = URL(fileURLWithPath: directory.isEmpty ? "." : String(directory))
-                .appendingPathComponent(name)
-            if FileManager.default.isExecutableFile(atPath: url.path) {
-                return url
+        for directory in searchDirectories {
+            let candidate = directory.appendingPathComponent(name).resolvingSymlinksInPath()
+            var isDirectory = ObjCBool(false)
+            guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue,
+                  FileManager.default.isExecutableFile(atPath: candidate.path),
+                  let values = try? candidate.resourceValues(forKeys: [.isRegularFileKey]),
+                  values.isRegularFile == true else {
+                continue
             }
+            return candidate
         }
         return nil
+    }
+
+    private static var defaultKnownDirectories: [URL] {
+        [
+            URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".local/bin"),
+            URL(fileURLWithPath: "/opt/homebrew/bin"),
+            URL(fileURLWithPath: "/usr/local/bin")
+        ]
     }
 }
 
