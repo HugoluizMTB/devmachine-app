@@ -5,6 +5,7 @@ import ClaudeUsageKit
 
 @main
 struct DevmachineApp: App {
+    private let harnessSettingsFacade = HarnessSettingsFacade()
     @StateObject private var model = AppModel()
     @StateObject private var prStore = PRStore()
     @StateObject private var filesStore = FilesStore()
@@ -30,6 +31,7 @@ struct DevmachineApp: App {
                 .environmentObject(statsStore)
                 .environmentObject(usageStore)
                 .environmentObject(settingsStore)
+                .environment(\.harnessSettingsFacade, harnessSettingsFacade)
                 .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
                 .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
                 .onChange(of: settingsStore.settings?.uiFontScale) { _, scale in

@@ -22,7 +22,11 @@ final class SettingsStoreTests: XCTestCase {
         opsRepoPath: "/Users/alice/dev/ops",
         hostAlias: "myhost",
         publicIP: "203.0.113.10",
-        baseDomain: "example.com"
+        baseDomain: "example.com",
+        enabledHarnesses: [.claude, .codex],
+        localSessionProgram: .harness(.codex),
+        remoteSessionProgram: .harness(.claude),
+        workspaceSessionPrograms: ["acme-devmachine": .harness(.codex)]
     )
 
     func testStartsUnconfigured() {
@@ -31,11 +35,14 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(store.isConfigured)
     }
 
-    func testSavedSettingsComeBackOnTheNextLaunch() {
-        SettingsStore(defaults: defaults).settings = sample
+    func testDraftCommitPreservesHarnessChoicesOnTheNextLaunch() {
+        let store = SettingsStore(defaults: defaults)
+        var draft = store.draft()
+        draft.value = sample
+        store.commit(draft)
 
         let reopened = SettingsStore(defaults: defaults)
-        XCTAssertEqual(reopened.settings, sample)
+        XCTAssertEqual(reopened.draft().value, sample)
         XCTAssertTrue(reopened.isConfigured)
     }
 

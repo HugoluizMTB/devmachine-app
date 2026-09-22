@@ -5,13 +5,13 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case connection, workspaces, agents, appearance, terminal, advanced
+    case connection, workspaces, harnesses, appearance, terminal, advanced
 
     var title: String {
         switch self {
         case .connection: return "Connection"
         case .workspaces: return "Workspaces"
-        case .agents: return "Agents"
+        case .harnesses: return "Harnesses"
         case .appearance: return "Appearance"
         case .terminal: return "Terminal"
         case .advanced: return "Advanced"
@@ -22,7 +22,7 @@ enum SettingsSection: String, CaseIterable {
         switch self {
         case .connection: return "The host this app talks to, and the ops repo it applies."
         case .workspaces: return "Which workspaces the sidebar shows and the app reaches."
-        case .agents: return "What a session you create starts with."
+        case .harnesses: return "Choose what new sessions start with."
         case .appearance: return "The wallpaper behind the panes, and the size of the interface."
         case .terminal: return "How a terminal looks, and how many stay connected."
         case .advanced: return "Things to turn on only while chasing a problem."
@@ -33,7 +33,7 @@ enum SettingsSection: String, CaseIterable {
         switch self {
         case .connection: return "network"
         case .workspaces: return "square.grid.2x2"
-        case .agents: return "sparkles"
+        case .harnesses: return "sparkles"
         case .appearance: return "photo"
         case .terminal: return "terminal"
         case .advanced: return "wrench.and.screwdriver"
@@ -45,10 +45,34 @@ enum SettingsSection: String, CaseIterable {
     var showsValidation: Bool { self == .connection }
 }
 
+private enum LaunchChoiceTag: Hashable {
+    case terminal
+    case harness(HarnessID)
+
+    init(_ choice: SessionLaunchChoice) {
+        switch choice {
+        case .terminal:
+            self = .terminal
+        case let .harness(id):
+            self = .harness(id)
+        }
+    }
+
+    var choice: SessionLaunchChoice {
+        switch self {
+        case .terminal:
+            return .terminal
+        case let .harness(id):
+            return .harness(id)
+        }
+    }
+}
+
 struct SetupPage: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var wallpapers: WallpaperStore
+    @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
 
     /// Not a theme id in the library — the chip that shows the built-in gradients.
     static let gradientTheme = "gradient"
@@ -65,7 +89,11 @@ struct SetupPage: View {
     @State private var keptTerminals = Appearance.defaultKeptTerminals
     @State private var debugLogging = false
     @State private var hiddenWorkspaces: [String] = []
-    @State private var newSessionProgram = NewSessionProgram.shell
+    @State private var enabledHarnesses = AppSettings.empty.enabledHarnesses
+    @State private var localSessionProgram = SessionLaunchChoice.terminal
+    @State private var remoteSessionProgram = SessionLaunchChoice.terminal
+    @State private var workspaceSessionPrograms: [String: SessionLaunchChoice] = [:]
+    @State private var harnessErrors: [HarnessID: String] = [:]
 
     private var draft: AppSettings {
         AppSettings(
@@ -80,7 +108,10 @@ struct SetupPage: View {
             keptTerminals: keptTerminals,
             debugLogging: debugLogging,
             hiddenWorkspaces: hiddenWorkspaces,
-            newSessionProgram: newSessionProgram
+            enabledHarnesses: enabledHarnesses,
+            localSessionProgram: localSessionProgram,
+            remoteSessionProgram: remoteSessionProgram,
+            workspaceSessionPrograms: workspaceSessionPrograms
         )
     }
 
@@ -190,7 +221,7 @@ struct SetupPage: View {
                 switch section {
                 case .connection: connectionBlock
                 case .workspaces: workspacesBlock
-                case .agents: agentsBlock
+                case .harnesses: harnessesBlock
                 case .appearance: wallpaperBlock
                 case .terminal: terminalBlock
                 case .advanced: advancedBlock
@@ -344,26 +375,157 @@ struct SetupPage: View {
         }
     }
 
-    private var agentsBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker(selection: $newSessionProgram) {
-                ForEach(NewSessionProgram.allCases, id: \.self) { program in
-                    Text(program.title).tag(program)
+    private var harnessesBlock: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                settingsHeading("Available harnesses")
+                ForEach(harnessSettingsFacade.harnesses) { descriptor in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle(isOn: harnessEnabledBinding(descriptor.id)) {
+                            HStack(spacing: 8) {
+                                Image(systemName: descriptor.systemImage)
+                                    .font(.dm(10))
+                                    .foregroundStyle(descriptor.color)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(verbatim: descriptor.title)
+                                        .font(.dm(12.5, weight: .medium))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                    Text(verbatim: "Make \(descriptor.shortTitle) available for session defaults.")
+                                        .font(.dm(10))
+                                        .foregroundStyle(.white.opacity(0.45))
+                                }
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+
+                        if let message = harnessErrors[descriptor.id] {
+                            Text(verbatim: message)
+                                .font(.dm(10))
+                                .foregroundStyle(.orange)
+                                .padding(.leading, 24)
+                        }
+                    }
                 }
-            } label: {
-                Text(verbatim: "When opening a new terminal session")
+                note("Turning a harness on checks only this Mac. The app never "
+                    + "installs a CLI or probes a remote workspace.")
+            }
+
+            Rectangle()
+                .fill(Color.white.opacity(0.1))
+                .frame(height: 1)
+
+            VStack(alignment: .leading, spacing: 10) {
+                settingsHeading("Session defaults")
+                launchChoicePicker(
+                    title: "This Mac",
+                    detail: "New local sessions",
+                    selection: $localSessionProgram
+                )
+                launchChoicePicker(
+                    title: "Remote fallback",
+                    detail: "New workspaces inherit this choice",
+                    selection: $remoteSessionProgram
+                )
+
+                if model.workspaces.isEmpty {
+                    note("Workspace overrides appear after remote workspaces are discovered.")
+                } else {
+                    ForEach(model.workspaces) { workspace in
+                        launchChoicePicker(
+                            title: workspace.name,
+                            detail: workspace.alias,
+                            selection: workspaceChoiceBinding(workspace.alias)
+                        )
+                    }
+                }
+
+                note("A harness is typed into the new shell. Leaving it keeps the "
+                    + "session open, and sessions that already exist are never touched.")
+            }
+        }
+    }
+
+    private func settingsHeading(_ title: String) -> some View {
+        Text(verbatim: title)
+            .font(.dm(11, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.7))
+    }
+
+    private func launchChoicePicker(
+        title: String,
+        detail: String,
+        selection: Binding<SessionLaunchChoice>
+    ) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: title)
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
+                Text(verbatim: detail)
+                    .font(.dm(10))
+                    .foregroundStyle(.white.opacity(0.4))
             }
+            Spacer(minLength: 8)
+            Picker("", selection: Binding(
+                get: { LaunchChoiceTag(selection.wrappedValue) },
+                set: { selection.wrappedValue = $0.choice }
+            )) {
+                ForEach(launchOptions) { option in
+                    Text(verbatim: option.title)
+                        .tag(LaunchChoiceTag(option.choice))
+                }
+            }
+            .labelsHidden()
             .pickerStyle(.menu)
             .controlSize(.small)
-            .frame(maxWidth: 420, alignment: .leading)
+            .frame(width: 170)
+        }
+    }
 
-            note("This applies to a session you create from the app, here or on "
-                + "the host. Claude Code is typed into the shell rather than run "
-                + "as the session itself, so leaving the agent leaves you a "
-                + "shell instead of closing the session. A session that already "
-                + "exists is never touched.")
+    private var launchOptions: [HarnessLaunchOption] {
+        SettingsDraft(value: draft).launchOptions(using: harnessSettingsFacade)
+    }
+
+    private func harnessEnabledBinding(_ id: HarnessID) -> Binding<Bool> {
+        Binding(
+            get: { enabledHarnesses.contains(id) },
+            set: { setHarness(id, enabled: $0) }
+        )
+    }
+
+    private func workspaceChoiceBinding(_ alias: String) -> Binding<SessionLaunchChoice> {
+        Binding(
+            get: { workspaceSessionPrograms[alias] ?? remoteSessionProgram },
+            set: { workspaceSessionPrograms[alias] = $0 }
+        )
+    }
+
+    private func setHarness(_ id: HarnessID, enabled: Bool) {
+        var candidate = SettingsDraft(value: draft)
+        let result = candidate.setHarness(id, enabled: enabled, using: harnessSettingsFacade)
+        switch result {
+        case .success:
+            harnessErrors[id] = nil
+            applyHarnessSettings(candidate.value)
+        case let .failure(error):
+            harnessErrors[id] = harnessActivationMessage(error)
+        }
+    }
+
+    private func applyHarnessSettings(_ settings: AppSettings) {
+        enabledHarnesses = settings.enabledHarnesses
+        localSessionProgram = settings.localSessionProgram
+        remoteSessionProgram = settings.remoteSessionProgram
+        workspaceSessionPrograms = settings.workspaceSessionPrograms
+    }
+
+    private func harnessActivationMessage(_ error: HarnessActivationError) -> String {
+        switch error {
+        case let .cliNotFound(title):
+            return "\(title) was not found on this Mac."
+        case .harnessNotRegistered:
+            return "This harness is not available."
         }
     }
 
@@ -609,7 +771,7 @@ struct SetupPage: View {
             keptTerminals = current.keptTerminals
             debugLogging = current.debugLogging
             hiddenWorkspaces = current.hiddenWorkspaces
-            newSessionProgram = current.newSessionProgram
+            applyHarnessSettings(current)
             return
         }
 
@@ -620,6 +782,7 @@ struct SetupPage: View {
         hostAlias = proposed.hostAlias
         publicIP = proposed.publicIP
         baseDomain = proposed.baseDomain
+        applyHarnessSettings(proposed)
     }
 
     private static func resolveHostname(_ alias: String) -> String? {
@@ -641,9 +804,10 @@ struct SetupPage: View {
     }
 
     private func save() {
-        let value = draft
+        let settingsDraft = SettingsDraft(value: draft)
+        let value = settingsDraft.committedValue
         if value.debugLogging { PaneLog.prepare() }
-        settingsStore.settings = value
+        settingsStore.commit(settingsDraft)
         model.settings = value
         model.activePage = nil
         // Before reloading: the panes of a workspace you just hid have to go

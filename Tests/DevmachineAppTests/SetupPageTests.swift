@@ -12,6 +12,65 @@ private let library = WallpaperLibrary(themes: [
     WallpaperTheme(id: "space", title: "Space", photos: [remote])
 ])
 
+private struct SetupPageLocator: ExecutableLocating {
+    let available: Set<String>
+
+    func executable(named name: String) -> URL? {
+        available.contains(name) ? URL(fileURLWithPath: "/usr/local/bin/\(name)") : nil
+    }
+}
+
+final class SetupPageTests: XCTestCase {
+    private let facade = HarnessSettingsFacade(
+        registry: .builtIn,
+        locator: SetupPageLocator(available: [])
+    )
+
+    func testLaunchOptionsContainTerminalAndEnabledHarnessesOnly() {
+        let settings = AppSettings(
+            opsRepoPath: "/Users/alice/dev/ops",
+            hostAlias: "example-host",
+            publicIP: "203.0.113.10",
+            baseDomain: "example.com",
+            enabledHarnesses: [.codex]
+        )
+        let draft = SettingsDraft(value: settings)
+
+        let options = draft.launchOptions(using: facade)
+
+        XCTAssertEqual(options.map(\.choice), [.terminal, .harness(.codex)])
+        XCTAssertEqual(options.map(\.title), ["Terminal", "OpenAI Codex"])
+    }
+
+    func testDisablingHarnessNormalizesEveryAffectedDraftChoice() {
+        let settings = AppSettings(
+            opsRepoPath: "/Users/alice/dev/ops",
+            hostAlias: "example-host",
+            publicIP: "203.0.113.10",
+            baseDomain: "example.com",
+            enabledHarnesses: [.claude, .codex],
+            localSessionProgram: .harness(.codex),
+            remoteSessionProgram: .harness(.codex),
+            workspaceSessionPrograms: [
+                "acme-devmachine": .harness(.codex),
+                "beta-devmachine": .harness(.claude),
+            ]
+        )
+        var draft = SettingsDraft(value: settings)
+
+        let result = draft.setHarness(.codex, enabled: false, using: facade)
+
+        XCTAssertEqual(result, .success)
+        XCTAssertEqual(draft.value.enabledHarnesses, [.claude])
+        XCTAssertEqual(draft.value.localSessionProgram, .terminal)
+        XCTAssertEqual(draft.value.remoteSessionProgram, .terminal)
+        XCTAssertEqual(draft.value.workspaceSessionPrograms, [
+            "acme-devmachine": .terminal,
+            "beta-devmachine": .harness(.claude),
+        ])
+    }
+}
+
 final class SetupPageWallpaperTests: XCTestCase {
     func testTheShippedPhotoSelectsTheBundledChoice() {
         XCTAssertEqual(SetupPage.choice(for: shipped), .bundled)

@@ -9,6 +9,10 @@ private final class QuietRunner: CommandRunner, @unchecked Sendable {
         -> (stdout: String, stderr: String, exitCode: Int32) { ("", "", 0) }
 }
 
+private struct RenderLocator: ExecutableLocating {
+    func executable(named name: String) -> URL? { nil }
+}
+
 @MainActor
 final class SetupPageRenderTests: XCTestCase {
     /// `DEVMACHINE_RENDER=1` writes the screen to /tmp so its layout can be
@@ -23,6 +27,10 @@ final class SetupPageRenderTests: XCTestCase {
         let view = SetupPage()
             .environmentObject(model)
             .environmentObject(SettingsStore.shared)
+            .environment(
+                \.harnessSettingsFacade,
+                HarnessSettingsFacade(registry: .builtIn, locator: RenderLocator())
+            )
             .environmentObject(WallpaperStore())
             .frame(width: 940, height: 640)
 
