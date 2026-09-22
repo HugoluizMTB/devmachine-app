@@ -256,3 +256,65 @@ final class PRCoreTests: XCTestCase {
         XCTAssertEqual(detail.statusCheckRollup?.first?.conclusion, "SUCCESS")
     }
 }
+
+final class SessionRecencyTests: XCTestCase {
+    private struct Ref: SessionMentioned, Equatable {
+        let number: Int
+        let repo: String
+        let lastSeen: String?
+    }
+
+    private func ref(_ number: Int, _ lastSeen: String?, repo: String = "acme/dash") -> Ref {
+        Ref(number: number, repo: repo, lastSeen: lastSeen)
+    }
+
+    func testNewestMentionComesFirst() {
+        let rows = [ref(1, "2026-01-01T00:00:00Z"),
+                    ref(2, "2026-01-03T00:00:00Z"),
+                    ref(3, "2026-01-02T00:00:00Z")]
+        XCTAssertEqual(orderByLastMention(rows).map(\.number), [2, 3, 1])
+    }
+
+    func testFractionalSecondsCompareWithWholeOnes() {
+        let rows = [ref(1, "2026-01-01T00:00:00Z"),
+                    ref(2, "2026-01-01T00:00:00.500Z")]
+        XCTAssertEqual(orderByLastMention(rows).map(\.number), [2, 1])
+    }
+
+    func testOffsetsAreComparedAsInstants() {
+        let rows = [ref(1, "2026-01-01T00:00:00Z"),
+                    ref(2, "2026-01-01T00:30:00+02:00")]
+        XCTAssertEqual(orderByLastMention(rows).map(\.number), [1, 2])
+    }
+
+    func testRowsWithoutAMentionSinkBelowTheDatedOnes() {
+        let rows = [ref(1, nil), ref(2, "2026-01-01T00:00:00Z"), ref(3, nil)]
+        XCTAssertEqual(orderByLastMention(rows).map(\.number), [2, 3, 1])
+    }
+
+    func testUndatedRowsFallBackToTheHigherNumber() {
+        let rows = [ref(7, nil), ref(41, nil), ref(12, nil)]
+        XCTAssertEqual(orderByLastMention(rows).map(\.number), [41, 12, 7])
+    }
+
+    func testUnparsableDatesCountAsNoMention() {
+        let rows = [ref(1, "yesterday"), ref(2, "2026-01-01T00:00:00Z")]
+        XCTAssertEqual(orderByLastMention(rows).map(\.number), [2, 1])
+    }
+
+    func testSameMentionKeepsTheHigherNumberOnTop() {
+        let rows = [ref(3, "2026-01-01T00:00:00Z", repo: "acme/api"),
+                    ref(9, "2026-01-01T00:00:00Z")]
+        XCTAssertEqual(orderByLastMention(rows).map(\.number), [9, 3])
+    }
+
+    func testTheSameRowTwiceKeepsTheGivenOrder() {
+        let rows = [ref(4, "2026-01-01T00:00:00Z", repo: "acme/api"),
+                    ref(4, "2026-01-01T00:00:00Z", repo: "acme/dash")]
+        XCTAssertEqual(orderByLastMention(rows).map(\.repo), ["acme/api", "acme/dash"])
+    }
+
+    func testEmptyStaysEmpty() {
+        XCTAssertEqual(orderByLastMention([Ref]()), [])
+    }
+}

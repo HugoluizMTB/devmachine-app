@@ -268,3 +268,39 @@ public func buildStackForest(_ prs: [PullRequest]) -> [(pr: PullRequest, depth: 
     }
     return out
 }
+
+// A pull request the session touched, ordered by the last time it came up.
+// The session's own transcript is the clock: a number cannot order two
+// repositories against each other, so it only breaks a tie, and a row the
+// engine could not date has no place among the dated ones.
+public protocol SessionMentioned {
+    var number: Int { get }
+    var lastSeen: String? { get }
+}
+
+public func orderByLastMention<T: SessionMentioned>(_ rows: [T]) -> [T] {
+    // Transcript timestamps carry milliseconds; a hand-written one may not.
+    let withMilliseconds = ISO8601DateFormatter()
+    withMilliseconds.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let whole = ISO8601DateFormatter()
+    whole.formatOptions = [.withInternetDateTime]
+
+    func instant(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        return withMilliseconds.date(from: raw) ?? whole.date(from: raw)
+    }
+
+    return rows.enumerated()
+        .map { (index: $0.offset, row: $0.element, seen: instant($0.element.lastSeen)) }
+        .sorted { a, b in
+            switch (a.seen, b.seen) {
+            case let (x?, y?) where x != y: return x > y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default:
+                if a.row.number != b.row.number { return a.row.number > b.row.number }
+                return a.index < b.index
+            }
+        }
+        .map(\.row)
+}

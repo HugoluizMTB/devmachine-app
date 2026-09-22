@@ -66,6 +66,27 @@ final class ContextStoreTests: XCTestCase {
      "plan":null,"prs":[],"links":[],"agents":[]}
     """
 
+    private let mentionedPRsJSON = """
+    {"cwd":"/home/acme/dev","isClaude":true,"updatedAt":"2026-09-14T01:00:00Z",
+     "plan":null,"links":[],"agents":[],
+     "prs":[{"number":12,"repo":"acme/dash","title":"first","url":"u","ci":"none",
+             "review":"none","state":"merged","lastSeen":"2026-09-14T00:10:00.000Z"},
+            {"number":3,"repo":"beta/api","title":"last","url":"u","ci":"none",
+             "review":"none","state":"open","lastSeen":"2026-09-14T00:59:00.000Z"}]}
+    """
+
+    func testTheEngineOutputIsShownNewestMentionFirst() async throws {
+        let runner = ContextRunner(output: mentionedPRsJSON)
+        let store = ContextStore(host: HostRunner(remote: RemoteService(runner: runner)))
+        defer { store.stop() }
+
+        store.start(.remote(alias: "acme-devmachine", session: "dash"))
+        try await waitUntil { store.state != nil }
+
+        let state = try XCTUnwrap(store.state)
+        XCTAssertEqual(state.prs.map(\.id), ["beta/api#3", "acme/dash#12"])
+    }
+
     func testPollWithSameStateDoesNotRepublish() async throws {
         let runner = ContextRunner(output: contextJSON)
         let store = ContextStore(host: HostRunner(remote: RemoteService(runner: runner)))

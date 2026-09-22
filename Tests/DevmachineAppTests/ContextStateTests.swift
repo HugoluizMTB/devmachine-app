@@ -39,6 +39,38 @@ final class ContextStateTests: XCTestCase {
         XCTAssertFalse(state.isClaude)
     }
 
+    func testDecodesTheLastMentionAndOrdersTheNewestFirst() throws {
+        let json = """
+        {"cwd":"/home/dev","isClaude":true,"updatedAt":"2026-09-12T10:00:00Z",
+         "plan":null,"links":[],
+         "prs":[{"number":11,"repo":"acme/dash","title":"old","url":"u","ci":"none",
+                 "review":"none","state":"merged","lastSeen":"2026-09-10T08:00:00.000Z"},
+                {"number":4,"repo":"acme/api","title":"new","url":"u","ci":"none",
+                 "review":"none","state":"open","lastSeen":"2026-09-12T09:59:00.000Z"}]}
+        """.data(using: .utf8)!
+
+        let state = try JSONDecoder().decode(ContextState.self, from: json)
+
+        XCTAssertEqual(state.prs.map(\.id), ["acme/api#4", "acme/dash#11"])
+        XCTAssertEqual(state.prs.first?.lastSeen, "2026-09-12T09:59:00.000Z")
+    }
+
+    func testOrdersPRsFromAHostThatDoesNotReportTheLastMention() throws {
+        let json = """
+        {"cwd":"/home/dev","isClaude":true,"updatedAt":"2026-09-12T10:00:00Z",
+         "plan":null,"links":[],
+         "prs":[{"number":7,"repo":"acme/dash","title":"","url":"u","ci":"none",
+                 "review":"none","state":"open"},
+                {"number":41,"repo":"acme/dash","title":"","url":"u","ci":"none",
+                 "review":"none","state":"open"}]}
+        """.data(using: .utf8)!
+
+        let state = try JSONDecoder().decode(ContextState.self, from: json)
+
+        XCTAssertNil(state.prs.first?.lastSeen)
+        XCTAssertEqual(state.prs.map(\.number), [41, 7])
+    }
+
     func testPRIdentityKeepsRepositoriesApart() {
         let dash = ContextState.PR(
             number: 11062, repo: "acme/dash", title: "", url: "",

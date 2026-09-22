@@ -6,10 +6,11 @@ struct ContextState: Codable, Equatable, Sendable {
         struct Item: Codable, Equatable, Sendable { let text: String; let state: String }
         let title: String; let source: String; let done: Int; let total: Int; let items: [Item]
     }
-    struct PR: Codable, Equatable, Sendable, Identifiable {
+    struct PR: Codable, Equatable, Sendable, Identifiable, SessionMentioned {
         let number: Int; let repo: String; let title: String; let url: String
         let ci: String; let review: String; let state: String
         var threads: Int?
+        var lastSeen: String?
         /// Two repositories can share a number, so the number alone is not an
         /// identity: a list keyed by it renders one row twice.
         var id: String { "\(repo)#\(number)" }
@@ -43,7 +44,10 @@ struct ContextState: Codable, Equatable, Sendable {
         isClaude = try c.decode(Bool.self, forKey: .isClaude)
         updatedAt = try c.decode(String.self, forKey: .updatedAt)
         plan = try c.decodeIfPresent(Plan.self, forKey: .plan)
-        prs = try c.decode([PR].self, forKey: .prs)
+        // The engine reports a pull request where the session first named it.
+        // The panel reads the other way round, so the order is settled once
+        // here rather than on every pass over the view's body.
+        prs = orderByLastMention(try c.decode([PR].self, forKey: .prs))
         links = try c.decode([Link].self, forKey: .links)
         agents = try c.decodeIfPresent([Agent].self, forKey: .agents) ?? []
         monitors = try c.decodeIfPresent([Agent].self, forKey: .monitors) ?? []
@@ -56,7 +60,7 @@ struct ContextState: Codable, Equatable, Sendable {
         self.isClaude = isClaude
         self.updatedAt = updatedAt
         self.plan = plan
-        self.prs = prs
+        self.prs = orderByLastMention(prs)
         self.links = links
         self.agents = agents
         self.monitors = monitors
