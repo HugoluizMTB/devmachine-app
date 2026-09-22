@@ -16,12 +16,12 @@ struct BGTask: Identifiable, Equatable {
     var showsCount: Bool = true
 }
 
-struct PaletteItem: Identifiable, Hashable {
+struct PaletteItem: Identifiable {
     let id: String
     let title: String
     let subtitle: String
     let target: SidebarItem
-    let claude: Bool
+    let badges: [HarnessBadgePresentation]
 }
 
 protocol SessionCommandSending: Sendable {
@@ -120,6 +120,27 @@ final class AppModel: ObservableObject {
     func localSessionHasClaude(_ session: LocalSession) -> Bool {
         localSessionHarnesses[LocalSessionScan.multiplexerName(of: session)]?.contains(.claude)
             == true
+    }
+
+    func badges(for session: TmuxSession) -> [HarnessBadgePresentation] {
+        sessionHarnessFacade.badges(for: session.harnesses)
+    }
+
+    func badges(for session: LocalSession) -> [HarnessBadgePresentation] {
+        let name = LocalSessionScan.multiplexerName(of: session)
+        return sessionHarnessFacade.badges(for: localSessionHarnesses[name] ?? [])
+    }
+
+    var sessionCount: Int {
+        sessionsByAlias.values.reduce(0) { $0 + $1.count } + localSessions.count
+    }
+
+    var harnessSessionCount: Int {
+        let remote = sessionsByAlias.values.reduce(0) { count, sessions in
+            count + sessions.filter { !$0.harnesses.isEmpty }.count
+        }
+        let local = localSessions.filter { !badges(for: $0).isEmpty }.count
+        return remote + local
     }
 
     /// Reads the multiplexer's own list, then one `ps` to see what runs inside
@@ -662,7 +683,7 @@ final class AppModel: ObservableObject {
                     title: s.name,
                     subtitle: ws.name,
                     target: .session(alias: ws.alias, name: s.name),
-                    claude: s.harnesses.contains(.claude)
+                    badges: badges(for: s)
                 )
             }
         }
@@ -672,7 +693,7 @@ final class AppModel: ObservableObject {
                 title: s.name,
                 subtitle: Workspace.local.name,
                 target: .localSession(name: s.handle, path: s.path),
-                claude: false
+                badges: badges(for: s)
             ))
         }
         return items

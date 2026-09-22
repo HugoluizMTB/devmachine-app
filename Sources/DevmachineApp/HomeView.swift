@@ -7,10 +7,10 @@ struct HomeView: View {
     @EnvironmentObject var usage: ClaudeUsageStore
 
     private var totalSessions: Int {
-        model.sessionsByAlias.values.reduce(0) { $0 + $1.count }
+        model.sessionCount
     }
-    private var claudeSessions: Int {
-        model.sessionsByAlias.values.reduce(0) { $0 + $1.filter(\.hasClaude).count }
+    private var harnessSessions: Int {
+        model.harnessSessionCount
     }
     private var workspaceCount: Int { model.visibleWorkspaces.count }
 
@@ -126,7 +126,7 @@ struct HomeView: View {
         HStack(spacing: 6) {
             Text(verbatim: "\(totalSessions) sessions")
             Text(verbatim: "·")
-            Text(verbatim: "\(claudeSessions) with Claude")
+            Text(verbatim: "\(harnessSessions) with coding harnesses")
             Text(verbatim: "·")
             Text(verbatim: "\(workspaceCount) workspaces")
         }

@@ -64,9 +64,19 @@ struct CommandPaletteView: View {
 
     private func row(i: Int, item: PaletteItem) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: item.claude ? "circle.fill" : "circle")
-                .font(.dm(7))
-                .foregroundStyle(item.claude ? Color.orange : Color.dmMuted)
+            HStack(spacing: 3) {
+                if item.badges.isEmpty {
+                    Image(systemName: "circle")
+                        .foregroundStyle(Color.dmMuted)
+                } else {
+                    ForEach(item.badges) { badge in
+                        Image(systemName: badge.systemImage)
+                            .foregroundStyle(badge.color)
+                            .help(badge.helpText)
+                    }
+                }
+            }
+            .font(.dm(7))
             Text(item.title)
                 .font(.dm(13, weight: .medium))
                 .foregroundStyle(.primary)

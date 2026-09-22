@@ -209,7 +209,7 @@ struct SidebarView: View {
         let live = model.localSessionIsLive(s)
         return row(
             title: s.name,
-            claude: model.localSessionHasClaude(s),
+            badges: model.badges(for: s),
             // A session the multiplexer does not have yet is a name waiting for
             // a shell, so it carries no client count.
             windows: live ? 1 : nil,
@@ -251,7 +251,7 @@ struct SidebarView: View {
         let isMultiSelected = model.selectedSessions.contains(ref)
         return row(
             title: s.name,
-            claude: s.hasClaude,
+            badges: model.badges(for: s),
             windows: s.windows,
             selected: isOpen || isMultiSelected || model.isStacked(ref)
         )
@@ -288,24 +288,30 @@ struct SidebarView: View {
         }
     }
 
-    /// The row carries no mark while everything is normal. A session running
-    /// Claude Code shows an orange dot before its client count, and only under
-    /// the pointer: a sidebar of orange dots is noise, and what the owner wants
-    /// is to check one row at a time.
-    private func row(title: String, claude: Bool, windows: Int?, selected: Bool) -> some View {
+    /// Harness badges appear before the client count only under the pointer: a
+    /// sidebar full of marks is noise, while hover makes one row easy to check.
+    private func row(
+        title: String,
+        badges: [HarnessBadgePresentation],
+        windows: Int?,
+        selected: Bool
+    ) -> some View {
         DMRow(
             title: title,
             selected: selected,
             trailing: windows.map { count in
                 AnyView(Text(verbatim: "\(count)").font(.dm(11)).foregroundStyle(Color.dmMuted))
             },
-            trailingHover: claude
-                ? AnyView(
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 5, height: 5)
-                        .help("Claude Code is running in this session"))
-                : nil
+            trailingHover: badges.isEmpty ? nil : AnyView(
+                HStack(spacing: 4) {
+                    ForEach(badges) { badge in
+                        Image(systemName: badge.systemImage)
+                            .font(.dm(5))
+                            .foregroundStyle(badge.color)
+                            .help(badge.helpText)
+                    }
+                }
+            )
         )
     }
 }

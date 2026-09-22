@@ -176,6 +176,59 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testPaletteItemsCarryOrderedHarnessBadgePresentations() throws {
+        let model = AppModel(store: SessionStore(runner: CountingRunner()))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        model.sessionsByAlias = [
+            "acme-devmachine": [
+                TmuxSession(name: "dash", windows: 1, harnesses: [.codex, .claude])
+            ]
+        ]
+
+        let item = try XCTUnwrap(model.paletteItems().first { $0.id == "acme-devmachine/dash" })
+
+        XCTAssertEqual(item.badges.map(\.shortTitle), ["Claude", "Codex"])
+        XCTAssertEqual(item.badges.map(\.helpText), [
+            "Claude Code is running in this session",
+            "OpenAI Codex is running in this session"
+        ])
+    }
+
+    func testLocalPaletteItemsCarryDetectedHarnessBadges() throws {
+        let model = AppModel(store: SessionStore(runner: CountingRunner()))
+        model.acceptLocalScanForTesting(
+            sessions: [
+                ZmxSession(name: Workspace.operatorSession, pid: 4242, clients: 1, directory: "/tmp")
+            ],
+            harnesses: [Workspace.operatorSession: [.codex]])
+
+        let item = try XCTUnwrap(model.paletteItems().first { $0.id == "local/Operator" })
+
+        XCTAssertEqual(item.badges.map(\.shortTitle), ["Codex"])
+        XCTAssertEqual(item.badges.map(\.helpText), ["OpenAI Codex is running in this session"])
+    }
+
+    func testHarnessSessionCountIncludesRemoteAndLocalSessionsWithoutDoubleCounting() {
+        let model = AppModel(store: SessionStore(runner: CountingRunner()))
+        model.sessionsByAlias = [
+            "acme-devmachine": [
+                TmuxSession(name: "dash", windows: 1, harnesses: [.claude, .codex]),
+                TmuxSession(name: "plain", windows: 1, harnesses: [])
+            ],
+            "beta-devmachine": [
+                TmuxSession(name: "web", windows: 1, harnesses: [.codex])
+            ]
+        ]
+        model.acceptLocalScanForTesting(
+            sessions: [
+                ZmxSession(name: Workspace.operatorSession, pid: 4242, clients: 1, directory: "/tmp")
+            ],
+            harnesses: [Workspace.operatorSession: [.claude]])
+
+        XCTAssertEqual(model.sessionCount, 3 + model.localSessions.count)
+        XCTAssertEqual(model.harnessSessionCount, 3)
+    }
+
     func testStartingALocalSessionUsesTheLocalHarnessDefault() async throws {
         let runner = HarnessProcessRunner(
             zmxListing: "name=acme\tpid=100\tclients=1\tcwd=/Users/alice/dev/acme")
