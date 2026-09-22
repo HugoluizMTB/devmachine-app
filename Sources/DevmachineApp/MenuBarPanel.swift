@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import ClaudeUsageKit
+import HarnessUsageKit
 
 enum MenuBarTab: String, CaseIterable, Identifiable {
     case pullRequests

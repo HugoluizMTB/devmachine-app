@@ -1,7 +1,7 @@
 import SwiftUI
 import DevmachineCore
 import AppKit
-import ClaudeUsageKit
+import HarnessUsageKit
 
 @main
 struct DevmachineApp: App {

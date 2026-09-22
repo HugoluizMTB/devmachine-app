@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import ClaudeUsageKit
+import HarnessUsageKit
 
 struct HomeView: View {
     @EnvironmentObject var model: AppModel

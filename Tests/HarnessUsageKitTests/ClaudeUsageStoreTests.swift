@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageKit
+@testable import HarnessUsageKit
 
 private final class FakeUsageProvider: UsageProvider, @unchecked Sendable {
     private let lock = NSLock()

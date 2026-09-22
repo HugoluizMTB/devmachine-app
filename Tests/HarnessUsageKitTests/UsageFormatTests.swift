@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageKit
+@testable import HarnessUsageKit
 
 final class UsageFormatTests: XCTestCase {
     func testBillions() {

@@ -9,7 +9,7 @@ let package = Package(
     ],
     products: [
         .library(name: "DevmachineCore", targets: ["DevmachineCore"]),
-        .library(name: "ClaudeUsageKit", targets: ["ClaudeUsageKit"]),
+        .library(name: "HarnessUsageKit", targets: ["HarnessUsageKit"]),
         .executable(name: "DevmachineApp", targets: ["DevmachineApp"])
     ],
     dependencies: [
@@ -19,12 +19,12 @@ let package = Package(
     ],
     targets: [
         .target(name: "DevmachineCore"),
-        .target(name: "ClaudeUsageKit"),
+        .target(name: "HarnessUsageKit"),
         .executableTarget(
             name: "DevmachineApp",
             dependencies: [
                 "DevmachineCore",
-                "ClaudeUsageKit",
+                "HarnessUsageKit",
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
                 .product(name: "HighlightSwift", package: "HighlightSwift"),
                 .product(name: "MarkdownUI", package: "swift-markdown-ui")
@@ -35,8 +35,8 @@ let package = Package(
             dependencies: ["DevmachineCore"]
         ),
         .testTarget(
-            name: "ClaudeUsageKitTests",
-            dependencies: ["ClaudeUsageKit"]
+            name: "HarnessUsageKitTests",
+            dependencies: ["HarnessUsageKit"]
         ),
         .testTarget(
             name: "DevmachineAppTests",
