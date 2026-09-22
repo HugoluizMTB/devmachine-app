@@ -1,0 +1,135 @@
+import SwiftUI
+
+public struct HarnessUsageState: Equatable, Sendable, Identifiable {
+    public var id: String { harnessID }
+    public let harnessID: String
+    public var snapshot: HarnessUsageSnapshot?
+    public var errorText: String?
+    public var isLoading: Bool
+    public var refreshedAt: Date?
+
+    public init(
+        harnessID: String,
+        snapshot: HarnessUsageSnapshot? = nil,
+        errorText: String? = nil,
+        isLoading: Bool = false,
+        refreshedAt: Date? = nil
+    ) {
+        self.harnessID = harnessID
+        self.snapshot = snapshot
+        self.errorText = errorText
+        self.isLoading = isLoading
+        self.refreshedAt = refreshedAt
+    }
+}
+
+@MainActor
+public final class HarnessUsageStore: ObservableObject {
+    @Published public private(set) var states: [HarnessUsageState]
+
+    private let providers: [any HarnessUsageProvider]
+    private let pollSeconds: TimeInterval
+    private var inFlight: Set<String> = []
+    private nonisolated(unsafe) var timer: Timer?
+    private var observers = 0
+
+    public init(providers: [any HarnessUsageProvider], pollSeconds: TimeInterval = 60) {
+        self.providers = providers
+        self.pollSeconds = pollSeconds
+        states = providers.map { HarnessUsageState(harnessID: $0.harnessID) }
+    }
+
+    public convenience init(
+        provider: any UsageProvider = DefaultUsageProvider(),
+        config: ClaudeUsageConfig = .init()
+    ) {
+        self.init(
+            providers: [ClaudeUsageProvider(provider: provider)],
+            pollSeconds: config.usagePollSeconds)
+    }
+
+    deinit { timer?.invalidate() }
+
+    public var isPolling: Bool { timer != nil }
+    public var observerCount: Int { observers }
+
+    public func state(for harnessID: String) -> HarnessUsageState? {
+        states.first { $0.harnessID == harnessID }
+    }
+
+    public func beginObserving() {
+        observers += 1
+        guard observers == 1 else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: pollSeconds, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refresh(force: true) }
+        }
+    }
+
+    public func endObserving() {
+        guard observers > 0 else { return }
+        observers -= 1
+        guard observers == 0 else { return }
+        timer?.invalidate()
+        timer = nil
+    }
+
+    public func refresh(force: Bool = false) {
+        for provider in providers { refresh(provider, force: force) }
+    }
+
+    public func refreshStats(force: Bool = false) {
+        refresh(force: force)
+    }
+
+    private func refresh(_ provider: any HarnessUsageProvider, force: Bool) {
+        let id = provider.harnessID
+        guard !inFlight.contains(id), let index = states.firstIndex(where: { $0.harnessID == id }) else {
+            return
+        }
+        if !force, let refreshedAt = states[index].refreshedAt,
+           Date().timeIntervalSince(refreshedAt) < pollSeconds {
+            return
+        }
+
+        inFlight.insert(id)
+        updateState(at: index) {
+            $0.isLoading = true
+            $0.errorText = nil
+        }
+        let previous = states[index].snapshot
+
+        Task.detached {
+            let result = Result { try provider.fetchSnapshot(previous: previous) }
+            await MainActor.run {
+                self.inFlight.remove(id)
+                guard let current = self.states.firstIndex(where: { $0.harnessID == id }) else { return }
+                self.updateState(at: current) { state in
+                    state.isLoading = false
+                    state.refreshedAt = Date()
+                    switch result {
+                    case let .success(snapshot):
+                        if state.snapshot != snapshot { state.snapshot = snapshot }
+                        state.errorText = nil
+                    case let .failure(error):
+                        state.errorText = (error as? LocalizedError)?.errorDescription
+                            ?? error.localizedDescription
+                    }
+                }
+            }
+        }
+    }
+
+    private func updateState(at index: Int, change: (inout HarnessUsageState) -> Void) {
+        var next = states[index]
+        change(&next)
+        guard next != states[index] else { return }
+        states[index] = next
+    }
+
+    public var blocks: [UsageBlock] { states.first?.snapshot?.blocks ?? [] }
+    public var stats: UsageStats? { states.first?.snapshot?.stats }
+    public var planName: String { states.first?.snapshot?.planName ?? "" }
+    public var errorText: String? { states.first?.errorText }
+    public var isLoading: Bool { states.first?.isLoading ?? false }
+    public var refreshedAt: Date? { states.first?.refreshedAt }
+}

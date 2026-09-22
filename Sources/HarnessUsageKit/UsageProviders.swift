@@ -46,7 +46,7 @@ public protocol UsageProvider: Sendable {
 }
 
 public enum UsageProviderError: Error, Equatable {
-    case claudeBinaryNotFound
+    case executableNotFound(String)
     case processFailed(status: Int32, stderr: String)
     case timedOut
     case decodeFailed
@@ -80,7 +80,7 @@ public struct DefaultUsageProvider: UsageProvider {
 
     public func fetchUsageText() throws -> String {
         guard let claudePath = resolveClaudePath() else {
-            throw UsageProviderError.claudeBinaryNotFound
+            throw UsageProviderError.executableNotFound("claude")
         }
 
         let process = Process()
