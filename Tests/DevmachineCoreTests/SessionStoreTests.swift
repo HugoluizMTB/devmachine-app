@@ -53,10 +53,31 @@ final class SessionStoreTests: XCTestCase {
         )
     }
 
+    func testAnEmptyCatalogDoesNotInventAProviderDefault() throws {
+        let fake = FakeRunner(output: """
+        dash|1
+        @@PANES@@
+        dash|claude
+        """)
+        let store = SessionStore(runner: fake)
+
+        let sessions = try store.sessions(
+            for: Workspace(name: "acme", alias: "acme-devmachine"),
+            processNames: [:])
+
+        XCTAssertEqual(
+            sessions,
+            [TmuxSession(name: "dash", windows: 1, harnesses: [])]
+        )
+    }
+
     func testSSHAuthDeniedIsAFailureNotAnEmptyList() {
         let fake = FakeRunner(output: "", stderr: "acme-devmachine: Permission denied (publickey).", exitCode: 255)
         let store = SessionStore(runner: fake)
-        XCTAssertThrowsError(try store.sessions(for: Workspace(name: "acme", alias: "acme-devmachine"))) { error in
+        XCTAssertThrowsError(try store.sessions(
+            for: Workspace(name: "acme", alias: "acme-devmachine"),
+            processNames: [:]
+        )) { error in
             XCTAssertEqual((error as? SessionStoreError)?.failure, .authDenied)
         }
     }
@@ -64,7 +85,10 @@ final class SessionStoreTests: XCTestCase {
     func testSSHConnectionRefusedIsUnreachable() {
         let fake = FakeRunner(output: "", stderr: "ssh: connect to host 203.0.113.7 port 22: Connection refused", exitCode: 255)
         let store = SessionStore(runner: fake)
-        XCTAssertThrowsError(try store.sessions(for: Workspace(name: "acme", alias: "acme-devmachine"))) { error in
+        XCTAssertThrowsError(try store.sessions(
+            for: Workspace(name: "acme", alias: "acme-devmachine"),
+            processNames: [:]
+        )) { error in
             XCTAssertEqual((error as? SessionStoreError)?.failure, .unreachable)
         }
     }
@@ -72,6 +96,10 @@ final class SessionStoreTests: XCTestCase {
     func testRemoteCommandExitWithoutTmuxServerIsNoSessions() throws {
         let fake = FakeRunner(output: "@@PANES@@\n", stderr: "no server running on /tmp/tmux-1000/default", exitCode: 1)
         let store = SessionStore(runner: fake)
-        XCTAssertEqual(try store.sessions(for: Workspace(name: "acme", alias: "acme-devmachine")), [])
+        XCTAssertEqual(
+            try store.sessions(
+                for: Workspace(name: "acme", alias: "acme-devmachine"),
+                processNames: [:]),
+            [])
     }
 }

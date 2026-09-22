@@ -38,11 +38,6 @@ public enum TmuxListParser {
         }
     }
 
-    /// Compatibility for callers that have not supplied an adapter catalog yet.
-    public static func parse(_ output: String) -> [TmuxSession] {
-        parse(output, processNames: [.claude: ["claude"]])
-    }
-
     private static func sessionsOnly(_ lines: [String]) -> [TmuxSession] {
         lines.compactMap { line in
             let parts = line.split(separator: "|", maxSplits: 1).map(String.init)

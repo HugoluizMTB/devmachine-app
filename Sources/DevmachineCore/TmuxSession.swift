@@ -9,16 +9,6 @@ public struct TmuxSession: Equatable, Identifiable, Sendable {
         self.windows = windows
         self.harnesses = harnesses
     }
-
-    /// Compatibility for views that have not migrated to generic badges yet.
-    public var hasClaude: Bool {
-        harnesses.contains(.claude)
-    }
-
-    /// Compatibility for older callers while the stored model is harness-based.
-    public init(name: String, windows: Int, hasClaude: Bool) {
-        self.init(name: name, windows: windows, harnesses: hasClaude ? [.claude] : [])
-    }
 }
 
 

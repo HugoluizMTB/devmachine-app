@@ -57,3 +57,10 @@ struct SessionHarnessFacade: Sendable {
         }
     }
 }
+
+extension TmuxSession {
+    /// Compatibility for views that Task 5 will migrate to generic badges.
+    var hasClaude: Bool {
+        harnesses.contains(.claude)
+    }
+}

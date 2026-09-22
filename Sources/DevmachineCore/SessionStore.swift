@@ -9,7 +9,7 @@ public struct SessionStore: Sendable {
 
     public func sessions(
         for workspace: Workspace,
-        processNames: [HarnessID: Set<String>] = [.claude: ["claude"]]
+        processNames: [HarnessID: Set<String>]
     ) throws -> [TmuxSession] {
         let result = try runner.runCapturing(
             executable: "/usr/bin/ssh",
