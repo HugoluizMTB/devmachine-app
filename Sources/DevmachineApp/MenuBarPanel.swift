@@ -35,6 +35,12 @@ enum MenuBarSizing {
         }
         return min(desired, max(320, available - 32))
     }
+
+    static func columnWidth(panelWidth: CGFloat, usageColumns: Int) -> CGFloat {
+        let columns = max(1, usageColumns)
+        let dividers = CGFloat(max(0, columns - 1))
+        return min(UsagePanelMetrics.columnWidth, (panelWidth - dividers) / CGFloat(columns))
+    }
 }
 
 struct MenuBarPanel: View {
@@ -46,10 +52,12 @@ struct MenuBarPanel: View {
     @State private var tab: MenuBarTab = .pullRequests
 
     private var panelWidth: CGFloat {
-        MenuBarSizing.width(
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+        return MenuBarSizing.width(
             for: tab,
             usageColumns: usageStore.states.count,
-            available: NSScreen.main?.visibleFrame.width ?? 1_200)
+            available: screen?.visibleFrame.width ?? 1_200)
     }
 
     private var panelHeight: CGFloat? {
@@ -116,7 +124,8 @@ struct MenuBarPanel: View {
                                 title: "\(descriptor.shortTitle) Usage",
                                 systemImage: descriptor.systemImage,
                                 accent: descriptor.color)
-                            .frame(width: UsagePanelMetrics.columnWidth)
+                            .frame(width: MenuBarSizing.columnWidth(
+                                panelWidth: panelWidth, usageColumns: usageStore.states.count))
                         }
                     }
                 }

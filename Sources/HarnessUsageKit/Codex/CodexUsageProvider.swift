@@ -3,9 +3,14 @@ import Foundation
 public struct CodexUsageProvider: HarnessUsageProvider {
     public let harnessID = "codex"
     private let transport: any CodexRPCTransport
+    private let now: @Sendable () -> Date
 
-    public init(transport: any CodexRPCTransport) {
+    public init(
+        transport: any CodexRPCTransport,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.transport = transport
+        self.now = now
     }
 
     public func fetchSnapshot(previous: HarnessUsageSnapshot?) throws -> HarnessUsageSnapshot {
@@ -18,11 +23,12 @@ public struct CodexUsageProvider: HarnessUsageProvider {
                 block(window: snapshot.secondary, name: name, kind: .weeklyAll)
             ].compactMap { $0 }
         }
-        let buckets = account.usage.dailyUsageBuckets ?? []
+        let buckets = (account.usage.dailyUsageBuckets ?? []).sorted { $0.startDate < $1.startDate }
+        let today = Self.dayFormatter.string(from: now())
         let stats = buckets.isEmpty ? nil : UsageStats(
             dailyTotals: buckets.map { DayTokens(date: $0.startDate, tokens: $0.tokens) },
             modelTotals: [],
-            todayTokens: buckets.last?.tokens ?? 0,
+            todayTokens: buckets.first(where: { $0.startDate == today })?.tokens ?? 0,
             mostUsedModel: nil)
 
         return HarnessUsageSnapshot(
@@ -45,7 +51,10 @@ public struct CodexUsageProvider: HarnessUsageProvider {
         guard let window else { return nil }
         let duration = window.windowDurationMins.map(Self.duration) ?? "Window"
         let resets = window.resetsAt.map(Self.resetText) ?? ""
-        return UsageBlock(kind: kind, label: "\(name) · \(duration)", percent: window.usedPercent, resets: resets)
+        let label = "\(name) · \(duration)"
+        return UsageBlock(
+            id: Self.stableID("\(name)|\(duration)|\(kind)"), kind: kind,
+            label: label, percent: window.usedPercent, resets: resets)
     }
 
     private func summaryMetrics(_ summary: CodexUsageSummary) -> [UsageSummaryMetric] {
@@ -78,7 +87,32 @@ public struct CodexUsageProvider: HarnessUsageProvider {
     private static func resetText(_ timestamp: Int64) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return "Resets \(formatter.string(from: Date(timeIntervalSince1970: TimeInterval(timestamp))))"
+        return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(timestamp)))
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static func stableID(_ value: String) -> UUID {
+        var high: UInt64 = 0xcbf29ce484222325
+        var low: UInt64 = 0x84222325cbf29ce4
+        for byte in value.utf8 {
+            high = (high ^ UInt64(byte)) &* 0x100000001b3
+            low = (low ^ UInt64(byte)) &* 0x100000001b3
+        }
+        let text = String(format: "%08x-%04x-%04x-%04x-%012llx",
+                          UInt32(truncatingIfNeeded: high >> 32),
+                          UInt16(truncatingIfNeeded: high >> 16),
+                          UInt16(truncatingIfNeeded: high),
+                          UInt16(truncatingIfNeeded: low >> 48),
+                          low & 0x0000ffffffffffff)
+        return UUID(uuidString: text)!
     }
 
     private static func planName(_ raw: String) -> String {

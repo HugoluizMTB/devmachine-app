@@ -437,6 +437,14 @@ struct SetupPage: View {
                             detail: workspace.alias,
                             selection: workspaceChoiceBinding(workspace.alias)
                         )
+                        if workspaceSessionPrograms[workspace.alias] != nil {
+                            Button("Use remote fallback") {
+                                workspaceSessionPrograms.removeValue(forKey: workspace.alias)
+                            }
+                            .buttonStyle(.plain)
+                            .font(.dm(10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.55))
+                        }
                     }
                 }
 

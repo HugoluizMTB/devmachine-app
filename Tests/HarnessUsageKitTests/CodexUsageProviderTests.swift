@@ -32,7 +32,8 @@ final class CodexUsageProviderTests: XCTestCase {
                 .init(startDate: "2026-09-21", tokens: 250)
             ])
         let provider = CodexUsageProvider(
-            transport: FakeCodexTransport(snapshot: .init(rateLimits: limits, usage: usage)))
+            transport: FakeCodexTransport(snapshot: .init(rateLimits: limits, usage: usage)),
+            now: { Date(timeIntervalSince1970: 1_795_392_000) }) // 2026-11-21 UTC
 
         let result = try provider.fetchSnapshot(previous: nil)
 
@@ -40,8 +41,12 @@ final class CodexUsageProviderTests: XCTestCase {
         XCTAssertEqual(result.blocks.map(\.percent), [20, 35, 5])
         XCTAssertEqual(result.stats?.dailyTotals.map(\.tokens), [100, 250])
         XCTAssertEqual(result.stats?.modelTotals, [])
-        XCTAssertEqual(result.stats?.todayTokens, 250)
+        XCTAssertEqual(result.stats?.todayTokens, 0)
         XCTAssertEqual(result.summaryMetrics.map(\.id), ["lifetimeTokens", "currentStreakDays", "longestRunningTurnSec"])
+        XCTAssertFalse(result.blocks.contains { $0.resets.hasPrefix("Resets ") })
+
+        let second = try provider.fetchSnapshot(previous: result)
+        XCTAssertEqual(second.blocks.map(\.id), result.blocks.map(\.id))
     }
 
     func testMissingDailyBucketsAndNullableSummaryProduceEmptyOptionalSections() throws {
@@ -64,5 +69,31 @@ final class CodexUsageProviderTests: XCTestCase {
         XCTAssertTrue(result.blocks.isEmpty)
         XCTAssertNil(result.stats)
         XCTAssertTrue(result.summaryMetrics.isEmpty)
+    }
+
+    func testTodayUsesMatchingAccountingDateRegardlessOfBucketOrder() throws {
+        let today = Calendar(identifier: .gregorian).date(
+            from: DateComponents(timeZone: TimeZone(secondsFromGMT: 0),
+                                 year: 2026, month: 9, day: 22))!
+        let limits = CodexRateLimitsResponse(
+            rateLimits: .init(limitId: nil, limitName: nil, planType: nil,
+                              primary: nil, secondary: nil), rateLimitsByLimitId: nil)
+        let usage = CodexUsageResponse(
+            summary: .init(lifetimeTokens: nil, peakDailyTokens: nil, currentStreakDays: nil,
+                           longestStreakDays: nil, longestRunningTurnSec: nil),
+            dailyUsageBuckets: [
+                .init(startDate: "2026-09-23", tokens: 300),
+                .init(startDate: "2026-09-22", tokens: 220),
+                .init(startDate: "2026-09-21", tokens: 100)
+            ])
+        let provider = CodexUsageProvider(
+            transport: FakeCodexTransport(snapshot: .init(rateLimits: limits, usage: usage)),
+            now: { today })
+
+        let result = try provider.fetchSnapshot(previous: nil)
+
+        XCTAssertEqual(result.stats?.dailyTotals.map(\.date),
+                       ["2026-09-21", "2026-09-22", "2026-09-23"])
+        XCTAssertEqual(result.stats?.todayTokens, 220)
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public protocol CodexRPCTransport: Sendable {
     func accountSnapshot() throws -> CodexAccountSnapshot
@@ -24,129 +25,234 @@ public enum CodexTransportError: Error, Equatable, LocalizedError {
     }
 }
 
+protocol CodexRPCSession: AnyObject {
+    func send(_ line: String) throws
+    func readLine(until deadline: Date) throws -> String?
+    func finish(until deadline: Date) throws
+    func cancel()
+}
+
 public struct CodexAppServerTransport: CodexRPCTransport, @unchecked Sendable {
-    typealias Exchange = ([String], TimeInterval) throws -> [String]
+    typealias SessionFactory = () throws -> any CodexRPCSession
 
     private let timeout: TimeInterval
-    private let exchange: Exchange
+    private let makeSession: SessionFactory
 
     public init(executableURL: URL, timeout: TimeInterval = 15) {
         self.timeout = timeout
-        exchange = { requests, timeout in
-            try Self.run(executableURL: executableURL, requests: requests, timeout: timeout)
-        }
+        makeSession = { try ProcessRPCSession(executableURL: executableURL) }
     }
 
-    init(timeout: TimeInterval, exchange: @escaping Exchange) {
+    init(timeout: TimeInterval, sessionFactory: @escaping SessionFactory) {
         self.timeout = timeout
-        self.exchange = exchange
+        makeSession = sessionFactory
     }
 
     public func accountSnapshot() throws -> CodexAccountSnapshot {
-        let requests = try Self.requests()
-        let lines = try exchange(requests, timeout)
-        let rateLimits: CodexRateLimitsResponse = try Self.response(id: 2, lines: lines)
-        let usage: CodexUsageResponse = try Self.response(id: 3, lines: lines)
-        return CodexAccountSnapshot(rateLimits: rateLimits, usage: usage)
-    }
-
-    private static func requests() throws -> [String] {
-        let values: [[String: Any]] = [
-            [
-                "jsonrpc": "2.0", "id": 1, "method": "initialize",
-                "params": [
+        let deadline = Date().addingTimeInterval(timeout)
+        let session = try makeSession()
+        do {
+            try session.send(Self.request(
+                id: 1, method: "initialize",
+                params: [
                     "clientInfo": ["name": "devmachine-app", "version": "1"],
                     "capabilities": ["experimentalApi": true]
-                ]
-            ],
-            ["jsonrpc": "2.0", "method": "initialized", "params": [:]],
-            ["jsonrpc": "2.0", "id": 2, "method": "account/rateLimits/read", "params": NSNull()],
-            ["jsonrpc": "2.0", "id": 3, "method": "account/usage/read", "params": NSNull()]
-        ]
-        return try values.map {
-            let data = try JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys])
-            guard let value = String(data: data, encoding: .utf8) else {
-                throw CodexTransportError.malformedResponse
+                ]))
+            let _: InitializeResponse = try Self.readResponse(id: 1, from: session, until: deadline)
+
+            try session.send(Self.notification(method: "initialized", params: [:]))
+            try session.send(Self.request(id: 2, method: "account/rateLimits/read", params: NSNull()))
+            try session.send(Self.request(id: 3, method: "account/usage/read", params: NSNull()))
+
+            var rateLimits: CodexRateLimitsResponse?
+            var usage: CodexUsageResponse?
+            while rateLimits == nil || usage == nil {
+                guard let line = try session.readLine(until: deadline) else {
+                    throw CodexTransportError.missingResponse(id: rateLimits == nil ? 2 : 3)
+                }
+                guard let envelope = try Self.envelope(line) else { continue }
+                switch envelope.id {
+                case 2: rateLimits = try Self.decode(envelope)
+                case 3: usage = try Self.decode(envelope)
+                default: continue
+                }
             }
-            return value
+            try session.finish(until: deadline)
+            return CodexAccountSnapshot(rateLimits: rateLimits!, usage: usage!)
+        } catch {
+            session.cancel()
+            throw error
         }
     }
 
-    private static func response<T: Decodable>(id: Int, lines: [String]) throws -> T {
-        for line in lines where !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard let data = line.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw CodexTransportError.malformedResponse
-            }
-            guard (object["id"] as? NSNumber)?.intValue == id else { continue }
-            if let error = object["error"] as? [String: Any] {
-                throw CodexTransportError.rpcError(
-                    code: (error["code"] as? NSNumber)?.intValue ?? -1,
-                    message: error["message"] as? String ?? "Codex RPC error")
-            }
-            guard let result = object["result"],
-                  JSONSerialization.isValidJSONObject(result),
-                  let decoded = try? JSONDecoder().decode(
-                    T.self, from: JSONSerialization.data(withJSONObject: result)) else {
-                throw CodexTransportError.malformedResponse
-            }
-            return decoded
+    private struct InitializeResponse: Decodable {}
+    private struct Envelope { let id: Int; let object: [String: Any] }
+
+    private static func request(id: Int, method: String, params: Any) throws -> String {
+        try json(["jsonrpc": "2.0", "id": id, "method": method, "params": params])
+    }
+
+    private static func notification(method: String, params: Any) throws -> String {
+        try json(["jsonrpc": "2.0", "method": method, "params": params])
+    }
+
+    private static func json(_ value: [String: Any]) throws -> String {
+        guard JSONSerialization.isValidJSONObject(value),
+              let string = String(data: try JSONSerialization.data(
+                withJSONObject: value, options: [.sortedKeys]), encoding: .utf8) else {
+            throw CodexTransportError.malformedResponse
+        }
+        return string
+    }
+
+    private static func envelope(_ line: String) throws -> Envelope? {
+        guard let data = line.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CodexTransportError.malformedResponse
+        }
+        guard let id = (object["id"] as? NSNumber)?.intValue else { return nil }
+        return Envelope(id: id, object: object)
+    }
+
+    private static func readResponse<T: Decodable>(
+        id: Int, from session: any CodexRPCSession, until deadline: Date
+    ) throws -> T {
+        while let line = try session.readLine(until: deadline) {
+            guard let value = try envelope(line), value.id == id else { continue }
+            return try decode(value)
         }
         throw CodexTransportError.missingResponse(id: id)
     }
 
-    private final class ResultBox: @unchecked Sendable {
-        private let lock = NSLock()
-        private var value: (Data, Data, Int32)?
-        func set(_ value: (Data, Data, Int32)) { lock.withLock { self.value = value } }
-        func get() -> (Data, Data, Int32)? { lock.withLock { value } }
+    private static func decode<T: Decodable>(_ envelope: Envelope) throws -> T {
+        if let error = envelope.object["error"] as? [String: Any] {
+            throw CodexTransportError.rpcError(
+                code: (error["code"] as? NSNumber)?.intValue ?? -1,
+                message: error["message"] as? String ?? "Codex RPC error")
+        }
+        guard let result = envelope.object["result"], JSONSerialization.isValidJSONObject(result),
+              let value = try? JSONDecoder().decode(
+                T.self, from: JSONSerialization.data(withJSONObject: result)) else {
+            throw CodexTransportError.malformedResponse
+        }
+        return value
     }
+}
 
-    private static func run(
-        executableURL: URL, requests: [String], timeout: TimeInterval
-    ) throws -> [String] {
+private final class ProcessRPCSession: CodexRPCSession, @unchecked Sendable {
+    private let process = Process()
+    private let input = Pipe()
+    private let condition = NSCondition()
+    private var lines: [String] = []
+    private var stdoutBuffer = Data()
+    private var stderrData = Data()
+    private var stdoutEnded = false
+    private var terminated = false
+
+    init(executableURL: URL) throws {
         guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
             throw CodexTransportError.executableUnavailable
         }
-        let process = Process()
-        process.executableURL = executableURL
-        process.arguments = ["app-server", "--listen", "stdio://"]
-        let input = Pipe()
         let output = Pipe()
         let errors = Pipe()
+        process.executableURL = executableURL
+        process.arguments = ["app-server", "--listen", "stdio://"]
         process.standardInput = input
         process.standardOutput = output
         process.standardError = errors
+        process.terminationHandler = { [weak self] _ in self?.markTerminated() }
         try process.run()
+        drain(output.fileHandleForReading, isError: false)
+        drain(errors.fileHandleForReading, isError: true)
+    }
 
-        let payload = requests.joined(separator: "\n") + "\n"
-        input.fileHandleForWriting.write(Data(payload.utf8))
+    func send(_ line: String) throws {
+        try input.fileHandleForWriting.write(contentsOf: Data((line + "\n").utf8))
+    }
+
+    func readLine(until deadline: Date) throws -> String? {
+        condition.lock()
+        defer { condition.unlock() }
+        while lines.isEmpty && !stdoutEnded && !terminated {
+            guard condition.wait(until: deadline) else { throw CodexTransportError.timedOut }
+        }
+        return lines.isEmpty ? nil : lines.removeFirst()
+    }
+
+    func finish(until deadline: Date) throws {
         try? input.fileHandleForWriting.close()
+        if waitForTermination(until: deadline) { return try validateExit() }
+        terminateAndReap()
+        throw CodexTransportError.timedOut
+    }
 
-        let box = ResultBox()
-        let finished = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .utility).async {
-            let stdout = output.fileHandleForReading.readDataToEndOfFile()
-            let stderr = errors.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            box.set((stdout, stderr, process.terminationStatus))
-            finished.signal()
-        }
+    func cancel() {
+        try? input.fileHandleForWriting.close()
+        terminateAndReap()
+    }
 
-        guard finished.wait(timeout: .now() + timeout) == .success else {
-            if process.isRunning { process.terminate() }
-            _ = finished.wait(timeout: .now() + 1)
-            throw CodexTransportError.timedOut
+    private func drain(_ handle: FileHandle, isError: Bool) {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
+            while true {
+                let data = handle.availableData
+                if data.isEmpty { break }
+                self.consume(data, isError: isError)
+            }
+            if !isError {
+                self.condition.withLock {
+                    self.stdoutEnded = true
+                    self.condition.broadcast()
+                }
+            }
         }
-        guard let (stdout, stderr, status) = box.get() else {
-            throw CodexTransportError.malformedResponse
+    }
+
+    private func consume(_ data: Data, isError: Bool) {
+        condition.withLock {
+            if isError {
+                if stderrData.count < 65_536 {
+                    stderrData.append(data.prefix(65_536 - stderrData.count))
+                }
+            } else {
+                stdoutBuffer.append(data)
+                while let newline = stdoutBuffer.firstIndex(of: 0x0A) {
+                    lines.append(String(decoding: stdoutBuffer[..<newline], as: UTF8.self))
+                    stdoutBuffer.removeSubrange(...newline)
+                }
+                condition.broadcast()
+            }
         }
-        guard status == 0 || !stdout.isEmpty else {
-            throw CodexTransportError.processFailed(
-                status: status,
-                stderr: String(data: stderr, encoding: .utf8) ?? "")
+    }
+
+    private func markTerminated() {
+        condition.withLock {
+            terminated = true
+            condition.broadcast()
         }
-        return String(data: stdout, encoding: .utf8)?
-            .split(whereSeparator: \.isNewline).map(String.init) ?? []
+    }
+
+    private func waitForTermination(until deadline: Date) -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        while !terminated {
+            guard condition.wait(until: deadline) else { return false }
+        }
+        return true
+    }
+
+    private func terminateAndReap() {
+        guard process.isRunning else { return }
+        process.terminate()
+        if waitForTermination(until: Date().addingTimeInterval(0.5)) { return }
+        Darwin.kill(process.processIdentifier, SIGKILL)
+        _ = waitForTermination(until: Date().addingTimeInterval(1))
+    }
+
+    private func validateExit() throws {
+        guard process.terminationStatus == 0 else {
+            let stderr = condition.withLock { String(decoding: stderrData, as: UTF8.self) }
+            throw CodexTransportError.processFailed(status: process.terminationStatus, stderr: stderr)
+        }
     }
 }

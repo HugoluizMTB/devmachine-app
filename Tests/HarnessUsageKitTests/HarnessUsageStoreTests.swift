@@ -102,4 +102,20 @@ final class HarnessUsageStoreTests: XCTestCase {
 
         XCTAssertEqual(store.state(for: "same")?.snapshot, first)
     }
+
+    func testReconfigurationDiscardsResultFromRemovedProvider() async {
+        let old = FakeHarnessUsageProvider(
+            id: "same", result: .success(snapshot(plan: "Old")), delay: 0.15)
+        let replacement = FakeHarnessUsageProvider(
+            id: "same", result: .success(snapshot(plan: "New")))
+        let store = HarnessUsageStore(providers: [old])
+
+        store.refresh(force: true)
+        store.configure(providers: [replacement])
+        store.refresh(force: true)
+        await waitUntil { store.state(for: "same")?.snapshot?.planName == "New" }
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(store.state(for: "same")?.snapshot?.planName, "New")
+    }
 }

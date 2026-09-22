@@ -49,7 +49,7 @@ struct DevmachineApp: App {
                     let settings = settingsStore.settings ?? .empty
                     usageStore.configure(
                         providers: harnessSettingsFacade.usageRegistrations(for: settings).map(\.provider))
-                    usageStore.refresh(force: true)
+                    if usageStore.isObserved { usageStore.refresh(force: true) }
                 }
                 .environmentObject(wallpaperStore)
                 .environmentObject(viewerStore)

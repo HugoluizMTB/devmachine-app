@@ -46,14 +46,18 @@ struct HomeView: View {
             VStack {
                 HStack(alignment: .top, spacing: 14) {
                     Spacer()
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(usage.states) { state in
-                            if let descriptor = harnessSettingsFacade.descriptor(
-                                for: HarnessID(rawValue: state.harnessID)) {
-                                usageCard(state: state, descriptor: descriptor)
+                    ScrollView(.vertical) {
+                        LazyVStack(alignment: .leading, spacing: 14) {
+                            ForEach(usage.states) { state in
+                                if let descriptor = harnessSettingsFacade.descriptor(
+                                    for: HarnessID(rawValue: state.harnessID)) {
+                                    usageCard(state: state, descriptor: descriptor)
+                                }
                             }
                         }
                     }
+                    .scrollIndicators(.hidden)
+                    .frame(width: 300)
                 }
                 Spacer()
             }

@@ -30,6 +30,7 @@ public final class HarnessUsageStore: ObservableObject {
     private var providers: [any HarnessUsageProvider]
     private let pollSeconds: TimeInterval
     private var inFlight: Set<String> = []
+    private var generation = 0
     private nonisolated(unsafe) var timer: Timer?
     private var observers = 0
 
@@ -52,12 +53,15 @@ public final class HarnessUsageStore: ObservableObject {
 
     public var isPolling: Bool { timer != nil }
     public var observerCount: Int { observers }
+    public var isObserved: Bool { observers > 0 }
 
     public func state(for harnessID: String) -> HarnessUsageState? {
         states.first { $0.harnessID == harnessID }
     }
 
     public func configure(providers: [any HarnessUsageProvider]) {
+        generation += 1
+        inFlight.removeAll()
         self.providers = providers
         let previous = Dictionary(uniqueKeysWithValues: states.map { ($0.harnessID, $0) })
         let next = providers.map { previous[$0.harnessID] ?? HarnessUsageState(harnessID: $0.harnessID) }
@@ -104,11 +108,13 @@ public final class HarnessUsageStore: ObservableObject {
             $0.errorText = nil
         }
         let previous = states[index].snapshot
+        let requestedGeneration = generation
 
         Task.detached {
             let result = Result { try provider.fetchSnapshot(previous: previous) }
             await MainActor.run {
                 self.inFlight.remove(id)
+                guard self.generation == requestedGeneration else { return }
                 guard let current = self.states.firstIndex(where: { $0.harnessID == id }) else { return }
                 self.updateState(at: current) { state in
                     state.isLoading = false

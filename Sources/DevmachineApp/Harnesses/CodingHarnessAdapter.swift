@@ -97,7 +97,9 @@ struct ClaudeHarnessAdapter: CodingHarnessAdapter {
     func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)? {
         guard let executable = locator.executable(named: executableName) else { return nil }
         let config = ClaudeUsageConfig(claudePathOverride: executable.path)
-        return ClaudeUsageProvider(provider: DefaultUsageProvider(config: config))
+        return ClaudeUsageProvider(
+            provider: DefaultUsageProvider(config: config),
+            statsPollSeconds: config.statsPollSeconds)
     }
 }
 

@@ -15,5 +15,16 @@ final class UsageLayoutTests: XCTestCase {
 
     func testUsageWidthIsCappedInsideTheVisibleScreen() {
         XCTAssertEqual(MenuBarSizing.width(for: .usage, usageColumns: 2, available: 700), 668)
+        XCTAssertEqual(MenuBarSizing.columnWidth(panelWidth: 668, usageColumns: 2), 333.5)
+    }
+
+    func testFullWidthUsageColumnsRetainTheirPreferredWidth() {
+        XCTAssertEqual(MenuBarSizing.columnWidth(panelWidth: 776, usageColumns: 2), 380)
+    }
+
+    func testHomeUnmountsWhenAnotherPageCoversTheMainPane() {
+        XCTAssertTrue(MainPaneVisibility.showsHome(hasSelection: false, activePage: nil))
+        XCTAssertFalse(MainPaneVisibility.showsHome(hasSelection: false, activePage: .stats))
+        XCTAssertFalse(MainPaneVisibility.showsHome(hasSelection: true, activePage: nil))
     }
 }
