@@ -27,7 +27,7 @@ public struct HarnessUsageState: Equatable, Sendable, Identifiable {
 public final class HarnessUsageStore: ObservableObject {
     @Published public private(set) var states: [HarnessUsageState]
 
-    private let providers: [any HarnessUsageProvider]
+    private var providers: [any HarnessUsageProvider]
     private let pollSeconds: TimeInterval
     private var inFlight: Set<String> = []
     private nonisolated(unsafe) var timer: Timer?
@@ -55,6 +55,13 @@ public final class HarnessUsageStore: ObservableObject {
 
     public func state(for harnessID: String) -> HarnessUsageState? {
         states.first { $0.harnessID == harnessID }
+    }
+
+    public func configure(providers: [any HarnessUsageProvider]) {
+        self.providers = providers
+        let previous = Dictionary(uniqueKeysWithValues: states.map { ($0.harnessID, $0) })
+        let next = providers.map { previous[$0.harnessID] ?? HarnessUsageState(harnessID: $0.harnessID) }
+        if next != states { states = next }
     }
 
     public func beginObserving() {

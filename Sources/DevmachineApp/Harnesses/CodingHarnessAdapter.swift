@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import DevmachineCore
+import HarnessUsageKit
 
 struct HarnessDescriptor: Identifiable, Sendable {
     let id: HarnessID
@@ -18,6 +19,11 @@ protocol CodingHarnessAdapter: Sendable {
     var processNames: Set<String> { get }
     var startupCommand: String { get }
     var imageStoragePolicy: ImageStoragePolicy { get }
+    func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)?
+}
+
+extension CodingHarnessAdapter {
+    func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)? { nil }
 }
 
 protocol ExecutableLocating: Sendable {
@@ -87,6 +93,12 @@ struct ClaudeHarnessAdapter: CodingHarnessAdapter {
     let processNames: Set<String> = ["claude"]
     let startupCommand = "claude"
     let imageStoragePolicy = ImageStoragePolicy(directory: ".claude/image-cache/devmachine-app")
+
+    func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)? {
+        guard let executable = locator.executable(named: executableName) else { return nil }
+        let config = ClaudeUsageConfig(claudePathOverride: executable.path)
+        return ClaudeUsageProvider(provider: DefaultUsageProvider(config: config))
+    }
 }
 
 struct CodexHarnessAdapter: CodingHarnessAdapter {
@@ -103,4 +115,9 @@ struct CodexHarnessAdapter: CodingHarnessAdapter {
     let processNames: Set<String> = ["codex"]
     let startupCommand = "codex"
     let imageStoragePolicy = ImageStoragePolicy.appManaged
+
+    func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)? {
+        guard let executable = locator.executable(named: executableName) else { return nil }
+        return CodexUsageProvider(transport: CodexAppServerTransport(executableURL: executable))
+    }
 }

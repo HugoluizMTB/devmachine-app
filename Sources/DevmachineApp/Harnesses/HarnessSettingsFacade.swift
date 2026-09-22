@@ -1,5 +1,12 @@
 import SwiftUI
 import DevmachineCore
+import HarnessUsageKit
+
+struct HarnessUsageRegistration: Identifiable {
+    let descriptor: HarnessDescriptor
+    let provider: any HarnessUsageProvider
+    var id: HarnessID { descriptor.id }
+}
 
 enum HarnessActivationError: Error, Equatable, Sendable {
     case cliNotFound(String)
@@ -75,6 +82,14 @@ struct HarnessSettingsFacade: Sendable {
     func startupCommand(for choice: SessionLaunchChoice) -> String? {
         guard case let .harness(id) = choice else { return nil }
         return registry.adapter(for: id)?.startupCommand
+    }
+
+    func usageRegistrations(for settings: AppSettings) -> [HarnessUsageRegistration] {
+        registry.adapters.compactMap { adapter in
+            guard settings.enabledHarnesses.contains(adapter.id),
+                  let provider = adapter.usageProvider(locator: locator) else { return nil }
+            return HarnessUsageRegistration(descriptor: adapter.descriptor, provider: provider)
+        }
     }
 
     func enable(_ id: HarnessID, in settings: inout AppSettings) -> HarnessActivationResult {

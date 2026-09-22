@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import HarnessUsageKit
+import DevmachineCore
 
 enum MenuBarTab: String, CaseIterable, Identifiable {
     case pullRequests
@@ -23,18 +24,32 @@ enum MenuBarTab: String, CaseIterable, Identifiable {
     }
 }
 
+enum MenuBarSizing {
+    static func width(
+        for tab: MenuBarTab, usageColumns: Int, available: CGFloat
+    ) -> CGFloat {
+        let desired: CGFloat
+        switch tab {
+        case .pullRequests: desired = 420
+        case .usage: desired = usageColumns > 1 ? 776 : 380
+        }
+        return min(desired, max(320, available - 32))
+    }
+}
+
 struct MenuBarPanel: View {
     @EnvironmentObject var prStore: PRStore
-    @EnvironmentObject var usageStore: ClaudeUsageStore
+    @EnvironmentObject var usageStore: HarnessUsageStore
     @EnvironmentObject var model: AppModel
+    @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @Environment(\.openWindow) private var openWindow
     @State private var tab: MenuBarTab = .pullRequests
 
     private var panelWidth: CGFloat {
-        switch tab {
-        case .pullRequests: return 420
-        case .usage: return 380
-        }
+        MenuBarSizing.width(
+            for: tab,
+            usageColumns: usageStore.states.count,
+            available: NSScreen.main?.visibleFrame.width ?? 1_200)
     }
 
     private var panelHeight: CGFloat? {
@@ -83,7 +98,29 @@ struct MenuBarPanel: View {
         case .pullRequests:
             PRsView().environmentObject(prStore)
         case .usage:
-            HarnessUsagePanel(store: usageStore)
+            if usageStore.states.isEmpty {
+                Text(verbatim: "No local usage harnesses available")
+                    .foregroundStyle(Color.dmMuted)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                HStack(spacing: 0) {
+                    ForEach(Array(usageStore.states.enumerated()), id: \.element.id) { index, state in
+                        if index > 0 {
+                            Rectangle().fill(Color.dmDivider).frame(width: 1)
+                        }
+                        if let descriptor = harnessSettingsFacade.descriptor(
+                            for: HarnessID(rawValue: state.harnessID)) {
+                            HarnessUsagePanel(
+                                store: usageStore,
+                                harnessID: state.harnessID,
+                                title: "\(descriptor.shortTitle) Usage",
+                                systemImage: descriptor.systemImage,
+                                accent: descriptor.color)
+                            .frame(width: UsagePanelMetrics.columnWidth)
+                        }
+                    }
+                }
+            }
         }
     }
 

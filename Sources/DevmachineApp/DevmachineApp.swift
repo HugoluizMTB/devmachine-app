@@ -5,19 +5,27 @@ import HarnessUsageKit
 
 @main
 struct DevmachineApp: App {
-    private let harnessSettingsFacade = HarnessSettingsFacade()
+    private let harnessSettingsFacade: HarnessSettingsFacade
     @StateObject private var model = AppModel()
     @StateObject private var prStore = PRStore()
     @StateObject private var filesStore = FilesStore()
     @StateObject private var caddyStore = CaddyStore()
     @StateObject private var skillsStore = SkillsStore()
     @StateObject private var statsStore = StatsStore()
-    @StateObject private var usageStore = ClaudeUsageStore()
+    @StateObject private var usageStore: HarnessUsageStore
     @StateObject private var settingsStore = SettingsStore.shared
     @StateObject private var wallpaperStore = WallpaperStore()
     @StateObject private var viewerStore = FileViewerStore()
     @StateObject private var fileTreeStore = FileTreeStore()
     @StateObject private var fileSearchStore = FileSearchStore()
+
+    init() {
+        let facade = HarnessSettingsFacade()
+        harnessSettingsFacade = facade
+        let settings = SettingsStore.shared.settings ?? .empty
+        let providers = facade.usageRegistrations(for: settings).map(\.provider)
+        _usageStore = StateObject(wrappedValue: HarnessUsageStore(providers: providers))
+    }
 
     var body: some Scene {
         // Single main window (Window, not WindowGroup) so the menubar "Open"
@@ -36,6 +44,12 @@ struct DevmachineApp: App {
                 .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
                 .onChange(of: settingsStore.settings?.uiFontScale) { _, scale in
                     DMFont.scale = scale ?? 1
+                }
+                .onChange(of: settingsStore.settings?.enabledHarnesses) { _, _ in
+                    let settings = settingsStore.settings ?? .empty
+                    usageStore.configure(
+                        providers: harnessSettingsFacade.usageRegistrations(for: settings).map(\.provider))
+                    usageStore.refresh(force: true)
                 }
                 .environmentObject(wallpaperStore)
                 .environmentObject(viewerStore)
@@ -91,6 +105,7 @@ struct DevmachineApp: App {
                 .environmentObject(prStore)
                 .environmentObject(usageStore)
                 .environmentObject(model)
+                .environment(\.harnessSettingsFacade, harnessSettingsFacade)
         } label: {
             MenuBarLabel(prStore: prStore)
         }

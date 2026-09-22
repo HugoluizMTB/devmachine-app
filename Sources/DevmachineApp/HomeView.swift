@@ -1,10 +1,12 @@
 import SwiftUI
 import AppKit
 import HarnessUsageKit
+import DevmachineCore
 
 struct HomeView: View {
     @EnvironmentObject var model: AppModel
-    @EnvironmentObject var usage: ClaudeUsageStore
+    @EnvironmentObject var usage: HarnessUsageStore
+    @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
 
     private var totalSessions: Int {
         model.sessionCount
@@ -45,8 +47,12 @@ struct HomeView: View {
                 HStack(alignment: .top, spacing: 14) {
                     Spacer()
                     VStack(alignment: .leading, spacing: 14) {
-                        usageCard
-                        notificationsCard
+                        ForEach(usage.states) { state in
+                            if let descriptor = harnessSettingsFacade.descriptor(
+                                for: HarnessID(rawValue: state.harnessID)) {
+                                usageCard(state: state, descriptor: descriptor)
+                            }
+                        }
                     }
                 }
                 Spacer()
@@ -68,54 +74,22 @@ struct HomeView: View {
         .onAppear {
             usage.beginObserving()
             usage.refresh()
-            usage.refreshStats()
         }
         .onDisappear { usage.endObserving() }
     }
 
-    private var usageBlocks: [UsageBlock] {
-        usage.blocks
-    }
-
-    private var usageCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(verbatim: "Claude Usage")
-                .font(.dm(12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
-
-            if usageBlocks.isEmpty {
-                Text(verbatim: "Loading usage…")
-                    .font(.dm(12))
-                    .foregroundStyle(.white.opacity(0.55))
-            } else {
-                UsageBarsView(blocks: usageBlocks)
-            }
-
-            Text(verbatim: "Today: \(UsageFormat.tokens(usage.stats?.todayTokens ?? 0)) tokens")
-                .font(.dm(11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.6))
-        }
-        .padding(16)
-        .frame(width: 280, alignment: .leading)
+    private func usageCard(
+        state: HarnessUsageState, descriptor: HarnessDescriptor
+    ) -> some View {
+        HarnessUsageCardContent(
+            state: state,
+            title: "\(descriptor.shortTitle) Usage",
+            systemImage: descriptor.systemImage,
+            accent: descriptor.color,
+            onRefresh: { usage.refresh(force: true) })
+        .frame(width: 300, height: 300)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(.white.opacity(0.15), lineWidth: 0.5)
-        )
-    }
-
-    private var notificationsCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(verbatim: "Notifications")
-                .font(.dm(12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
-            Text(verbatim: "No notifications")
-                .font(.dm(12))
-                .foregroundStyle(.white.opacity(0.5))
-        }
-        .padding(16)
-        .frame(width: 280, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(.white.opacity(0.15), lineWidth: 0.5)
