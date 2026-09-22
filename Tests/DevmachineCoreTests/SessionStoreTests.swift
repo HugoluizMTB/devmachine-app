@@ -19,17 +19,22 @@ private struct FakeRunner: CommandRunner {
 }
 
 final class SessionStoreTests: XCTestCase {
-    func testBuildsWorkspaceSessions() throws {
+    func testBuildsWorkspaceSessionsWithTheSuppliedHarnessCatalog() throws {
         let fake = FakeRunner(output: """
         dash-claude|2
         @@PANES@@
         dash-claude|claude
+        dash-claude|codex
         """)
         let store = SessionStore(runner: fake)
         let ws = Workspace(name: "acme", alias: "acme-devmachine")
-        let sessions = try store.sessions(for: ws)
+        let sessions = try store.sessions(
+            for: ws, processNames: [.claude: ["claude"], .codex: ["codex"]])
 
-        XCTAssertEqual(sessions, [TmuxSession(name: "dash-claude", windows: 2, hasClaude: true)])
+        XCTAssertEqual(
+            sessions,
+            [TmuxSession(name: "dash-claude", windows: 2, harnesses: [.claude, .codex])]
+        )
         XCTAssertEqual(
             fake.box.args,
             RemoteCommands.sshBaseArgs(alias: "acme-devmachine") + [RemoteCommands.listSessions]

@@ -45,6 +45,61 @@ private final class CountingRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
+private final class HarnessProcessRunner: CommandRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private let zmxListing: String
+    private let processListing: String
+    private let remoteListing: String
+    private var calls: [(executable: String, args: [String])] = []
+
+    init(zmxListing: String = "", processListing: String = "", remoteListing: String = "") {
+        self.zmxListing = zmxListing
+        self.processListing = processListing
+        self.remoteListing = remoteListing
+    }
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        lock.lock()
+        calls.append((executable, args))
+        lock.unlock()
+        switch executable {
+        case "/fixtures/zmx": return zmxListing
+        case "/bin/ps": return processListing
+        case "/usr/bin/ssh": return remoteListing
+        default: return ""
+        }
+    }
+
+    func callCount(for executable: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls.filter { $0.executable == executable }.count
+    }
+
+    var recordedCalls: [(executable: String, args: [String])] {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+}
+
+private final class RecordingSessionCommandSender: SessionCommandSending, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [(command: String, target: CommandTarget)] = []
+
+    func send(_ command: String, into target: CommandTarget) throws {
+        lock.lock()
+        values.append((command, target))
+        lock.unlock()
+    }
+
+    var sent: [(command: String, target: CommandTarget)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+}
+
 @MainActor
 private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async throws {
     let deadline = Date().addingTimeInterval(timeout)
@@ -59,6 +114,132 @@ private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async
 
 @MainActor
 final class AppModelTests: XCTestCase {
+    func testRemoteRefreshDetectsOnlyProcessesFromActiveHarnessAdapters() async throws {
+        let runner = HarnessProcessRunner(remoteListing: """
+        dash|1
+        @@PANES@@
+        dash|claude
+        dash|codex
+        """)
+        let model = AppModel(store: SessionStore(runner: runner))
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.codex])
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+
+        model.refresh(alias: "acme-devmachine")
+
+        try await waitUntil { model.sessionsByAlias["acme-devmachine"] != nil }
+        XCTAssertEqual(model.sessionsByAlias["acme-devmachine"]?.first?.harnesses, [.codex])
+        XCTAssertEqual(runner.callCount(for: "/usr/bin/ssh"), 1)
+    }
+
+    func testLocalScanUsesOneProcessSnapshotForAllHarnessesAndSessions() async throws {
+        let runner = HarnessProcessRunner(
+            zmxListing: """
+            name=acme\tpid=100\tclients=1\tcwd=/Users/alice/dev/acme
+            name=beta\tpid=400\tclients=1\tcwd=/Users/alice/dev/beta
+            """,
+            processListing: """
+             100 1 -zsh
+             200 100 claude
+             300 100 codex
+             400 1 -zsh
+             500 400 aider
+            """)
+        let model = AppModel(
+            store: SessionStore(runner: HarnessProcessRunner()),
+            localRunner: runner,
+            sessionCommandSender: RecordingSessionCommandSender(),
+            zmxPath: "/fixtures/zmx")
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude, .codex])
+
+        model.scanLocalSessions()
+
+        try await waitUntil { model.localSessionHarnesses.keys.count == 2 }
+        XCTAssertEqual(model.localSessionHarnesses["acme"], [.claude, .codex])
+        XCTAssertEqual(model.localSessionHarnesses["beta"], [])
+        XCTAssertEqual(runner.callCount(for: "/bin/ps"), 1)
+    }
+
+    func testBadgesFollowRegistryOrderInsteadOfSetOrder() {
+        let facade = SessionHarnessFacade(registry: .builtIn)
+
+        let badges = facade.badges(for: [.codex, .claude])
+
+        XCTAssertEqual(badges.map(\.id), [.claude, .codex])
+        XCTAssertEqual(badges.map(\.helpText), [
+            "Claude Code is running in this session",
+            "OpenAI Codex is running in this session"
+        ])
+    }
+
+    func testStartingALocalSessionUsesTheLocalHarnessDefault() async throws {
+        let runner = HarnessProcessRunner(
+            zmxListing: "name=acme\tpid=100\tclients=1\tcwd=/Users/alice/dev/acme")
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: HarnessProcessRunner()),
+            localRunner: runner,
+            sessionCommandSender: sender,
+            zmxPath: "/fixtures/zmx")
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude, .codex],
+            localSessionProgram: .harness(.codex))
+
+        model.startProgram(in: .local(session: "acme", path: "/Users/alice/dev/acme"))
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "codex")
+        XCTAssertEqual(
+            sender.sent.first?.target,
+            .local(session: "acme", path: "/Users/alice/dev/acme"))
+    }
+
+    func testNewRemoteSessionUsesItsWorkspaceHarnessOverrideWithoutAProbe() async throws {
+        let runner = HarnessProcessRunner()
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: runner),
+            sessionCommandSender: sender)
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude, .codex],
+            remoteSessionProgram: .harness(.claude),
+            workspaceSessionPrograms: ["acme-devmachine": .harness(.codex)])
+
+        model.confirmNewSession(alias: "acme-devmachine", name: "dash", directory: "~/dev/acme")
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "codex")
+        XCTAssertEqual(
+            sender.sent.first?.target,
+            .remote(alias: "acme-devmachine", session: "dash"))
+        XCTAssertEqual(runner.callCount(for: "/usr/bin/ssh"), 1)
+        XCTAssertTrue(runner.recordedCalls[0].args.last?.contains("tmux new-session -d") == true)
+    }
+
+    func testNewRemoteSessionUsesTheRemoteHarnessFallback() async throws {
+        let runner = HarnessProcessRunner()
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: runner),
+            sessionCommandSender: sender)
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude, .codex],
+            remoteSessionProgram: .harness(.claude))
+
+        model.confirmNewSession(alias: "beta-devmachine", name: "web", directory: "~/dev/beta")
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "claude")
+        XCTAssertEqual(runner.callCount(for: "/usr/bin/ssh"), 1)
+    }
+
     func testRefreshAllCallsEachAliasOnce() async throws {
         let runner = CountingRunner()
         let model = AppModel(store: SessionStore(runner: runner))
@@ -83,7 +264,7 @@ final class AppModelTests: XCTestCase {
             Workspace(name: "beta", alias: "beta-devmachine")
         ]
         model.sessionsByAlias = [
-            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, hasClaude: true)]
+            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [.claude])]
         ]
 
         model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
@@ -100,8 +281,8 @@ final class AppModelTests: XCTestCase {
             Workspace(name: "beta", alias: "beta-devmachine")
         ]
         model.sessionsByAlias = [
-            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, hasClaude: true)],
-            "beta-devmachine": [TmuxSession(name: "web", windows: 1, hasClaude: true)]
+            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [.claude])],
+            "beta-devmachine": [TmuxSession(name: "web", windows: 1, harnesses: [.claude])]
         ]
 
         model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
@@ -116,7 +297,7 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(store: SessionStore(runner: runner))
         model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
         model.sessionsByAlias = [
-            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, hasClaude: true)]
+            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [.claude])]
         ]
 
         model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
@@ -244,7 +425,7 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(store: SessionStore(runner: CountingRunner()))
         model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
         model.sessionsByAlias = [
-            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, hasClaude: true)]
+            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [.claude])]
         ]
         model.contextTab = .context
         model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
@@ -648,7 +829,7 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.workspaces = [Workspace(name: "initech", alias: "initech-devmachine")]
         model.sessionsByAlias["initech-devmachine"] = [
-            TmuxSession(name: "main", windows: 1, hasClaude: false)
+            TmuxSession(name: "main", windows: 1, harnesses: [])
         ]
         model.selection = .session(alias: "initech-devmachine", name: "main")
         model.settings = AppSettings(
@@ -667,7 +848,7 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
         model.sessionsByAlias["acme-devmachine"] = [
-            TmuxSession(name: "dash", windows: 1, hasClaude: false)
+            TmuxSession(name: "dash", windows: 1, harnesses: [])
         ]
         model.settings = AppSettings(
             opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
@@ -679,17 +860,17 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testALocalSessionWithAClaudeIsATargetForTheContextPanel() {
+    func testALocalSessionStoresItsDetectedHarnesses() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.addLocalSession(path: "/Users/alice/dev/acme")
         let session = try! XCTUnwrap(model.localSessions.first { $0.handle == "acme" })
 
-        XCTAssertFalse(model.localSessionHasClaude(session))
+        XCTAssertEqual(model.localSessionHarnesses["acme"], nil)
         model.acceptLocalScanForTesting(
             sessions: [ZmxSession(name: "acme", pid: 4242, clients: 1, directory: "/live/acme")],
-            withClaude: ["acme"])
+            harnesses: ["acme": [.claude]])
 
-        XCTAssertTrue(model.localSessionHasClaude(session))
+        XCTAssertEqual(model.localSessionHarnesses["acme"], [.claude])
         XCTAssertEqual(model.localWorkingDirectory(of: session), "/live/acme")
         model.removeLocalSession(handle: "acme")
     }

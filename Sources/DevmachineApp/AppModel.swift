@@ -24,6 +24,12 @@ struct PaletteItem: Identifiable, Hashable {
     let claude: Bool
 }
 
+protocol SessionCommandSending: Sendable {
+    func send(_ command: String, into target: CommandTarget) throws
+}
+
+extension HostRunner: SessionCommandSending {}
+
 @MainActor
 final class AppModel: ObservableObject {
     /// The one model the app builds, so code outside the view tree — the
@@ -62,9 +68,10 @@ final class AppModel: ObservableObject {
     /// that holds the keyboard; Esc clears it.
     @Published var findTarget: TerminalKind?
 
-    /// What `zmx ls` last reported, and which of those sessions hold a Claude.
+    /// What `zmx ls` last reported and the active harnesses detected in each
+    /// session, keyed by the multiplexer name.
     @Published private(set) var liveLocalSessions: [ZmxSession] = []
-    @Published private(set) var localClaudeSessions: Set<String> = []
+    @Published private(set) var localSessionHarnesses: [String: Set<HarnessID>] = [:]
 
     var localSessions: [LocalSession] {
         let remembered = [LocalSession(name: Workspace.operatorSession, path: operatorPath)]
@@ -111,38 +118,39 @@ final class AppModel: ObservableObject {
     }
 
     func localSessionHasClaude(_ session: LocalSession) -> Bool {
-        localClaudeSessions.contains(LocalSessionScan.multiplexerName(of: session))
+        localSessionHarnesses[LocalSessionScan.multiplexerName(of: session)]?.contains(.claude)
+            == true
     }
 
     /// Reads the multiplexer's own list, then one `ps` to see what runs inside
     /// each session. Both are local and cheap; neither touches the network.
     func scanLocalSessions() {
-        guard !localScanInFlight, let zmx = LocalTools.zmxPath() else { return }
+        guard !localScanInFlight, let zmx = zmxPath else { return }
         localScanInFlight = true
         let socketDirectory = Zmx.socketDirectory()
+        let runner = localRunner
+        let facade = sessionHarnessFacade
+        let settings = settings ?? .empty
         Task.detached {
-            let runner = ProcessRunner()
             let listing = (try? runner.run(
                 executable: zmx, args: Zmx.listArguments,
                 environment: ["ZMX_DIR": socketDirectory])) ?? ""
             let sessions = ZmxListParser.parse(listing)
-            var withClaude = Set<String>()
+            var entries: [ProcessTree.Entry] = []
             if !sessions.isEmpty,
                let processes = try? runner.run(
                 executable: "/bin/ps", args: ProcessTree.listArguments, environment: nil) {
-                let roots = ProcessTree.rootsRunning(
-                    "claude", roots: sessions.map(\.pid), in: ProcessTree.parse(processes))
-                withClaude = Set(sessions.filter { roots.contains($0.pid) }.map(\.name))
+                entries = ProcessTree.parse(processes)
             }
+            let harnesses = facade.detect(sessions: sessions, entries: entries, settings: settings)
             await MainActor.run {
                 self.localScanInFlight = false
                 if self.liveLocalSessions != sessions { self.liveLocalSessions = sessions }
-                if self.localClaudeSessions != withClaude {
-                    self.localClaudeSessions = withClaude
-                    // The context panel asks for a session that holds a Claude.
-                    // The first scan lands after the session is already picked,
-                    // so without this the panel stays empty until the next
-                    // click.
+                if self.localSessionHarnesses != harnesses {
+                    self.localSessionHarnesses = harnesses
+                    // The context panel asks for a session that holds a
+                    // supported harness. The first scan lands after the session
+                    // is already picked, so sync again with the new result.
                     self.syncContext()
                 }
             }
@@ -152,9 +160,11 @@ final class AppModel: ObservableObject {
     private var localScanInFlight = false
 
     /// Fills what a scan would have found, for tests that must not run `zmx`.
-    func acceptLocalScanForTesting(sessions: [ZmxSession], withClaude: Set<String>) {
+    func acceptLocalScanForTesting(
+        sessions: [ZmxSession], harnesses: [String: Set<HarnessID>]
+    ) {
         liveLocalSessions = sessions
-        localClaudeSessions = withClaude
+        localSessionHarnesses = harnesses
     }
 
     private var operatorPath: String {
@@ -178,17 +188,26 @@ final class AppModel: ObservableObject {
     /// when its pane mounts, not when the row is added, so the line waits for
     /// the multiplexer to list it.
     func startProgram(in target: CommandTarget) {
-        guard let line = settings?.newSessionProgram.startupLine else { return }
-        let host = HostRunner()
+        guard let settings else { return }
+        let choice: SessionLaunchChoice
+        switch target {
+        case .local:
+            choice = settings.localSessionProgram
+        case let .remote(alias, _):
+            choice = settings.sessionProgram(for: alias)
+        }
+        guard let line = harnessSettingsFacade.startupCommand(for: choice) else { return }
+        let sender = sessionCommandSender
+        let runner = localRunner
+        let zmxPath = zmxPath
         Task.detached {
             guard case let .local(session, _) = target else {
-                try? host.send(line, into: target)
+                try? sender.send(line, into: target)
                 return
             }
             let socketDirectory = Zmx.socketDirectory()
             let name = Zmx.sessionName(from: session, socketDirectory: socketDirectory)
-            guard let zmx = await MainActor.run(body: { LocalTools.zmxPath() }) else { return }
-            let runner = ProcessRunner()
+            guard let zmx = zmxPath else { return }
             for _ in 0..<30 {
                 let listing = (try? runner.run(
                     executable: zmx, args: Zmx.listArguments,
@@ -197,7 +216,7 @@ final class AppModel: ObservableObject {
                     // The shell prints its prompt after the socket exists; a
                     // line typed before that is swallowed by the terminal setup.
                     try? await Task.sleep(nanoseconds: 400_000_000)
-                    try? host.send(line, into: target)
+                    try? sender.send(line, into: target)
                     return
                 }
                 try? await Task.sleep(nanoseconds: 200_000_000)
@@ -222,7 +241,9 @@ final class AppModel: ObservableObject {
         // keep the shell running with nothing pointing at it.
         TerminalRegistry.shared.killLocalSession(named: s.handle)
         addedLocalSessions.removeAll { $0.handle == handle }
-        liveLocalSessions.removeAll { $0.name == LocalSessionScan.multiplexerName(of: s) }
+        let multiplexerName = LocalSessionScan.multiplexerName(of: s)
+        liveLocalSessions.removeAll { $0.name == multiplexerName }
+        localSessionHarnesses[multiplexerName] = nil
         localSessionNames[handle] = nil
         if selection == .localSession(name: s.handle, path: s.path) { selection = nil }
     }
@@ -361,6 +382,11 @@ final class AppModel: ObservableObject {
     let context = ContextStore()
 
     private let store: SessionStore
+    private let harnessSettingsFacade: HarnessSettingsFacade
+    private let sessionHarnessFacade: SessionHarnessFacade
+    private let localRunner: any CommandRunner
+    private let sessionCommandSender: any SessionCommandSending
+    private let zmxPath: String?
     private var selectionPollTimer: Timer? = nil
     private var selectionPollAlias: String? = nil
     private var refreshingAliases: Set<String> = []
@@ -369,8 +395,19 @@ final class AppModel: ObservableObject {
     private var localScanTimer: Timer? = nil
     private var pollPausedUntil = Date.distantPast
 
-    init(store: SessionStore = SessionStore(runner: ProcessRunner())) {
+    init(
+        store: SessionStore = SessionStore(runner: ProcessRunner()),
+        harnessSettingsFacade: HarnessSettingsFacade = HarnessSettingsFacade(),
+        localRunner: any CommandRunner = ProcessRunner(),
+        sessionCommandSender: any SessionCommandSending = HostRunner(),
+        zmxPath: String? = LocalTools.zmxPath()
+    ) {
         self.store = store
+        self.harnessSettingsFacade = harnessSettingsFacade
+        self.sessionHarnessFacade = SessionHarnessFacade(registry: harnessSettingsFacade.registry)
+        self.localRunner = localRunner
+        self.sessionCommandSender = sessionCommandSender
+        self.zmxPath = zmxPath
         AppModel.shared = self
         observeWake()
         TerminalRegistry.shared.onSessionEnded = { [weak self] kind in
@@ -412,9 +449,12 @@ final class AppModel: ObservableObject {
         case let .local(handle, path):
             addedLocalSessions.removeAll { $0.handle == handle }
             localSessionNames[handle] = nil
+            let multiplexerName = Zmx.sessionName(
+                from: handle, socketDirectory: Zmx.socketDirectory())
             liveLocalSessions.removeAll {
-                $0.name == Zmx.sessionName(from: handle, socketDirectory: Zmx.socketDirectory())
+                $0.name == multiplexerName
             }
+            localSessionHarnesses[multiplexerName] = nil
             drop(SessionRef(alias: Workspace.local.alias, name: handle),
                  item: .localSession(name: handle, path: path))
         case let .remote(alias, session):
@@ -622,7 +662,7 @@ final class AppModel: ObservableObject {
                     title: s.name,
                     subtitle: ws.name,
                     target: .session(alias: ws.alias, name: s.name),
-                    claude: s.hasClaude
+                    claude: s.harnesses.contains(.claude)
                 )
             }
         }
@@ -799,15 +839,18 @@ final class AppModel: ObservableObject {
         pendingNewSessionAlias = nil
         // Created here rather than left to the terminal's own `new-session -A`,
         // because only a session created up front can be told which directory to
-        // start in, and that is what gives Claude Code its file list.
+        // start in, and harnesses resolve project files from that location.
         let store = self.store
-        let startup = settings?.newSessionProgram.startupLine
+        let startup = settings.flatMap {
+            harnessSettingsFacade.startupCommand(for: $0.sessionProgram(for: alias))
+        }
+        let sender = sessionCommandSender
         Task.detached {
             _ = try? store.run(
                 alias: alias,
                 command: RemoteCommands.createSession(name: clean, directory: directory))
             if let startup {
-                try? HostRunner().send(startup, into: .remote(alias: alias, session: clean))
+                try? sender.send(startup, into: .remote(alias: alias, session: clean))
             }
             await MainActor.run { self.selection = .session(alias: alias, name: clean) }
         }
@@ -848,12 +891,15 @@ final class AppModel: ObservableObject {
         let sweepTask = beginTask(label: "Connecting workspaces…", total: targets.count)
         sweepTaskID = sweepTask
         for ws in targets { refreshingAliases.insert(ws.alias) }
+        let processNames = sessionHarnessFacade.processNames(for: settings ?? .empty)
         Task.detached { [store] in
             var remaining = targets[...]
             var stopped: SSHFailure?
             while let ws = remaining.first {
                 remaining = remaining.dropFirst()
-                let outcome = Result { try store.sessions(for: ws) }
+                let outcome = Result {
+                    try store.sessions(for: ws, processNames: processNames)
+                }
                 let stop = await MainActor.run { () -> SSHFailure? in
                     let stop = self.apply(outcome, alias: ws.alias)
                     self.bumpTask(sweepTask)
@@ -887,8 +933,11 @@ final class AppModel: ObservableObject {
         // process per 5s tick.
         guard !refreshingAliases.contains(alias) else { return }
         refreshingAliases.insert(alias)
+        let processNames = sessionHarnessFacade.processNames(for: settings ?? .empty)
         Task.detached { [store] in
-            let outcome = Result { try store.sessions(for: ws) }
+            let outcome = Result {
+                try store.sessions(for: ws, processNames: processNames)
+            }
             await MainActor.run {
                 self.refreshingAliases.remove(alias)
                 _ = self.apply(outcome, alias: alias)
@@ -983,7 +1032,7 @@ final class AppModel: ObservableObject {
         switch item {
         case let .session(alias, name):
             guard let ws = sessionsByAlias[alias]?.first(where: { $0.name == name }),
-                  ws.hasClaude else { return nil }
+                  ws.harnesses.contains(.claude) else { return nil }
             return .remote(alias: alias, session: name)
         case let .localSession(name, path):
             guard LocalContext.isInstalled,

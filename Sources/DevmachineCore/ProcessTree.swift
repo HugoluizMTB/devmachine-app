@@ -59,31 +59,37 @@ public enum ProcessTree {
         }
     }
 
-    /// Which of `roots` have `program` running under them, at any depth. This is
-    /// how a local session knows it holds a Claude: the shell is the root and
-    /// the program is its child.
-    public static func rootsRunning(
-        _ program: String, roots: [Int], in entries: [Entry]
-    ) -> Set<Int> {
+    /// Every recognized descendant program under each root. The process graph
+    /// is built once and every requested program is matched in the same walk,
+    /// so adding a harness does not require another process snapshot or parse.
+    public static func matchingPrograms(
+        _ programs: Set<String>, roots: [Int], in entries: [Entry]
+    ) -> [Int: Set<String>] {
         var children: [Int: [Int]] = [:]
         var byPid: [Int: Entry] = [:]
         for entry in entries {
             children[entry.parent, default: []].append(entry.pid)
             byPid[entry.pid] = entry
         }
-        var found = Set<Int>()
+        var matches: [Int: Set<String>] = [:]
         for root in roots {
-            var stack = [root]
+            var stack = children[root] ?? []
             var seen = Set<Int>()
             while let pid = stack.popLast() {
                 guard seen.insert(pid).inserted else { continue }
-                if pid != root, byPid[pid]?.program == program {
-                    found.insert(root)
-                    break
+                if let program = byPid[pid]?.program, programs.contains(program) {
+                    matches[root, default: []].insert(program)
                 }
                 stack.append(contentsOf: children[pid] ?? [])
             }
         }
-        return found
+        return matches
+    }
+
+    /// Compatibility for callers that still ask about one program at a time.
+    public static func rootsRunning(
+        _ program: String, roots: [Int], in entries: [Entry]
+    ) -> Set<Int> {
+        Set(matchingPrograms([program], roots: roots, in: entries).keys)
     }
 }

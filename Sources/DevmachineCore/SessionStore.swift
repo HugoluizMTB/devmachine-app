@@ -7,7 +7,10 @@ public struct SessionStore: Sendable {
         self.runner = runner
     }
 
-    public func sessions(for workspace: Workspace) throws -> [TmuxSession] {
+    public func sessions(
+        for workspace: Workspace,
+        processNames: [HarnessID: Set<String>] = [.claude: ["claude"]]
+    ) throws -> [TmuxSession] {
         let result = try runner.runCapturing(
             executable: "/usr/bin/ssh",
             args: RemoteCommands.sshBaseArgs(alias: workspace.alias) + [RemoteCommands.listSessions],
@@ -16,7 +19,7 @@ public struct SessionStore: Sendable {
         if let failure = SSHFailure.classify(exitCode: result.exitCode, stderr: result.stderr) {
             throw SessionStoreError(failure: failure, stderr: result.stderr)
         }
-        return TmuxListParser.parse(result.stdout)
+        return TmuxListParser.parse(result.stdout, processNames: processNames)
     }
 
     public func run(alias: String, command: String) throws -> String {

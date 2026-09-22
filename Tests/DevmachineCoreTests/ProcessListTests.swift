@@ -21,24 +21,43 @@ final class ProcessListTests: XCTestCase {
         XCTAssertEqual(entries.last?.program, "node")
     }
 
-    func testFindsTheSessionThatRunsClaude() {
-        let roots = ProcessTree.rootsRunning(
-            "claude", roots: [17270, 19171], in: ProcessTree.parse(sample))
-        XCTAssertEqual(roots, [17270])
+    func testFindsEveryRecognizedProgramUnderEveryRoot() {
+        let programs = ProcessTree.matchingPrograms(
+            ["claude", "node"], roots: [17270, 19171], in: ProcessTree.parse(sample))
+
+        XCTAssertEqual(programs, [
+            17270: ["claude"],
+            19171: ["node"]
+        ])
     }
 
-    func testClaudeDeeperInTheTreeStillCounts() {
+    func testRecognizedProgramsDeeperInTheTreeStillCount() {
         let entries = ProcessTree.parse("""
          100 1 -zsh
          200 100 npm
          300 200 claude
         """)
-        XCTAssertEqual(ProcessTree.rootsRunning("claude", roots: [100], in: entries), [100])
+        XCTAssertEqual(
+            ProcessTree.matchingPrograms(["claude"], roots: [100], in: entries),
+            [100: ["claude"]]
+        )
     }
 
     func testARootThatIsItselfTheProgramDoesNotCount() {
         let entries = ProcessTree.parse("100 1 claude")
-        XCTAssertTrue(ProcessTree.rootsRunning("claude", roots: [100], in: entries).isEmpty)
+        XCTAssertTrue(
+            ProcessTree.matchingPrograms(["claude"], roots: [100], in: entries).isEmpty)
+    }
+
+    func testUnknownProgramsAreIgnored() {
+        let entries = ProcessTree.parse("""
+         100 1 -zsh
+         200 100 aider
+        """)
+
+        XCTAssertTrue(
+            ProcessTree.matchingPrograms(["claude", "codex"], roots: [100], in: entries)
+                .isEmpty)
     }
 
     func testGarbageLinesAreSkipped() {

@@ -1,13 +1,23 @@
 public struct TmuxSession: Equatable, Identifiable, Sendable {
     public let name: String
     public let windows: Int
-    public let hasClaude: Bool
+    public let harnesses: Set<HarnessID>
     public var id: String { name }
 
-    public init(name: String, windows: Int, hasClaude: Bool) {
+    public init(name: String, windows: Int, harnesses: Set<HarnessID>) {
         self.name = name
         self.windows = windows
-        self.hasClaude = hasClaude
+        self.harnesses = harnesses
+    }
+
+    /// Compatibility for views that have not migrated to generic badges yet.
+    public var hasClaude: Bool {
+        harnesses.contains(.claude)
+    }
+
+    /// Compatibility for older callers while the stored model is harness-based.
+    public init(name: String, windows: Int, hasClaude: Bool) {
+        self.init(name: name, windows: windows, harnesses: hasClaude ? [.claude] : [])
     }
 }
 
