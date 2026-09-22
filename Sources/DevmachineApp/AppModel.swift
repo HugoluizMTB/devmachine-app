@@ -146,34 +146,23 @@ final class AppModel: ObservableObject {
     /// Reads the multiplexer's own list, then one `ps` to see what runs inside
     /// each session. Both are local and cheap; neither touches the network.
     func scanLocalSessions() {
-        guard !localScanInFlight, let zmx = zmxPath else { return }
+        guard !localScanInFlight else { return }
         localScanInFlight = true
-        let socketDirectory = Zmx.socketDirectory()
-        let runner = localRunner
-        let facade = sessionHarnessFacade
+        let source = services.sessionSource
         let settings = settings ?? .empty
         Task.detached {
-            let listing = (try? runner.run(
-                executable: zmx, args: Zmx.listArguments,
-                environment: ["ZMX_DIR": socketDirectory])) ?? ""
-            let sessions = ZmxListParser.parse(listing)
-            var entries: [ProcessTree.Entry] = []
-            if !sessions.isEmpty,
-               let processes = try? runner.run(
-                executable: "/bin/ps", args: ProcessTree.listArguments, environment: nil) {
-                entries = ProcessTree.parse(processes)
-            }
-            let harnesses = facade.detect(sessions: sessions, entries: entries, settings: settings)
+            let snapshot = try? source.localSessions(settings: settings)
             await MainActor.run {
                 self.localScanInFlight = false
-                if self.liveLocalSessions != sessions { self.liveLocalSessions = sessions }
-                if self.localSessionHarnesses != harnesses {
-                    self.localSessionHarnesses = harnesses
-                    // The context panel asks for a session that holds a
-                    // supported harness. The first scan lands after the session
-                    // is already picked, so sync again with the new result.
-                    self.syncContext()
+                guard let snapshot else { return }
+                if self.liveLocalSessions != snapshot.sessions {
+                    self.liveLocalSessions = snapshot.sessions
                 }
+                if self.localSessionHarnesses != snapshot.harnesses {
+                    self.localSessionHarnesses = snapshot.harnesses
+                }
+                // The working directory can change even when harnesses do not.
+                self.syncContext()
             }
         }
     }
@@ -337,6 +326,7 @@ final class AppModel: ObservableObject {
     }
     @Published var activePage: AppPage? = nil {
         didSet {
+            syncContext()
             // Coming back from a page leaves the pane exactly as it was, so the
             // program inside is never told to draw again and the screen stays
             // stale. Same repaint the app asks for after a pane is put away.
@@ -375,7 +365,10 @@ final class AppModel: ObservableObject {
     }
 
     @Published var contextCollapsed: Bool = (UserDefaults.standard.object(forKey: "contextCollapsed") as? Bool) ?? false {
-        didSet { UserDefaults.standard.set(contextCollapsed, forKey: "contextCollapsed") }
+        didSet {
+            UserDefaults.standard.set(contextCollapsed, forKey: "contextCollapsed")
+            syncContext()
+        }
     }
     @Published var contextWidth: CGFloat = {
         let saved = UserDefaults.standard.double(forKey: "contextWidth")
@@ -400,9 +393,10 @@ final class AppModel: ObservableObject {
             syncContext()
         }
     }
-    let context = ContextStore()
+    let context: ContextStore
 
     private let store: SessionStore
+    private let services: DevmachineServices
     private let harnessSettingsFacade: HarnessSettingsFacade
     private let sessionHarnessFacade: SessionHarnessFacade
     private let localRunner: any CommandRunner
@@ -418,12 +412,18 @@ final class AppModel: ObservableObject {
 
     init(
         store: SessionStore = SessionStore(runner: ProcessRunner()),
+        services: DevmachineServices? = nil,
         harnessSettingsFacade: HarnessSettingsFacade = HarnessSettingsFacade(),
         localRunner: any CommandRunner = ProcessRunner(),
         sessionCommandSender: any SessionCommandSending = HostRunner(),
         zmxPath: String? = LocalTools.zmxPath()
     ) {
         self.store = store
+        let services = services ?? DevmachineServices(sessionSource: CommandSessionSource(
+            store: store, localRunner: localRunner, zmxPath: zmxPath,
+            facade: SessionHarnessFacade(registry: harnessSettingsFacade.registry)))
+        self.services = services
+        self.context = ContextStore(services: services)
         self.harnessSettingsFacade = harnessSettingsFacade
         self.sessionHarnessFacade = SessionHarnessFacade(registry: harnessSettingsFacade.registry)
         self.localRunner = localRunner
@@ -884,9 +884,7 @@ final class AppModel: ObservableObject {
 
     func loadWorkspaces() {
         guard let settings else { return }
-        let path = NSHomeDirectory() + "/.ssh/config"
-        let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-        workspaces = SSHConfigParser.parse(text, suffix: settings.workspaceSuffix)
+        workspaces = (try? services.workspaceSource.workspaces(suffix: settings.workspaceSuffix)) ?? []
         refreshAll()
         // A slow sweep of every workspace so an offline one comes back on its
         // own; the 5s timer only follows the selected one.
@@ -912,14 +910,15 @@ final class AppModel: ObservableObject {
         let sweepTask = beginTask(label: "Connecting workspaces…", total: targets.count)
         sweepTaskID = sweepTask
         for ws in targets { refreshingAliases.insert(ws.alias) }
-        let processNames = sessionHarnessFacade.processNames(for: settings ?? .empty)
-        Task.detached { [store] in
+        let source = services.sessionSource
+        let settings = settings ?? .empty
+        Task.detached {
             var remaining = targets[...]
             var stopped: SSHFailure?
             while let ws = remaining.first {
                 remaining = remaining.dropFirst()
                 let outcome = Result {
-                    try store.sessions(for: ws, processNames: processNames)
+                    try source.sessions(for: ws, settings: settings)
                 }
                 let stop = await MainActor.run { () -> SSHFailure? in
                     let stop = self.apply(outcome, alias: ws.alias)
@@ -954,10 +953,11 @@ final class AppModel: ObservableObject {
         // process per 5s tick.
         guard !refreshingAliases.contains(alias) else { return }
         refreshingAliases.insert(alias)
-        let processNames = sessionHarnessFacade.processNames(for: settings ?? .empty)
-        Task.detached { [store] in
+        let source = services.sessionSource
+        let settings = settings ?? .empty
+        Task.detached {
             let outcome = Result {
-                try store.sessions(for: ws, processNames: processNames)
+                try source.sessions(for: ws, settings: settings)
             }
             await MainActor.run {
                 self.refreshingAliases.remove(alias)
@@ -1035,33 +1035,42 @@ final class AppModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.finishTask(id) }
     }
 
-    // whenever selection changes to a Claude session, (re)start the poll; else stop.
-    // Another context tab on screen also stops it: only the visible tab polls.
+    /// Provider context polls only while its tab is actually on screen.
     func syncContext() {
-        guard contextTab == .context, let target = contextTarget(for: selection) else {
+        guard showsContextPanel, !contextCollapsed, contextTab == .context,
+              let target = selectedSessionTarget else {
             context.stop()
             updateSelectionPoll()
             return
         }
-        context.start(target)
+        context.start(target, harnesses: selectedSessionHarnesses)
         updateSelectionPoll()
     }
 
-    /// Only a session that holds a Claude has a context to read, and a local one
-    /// also needs the engine installed here.
-    private func contextTarget(for item: SidebarItem?) -> CommandTarget? {
-        switch item {
+    var showsContextPanel: Bool { selection != nil && activePage == nil }
+
+    /// Context, Files and Git share the selected session's current location.
+    var selectedSessionTarget: CommandTarget? {
+        switch selection {
         case let .session(alias, name):
-            guard let ws = sessionsByAlias[alias]?.first(where: { $0.name == name }),
-                  ws.harnesses.contains(.claude) else { return nil }
             return .remote(alias: alias, session: name)
         case let .localSession(name, path):
-            guard LocalContext.isInstalled,
-                  let session = localSessions.first(where: { $0.handle == name }),
-                  localSessionHasClaude(session) else { return nil }
-            return .local(session: name, path: localWorkingDirectory(of: session) ?? path)
+            let session = localSessions.first { $0.handle == name }
+            return .local(session: name, path: session.flatMap(localWorkingDirectory) ?? path)
         case nil:
             return nil
+        }
+    }
+
+    private var selectedSessionHarnesses: Set<HarnessID> {
+        switch selection {
+        case let .session(alias, name):
+            return sessionsByAlias[alias]?.first { $0.name == name }?.harnesses ?? []
+        case let .localSession(name, _):
+            let multiplexerName = Zmx.sessionName(from: name, socketDirectory: Zmx.socketDirectory())
+            return localSessionHarnesses[multiplexerName] ?? []
+        case nil:
+            return []
         }
     }
 

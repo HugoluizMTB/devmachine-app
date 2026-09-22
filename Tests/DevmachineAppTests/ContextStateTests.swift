@@ -4,6 +4,33 @@ import XCTest
 import DevmachineCore
 
 final class ContextStateTests: XCTestCase {
+    func testGenericHarnessPayloadDoesNotRequireLegacyFlag() throws {
+        let data = Data("""
+        {"cwd":"/home/acme/dev","harness":"claude","updatedAt":"now","prs":[],"links":[]}
+        """.utf8)
+        let state = try JSONDecoder().decode(ContextState.self, from: data)
+        XCTAssertTrue(state.isClaude)
+        XCTAssertEqual(state.harness, .claude)
+    }
+
+    func testMissingHarnessDataDecodesAsTerminalContext() throws {
+        let data = Data("""
+        {"cwd":"/home/acme/dev","updatedAt":"now","prs":[],"links":[]}
+        """.utf8)
+        let state = try JSONDecoder().decode(ContextState.self, from: data)
+        XCTAssertFalse(state.isClaude)
+        XCTAssertNil(state.harness)
+    }
+
+    func testExplicitGenericHarnessTakesPrecedenceOverLegacyFlag() throws {
+        let data = Data("""
+        {"cwd":"/home/acme/dev","harness":"codex","isClaude":true,"updatedAt":"now","prs":[],"links":[]}
+        """.utf8)
+        let state = try JSONDecoder().decode(ContextState.self, from: data)
+        XCTAssertEqual(state.harness, .codex)
+        XCTAssertFalse(state.isClaude)
+    }
+
     func testDecodesSample() throws {
         let json = """
         {"cwd":"/home/acme/dev/dash","isClaude":true,"updatedAt":"2026-09-12T10:00:00Z",
@@ -21,6 +48,7 @@ final class ContextStateTests: XCTestCase {
 
         XCTAssertTrue(state.isClaude)
         XCTAssertEqual(state.plan?.done, 6)
+        XCTAssertEqual(state.harness, .claude)
         XCTAssertEqual(state.plan?.items.count, 3)
         XCTAssertEqual(state.plan?.items.first?.state, "done")
         XCTAssertEqual(state.prs.first?.number, 4242)

@@ -5,20 +5,25 @@ import DevmachineCore
 @MainActor
 final class ContextStore: ObservableObject {
     @Published var state: ContextState? = nil
-    private let host: HostRunner
+    private let facade: ContextFacade
     private var timer: Timer?
     private var current: CommandTarget?
-    private var inFlight: String?
+    private var harnesses: Set<HarnessID> = []
+    private var inFlight: Set<String> = []
+    private var generation = UUID()
 
-    init(host: HostRunner = HostRunner()) {
-        self.host = host
+    init(services: DevmachineServices = DevmachineServices()) {
+        self.facade = ContextFacade(source: services.contextSource)
     }
 
     var isPolling: Bool { timer != nil }
 
-    func start(_ target: CommandTarget) {
-        if current == target, timer != nil { return }
+    func start(_ target: CommandTarget, harnesses: Set<HarnessID> = [.claude]) {
+        guard facade.supports(harnesses) else { stop(); return }
+        if current == target, self.harnesses == harnesses, timer != nil { return }
         current = target
+        self.harnesses = harnesses
+        generation = UUID()
         clearState()
         poll()
         timer?.invalidate()
@@ -31,7 +36,7 @@ final class ContextStore: ObservableObject {
         timer?.invalidate()
         timer = nil
         current = nil
-        inFlight = nil
+        generation = UUID()
         clearState()
     }
 
@@ -40,17 +45,20 @@ final class ContextStore: ObservableObject {
         // Skip the tick while the run for this same target is still going; a
         // switch to another session still polls right away.
         let key = target.key
-        guard inFlight != key else { return }
-        inFlight = key
-        let host = self.host
-        let command = LocalContext.command(for: target)
+        guard inFlight.insert(key).inserted else { return }
+        let facade = self.facade
+        let harnesses = self.harnesses
+        let generation = self.generation
         Task.detached {
-            let out = try? host.runCapturingAnywhere(target, command).stdout
-            let parsed: ContextState? = out
-                .flatMap { $0.data(using: .utf8) }
-                .flatMap { try? JSONDecoder().decode(ContextState.self, from: $0) }
+            let parsed = try? facade.context(for: target, harnesses: harnesses)
             await MainActor.run {
-                if self.inFlight == key { self.inFlight = nil }
+                self.inFlight.remove(key)
+                guard self.generation == generation else {
+                    // A hidden panel can reopen while its old request finishes.
+                    // Read again without publishing stale data or overlapping runs.
+                    if self.current == target { self.poll() }
+                    return
+                }
                 guard self.current == target else { return }
                 // Assign only on a real change: the poll repeats every 5s and
                 // a write to a @Published re-renders even for equal data.

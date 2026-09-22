@@ -114,6 +114,70 @@ private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async
 
 @MainActor
 final class AppModelTests: XCTestCase {
+    func testWorkspaceAndSessionLoadingUsesDomainSources() async throws {
+        let workspace = Workspace(name: "acme", alias: "acme-devmachine")
+        let session = TmuxSession(name: "dash", windows: 2, harnesses: [.claude, .codex])
+        let model = AppModel(services: fixtureServices(
+            workspaces: [workspace], sessions: [session],
+            local: LocalSessionSnapshot(
+                sessions: [ZmxSession(name: "beta", pid: 42, clients: 1, directory: "/Users/alice/dev/beta")],
+                harnesses: ["beta": [.codex]])))
+        model.settings = .empty
+
+        model.loadWorkspaces()
+        try await waitUntil { model.sessionsByAlias[workspace.alias] != nil && !model.liveLocalSessions.isEmpty }
+
+        XCTAssertEqual(model.workspaces, [workspace])
+        XCTAssertEqual(model.sessionsByAlias[workspace.alias], [session])
+        XCTAssertEqual(model.localSessionHarnesses["beta"], [.codex])
+        XCTAssertEqual(model.badges(for: session).map(\.id), [.claude, .codex])
+    }
+
+    func testEverySelectedSessionCanShowThePanelWithoutAContextProvider() {
+        let model = AppModel(services: fixtureServices())
+        model.contextCollapsed = false
+        model.contextTab = .files
+        for harnesses: Set<HarnessID> in [[.claude], [.codex], []] {
+            model.sessionsByAlias["acme-devmachine"] = [
+                TmuxSession(name: "dash", windows: 1, harnesses: harnesses)]
+            model.selection = .session(alias: "acme-devmachine", name: "dash")
+            XCTAssertTrue(model.showsContextPanel)
+            XCTAssertEqual(model.selectedSessionTarget, .remote(alias: "acme-devmachine", session: "dash"))
+            XCTAssertFalse(model.context.isPolling)
+            model.selection = .localSession(name: "beta", path: "/Users/alice/dev/beta")
+            XCTAssertTrue(model.showsContextPanel)
+            XCTAssertEqual(model.selectedSessionTarget, .local(session: "beta", path: "/Users/alice/dev/beta"))
+        }
+        model.selection = nil
+        XCTAssertFalse(model.showsContextPanel)
+    }
+
+    func testContextPollingStopsWhenPanelIsHiddenOrHasNoProvider() {
+        let model = AppModel(services: fixtureServices())
+        model.contextCollapsed = false
+        model.contextTab = .context
+        model.sessionsByAlias["acme-devmachine"] = [
+            TmuxSession(name: "dash", windows: 1, harnesses: [.claude])]
+        model.selection = .session(alias: "acme-devmachine", name: "dash")
+        XCTAssertTrue(model.context.isPolling)
+        model.contextCollapsed = true
+        XCTAssertFalse(model.context.isPolling)
+        model.contextCollapsed = false
+        XCTAssertTrue(model.context.isPolling)
+        model.activePage = .stack([])
+        XCTAssertFalse(model.context.isPolling)
+        model.activePage = nil
+        XCTAssertTrue(model.context.isPolling)
+        for harnesses: Set<HarnessID> in [[.codex], []] {
+            model.sessionsByAlias["acme-devmachine"] = [
+                TmuxSession(name: "dash", windows: 1, harnesses: harnesses)]
+            model.syncContext()
+            XCTAssertFalse(model.context.isPolling)
+            XCTAssertNil(model.context.state)
+            XCTAssertTrue(model.showsContextPanel)
+        }
+    }
+
     func testRemoteRefreshDetectsOnlyProcessesFromActiveHarnessAdapters() async throws {
         let runner = HarnessProcessRunner(remoteListing: """
         dash|1
@@ -475,7 +539,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testAnotherContextTabStopsTheContextPoll() {
-        let model = AppModel(store: SessionStore(runner: CountingRunner()))
+        let model = AppModel(services: fixtureServices())
+        model.contextCollapsed = false
         model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
         model.sessionsByAlias = [
             "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [.claude])]

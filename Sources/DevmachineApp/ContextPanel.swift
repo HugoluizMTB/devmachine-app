@@ -51,16 +51,7 @@ struct ContextPanel: View {
     /// Where the Files and Git tabs read from: the host for a remote session,
     /// this Mac for a local one.
     private var commandTarget: CommandTarget? {
-        switch model.selection {
-        case let .session(alias, name):
-            return .remote(alias: alias, session: name)
-        case let .localSession(name, path):
-            let session = model.localSessions.first { $0.handle == name }
-            return .local(
-                session: name, path: session.flatMap(model.localWorkingDirectory) ?? path)
-        case nil:
-            return nil
-        }
+        model.selectedSessionTarget
     }
 
     @ViewBuilder

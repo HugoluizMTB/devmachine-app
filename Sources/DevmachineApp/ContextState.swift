@@ -25,7 +25,8 @@ struct ContextState: Codable, Equatable, Sendable {
     struct Agent: Codable, Equatable, Sendable { let label: String; let status: String }
 
     let cwd: String
-    let isClaude: Bool
+    let harness: HarnessID?
+    var isClaude: Bool { harness == .claude }
     let updatedAt: String
     let plan: Plan?
     let prs: [PR]
@@ -35,13 +36,15 @@ struct ContextState: Codable, Equatable, Sendable {
     let shells: [Agent]
 
     enum CodingKeys: String, CodingKey {
-        case cwd, isClaude, updatedAt, plan, prs, links, agents, monitors, shells
+        case cwd, harness, isClaude, updatedAt, plan, prs, links, agents, monitors, shells
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         cwd = try c.decode(String.self, forKey: .cwd)
-        isClaude = try c.decode(Bool.self, forKey: .isClaude)
+        let legacyClaude = try c.decodeIfPresent(Bool.self, forKey: .isClaude) ?? false
+        harness = try c.decodeIfPresent(HarnessID.self, forKey: .harness)
+            ?? (legacyClaude ? .claude : nil)
         updatedAt = try c.decode(String.self, forKey: .updatedAt)
         plan = try c.decodeIfPresent(Plan.self, forKey: .plan)
         // The engine reports a pull request where the session first named it.
@@ -57,7 +60,7 @@ struct ContextState: Codable, Equatable, Sendable {
     init(cwd: String, isClaude: Bool, updatedAt: String, plan: Plan?, prs: [PR], links: [Link],
          agents: [Agent] = [], monitors: [Agent] = [], shells: [Agent] = []) {
         self.cwd = cwd
-        self.isClaude = isClaude
+        self.harness = isClaude ? .claude : nil
         self.updatedAt = updatedAt
         self.plan = plan
         self.prs = orderByLastMention(prs)
@@ -65,5 +68,19 @@ struct ContextState: Codable, Equatable, Sendable {
         self.agents = agents
         self.monitors = monitors
         self.shells = shells
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(cwd, forKey: .cwd)
+        try c.encodeIfPresent(harness, forKey: .harness)
+        try c.encode(isClaude, forKey: .isClaude)
+        try c.encode(updatedAt, forKey: .updatedAt)
+        try c.encodeIfPresent(plan, forKey: .plan)
+        try c.encode(prs, forKey: .prs)
+        try c.encode(links, forKey: .links)
+        try c.encode(agents, forKey: .agents)
+        try c.encode(monitors, forKey: .monitors)
+        try c.encode(shells, forKey: .shells)
     }
 }
