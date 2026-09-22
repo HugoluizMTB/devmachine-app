@@ -220,3 +220,77 @@ final class NewSessionProgramTests: XCTestCase {
         XCTAssertEqual(NewSessionProgram.allCases, [.shell, .claude])
     }
 }
+
+extension AppSettingsTests {
+    func testEnabledHarnessesRoundTripWithoutLegacyProgram() throws {
+        let settings = AppSettings(
+            opsRepoPath: "/tmp",
+            hostAlias: "h",
+            publicIP: "203.0.113.10",
+            baseDomain: "example.com",
+            enabledHarnesses: [.claude, .codex]
+        )
+
+        let data = try JSONEncoder().encode(settings)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: data).enabledHarnesses, [.claude, .codex])
+        XCTAssertNil(payload["newSessionProgram"])
+    }
+
+    func testLocalAndWorkspaceSessionProgramsAreIndependent() {
+        let settings = AppSettings(
+            opsRepoPath: "/tmp",
+            hostAlias: "h",
+            publicIP: "203.0.113.10",
+            baseDomain: "example.com",
+            enabledHarnesses: [.claude, .codex],
+            localSessionProgram: .harness(.codex),
+            remoteSessionProgram: .terminal,
+            workspaceSessionPrograms: ["acme": .harness(.claude)]
+        )
+
+        XCTAssertEqual(settings.localSessionProgram, .harness(.codex))
+        XCTAssertEqual(settings.sessionProgram(for: "acme"), .harness(.claude))
+    }
+
+    func testWorkspaceWithoutOverrideUsesRemoteSessionProgram() {
+        let settings = AppSettings(
+            opsRepoPath: "/tmp",
+            hostAlias: "h",
+            publicIP: "203.0.113.10",
+            baseDomain: "example.com",
+            enabledHarnesses: [.codex],
+            remoteSessionProgram: .harness(.codex)
+        )
+
+        XCTAssertEqual(settings.sessionProgram(for: "beta"), .harness(.codex))
+    }
+
+    func testDisablingHarnessNormalizesSessionProgramsToTerminal() {
+        var settings = AppSettings(
+            opsRepoPath: "/tmp",
+            hostAlias: "h",
+            publicIP: "203.0.113.10",
+            baseDomain: "example.com",
+            enabledHarnesses: [.claude, .codex],
+            localSessionProgram: .harness(.claude),
+            remoteSessionProgram: .harness(.codex),
+            workspaceSessionPrograms: ["acme": .harness(.claude)]
+        )
+
+        settings.enabledHarnesses = []
+
+        XCTAssertEqual(settings.localSessionProgram, .terminal)
+        XCTAssertEqual(settings.remoteSessionProgram, .terminal)
+        XCTAssertEqual(settings.workspaceSessionPrograms, ["acme": .terminal])
+    }
+
+    func testLegacyClaudeProgramMigratesToHarnessSettings() throws {
+        let data = Data(#"{"opsRepoPath":"/tmp","hostAlias":"h","publicIP":"203.0.113.10","baseDomain":"example.com","newSessionProgram":"claude"}"#.utf8)
+        let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(settings.enabledHarnesses, [.claude])
+        XCTAssertEqual(settings.localSessionProgram, .harness(.claude))
+        XCTAssertEqual(settings.remoteSessionProgram, .harness(.claude))
+    }
+}

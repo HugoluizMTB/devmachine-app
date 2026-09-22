@@ -63,7 +63,40 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// contexts over time.
     public var hiddenWorkspaces: [String]
     /// What a session created from the app starts with.
-    public var newSessionProgram: NewSessionProgram
+    public var enabledHarnesses: [HarnessID] {
+        didSet {
+            normalizeSessionPrograms()
+        }
+    }
+    public var localSessionProgram: SessionLaunchChoice {
+        didSet {
+            localSessionProgram = normalized(localSessionProgram)
+        }
+    }
+    public var remoteSessionProgram: SessionLaunchChoice {
+        didSet {
+            remoteSessionProgram = normalized(remoteSessionProgram)
+        }
+    }
+    public var workspaceSessionPrograms: [String: SessionLaunchChoice] {
+        didSet {
+            workspaceSessionPrograms = workspaceSessionPrograms.mapValues(normalized)
+        }
+    }
+
+    public var newSessionProgram: NewSessionProgram {
+        get {
+            localSessionProgram == .harness(.claude) && remoteSessionProgram == .harness(.claude)
+                ? .claude
+                : .shell
+        }
+        set {
+            let choice: SessionLaunchChoice = newValue == .claude ? .harness(.claude) : .terminal
+            enabledHarnesses = [.claude]
+            localSessionProgram = choice
+            remoteSessionProgram = choice
+        }
+    }
 
     public init(
         opsRepoPath: String,
@@ -77,7 +110,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keptTerminals: Int = Appearance.defaultKeptTerminals,
         debugLogging: Bool = false,
         hiddenWorkspaces: [String] = [],
-        newSessionProgram: NewSessionProgram = .shell
+        enabledHarnesses: [HarnessID] = [.claude],
+        localSessionProgram: SessionLaunchChoice = .terminal,
+        remoteSessionProgram: SessionLaunchChoice = .terminal,
+        workspaceSessionPrograms: [String: SessionLaunchChoice] = [:],
+        newSessionProgram: NewSessionProgram? = nil
     ) {
         self.opsRepoPath = opsRepoPath
         self.hostAlias = hostAlias
@@ -90,13 +127,26 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.keptTerminals = Appearance.clampKeptTerminals(keptTerminals)
         self.debugLogging = debugLogging
         self.hiddenWorkspaces = hiddenWorkspaces
-        self.newSessionProgram = newSessionProgram
+        self.enabledHarnesses = enabledHarnesses
+        self.localSessionProgram = localSessionProgram
+        self.remoteSessionProgram = remoteSessionProgram
+        self.workspaceSessionPrograms = workspaceSessionPrograms
+
+        if let newSessionProgram {
+            let choice: SessionLaunchChoice = newSessionProgram == .claude ? .harness(.claude) : .terminal
+            self.enabledHarnesses = [.claude]
+            self.localSessionProgram = choice
+            self.remoteSessionProgram = choice
+        }
+
+        normalizeSessionPrograms()
     }
 
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, wallpaper
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging
-        case hiddenWorkspaces, newSessionProgram
+        case hiddenWorkspaces, enabledHarnesses, localSessionProgram, remoteSessionProgram
+        case workspaceSessionPrograms, newSessionProgram
     }
 
     public init(from decoder: Decoder) throws {
@@ -122,8 +172,69 @@ public struct AppSettings: Codable, Equatable, Sendable {
         debugLogging = try values.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? false
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
-        newSessionProgram =
-            try values.decodeIfPresent(NewSessionProgram.self, forKey: .newSessionProgram) ?? .shell
+        let enabledHarnesses = try values.decodeIfPresent([HarnessID].self, forKey: .enabledHarnesses)
+        let localSessionProgram = try values.decodeIfPresent(SessionLaunchChoice.self, forKey: .localSessionProgram)
+        let remoteSessionProgram = try values.decodeIfPresent(SessionLaunchChoice.self, forKey: .remoteSessionProgram)
+        let workspaceSessionPrograms = try values.decodeIfPresent(
+            [String: SessionLaunchChoice].self,
+            forKey: .workspaceSessionPrograms
+        )
+
+        if enabledHarnesses == nil,
+           localSessionProgram == nil,
+           remoteSessionProgram == nil,
+           workspaceSessionPrograms == nil {
+            let legacyProgram =
+                try values.decodeIfPresent(NewSessionProgram.self, forKey: .newSessionProgram) ?? .shell
+            let choice: SessionLaunchChoice = legacyProgram == .claude ? .harness(.claude) : .terminal
+            self.enabledHarnesses = [.claude]
+            self.localSessionProgram = choice
+            self.remoteSessionProgram = choice
+            self.workspaceSessionPrograms = [:]
+        } else {
+            self.enabledHarnesses = enabledHarnesses ?? [.claude]
+            self.localSessionProgram = localSessionProgram ?? .terminal
+            self.remoteSessionProgram = remoteSessionProgram ?? .terminal
+            self.workspaceSessionPrograms = workspaceSessionPrograms ?? [:]
+        }
+
+        normalizeSessionPrograms()
+    }
+
+    public func sessionProgram(for workspace: String) -> SessionLaunchChoice {
+        normalized(workspaceSessionPrograms[workspace] ?? remoteSessionProgram)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(opsRepoPath, forKey: .opsRepoPath)
+        try values.encode(hostAlias, forKey: .hostAlias)
+        try values.encode(publicIP, forKey: .publicIP)
+        try values.encode(baseDomain, forKey: .baseDomain)
+        try values.encode(wallpaper, forKey: .wallpaper)
+        try values.encode(terminalOpacity, forKey: .terminalOpacity)
+        try values.encode(terminalFontSize, forKey: .terminalFontSize)
+        try values.encode(uiFontScale, forKey: .uiFontScale)
+        try values.encode(keptTerminals, forKey: .keptTerminals)
+        try values.encode(debugLogging, forKey: .debugLogging)
+        try values.encode(hiddenWorkspaces, forKey: .hiddenWorkspaces)
+        try values.encode(enabledHarnesses, forKey: .enabledHarnesses)
+        try values.encode(localSessionProgram, forKey: .localSessionProgram)
+        try values.encode(remoteSessionProgram, forKey: .remoteSessionProgram)
+        try values.encode(workspaceSessionPrograms, forKey: .workspaceSessionPrograms)
+    }
+
+    private func normalized(_ choice: SessionLaunchChoice) -> SessionLaunchChoice {
+        guard case let .harness(harness) = choice, !enabledHarnesses.contains(harness) else {
+            return choice
+        }
+        return .terminal
+    }
+
+    private mutating func normalizeSessionPrograms() {
+        localSessionProgram = normalized(localSessionProgram)
+        remoteSessionProgram = normalized(remoteSessionProgram)
+        workspaceSessionPrograms = workspaceSessionPrograms.mapValues(normalized)
     }
 
     public static let empty = AppSettings(opsRepoPath: "", hostAlias: "", publicIP: "", baseDomain: "")
