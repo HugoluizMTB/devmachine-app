@@ -32,6 +32,12 @@ or remote workspace chooses one default launch program, while remote choices
 remain declarative: the app does not install, inspect, or repair tools on the
 host.
 
+Enabled harnesses that are locally available receive usage cards on Home and
+in the menu bar. With Claude Code and OpenAI Codex enabled, Home stacks both
+cards and the menu-bar Usage tab shows them side by side. Codex account limits
+and activity come from `codex app-server` account reads; they do not start a
+model turn or consume inference tokens.
+
 ## Development
 
 ```

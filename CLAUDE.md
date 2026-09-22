@@ -55,9 +55,8 @@ segmented control.
 ## Reusable structure
 - `DevmachineCore` (library): pure logic, parsers, command builders — unit-tested,
   no UI, no AppKit where avoidable.
-- `ClaudeUsageKit` is the legacy reusable usage target; the generic harness
-  usage migration renames it without moving provider rules into the app views.
-  Usage libraries depend only on Foundation/SwiftUI/Charts, never on the app.
+- `HarnessUsageKit` is the reusable multi-provider usage data layer and views.
+  It depends only on Foundation/SwiftUI/Charts, never on the app target.
 - `DevmachineApp` (executable): the app shell + SwiftUI views.
 - `HarnessRegistry` owns provider adapters. SwiftUI consumes descriptors and
   facades; executable names, process matching, colors, launch commands, and
@@ -216,6 +215,12 @@ segmented control.
 - Session badges, launch commands, process matching, image storage, context
   support, and usage capabilities come from adapters/facades. Views do not
   switch on Claude, Codex, executable names, or provider colors.
+- Home stacks one usage card per enabled, locally available harness. The
+  menu-bar Usage tab uses one column for one harness and two columns for two;
+  the Pull Requests tab remains 420 points wide.
+- Codex usage reads `account/rateLimits/read` and `account/usage/read` through
+  `codex app-server`. It never calls `thread/start` or `turn/start`, so the
+  refresh does not start a model turn or consume inference tokens.
 - The Context / Files / Git panel belongs to every selected session. Unsupported
   provider context shows an empty state while Files and Git remain available.
 
