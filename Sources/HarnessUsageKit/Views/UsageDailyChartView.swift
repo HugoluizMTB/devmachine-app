@@ -3,9 +3,15 @@ import Charts
 
 public struct UsageDailyChartView: View {
     public let daily: [DayTokens]
+    public let accent: Color
+
+    public init(daily: [DayTokens], accent: Color) {
+        self.daily = daily
+        self.accent = accent
+    }
 
     public init(daily: [DayTokens]) {
-        self.daily = daily
+        self.init(daily: daily, accent: UsagePalette.accent)
     }
 
     private static let ymd: DateFormatter = {
@@ -33,7 +39,7 @@ public struct UsageDailyChartView: View {
                 x: .value("Day", day.date),
                 y: .value("Tokens", day.tokens)
             )
-            .foregroundStyle(UsagePalette.accent)
+            .foregroundStyle(accent)
         }
         .chartXAxis {
             AxisMarks { value in

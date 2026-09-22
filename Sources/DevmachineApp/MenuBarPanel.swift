@@ -83,7 +83,7 @@ struct MenuBarPanel: View {
         case .pullRequests:
             PRsView().environmentObject(prStore)
         case .usage:
-            ClaudeUsagePanel(store: usageStore)
+            HarnessUsagePanel(store: usageStore)
         }
     }
 

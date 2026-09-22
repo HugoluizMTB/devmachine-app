@@ -1,12 +1,14 @@
 import SwiftUI
 
 public struct UsageHeaderView: View {
-    public let planName: String
+    public let title: String
+    public let systemImage: String
     public let refreshedAt: Date?
     public let onRefresh: () -> Void
 
-    public init(planName: String, refreshedAt: Date?, onRefresh: @escaping () -> Void) {
-        self.planName = planName
+    public init(title: String, systemImage: String, refreshedAt: Date?, onRefresh: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
         self.refreshedAt = refreshedAt
         self.onRefresh = onRefresh
     }
@@ -21,7 +23,11 @@ public struct UsageHeaderView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(verbatim: "Claude Usage (\(UsageFormat.planLabel(planName)))")
+                Label {
+                    Text(verbatim: title)
+                } icon: {
+                    Image(systemName: systemImage)
+                }
                     .font(.title2)
                     .bold()
                     .foregroundColor(UsagePalette.primaryText)

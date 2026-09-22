@@ -2,15 +2,21 @@ import SwiftUI
 
 public struct UsageBarsView: View {
     public let blocks: [UsageBlock]
+    public let accent: Color
+
+    public init(blocks: [UsageBlock], accent: Color) {
+        self.blocks = blocks
+        self.accent = accent
+    }
 
     public init(blocks: [UsageBlock]) {
-        self.blocks = blocks
+        self.init(blocks: blocks, accent: UsagePalette.accent)
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(blocks) { block in
-                UsageBarRow(block: block)
+                UsageBarRow(block: block, accent: accent)
             }
         }
     }
@@ -18,6 +24,7 @@ public struct UsageBarsView: View {
 
 private struct UsageBarRow: View {
     let block: UsageBlock
+    let accent: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -39,7 +46,7 @@ private struct UsageBarRow: View {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(UsagePalette.track)
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(UsagePalette.accent)
+                        .fill(accent)
                         .frame(width: geometry.size.width * fraction)
                 }
             }
