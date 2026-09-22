@@ -3,7 +3,7 @@ import Foundation
 /// Removes two terminal replies from an outgoing byte stream: the answer to the
 /// kitty keyboard query (`ESC [ ? <flags> u`) and the XTVERSION reply
 /// (`ESC P > | <identity> ESC \`). tmux reads "XTerm(...)" in the latter as
-/// "supports extended keys" and then forwards the kitty protocol Claude Code
+/// "supports extended keys" and then forwards the kitty protocol a coding harness
 /// turns on; without either reply every program keeps the legacy key
 /// encoding, where Enter and dead keys behave.
 public enum TerminalReplyFilter {

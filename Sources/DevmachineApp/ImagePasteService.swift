@@ -5,6 +5,7 @@ import DevmachineCore
 /// it, and answers with the absolute path to hand over.
 struct ImagePasteService {
     let runner: CommandRunner
+    let storagePolicy: ImageStoragePolicy
 
     enum Failure: Error {
         case noImage
@@ -40,7 +41,9 @@ struct ImagePasteService {
         case let .remote(alias, _):
             let out = try runner.run(
                 executable: "/usr/bin/ssh",
-                args: RemoteCommands.sshBaseArgs(alias: alias) + [ImagePaste.writeCommand(fileName: name)],
+                args: RemoteCommands.sshBaseArgs(alias: alias) + [
+                    ImagePaste.writeCommand(fileName: name, policy: storagePolicy)
+                ],
                 environment: RemoteCommands.sshEnvironment(),
                 input: data,
                 onBytesWritten: onBytesWritten
@@ -50,7 +53,7 @@ struct ImagePasteService {
             return path
         case .local:
             let dir = URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent(ImagePaste.directory)
+                .appendingPathComponent(storagePolicy.directory)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let file = dir.appendingPathComponent(name)
             try data.write(to: file)

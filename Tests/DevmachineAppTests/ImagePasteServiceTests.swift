@@ -38,7 +38,9 @@ final class ImagePasteServiceTests: XCTestCase {
 
     func testARemoteStoreSendsTheBytesAndReturnsThePathTheHostPrinted() throws {
         let runner = RecordingRunner(output: "/home/alice/.claude/image-cache/devmachine-app/a.png\n")
-        let service = ImagePasteService(runner: runner)
+        let service = ImagePasteService(
+            runner: runner,
+            storagePolicy: ImageStoragePolicy(directory: ".claude/image-cache/devmachine-app"))
         let data = png()
 
         let path = try service.store(
@@ -51,7 +53,7 @@ final class ImagePasteServiceTests: XCTestCase {
 
     func testARemoteStoreRefusesAnAnswerThatIsNotAPath() {
         let runner = RecordingRunner(output: "ssh: could not resolve hostname\n")
-        let service = ImagePasteService(runner: runner)
+        let service = ImagePasteService(runner: runner, storagePolicy: .appManaged)
 
         XCTAssertThrowsError(
             try service.store(png(), fileExtension: "png",
@@ -87,7 +89,7 @@ final class ImagePasteServiceTests: XCTestCase {
 
     func testStoringReportsEveryByte() throws {
         let runner = RecordingRunner(output: "/home/alice/a.png\n")
-        let service = ImagePasteService(runner: runner)
+        let service = ImagePasteService(runner: runner, storagePolicy: .appManaged)
         let data = png()
         final class Seen: @unchecked Sendable { var last = 0 }
         let seen = Seen()
@@ -98,5 +100,6 @@ final class ImagePasteServiceTests: XCTestCase {
             onBytesWritten: { seen.last = $0 })
 
         XCTAssertEqual(seen.last, data.count)
+        XCTAssertTrue(runner.box.args.contains { $0.contains(".cache/devmachine-app/images") })
     }
 }

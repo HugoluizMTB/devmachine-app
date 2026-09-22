@@ -23,6 +23,7 @@ final class HarnessRegistryTests: XCTestCase {
         XCTAssertEqual(claude.executableName, "claude")
         XCTAssertEqual(claude.processNames, ["claude"])
         XCTAssertEqual(claude.startupCommand, "claude")
+        XCTAssertEqual(claude.imageStoragePolicy.directory, ".claude/image-cache/devmachine-app")
 
         XCTAssertEqual(codex.descriptor.id, .codex)
         XCTAssertEqual(codex.descriptor.title, "OpenAI Codex")
@@ -32,5 +33,16 @@ final class HarnessRegistryTests: XCTestCase {
         XCTAssertEqual(codex.executableName, "codex")
         XCTAssertEqual(codex.processNames, ["codex"])
         XCTAssertEqual(codex.startupCommand, "codex")
+        XCTAssertEqual(codex.imageStoragePolicy, .appManaged)
+    }
+
+    func testImagePolicyUsesRegistryOrderAndFallsBackToAppStorage() {
+        let facade = SessionHarnessFacade(registry: .builtIn)
+
+        XCTAssertEqual(facade.imageStoragePolicy(for: [.codex]), .appManaged)
+        XCTAssertEqual(
+            facade.imageStoragePolicy(for: [.claude, .codex]).directory,
+            ".claude/image-cache/devmachine-app")
+        XCTAssertEqual(facade.imageStoragePolicy(for: []), .appManaged)
     }
 }

@@ -17,6 +17,7 @@ protocol CodingHarnessAdapter: Sendable {
     var executableName: String { get }
     var processNames: Set<String> { get }
     var startupCommand: String { get }
+    var imageStoragePolicy: ImageStoragePolicy { get }
 }
 
 protocol ExecutableLocating: Sendable {
@@ -85,6 +86,7 @@ struct ClaudeHarnessAdapter: CodingHarnessAdapter {
     let executableName = "claude"
     let processNames: Set<String> = ["claude"]
     let startupCommand = "claude"
+    let imageStoragePolicy = ImageStoragePolicy(directory: ".claude/image-cache/devmachine-app")
 }
 
 struct CodexHarnessAdapter: CodingHarnessAdapter {
@@ -100,4 +102,5 @@ struct CodexHarnessAdapter: CodingHarnessAdapter {
     let executableName = "codex"
     let processNames: Set<String> = ["codex"]
     let startupCommand = "codex"
+    let imageStoragePolicy = ImageStoragePolicy.appManaged
 }

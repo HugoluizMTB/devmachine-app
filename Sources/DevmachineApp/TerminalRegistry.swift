@@ -149,8 +149,10 @@ final class TerminalRegistry: NSObject {
     /// Stores the image where the session's agent can read it, then types the
     /// path without a newline: the sentence around it is yours to write.
     private func pasteImage(_ image: (data: Data, fileExtension: String), into kind: TerminalKind) {
-        let service = ImagePasteService(runner: ProcessRunner())
         let model = AppModel.shared
+        let service = ImagePasteService(
+            runner: ProcessRunner(),
+            storagePolicy: model?.imageStoragePolicy(for: kind) ?? .appManaged)
         model?.beginTransfer(label: Self.sendingLabel(for: kind), total: image.data.count)
         Task.detached {
             let path = try? service.store(
@@ -461,7 +463,7 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
     }
 }
 
-// Claude Code 2.1.269+ turns on the kitty keyboard protocol wherever it can,
+// Coding harnesses can turn on the kitty keyboard protocol when available,
 // and tmux forwards it to any client whose XTVERSION reply says "XTerm(...)".
 // SwiftTerm's kitty encoding still breaks Enter and dead keys, so the view
 // drops both replies: programs keep the legacy encoding this app always ran.
@@ -538,7 +540,7 @@ enum TerminalKeyboard {
 
     static let returnKeyCode: UInt16 = 36
 
-    /// Ctrl+J, which Claude Code reads as "insert a newline" in every terminal.
+    /// A newline byte understood by supported coding harnesses as inserted input.
     static let newlineBytes: [UInt8] = [0x0A]
 
     static let pageUpKeyCode: UInt16 = 116

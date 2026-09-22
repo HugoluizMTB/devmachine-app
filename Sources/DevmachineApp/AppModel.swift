@@ -131,6 +131,18 @@ final class AppModel: ObservableObject {
         return sessionHarnessFacade.badges(for: localSessionHarnesses[name] ?? [])
     }
 
+    func imageStoragePolicy(for kind: TerminalKind) -> ImageStoragePolicy {
+        let harnesses: Set<HarnessID>
+        switch kind {
+        case let .remote(alias, session):
+            harnesses = sessionsByAlias[alias]?.first { $0.name == session }?.harnesses ?? []
+        case let .local(session, _):
+            let name = Zmx.sessionName(from: session, socketDirectory: Zmx.socketDirectory())
+            harnesses = localSessionHarnesses[name] ?? []
+        }
+        return sessionHarnessFacade.imageStoragePolicy(for: harnesses)
+    }
+
     var sessionCount: Int {
         sessionsByAlias.values.reduce(0) { $0 + $1.count } + localSessions.count
     }

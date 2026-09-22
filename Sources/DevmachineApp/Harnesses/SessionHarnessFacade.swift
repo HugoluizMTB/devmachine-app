@@ -56,6 +56,10 @@ struct SessionHarnessFacade: Sendable {
                 helpText: descriptor.helpText)
         }
     }
+
+    func imageStoragePolicy(for harnesses: Set<HarnessID>) -> ImageStoragePolicy {
+        registry.adapters.first { harnesses.contains($0.id) }?.imageStoragePolicy ?? .appManaged
+    }
 }
 
 extension TmuxSession {

@@ -10,14 +10,20 @@ final class ImagePasteTests: XCTestCase {
     }
 
     func testTheCommandWritesUnderTheHomeAndPrintsTheAbsolutePath() {
-        let command = ImagePaste.writeCommand(fileName: "shot.png")
+        let policy = ImageStoragePolicy(directory: ".claude/image-cache/devmachine-app")
+        let command = ImagePaste.writeCommand(fileName: "shot.png", policy: policy)
         XCTAssertTrue(command.contains("mkdir -p \"$HOME\"/.claude/image-cache/devmachine-app"))
         XCTAssertTrue(command.contains("cat > \"$HOME\"/.claude/image-cache/devmachine-app/'shot.png'"))
         XCTAssertTrue(command.hasSuffix("printf '%s\\n' \"$HOME\"/.claude/image-cache/devmachine-app/'shot.png'"))
     }
 
     func testAQuoteInTheNameCannotEndTheQuoting() {
-        let command = ImagePaste.writeCommand(fileName: "a'b.png")
+        let command = ImagePaste.writeCommand(
+            fileName: "a'b.png", policy: .appManaged)
         XCTAssertTrue(command.contains("'a'\\''b.png'"))
+    }
+
+    func testAppManagedImagesUseAProviderNeutralCache() {
+        XCTAssertEqual(ImageStoragePolicy.appManaged.directory, ".cache/devmachine-app/images")
     }
 }
