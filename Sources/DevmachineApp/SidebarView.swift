@@ -216,7 +216,7 @@ struct SidebarView: View {
             selected: isOpen
         )
             .contentShape(Rectangle())
-            .onTapGesture { model.selection = item }
+            .onTapGesture { model.clickLocalSession(item) }
             .help(live ? s.path : "\(s.path) — not started")
             .contextMenu {
                 Button("Rename…") {

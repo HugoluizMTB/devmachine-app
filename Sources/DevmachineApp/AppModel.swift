@@ -767,10 +767,20 @@ final class AppModel: ObservableObject {
         selection = .session(alias: ref.alias, name: ref.name)
     }
 
+    func clickLocalSession(_ item: SidebarItem) {
+        guard case .localSession = item else { return }
+        if selection == item, activePage == nil {
+            goHome()
+        } else {
+            selection = item
+        }
+    }
+
     func goHome() {
         selection = nil
         selectedSessions = []
         selectionAnchor = nil
+        activePage = nil
     }
 
     func paletteItems() -> [PaletteItem] {

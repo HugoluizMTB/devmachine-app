@@ -61,6 +61,8 @@ struct DevmachineApp: App {
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandMenu("Session") {
+                Button("Home") { model.goHome() }
+                    .keyboardShortcut("0", modifiers: .command)
                 Button("New Session") { model.requestQuickSession() }
                     .keyboardShortcut("n", modifiers: .command)
             }

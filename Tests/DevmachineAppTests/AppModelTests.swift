@@ -701,6 +701,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectionAnchor)
     }
 
+    func testClickingTheOpenLocalSessionGoesHome() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        let item = SidebarItem.localSession(name: "project", path: "/Users/alice/dev/project")
+
+        model.clickLocalSession(item)
+        XCTAssertEqual(model.selection, item)
+
+        model.clickLocalSession(item)
+        XCTAssertNil(model.selection)
+        XCTAssertNil(model.activePage)
+    }
+
+    func testGoingHomeClosesTheCurrentPageAndSession() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.selection = .session(alias: "acme-devmachine", name: "dash")
+        model.activePage = .stats
+
+        model.goHome()
+
+        XCTAssertNil(model.selection)
+        XCTAssertNil(model.activePage)
+    }
+
     func testGoingHomeClearsTheSessionHighlight() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
