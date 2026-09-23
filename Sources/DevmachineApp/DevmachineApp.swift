@@ -65,6 +65,16 @@ struct DevmachineApp: App {
                     .keyboardShortcut("0", modifiers: .command)
                 Button("New Session") { model.requestQuickSession() }
                     .keyboardShortcut("n", modifiers: .command)
+                Divider()
+                Button("Previous Session") { model.moveToPreviousSession() }
+                    .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
+                Button("Next Session") { model.moveToNextSession() }
+                    .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
+                Divider()
+                Button("Back") { model.goBack() }
+                    .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
+                Button("Forward") { model.goForward() }
+                    .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { model.activePage = model.activePage == .setup ? nil : .setup }

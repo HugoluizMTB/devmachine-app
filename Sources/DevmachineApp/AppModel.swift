@@ -334,11 +334,13 @@ final class AppModel: ObservableObject {
                 selectionAnchor = nil
             }
             syncContext()
+            recordNavigation()
         }
     }
     @Published var activePage: AppPage? = nil {
         didSet {
             syncContext()
+            recordNavigation()
             // Coming back from a page leaves the pane exactly as it was, so the
             // program inside is never told to draw again and the screen stays
             // stale. Same repaint the app asks for after a pane is put away.
@@ -416,6 +418,8 @@ final class AppModel: ObservableObject {
     private let sessionCommandSender: any SessionCommandSending
     private let zmxPath: String?
     private let sessionSuffix: @Sendable () -> String
+    private var navigationHistory = NavigationHistory(initial: .home)
+    private var isRestoringNavigation = false
     private var selectionPollTimer: Timer? = nil
     private var selectionPollAlias: String? = nil
     private var refreshingAliases: Set<String> = []
@@ -752,6 +756,109 @@ final class AppModel: ObservableObject {
         visibleWorkspaces.flatMap { ws in
             (sessionsByAlias[ws.alias] ?? []).map { SessionRef(alias: ws.alias, name: $0.name) }
         }
+    }
+
+    private var sessionNavigationItems: [SidebarItem] {
+        let remote = visibleWorkspaces.flatMap { workspace in
+            (sessionsByAlias[workspace.alias] ?? []).map {
+                SidebarItem.session(alias: workspace.alias, name: $0.name)
+            }
+        }
+        let local = localSessions.map {
+            SidebarItem.localSession(name: $0.handle, path: $0.path)
+        }
+        return remote + local
+    }
+
+    func moveToNextSession() {
+        moveSession(by: 1)
+    }
+
+    func moveToPreviousSession() {
+        moveSession(by: -1)
+    }
+
+    private func moveSession(by offset: Int) {
+        let items = sessionNavigationItems
+        guard !items.isEmpty else { return }
+        let current = activePage == nil ? selection.flatMap(items.firstIndex) : nil
+        let next: Int
+        if let current {
+            next = (current + offset + items.count) % items.count
+        } else {
+            next = offset > 0 ? 0 : items.count - 1
+        }
+        openSession(items[next])
+    }
+
+    func goBack() {
+        while let destination = navigationHistory.back() {
+            guard let resolved = resolved(destination) else { continue }
+            restoreNavigation(resolved)
+            return
+        }
+    }
+
+    func goForward() {
+        while let destination = navigationHistory.forward() {
+            guard let resolved = resolved(destination) else { continue }
+            restoreNavigation(resolved)
+            return
+        }
+    }
+
+    private var navigationDestination: NavigationDestination {
+        if let activePage { return .page(activePage) }
+        if let selection { return .session(selection) }
+        return .home
+    }
+
+    private func recordNavigation() {
+        guard !isRestoringNavigation else { return }
+        navigationHistory.record(navigationDestination)
+    }
+
+    private func resolved(_ destination: NavigationDestination) -> NavigationDestination? {
+        switch destination {
+        case .home:
+            return .home
+        case let .session(item):
+            return sessionNavigationItems.contains(item) ? destination : nil
+        case let .page(.stack(refs)):
+            let available = refs.filter { sessionNavigationItems.contains(sidebarItem(for: $0)) }
+            return available.isEmpty ? nil : .page(.stack(available))
+        case .page:
+            return destination
+        }
+    }
+
+    private func restoreNavigation(_ destination: NavigationDestination) {
+        isRestoringNavigation = true
+        defer { isRestoringNavigation = false }
+        switch destination {
+        case .home:
+            selection = nil
+            selectedSessions = []
+            selectionAnchor = nil
+            activePage = nil
+        case let .session(item):
+            openSession(item)
+        case let .page(page):
+            activePage = page
+        }
+    }
+
+    private func openSession(_ item: SidebarItem) {
+        switch item {
+        case let .session(alias, name):
+            let ref = SessionRef(alias: alias, name: name)
+            selectedSessions = [ref]
+            selectionAnchor = ref
+        case .localSession:
+            selectedSessions = []
+            selectionAnchor = nil
+        }
+        selection = item
     }
 
     func clickSession(_ ref: SessionRef) {

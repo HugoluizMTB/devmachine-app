@@ -730,6 +730,111 @@ final class AppModelTests: XCTestCase {
         model.selection = nil
         XCTAssertTrue(model.selectedSessions.isEmpty)
     }
+
+    func testNextSessionCrossesWorkspacesAndLocalThenWraps() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.settings = AppSettings(
+            opsRepoPath: "/Users/alice/dev/ops", hostAlias: "devmachine",
+            publicIP: "203.0.113.10", baseDomain: "example.com")
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "beta", alias: "beta-devmachine")
+        ]
+        model.sessionsByAlias = [
+            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [])],
+            "beta-devmachine": [TmuxSession(name: "web", windows: 1, harnesses: [])]
+        ]
+
+        model.moveToNextSession()
+        XCTAssertEqual(model.selection, .session(alias: "acme-devmachine", name: "dash"))
+        model.moveToNextSession()
+        XCTAssertEqual(model.selection, .session(alias: "beta-devmachine", name: "web"))
+        model.moveToNextSession()
+        XCTAssertEqual(
+            model.selection,
+            .localSession(name: Workspace.operatorSession, path: "/Users/alice/dev/ops"))
+        model.moveToNextSession()
+        XCTAssertEqual(model.selection, .session(alias: "acme-devmachine", name: "dash"))
+    }
+
+    func testPreviousSessionFromHomeStartsAtTheLastSession() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.settings = AppSettings(
+            opsRepoPath: "/Users/alice/dev/ops", hostAlias: "devmachine",
+            publicIP: "203.0.113.10", baseDomain: "example.com")
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        model.sessionsByAlias = [
+            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [])]
+        ]
+
+        model.moveToPreviousSession()
+
+        XCTAssertEqual(
+            model.selection,
+            .localSession(name: Workspace.operatorSession, path: "/Users/alice/dev/ops"))
+    }
+
+    func testNavigationHistoryIncludesSessionsPagesAndHome() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        let session = SessionRef(alias: "acme-devmachine", name: "dash")
+        model.workspaces = [Workspace(name: "acme", alias: session.alias)]
+        model.sessionsByAlias[session.alias] = [
+            TmuxSession(name: session.name, windows: 1, harnesses: [])
+        ]
+
+        model.clickSession(session)
+        model.showPage(.stats)
+        model.goHome()
+        model.goBack()
+        XCTAssertEqual(model.activePage, .stats)
+        model.goBack()
+        XCTAssertEqual(model.selection, .session(alias: session.alias, name: session.name))
+        XCTAssertNil(model.activePage)
+        model.goForward()
+        XCTAssertEqual(model.activePage, .stats)
+        model.goForward()
+        XCTAssertNil(model.selection)
+        XCTAssertNil(model.activePage)
+    }
+
+    func testFreshNavigationAfterGoingBackDiscardsForwardHistory() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        let first = SessionRef(alias: "acme-devmachine", name: "first")
+        let second = SessionRef(alias: "acme-devmachine", name: "second")
+        let replacement = SessionRef(alias: "acme-devmachine", name: "replacement")
+        model.workspaces = [Workspace(name: "acme", alias: first.alias)]
+        model.sessionsByAlias[first.alias] = [first, second, replacement].map {
+            TmuxSession(name: $0.name, windows: 1, harnesses: [])
+        }
+
+        model.clickSession(first)
+        model.clickSession(second)
+        model.goBack()
+        model.clickSession(replacement)
+        model.goForward()
+
+        XCTAssertEqual(
+            model.selection,
+            .session(alias: replacement.alias, name: replacement.name))
+    }
+
+    func testNavigationHistoryKeepsOnlyTheLastTenDestinations() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+        model.sessionsByAlias["acme-devmachine"] = (1...11).map {
+            TmuxSession(name: "session-\($0)", windows: 1, harnesses: [])
+        }
+        for number in 1...11 {
+            model.clickSession(SessionRef(alias: "acme-devmachine", name: "session-\(number)"))
+        }
+
+        for _ in 0..<20 { model.goBack() }
+
+        XCTAssertEqual(
+            model.selection,
+            .session(alias: "acme-devmachine", name: "session-2"))
+    }
+
     @MainActor
     func testLocalIsAlwaysTheLastWorkspace() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
