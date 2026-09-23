@@ -26,4 +26,15 @@ final class SessionNameTests: XCTestCase {
         XCTAssertEqual(SessionName.suggestion(for: " a  b "), "a-b")
         XCTAssertTrue(SessionName.isValid(SessionName.suggestion(for: "nova sessao")))
     }
+
+    func testAutomaticNameUsesTheFolderAndShortSuffix() {
+        XCTAssertEqual(
+            SessionName.automatic(directory: "/Users/alice/dev/my app/", suffix: "q7"),
+            "my-app-q7")
+    }
+
+    func testAutomaticNameFallsBackForAPathWithoutAFolderName() {
+        XCTAssertEqual(SessionName.automatic(directory: "~", suffix: "a1"), "session-a1")
+        XCTAssertEqual(SessionName.automatic(directory: "/", suffix: "b2"), "session-b2")
+    }
 }

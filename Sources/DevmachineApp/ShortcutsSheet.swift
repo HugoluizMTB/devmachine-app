@@ -23,6 +23,7 @@ struct ShortcutsSheet: View {
             Shortcut(keys: ["⌘", "?"], action: "This list"),
         ]),
         Group(title: "Sessions", items: [
+            Shortcut(keys: ["⌘", "N"], action: "New session in the current folder"),
             Shortcut(keys: ["⌘", "⇧", "↩"], action: "Maximize the focused grid cell / back to its workspace grid"),
         ]),
         Group(title: "Sidebar", items: [

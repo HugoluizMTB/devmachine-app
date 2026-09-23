@@ -30,6 +30,12 @@ final class RemoteCommandsTests: XCTestCase {
         )
     }
 
+    func testSessionDirectoryReadsTheActivePanePath() {
+        let command = RemoteCommands.sessionDirectory(session: "web")
+
+        XCTAssertEqual(command, "tmux display-message -p -t 'web' '#{pane_current_path}'")
+    }
+
     func testSshBaseArgsPutAliasFirstThenOptions() {
         XCTAssertEqual(
             RemoteCommands.sshBaseArgs(alias: "acme-devmachine"),

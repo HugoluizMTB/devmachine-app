@@ -357,6 +357,123 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(runner.callCount(for: "/usr/bin/ssh"), 1)
     }
 
+    func testQuickNewSessionFromHomeOpensTheDestinationChooser() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+
+        model.requestQuickSession()
+
+        XCTAssertTrue(model.showNewSessionChooser)
+    }
+
+    func testQuickNewSessionFromAPageUsesTheChooserInsteadOfTheHiddenSelection() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        model.selection = .session(alias: "acme-devmachine", name: "web")
+        model.activePage = .stats
+
+        model.requestQuickSession()
+
+        XCTAssertTrue(model.showNewSessionChooser)
+    }
+
+    func testQuickNewSessionFromAStackUsesTheFocusedPane() async throws {
+        let runner = HarnessProcessRunner(remoteListing: "/srv/focused\n")
+        let model = AppModel(
+            store: SessionStore(runner: runner), sessionSuffix: { "f1" })
+        let first = SessionRef(alias: "acme-devmachine", name: "first")
+        let focused = SessionRef(alias: "acme-devmachine", name: "focused")
+        model.stackSessions([first, focused])
+
+        model.requestQuickSession(focusedRef: focused)
+
+        try await waitUntil { runner.callCount(for: "/usr/bin/ssh") >= 2 }
+        let commands = runner.recordedCalls.compactMap { $0.args.last }
+        XCTAssertTrue(commands.first?.contains("-t 'focused'") == true)
+        XCTAssertEqual(
+            model.selection,
+            .session(alias: "acme-devmachine", name: "focused-f1"))
+    }
+
+    func testQuickLocalSessionUsesTheLiveDirectoryAndLocalHarnessDefault() async throws {
+        let runner = HarnessProcessRunner(
+            zmxListing: "name=project-q7\tpid=100\tclients=1\tcwd=/Users/alice/dev/project")
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: runner), localRunner: runner,
+            sessionCommandSender: sender, zmxPath: "/fixtures/zmx",
+            sessionSuffix: { "q7" })
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.codex],
+            localSessionProgram: .harness(.codex))
+        model.addLocalSession(path: "/Users/alice/dev/base")
+        model.acceptLocalScanForTesting(
+            sessions: [ZmxSession(
+                name: "base", pid: 42, clients: 1, directory: "/Users/alice/dev/project")],
+            harnesses: [:])
+
+        model.requestQuickSession()
+
+        XCTAssertEqual(
+            model.selection,
+            .localSession(name: "project-q7", path: "/Users/alice/dev/project"))
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "codex")
+        XCTAssertEqual(
+            sender.sent.first?.target,
+            .local(session: "project-q7", path: "/Users/alice/dev/project"))
+        model.removeLocalSession(handle: "base")
+        model.removeLocalSession(handle: "project-q7")
+    }
+
+    func testQuickRemoteSessionReadsCurrentDirectoryAndUsesWorkspaceHarness() async throws {
+        let runner = HarnessProcessRunner(remoteListing: "/home/alice/dev/project\n")
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: runner), sessionCommandSender: sender,
+            sessionSuffix: { "q7" })
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude, .codex],
+            remoteSessionProgram: .harness(.claude),
+            workspaceSessionPrograms: ["acme-devmachine": .harness(.codex)])
+        model.sessionsByAlias["acme-devmachine"] = [
+            TmuxSession(name: "web", windows: 1, harnesses: [])
+        ]
+        model.selection = .session(alias: "acme-devmachine", name: "web")
+
+        model.requestQuickSession()
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "codex")
+        XCTAssertEqual(
+            sender.sent.first?.target,
+            .remote(alias: "acme-devmachine", session: "project-q7"))
+        let remoteCommands = runner.recordedCalls
+            .filter { $0.executable == "/usr/bin/ssh" }
+            .compactMap { $0.args.last }
+        XCTAssertTrue(remoteCommands.first?.contains("#{pane_current_path}") == true)
+        XCTAssertTrue(remoteCommands.contains {
+            $0.contains("tmux new-session -d") && $0.contains("/home/alice/dev/project")
+        })
+    }
+
+    func testChooserCreatesLocalSessionWithAutomaticName() {
+        let model = AppModel(
+            store: SessionStore(runner: BlockingRunner(output: "")),
+            sessionSuffix: { "a1" })
+        model.showNewSessionChooser = true
+
+        model.createQuickSession(
+            destinationAlias: Workspace.local.alias,
+            directory: "/Users/alice/dev/project")
+
+        XCTAssertFalse(model.showNewSessionChooser)
+        XCTAssertEqual(
+            model.selection,
+            .localSession(name: "project-a1", path: "/Users/alice/dev/project"))
+        model.removeLocalSession(handle: "project-a1")
+    }
+
     func testRefreshAllCallsEachAliasOnce() async throws {
         let runner = CountingRunner()
         let model = AppModel(store: SessionStore(runner: runner))

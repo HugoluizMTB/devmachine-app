@@ -59,6 +59,11 @@ struct DevmachineApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(replacing: .newItem) { }
+            CommandMenu("Session") {
+                Button("New Session") { model.requestQuickSession() }
+                    .keyboardShortcut("n", modifiers: .command)
+            }
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { model.activePage = model.activePage == .setup ? nil : .setup }
                     .keyboardShortcut(",", modifiers: .command)

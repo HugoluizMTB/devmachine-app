@@ -69,6 +69,9 @@ struct ContentView: View {
         .sheet(isPresented: $model.showShortcuts) {
             ShortcutsSheet().environmentObject(model)
         }
+        .sheet(isPresented: $model.showNewSessionChooser) {
+            QuickSessionSheet().environmentObject(model)
+        }
         .sheet(isPresented: Binding(
             get: { model.pendingNewSessionAlias != nil },
             set: { if !$0 { model.pendingNewSessionAlias = nil } }
@@ -416,5 +419,67 @@ private struct NewSessionSheet: View {
             }
         }
         .padding(20)
+    }
+}
+
+private struct QuickSessionSheet: View {
+    @EnvironmentObject var model: AppModel
+    @State private var destinationAlias = Workspace.local.alias
+    @State private var directory = ""
+
+    private var isLocal: Bool { destinationAlias == Workspace.local.alias }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("New Session")
+                .font(.headline)
+
+            Picker("Workspace", selection: $destinationAlias) {
+                ForEach(model.sidebarWorkspaces) { workspace in
+                    Text(verbatim: workspace.isLocal ? "This Mac" : workspace.name)
+                        .tag(workspace.alias)
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField(isLocal ? "folder" : "remote folder", text: $directory)
+                if isLocal {
+                    Button("Choose…", action: chooseLocalFolder)
+                }
+            }
+
+            Text("The configured Terminal or coding harness opens automatically.")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+
+            HStack {
+                Spacer()
+                Button("Cancel") { model.showNewSessionChooser = false }
+                Button("Create") {
+                    model.createQuickSession(
+                        destinationAlias: destinationAlias, directory: directory)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(directory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
+        .onAppear {
+            if directory.isEmpty { directory = model.newSessionDirectory }
+        }
+    }
+
+    private func chooseLocalFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        if directory.hasPrefix("/") {
+            panel.directoryURL = URL(fileURLWithPath: directory)
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        directory = url.path
     }
 }

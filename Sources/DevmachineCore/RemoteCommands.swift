@@ -45,6 +45,10 @@ public enum RemoteCommands {
         "tmux new-session -A -s \(shellSingleQuoted(name))"
     }
 
+    public static func sessionDirectory(session: String) -> String {
+        "tmux display-message -p -t \(shellSingleQuoted(session)) '#{pane_current_path}'"
+    }
+
     /// Creates the session up front, in a directory. Claude Code lists files
     /// for its `@` menu from the directory it starts in, and a session opened
     /// in a folder of many repositories gets no list at all, so where a session

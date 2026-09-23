@@ -351,6 +351,7 @@ final class AppModel: ObservableObject {
         didSet { AppModel.saveStackCellSizes(stackCellSizes) }
     }
     @Published var pendingNewSessionAlias: String? = nil
+    @Published var showNewSessionChooser = false
     @Published var pendingRename: (alias: String, old: String)? = nil
     @Published var pendingLocalRename: (handle: String, current: String)? = nil
     /// The local session waiting for an answer. Removing one ends the shell it
@@ -414,6 +415,7 @@ final class AppModel: ObservableObject {
     private let localRunner: any CommandRunner
     private let sessionCommandSender: any SessionCommandSending
     private let zmxPath: String?
+    private let sessionSuffix: @Sendable () -> String
     private var selectionPollTimer: Timer? = nil
     private var selectionPollAlias: String? = nil
     private var refreshingAliases: Set<String> = []
@@ -428,7 +430,10 @@ final class AppModel: ObservableObject {
         harnessSettingsFacade: HarnessSettingsFacade = HarnessSettingsFacade(),
         localRunner: any CommandRunner = ProcessRunner(),
         sessionCommandSender: any SessionCommandSending = HostRunner(),
-        zmxPath: String? = LocalTools.zmxPath()
+        zmxPath: String? = LocalTools.zmxPath(),
+        sessionSuffix: @escaping @Sendable () -> String = {
+            String(UUID().uuidString.prefix(2)).lowercased()
+        }
     ) {
         self.store = store
         let services = services ?? DevmachineServices(sessionSource: CommandSessionSource(
@@ -441,6 +446,7 @@ final class AppModel: ObservableObject {
         self.localRunner = localRunner
         self.sessionCommandSender = sessionCommandSender
         self.zmxPath = zmxPath
+        self.sessionSuffix = sessionSuffix
         AppModel.shared = self
         observeWake()
         TerminalRegistry.shared.onSessionEnded = { [weak self] kind in
@@ -529,6 +535,86 @@ final class AppModel: ObservableObject {
 
     func newSession(alias: String) {
         pendingNewSessionAlias = alias
+    }
+
+    /// ⌘N behaves like a terminal tab: duplicate the current location without
+    /// asking, or ask for a destination when no terminal is actually visible.
+    func requestQuickSession() {
+        requestQuickSession(focusedRef: FocusedTerminal.ref())
+    }
+
+    func requestQuickSession(focusedRef: SessionRef?) {
+        let item: SidebarItem?
+        if activePage == nil {
+            item = selection
+        } else if case let .stack(refs) = activePage,
+                  let ref = focusedRef.flatMap({ refs.contains($0) ? $0 : nil }) ?? refs.first {
+            item = sidebarItem(for: ref)
+        } else {
+            item = nil
+        }
+        guard let target = commandTarget(for: item) else {
+            showNewSessionChooser = true
+            return
+        }
+        switch target {
+        case let .local(_, path):
+            addQuickLocalSession(path: path)
+        case let .remote(alias, session):
+            duplicateRemoteSession(alias: alias, session: session)
+        }
+    }
+
+    func createQuickSession(destinationAlias: String, directory: String) {
+        let path = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return }
+        showNewSessionChooser = false
+        newSessionDirectory = path
+        if destinationAlias == Workspace.local.alias {
+            addQuickLocalSession(path: path)
+        } else {
+            let name = automaticSessionName(
+                directory: path,
+                existing: Set(sessionsByAlias[destinationAlias]?.map(\.name) ?? []))
+            createRemoteSession(alias: destinationAlias, name: name, directory: path)
+        }
+    }
+
+    private func addQuickLocalSession(path: String) {
+        let name = automaticSessionName(
+            directory: path, existing: Set(localSessions.map(\.handle)))
+        addedLocalSessions.append(LocalSession(name: name, path: path))
+        selection = .localSession(name: name, path: path)
+        startProgram(in: .local(session: name, path: path))
+    }
+
+    private func duplicateRemoteSession(alias: String, session: String) {
+        let taskID = beginTask(label: "Creating session", total: 1)
+        let store = self.store
+        Task.detached {
+            let reported = try? store.run(
+                alias: alias, command: RemoteCommands.sessionDirectory(session: session))
+            let path = reported?.trimmingCharacters(in: .whitespacesAndNewlines)
+            await MainActor.run {
+                let directory = (path?.isEmpty == false ? path : nil) ?? "~"
+                let name = self.automaticSessionName(
+                    directory: directory,
+                    existing: Set(self.sessionsByAlias[alias]?.map(\.name) ?? []))
+                self.createRemoteSession(
+                    alias: alias, name: name, directory: directory, taskID: taskID)
+            }
+        }
+    }
+
+    private func automaticSessionName(directory: String, existing: Set<String>) -> String {
+        var candidate = ""
+        for _ in 0..<8 {
+            candidate = SessionName.automatic(directory: directory, suffix: sessionSuffix())
+            if !existing.contains(candidate) { return candidate }
+        }
+        var number = 2
+        while existing.contains("\(candidate)-\(number)") { number += 1 }
+        return "\(candidate)-\(number)"
     }
 
     /// Types text where a session is waiting for input, without sending it.
@@ -870,6 +956,12 @@ final class AppModel: ObservableObject {
         }
         newSessionDirectory = directory
         pendingNewSessionAlias = nil
+        createRemoteSession(alias: alias, name: clean, directory: directory)
+    }
+
+    private func createRemoteSession(
+        alias: String, name: String, directory: String, taskID: UUID? = nil
+    ) {
         // Created here rather than left to the terminal's own `new-session -A`,
         // because only a session created up front can be told which directory to
         // start in, and harnesses resolve project files from that location.
@@ -880,12 +972,17 @@ final class AppModel: ObservableObject {
         let sender = sessionCommandSender
         Task.detached {
             _ = try? store.run(
-                alias: alias,
-                command: RemoteCommands.createSession(name: clean, directory: directory))
+                alias: alias, command: RemoteCommands.createSession(name: name, directory: directory))
             if let startup {
-                try? sender.send(startup, into: .remote(alias: alias, session: clean))
+                try? sender.send(startup, into: .remote(alias: alias, session: name))
             }
-            await MainActor.run { self.selection = .session(alias: alias, name: clean) }
+            await MainActor.run {
+                self.selection = .session(alias: alias, name: name)
+                if let taskID {
+                    self.bumpTask(taskID)
+                    self.finishTask(taskID)
+                }
+            }
         }
         // With no global poll, a single refresh can race the create, so re-poll
         // a few times until the new session shows up in the sidebar.

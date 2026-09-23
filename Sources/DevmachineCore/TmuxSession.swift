@@ -1,3 +1,5 @@
+import Foundation
+
 public struct TmuxSession: Equatable, Identifiable, Sendable {
     public let name: String
     public let windows: Int
@@ -39,5 +41,15 @@ public enum SessionName {
         while name.hasSuffix("-") { name.removeLast() }
         while name.contains("--") { name = name.replacingOccurrences(of: "--", with: "-") }
         return name
+    }
+
+    /// A quick session is named after its folder plus a short discriminator.
+    /// Multiplexers require the name before creation, so the app supplies it.
+    public static func automatic(directory: String, suffix: String) -> String {
+        let trimmed = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        let folder = URL(fileURLWithPath: trimmed).lastPathComponent
+        let base = suggestion(for: folder)
+        let safeSuffix = suggestion(for: suffix.lowercased())
+        return "\(base.isEmpty ? "session" : base)-\(safeSuffix.isEmpty ? "xx" : safeSuffix)"
     }
 }
