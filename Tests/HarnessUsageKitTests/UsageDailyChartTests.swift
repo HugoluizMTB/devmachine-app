@@ -2,6 +2,10 @@ import XCTest
 @testable import HarnessUsageKit
 
 final class UsageDailyChartTests: XCTestCase {
+    func testPlotReservesRoomForLabelsAtBothEdges() {
+        XCTAssertGreaterThanOrEqual(UsageDailyChartLayout.edgePadding, 16)
+    }
+
     func testLongHistoriesShowAtMostSevenEvenlySpacedAxisLabels() {
         let days = (1...27).map {
             DayTokens(date: String(format: "2026-09-%02d", $0), tokens: Int64($0))

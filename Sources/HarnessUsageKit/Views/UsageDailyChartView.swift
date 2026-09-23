@@ -15,6 +15,10 @@ enum UsageDailyChartLabels {
     }
 }
 
+enum UsageDailyChartLayout {
+    static let edgePadding: CGFloat = 16
+}
+
 public struct UsageDailyChartView: View {
     public let daily: [DayTokens]
     public let accent: Color
@@ -74,6 +78,9 @@ public struct UsageDailyChartView: View {
                 }
             }
         }
+        .chartXScale(range: .plotDimension(
+            startPadding: UsageDailyChartLayout.edgePadding,
+            endPadding: UsageDailyChartLayout.edgePadding))
         .frame(height: 140)
     }
 }
