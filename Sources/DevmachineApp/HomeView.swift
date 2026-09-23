@@ -3,6 +3,20 @@ import AppKit
 import HarnessUsageKit
 import DevmachineCore
 
+enum HomeUsageLayout {
+    static let cardWidth: CGFloat = UsagePanelMetrics.columnWidth
+    static let spacing: CGFloat = 14
+
+    static func columnCount(for harnessCount: Int) -> Int {
+        min(max(harnessCount, 1), 2)
+    }
+
+    static func width(for harnessCount: Int) -> CGFloat {
+        let columns = CGFloat(columnCount(for: harnessCount))
+        return columns * cardWidth + (columns - 1) * spacing
+    }
+}
+
 struct HomeView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var usage: HarnessUsageStore
@@ -47,7 +61,7 @@ struct HomeView: View {
                 HStack(alignment: .top, spacing: 14) {
                     Spacer()
                     ScrollView(.vertical) {
-                        LazyVStack(alignment: .leading, spacing: 14) {
+                        LazyVGrid(columns: usageColumns, alignment: .trailing, spacing: 14) {
                             ForEach(usage.states) { state in
                                 if let descriptor = harnessSettingsFacade.descriptor(
                                     for: HarnessID(rawValue: state.harnessID)) {
@@ -57,7 +71,7 @@ struct HomeView: View {
                         }
                     }
                     .scrollIndicators(.hidden)
-                    .frame(width: 300)
+                    .frame(width: HomeUsageLayout.width(for: usage.states.count))
                 }
                 Spacer()
             }
@@ -82,6 +96,15 @@ struct HomeView: View {
         .onDisappear { usage.endObserving() }
     }
 
+    private var usageColumns: [GridItem] {
+        Array(
+            repeating: GridItem(
+                .fixed(HomeUsageLayout.cardWidth),
+                spacing: HomeUsageLayout.spacing,
+                alignment: .top),
+            count: HomeUsageLayout.columnCount(for: usage.states.count))
+    }
+
     private func usageCard(
         state: HarnessUsageState, descriptor: HarnessDescriptor
     ) -> some View {
@@ -90,8 +113,9 @@ struct HomeView: View {
             title: "\(descriptor.shortTitle) Usage",
             systemImage: descriptor.systemImage,
             accent: descriptor.color,
-            onRefresh: { usage.refresh(force: true) })
-        .frame(width: 300, height: 300)
+            onRefresh: { usage.refresh(force: true) },
+            scrollsContent: false)
+        .frame(width: HomeUsageLayout.cardWidth)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(

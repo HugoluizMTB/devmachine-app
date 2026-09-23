@@ -26,18 +26,18 @@ enum MenuBarTab: String, CaseIterable, Identifiable {
 
 enum MenuBarSizing {
     static func width(
-        for tab: MenuBarTab, usageColumns: Int, available: CGFloat
+        for _: MenuBarTab, usageColumns _: Int, available: CGFloat
     ) -> CGFloat {
-        let desired: CGFloat
-        switch tab {
-        case .pullRequests: desired = 420
-        case .usage: desired = usageColumns > 1 ? 776 : 380
-        }
-        return min(desired, max(320, available - 32))
+        min(776, max(320, available - 32))
+    }
+
+    static func height(for _: MenuBarTab) -> CGFloat {
+        640
     }
 
     static func columnWidth(panelWidth: CGFloat, usageColumns: Int) -> CGFloat {
         let columns = max(1, usageColumns)
+        if columns == 1 { return panelWidth }
         let dividers = CGFloat(max(0, columns - 1))
         return min(UsagePanelMetrics.columnWidth, (panelWidth - dividers) / CGFloat(columns))
     }
@@ -60,13 +60,6 @@ struct MenuBarPanel: View {
             available: screen?.visibleFrame.width ?? 1_200)
     }
 
-    private var panelHeight: CGFloat? {
-        switch tab {
-        case .pullRequests: return nil
-        case .usage: return 640
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             tabBar
@@ -76,7 +69,7 @@ struct MenuBarPanel: View {
             footer
         }
         .frame(width: panelWidth)
-        .frame(height: panelHeight)
+        .frame(height: MenuBarSizing.height(for: tab))
         .background(Color.dmContentBg)
         .animation(.easeInOut(duration: 0.15), value: tab)
     }

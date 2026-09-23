@@ -81,81 +81,95 @@ public struct HarnessUsageCardContent: View {
     public let systemImage: String
     public let accent: Color
     public let onRefresh: () -> Void
+    public let scrollsContent: Bool
 
     public init(
         state: HarnessUsageState,
         title: String,
         systemImage: String,
         accent: Color,
-        onRefresh: @escaping () -> Void
+        onRefresh: @escaping () -> Void,
+        scrollsContent: Bool = true
     ) {
         self.state = state
         self.title = title
         self.systemImage = systemImage
         self.accent = accent
         self.onRefresh = onRefresh
+        self.scrollsContent = scrollsContent
     }
 
     public var body: some View {
-        let presentation = HarnessUsagePresentation(title: title, state: state)
-        ScrollView {
-            VStack(alignment: .leading, spacing: UsagePanelMetrics.contentSpacing) {
-                UsageHeaderView(
-                    title: presentation.headerTitle,
-                    systemImage: systemImage,
-                    refreshedAt: state.refreshedAt,
-                    onRefresh: onRefresh)
+        Group {
+            if scrollsContent {
+                ScrollView { content }
+                    .scrollIndicators(.automatic)
+            } else {
+                content
+            }
+        }
+        .background(UsagePalette.background)
+    }
 
-                if let errorText = presentation.errorText {
-                    VStack(spacing: 8) {
-                        Text(verbatim: presentation.errorTitle)
-                            .font(.headline)
-                            .foregroundColor(UsagePalette.primaryText)
-                        Text(verbatim: errorText)
-                            .font(.caption)
-                            .foregroundColor(UsagePalette.secondaryText)
-                            .multilineTextAlignment(.center)
-                        Button("Retry", action: onRefresh)
-                    }
+    private var presentation: HarnessUsagePresentation {
+        HarnessUsagePresentation(title: title, state: state)
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: UsagePanelMetrics.contentSpacing) {
+            UsageHeaderView(
+                title: presentation.headerTitle,
+                systemImage: systemImage,
+                refreshedAt: state.refreshedAt,
+                onRefresh: onRefresh)
+
+            if let errorText = presentation.errorText {
+                VStack(spacing: 8) {
+                    Text(verbatim: presentation.errorTitle)
+                        .font(.headline)
+                        .foregroundColor(UsagePalette.primaryText)
+                    Text(verbatim: errorText)
+                        .font(.caption)
+                        .foregroundColor(UsagePalette.secondaryText)
+                        .multilineTextAlignment(.center)
+                    Button("Retry", action: onRefresh)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+            } else if state.isLoading && state.snapshot == nil {
+                Text(verbatim: "Loading…")
+                    .foregroundColor(UsagePalette.secondaryText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
-                } else if state.isLoading && state.snapshot == nil {
-                    Text(verbatim: "Loading…")
-                        .foregroundColor(UsagePalette.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 20)
-                } else if let snapshot = state.snapshot {
-                    if !snapshot.blocks.isEmpty {
-                        UsageBarsView(blocks: snapshot.blocks, accent: accent)
-                    }
-                    if !snapshot.summaryMetrics.isEmpty {
-                        UsageSummaryView(metrics: snapshot.summaryMetrics)
-                    }
-                    if let stats = snapshot.stats {
-                        Rectangle().fill(UsagePalette.divider).frame(height: 1)
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text(verbatim: "Stats")
-                                .font(.headline)
-                                .foregroundColor(UsagePalette.primaryText)
-                            Text(verbatim: "Today: \(UsageFormat.tokens(stats.todayTokens)) tokens")
-                                .font(.caption)
-                                .foregroundColor(UsagePalette.secondaryText)
-                            if !stats.dailyTotals.isEmpty {
-                                UsageDailyChartView(daily: stats.dailyTotals, accent: accent)
-                            }
-                            if presentation.showsModelBreakdown {
-                                UsageModelBreakdownView(
-                                    models: stats.modelTotals,
-                                    mostUsed: stats.mostUsedModel)
-                            }
+            } else if let snapshot = state.snapshot {
+                if !snapshot.blocks.isEmpty {
+                    UsageBarsView(blocks: snapshot.blocks, accent: accent)
+                }
+                if !snapshot.summaryMetrics.isEmpty {
+                    UsageSummaryView(metrics: snapshot.summaryMetrics)
+                }
+                if let stats = snapshot.stats {
+                    Rectangle().fill(UsagePalette.divider).frame(height: 1)
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(verbatim: "Stats")
+                            .font(.headline)
+                            .foregroundColor(UsagePalette.primaryText)
+                        Text(verbatim: "Today: \(UsageFormat.tokens(stats.todayTokens)) tokens")
+                            .font(.caption)
+                            .foregroundColor(UsagePalette.secondaryText)
+                        if !stats.dailyTotals.isEmpty {
+                            UsageDailyChartView(daily: stats.dailyTotals, accent: accent)
+                        }
+                        if presentation.showsModelBreakdown {
+                            UsageModelBreakdownView(
+                                models: stats.modelTotals,
+                                mostUsed: stats.mostUsedModel)
                         }
                     }
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .scrollIndicators(.automatic)
-        .background(UsagePalette.background)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

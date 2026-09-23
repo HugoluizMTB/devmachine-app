@@ -2,15 +2,17 @@ import XCTest
 @testable import DevmachineApp
 
 final class UsageLayoutTests: XCTestCase {
-    func testPullRequestsWidthDoesNotGrowWithUsageColumns() {
+    func testEveryMenuBarTabKeepsTheSameWideWidth() {
         XCTAssertEqual(
-            MenuBarSizing.width(for: .pullRequests, usageColumns: 2, available: 1_200),
-            420)
+            MenuBarSizing.width(for: .pullRequests, usageColumns: 1, available: 1_200),
+            776)
+        XCTAssertEqual(MenuBarSizing.width(for: .usage, usageColumns: 1, available: 1_200), 776)
+        XCTAssertEqual(MenuBarSizing.width(for: .usage, usageColumns: 2, available: 1_200), 776)
     }
 
-    func testUsageWidthGrowsFromOneToTwoColumns() {
-        XCTAssertEqual(MenuBarSizing.width(for: .usage, usageColumns: 1, available: 1_200), 380)
-        XCTAssertEqual(MenuBarSizing.width(for: .usage, usageColumns: 2, available: 1_200), 776)
+    func testEveryMenuBarTabKeepsTheSameHeight() {
+        XCTAssertEqual(MenuBarSizing.height(for: .pullRequests), 640)
+        XCTAssertEqual(MenuBarSizing.height(for: .usage), 640)
     }
 
     func testUsageWidthIsCappedInsideTheVisibleScreen() {
@@ -19,7 +21,19 @@ final class UsageLayoutTests: XCTestCase {
     }
 
     func testFullWidthUsageColumnsRetainTheirPreferredWidth() {
+        XCTAssertEqual(MenuBarSizing.columnWidth(panelWidth: 776, usageColumns: 1), 776)
         XCTAssertEqual(MenuBarSizing.columnWidth(panelWidth: 776, usageColumns: 2), 380)
+    }
+
+    func testHomePlacesTwoHarnessCardsSideBySide() {
+        XCTAssertEqual(HomeUsageLayout.columnCount(for: 1), 1)
+        XCTAssertEqual(HomeUsageLayout.columnCount(for: 2), 2)
+        XCTAssertEqual(HomeUsageLayout.width(for: 2), 774)
+    }
+
+    func testHomeWrapsAdditionalHarnessCardsAfterTwoColumns() {
+        XCTAssertEqual(HomeUsageLayout.columnCount(for: 3), 2)
+        XCTAssertEqual(HomeUsageLayout.width(for: 3), 774)
     }
 
     func testHomeUnmountsWhenAnotherPageCoversTheMainPane() {
