@@ -428,10 +428,10 @@ struct SetupPage: View {
                     selection: $remoteSessionProgram
                 )
 
-                if model.workspaces.isEmpty {
-                    note("Workspace overrides appear after remote workspaces are discovered.")
+                if model.visibleWorkspaces.isEmpty {
+                    note("Workspace overrides appear for workspaces enabled above.")
                 } else {
-                    ForEach(model.workspaces) { workspace in
+                    ForEach(model.visibleWorkspaces) { workspace in
                         launchChoicePicker(
                             title: workspace.name,
                             detail: workspace.alias,

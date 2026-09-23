@@ -69,6 +69,24 @@ final class SetupPageTests: XCTestCase {
             "beta-devmachine": .harness(.claude),
         ])
     }
+
+    func testHarnessOverridesUseOnlyVisibleWorkspaces() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let sourceURL = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/DevmachineApp/SetupPage.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let harnessBlock = try XCTUnwrap(
+            source.range(of: "private var harnessesBlock"))
+        let nextBlock = try XCTUnwrap(
+            source.range(of: "private func settingsHeading", range: harnessBlock.upperBound..<source.endIndex))
+        let body = source[harnessBlock.lowerBound..<nextBlock.lowerBound]
+
+        XCTAssertTrue(body.contains("model.visibleWorkspaces"))
+        XCTAssertFalse(body.contains("ForEach(model.workspaces)"))
+    }
 }
 
 final class SetupPageWallpaperTests: XCTestCase {
