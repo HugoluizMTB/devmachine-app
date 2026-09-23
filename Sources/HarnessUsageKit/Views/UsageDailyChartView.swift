@@ -1,6 +1,20 @@
 import SwiftUI
 import Charts
 
+enum UsageDailyChartLabels {
+    static func visibleDates(in daily: [DayTokens], limit: Int = 7) -> [String] {
+        guard !daily.isEmpty, limit > 0 else { return [] }
+        guard daily.count > limit else { return daily.map(\.date) }
+        guard limit > 1 else { return [daily.last!.date] }
+
+        let lastIndex = daily.count - 1
+        return (0..<limit).map { position in
+            let fraction = Double(position) / Double(limit - 1)
+            return daily[Int((fraction * Double(lastIndex)).rounded())].date
+        }
+    }
+}
+
 public struct UsageDailyChartView: View {
     public let daily: [DayTokens]
     public let accent: Color
@@ -42,7 +56,7 @@ public struct UsageDailyChartView: View {
             .foregroundStyle(accent)
         }
         .chartXAxis {
-            AxisMarks { value in
+            AxisMarks(values: UsageDailyChartLabels.visibleDates(in: daily)) { value in
                 AxisValueLabel {
                     if let ymd = value.as(String.self) {
                         Text(verbatim: Self.weekdayLabel(ymd))

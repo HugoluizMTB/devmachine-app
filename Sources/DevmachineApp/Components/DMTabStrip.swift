@@ -57,6 +57,7 @@ private struct DMTabButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
         .onHover { hovering = $0 }
         .animation(.easeInOut(duration: 0.15), value: selected)
     }
