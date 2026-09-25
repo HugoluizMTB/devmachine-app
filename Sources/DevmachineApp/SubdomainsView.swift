@@ -28,7 +28,8 @@ struct SubdomainsView: View {
         }
         .sheet(isPresented: $showAdd) {
             if let settings = settingsStore.settings {
-                AddSubdomainSheet(settings: settings).environmentObject(store)
+                AddSubdomainSheet(settings: settings, workspaces: model.visibleWorkspaces)
+                    .environmentObject(store)
             }
         }
     }

@@ -42,12 +42,12 @@ final class DevmachineCLITests: XCTestCase {
         let runner = CLIRecordingRunner()
         let cli = DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner)
 
-        try cli.expose(workspace: "a8c;touch /tmp/no", port: 8080, host: "app.example.com")
+        try cli.expose(workspace: "alice;touch /tmp/no", port: 8080, host: "app.example.com")
 
         XCTAssertEqual(runner.calls, [.init(
             executable: "/opt/homebrew/bin/devmachine",
             args: [
-                "expose", "add", "a8c;touch /tmp/no", "8080",
+                "expose", "add", "alice;touch /tmp/no", "8080",
                 "--host", "app.example.com", "--publish",
             ]
         )])
@@ -63,12 +63,12 @@ final class DevmachineCLITests: XCTestCase {
     }
 
     func testListDecodesTheCLIJSONContract() throws {
-        let body = #"[{"host":"app.example.com","port":8080,"workspace":"a8c"}]"#
+        let body = #"[{"host":"app.example.com","port":8080,"workspace":"alice"}]"#
         let runner = CLIRecordingRunner(result: (body, "", 0))
 
         let sites = try DevmachineCLI(executable: "/x", runner: runner).listExposures()
 
-        XCTAssertEqual(sites, [.init(host: "app.example.com", port: 8080, workspace: "a8c")])
+        XCTAssertEqual(sites, [.init(host: "app.example.com", port: 8080, workspace: "alice")])
         XCTAssertEqual(runner.calls.first?.args, ["--format", "json", "expose", "list"])
     }
 

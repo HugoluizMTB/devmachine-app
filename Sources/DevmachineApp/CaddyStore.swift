@@ -45,16 +45,22 @@ final class CaddyStore: ObservableObject {
         }
     }
 
-    func addSubdomain(_ req: SubdomainRequest, settings: AppSettings) {
+    func addSubdomain(_ req: SubdomainRequest, workspace: String, settings: AppSettings) {
         addTask?.cancel()
         addError = nil
+        let runner: AddSubdomainRunner
+        do {
+            runner = AddSubdomainRunner(exposer: try DevmachineCLI.resolve())
+        } catch {
+            addError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return
+        }
         let taskID = UUID()
-        let total = AddSubdomainRunner.stepCount(for: req)
+        let total = AddSubdomainRunner.stepCount
         task = BGTask(id: taskID, label: "Starting…", completed: 0, total: total)
 
-        let runner = AddSubdomainRunner(settings: settings)
         addTask = Task {
-            let result = await runner.run(req) { label, step in
+            let result = await runner.run(workspace: workspace, req) { label, step in
                 Task { @MainActor in
                     self.task?.label = label
                     self.task?.completed = step

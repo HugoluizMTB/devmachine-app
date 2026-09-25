@@ -12,7 +12,7 @@ private struct CaddyServiceRunner: CommandRunner {
         guard executable == "/fake/devmachine" else {
             throw NSError(domain: "unexpected remote command", code: 1)
         }
-        return (#"[{"host":"app.example.com","port":8080,"workspace":"a8c"}]"#, "", 0)
+        return (#"[{"host":"app.example.com","port":8080,"workspace":"alice"}]"#, "", 0)
     }
 }
 
@@ -29,7 +29,7 @@ final class CaddyServiceTests: XCTestCase {
                 address: "app.example.com",
                 target: "127.0.0.1:8080",
                 kind: "proxy",
-                workspace: "a8c"
+                workspace: "alice"
             )
         ])
     }

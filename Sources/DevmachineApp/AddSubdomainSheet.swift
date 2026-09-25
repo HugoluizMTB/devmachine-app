@@ -1,7 +1,7 @@
 import SwiftUI
 import DevmachineCore
 
-private enum SubdomainMode: String, CaseIterable {
+enum SubdomainMode: String, CaseIterable {
     case managed
     case custom
 
@@ -13,40 +13,53 @@ private enum SubdomainMode: String, CaseIterable {
     }
 }
 
-struct AddSubdomainSheet: View {
-    @EnvironmentObject var store: CaddyStore
-    @Environment(\.dismiss) private var dismiss
+struct AddSubdomainForm {
+    let workspaceNames: [String]
+    var selectedWorkspace: String
+    var mode: SubdomainMode = .managed
+    var label = ""
+    var customHost = ""
+    var port = ""
 
-    let settings: AppSettings
+    init(workspaces: [Workspace]) {
+        workspaceNames = workspaces.filter { !$0.isLocal }.map(\.name)
+        selectedWorkspace = workspaceNames.first ?? ""
+    }
 
-    @State private var mode: SubdomainMode = .managed
-    @State private var label = ""
-    @State private var customHost = ""
-    @State private var port = ""
-    @State private var confirming = false
-
-    private var req: SubdomainRequest? {
-        guard let portValue = Int(port) else { return nil }
+    func request(baseDomain: String) -> SubdomainRequest? {
+        guard workspaceNames.contains(selectedWorkspace), let portValue = Int(port) else { return nil }
         let candidate: SubdomainRequest
         switch mode {
         case .managed:
-            candidate = SubdomainRequest.subdomain(
-                label: label, port: portValue, baseDomain: settings.baseDomain
-            )
+            candidate = .subdomain(label: label, port: portValue, baseDomain: baseDomain)
         case .custom:
             candidate = SubdomainRequest(host: customHost, port: portValue, managedDNS: false)
         }
         guard (try? CaddyAdd.validate(candidate)) != nil else { return nil }
         return candidate
     }
+}
+
+struct AddSubdomainSheet: View {
+    @EnvironmentObject var store: CaddyStore
+    @Environment(\.dismiss) private var dismiss
+
+    let settings: AppSettings
+    @State private var form: AddSubdomainForm
+    @State private var confirming = false
+
+    init(settings: AppSettings, workspaces: [Workspace]) {
+        self.settings = settings
+        _form = State(initialValue: AddSubdomainForm(workspaces: workspaces))
+    }
+
+    private var request: SubdomainRequest? {
+        form.request(baseDomain: settings.baseDomain)
+    }
 
     private var confirmMessage: String {
-        switch mode {
-        case .managed:
-            return "This creates a live subdomain and public DNS record. Continue?"
-        case .custom:
-            return "This adds the domain to Caddy and issues TLS. No DNS is created — ensure it already points at the VPS. Continue?"
-        }
+        guard let request else { return "Choose a workspace, host and port." }
+        return "Publish \(request.host) from workspace \(form.selectedWorkspace) on port \(request.port)? This makes the service public."
     }
 
     var body: some View {
@@ -55,7 +68,25 @@ struct AddSubdomainSheet: View {
                 .font(.dm(14, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 
-            Picker("", selection: $mode) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Workspace")
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                if form.workspaceNames.isEmpty {
+                    Text("No visible remote workspace is available.")
+                        .font(.dm(11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Workspace", selection: $form.selectedWorkspace) {
+                        ForEach(form.workspaceNames, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    .labelsHidden()
+                }
+            }
+
+            Picker("", selection: $form.mode) {
                 ForEach(SubdomainMode.allCases, id: \.self) { mode in
                     Text(mode.title(baseDomain: settings.baseDomain)).tag(mode)
                 }
@@ -63,14 +94,14 @@ struct AddSubdomainSheet: View {
             .pickerStyle(.segmented)
             .labelsHidden()
 
-            switch mode {
+            switch form.mode {
             case .managed:
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Label")
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                     HStack(spacing: 4) {
-                        TextField("myapp", text: $label)
+                        TextField("myapp", text: $form.label)
                             .textFieldStyle(.roundedBorder)
                         Text(verbatim: ".\(settings.baseDomain)")
                             .font(.dm(12))
@@ -82,9 +113,9 @@ struct AddSubdomainSheet: View {
                     Text("Domain")
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
-                    TextField("app.example.com", text: $customHost)
+                    TextField("app.example.com", text: $form.customHost)
                         .textFieldStyle(.roundedBorder)
-                    Text(verbatim: "Point this domain's DNS at \(settings.publicIP) (A record) before creating.")
+                    Text("The CLI manages DNS when a configured provider owns this zone; otherwise it reports the manual record.")
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                 }
@@ -94,7 +125,7 @@ struct AddSubdomainSheet: View {
                 Text("Local port")
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
-                TextField("8080", text: $port)
+                TextField("8080", text: $form.port)
                     .textFieldStyle(.roundedBorder)
             }
 
@@ -102,7 +133,7 @@ struct AddSubdomainSheet: View {
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Create") { confirming = true }
-                    .disabled(req == nil)
+                    .disabled(request == nil)
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -115,8 +146,8 @@ struct AddSubdomainSheet: View {
             titleVisibility: .visible
         ) {
             Button("Create", role: .destructive) {
-                if let req {
-                    store.addSubdomain(req, settings: settings)
+                if let request {
+                    store.addSubdomain(request, workspace: form.selectedWorkspace, settings: settings)
                 }
                 dismiss()
             }
