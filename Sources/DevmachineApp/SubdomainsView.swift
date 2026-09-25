@@ -154,10 +154,7 @@ struct SubdomainsView: View {
     /// from a home folder — stays: hiding what has no owner would hide the
     /// machine's own pages.
     private var visibleSites: [CaddySite] {
-        store.sites.filter { site in
-            guard let port = CaddySiteOwnership.port(of: site.target) else { return true }
-            return model.showsOwner(store.portOwners[port])
-        }
+        store.sites.filter { model.showsOwner($0.workspace) }
     }
 
     private var sitesList: some View {
