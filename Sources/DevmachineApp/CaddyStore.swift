@@ -4,8 +4,6 @@ import DevmachineCore
 @MainActor
 final class CaddyStore: ObservableObject {
     @Published var sites: [CaddySite] = []
-    /// Port → context user, for hiding what belongs to a workspace turned off.
-    @Published var portOwners: [Int: String] = [:]
     @Published var logs: String = ""
     @Published var isLoading = false
     @Published var errorText: String?
@@ -34,13 +32,9 @@ final class CaddyStore: ObservableObject {
         refreshTask = Task {
             do {
                 let sites = try await Task.detached { try service.sites(alias: alias) }.value
-                let owners = try await Task.detached {
-                    (try? service.portOwners(alias: alias)) ?? [:]
-                }.value
                 let logs = try await Task.detached { try service.logs(alias: alias) }.value
                 guard !Task.isCancelled else { return }
                 self.sites = sites
-                self.portOwners = owners
                 self.logs = logs
                 self.errorText = nil
             } catch {
@@ -51,16 +45,22 @@ final class CaddyStore: ObservableObject {
         }
     }
 
-    func addSubdomain(_ req: SubdomainRequest, settings: AppSettings) {
+    func addSubdomain(_ req: SubdomainRequest, workspace: String, settings: AppSettings) {
         addTask?.cancel()
         addError = nil
+        let runner: AddSubdomainRunner
+        do {
+            runner = AddSubdomainRunner(exposer: try DevmachineCLI.resolve())
+        } catch {
+            addError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return
+        }
         let taskID = UUID()
-        let total = AddSubdomainRunner.stepCount(for: req)
+        let total = AddSubdomainRunner.stepCount
         task = BGTask(id: taskID, label: "Starting…", completed: 0, total: total)
 
-        let runner = AddSubdomainRunner(settings: settings)
         addTask = Task {
-            let result = await runner.run(req) { label, step in
+            let result = await runner.run(workspace: workspace, req) { label, step in
                 Task { @MainActor in
                     self.task?.label = label
                     self.task?.completed = step

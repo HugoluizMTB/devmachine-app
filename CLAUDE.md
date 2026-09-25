@@ -265,6 +265,6 @@ ssh/mosh/scp under XCTest; tests inject a fake `CommandRunner`.
 - Branch prefix `da-` when not committing straight to `main` locally.
 
 ## VPS writes
-Features that write to the VPS or public DNS (e.g. Caddy add-subdomain) run only
-on an explicit user action in the app, behind a confirm, and never from tests.
-The `add-subdomain` flow lives in the `devmachine` repo skill; the app mirrors it.
+Features that write to the VPS or public DNS run only on an explicit user action
+in the app, behind a confirm, and never from tests. The app delegates publishing
+to `devmachine expose`; it does not edit Caddy, DNS, or Ansible itself.

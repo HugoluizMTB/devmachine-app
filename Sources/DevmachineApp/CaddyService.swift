@@ -2,20 +2,24 @@ import Foundation
 import DevmachineCore
 
 struct CaddyService: Sendable {
+    let cli: DevmachineCLI?
     let remote: RemoteService
 
-    init(remote: RemoteService = RemoteService()) {
+    init(cli: DevmachineCLI? = nil, remote: RemoteService = RemoteService()) {
+        self.cli = cli
         self.remote = remote
     }
 
     func sites(alias: String) throws -> [CaddySite] {
-        CaddyfileParser.parse(try remote.run(alias: alias, args: ["cat /etc/caddy/Caddyfile"]))
-    }
-
-    /// Who is behind each port the Caddyfile points at, so a site can be tied
-    /// to the workspace that runs it.
-    func portOwners(alias: String) throws -> [Int: String] {
-        Ownership.portOwners(try remote.run(alias: alias, args: [RemoteCommands.portOwners]))
+        let published = try (cli ?? DevmachineCLI.resolve()).listExposures()
+        return published.map {
+            CaddySite(
+                address: $0.host,
+                target: "127.0.0.1:\($0.port)",
+                kind: "proxy",
+                workspace: $0.workspace
+            )
+        }
     }
 
     func logs(alias: String, lines: Int = 200) throws -> String {
