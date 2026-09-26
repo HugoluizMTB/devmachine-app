@@ -7,6 +7,17 @@ struct PublishedSite: Codable, Equatable, Sendable {
     let workspace: String?
 }
 
+struct CLIWorkspace: Codable, Equatable, Sendable {
+    let name: String
+    let machine: String
+    let user: String
+    let packages: [String]
+}
+
+private struct CLIWorkspaceList: Decodable {
+    let workspaces: [CLIWorkspace]
+}
+
 enum DevmachineCLIError: LocalizedError, Equatable {
     case commandFailed(String)
     case executableNotFound([String])
@@ -65,6 +76,16 @@ struct DevmachineCLI: Sendable {
         )
         try requireSuccess(result)
         return try JSONDecoder().decode([PublishedSite].self, from: Data(result.stdout.utf8))
+    }
+
+    func listWorkspaces() throws -> [CLIWorkspace] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "workspaces", "list"],
+            environment: nil
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLIWorkspaceList.self, from: Data(result.stdout.utf8)).workspaces
     }
 
     private func requireSuccess(_ result: (stdout: String, stderr: String, exitCode: Int32)) throws {

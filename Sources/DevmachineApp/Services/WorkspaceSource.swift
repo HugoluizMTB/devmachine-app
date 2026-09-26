@@ -5,16 +5,19 @@ protocol WorkspaceSource: Sendable {
     func workspaces(suffix: String) throws -> [Workspace]
 }
 
-struct SSHConfigWorkspaceSource: WorkspaceSource {
-    private let readConfig: @Sendable () throws -> String
+struct CLIWorkspaceSource: WorkspaceSource {
+    private let cli: @Sendable () throws -> DevmachineCLI
 
-    init(readConfig: @escaping @Sendable () throws -> String = {
-        try String(contentsOfFile: NSHomeDirectory() + "/.ssh/config", encoding: .utf8)
-    }) {
-        self.readConfig = readConfig
+    init(cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() }) {
+        self.cli = cli
     }
 
-    func workspaces(suffix: String) throws -> [Workspace] {
-        SSHConfigParser.parse(try readConfig(), suffix: suffix)
+    func workspaces(suffix: String) -> [Workspace] {
+        do {
+            return try cli().listWorkspaces().map { Workspace(name: $0.name, alias: $0.name + suffix) }
+        } catch {
+            PaneLog.log("workspace list failed: \(error)")
+            return []
+        }
     }
 }

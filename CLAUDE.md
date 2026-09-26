@@ -194,7 +194,7 @@ segmented control.
   owner would hide the machine itself.
 - **Hiding a workspace is a list of what to hide, not of what to show**
   (`AppSettings.hiddenWorkspaces`, filtered by `WorkspaceVisibility`). A new
-  alias in `~/.ssh/config` shows up without anyone opening Settings. Everything
+  workspace from the CLI shows up without anyone opening Settings. Everything
   except Settings reads `AppModel.visibleWorkspaces`, so a hidden workspace
   costs no row, no poll and no ssh; hiding also closes its panes at once
   (`TerminalRegistry.closeWorkspace`), which is what ends the mosh it held.

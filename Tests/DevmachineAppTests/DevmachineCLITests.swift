@@ -72,6 +72,26 @@ final class DevmachineCLITests: XCTestCase {
         XCTAssertEqual(runner.calls.first?.args, ["--format", "json", "expose", "list"])
     }
 
+    func testListWorkspacesDecodesTheCLIJSONContract() throws {
+        let body = #"{"workspaces":[{"name":"alice","machine":"main","user":"alice","packages":["workspace"]}]}"#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+
+        let workspaces = try DevmachineCLI(executable: "/x", runner: runner).listWorkspaces()
+
+        XCTAssertEqual(workspaces, [
+            .init(name: "alice", machine: "main", user: "alice", packages: ["workspace"]),
+        ])
+        XCTAssertEqual(runner.calls.first?.args, ["--format", "json", "workspaces", "list"])
+    }
+
+    func testListWorkspacesReportsCLIStderr() {
+        let runner = CLIRecordingRunner(result: ("", "config folder missing", 1))
+
+        XCTAssertThrowsError(try DevmachineCLI(executable: "/x", runner: runner).listWorkspaces()) { error in
+            XCTAssertEqual(error.localizedDescription, "config folder missing")
+        }
+    }
+
     func testResolverReportsEveryCheckedHomebrewLocation() {
         XCTAssertThrowsError(try DevmachineCLI.resolve(exists: { _ in false })) { error in
             let message = error.localizedDescription

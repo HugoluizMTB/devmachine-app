@@ -13,8 +13,9 @@ Mac, usually `~/.config/devmachine`.
 
 - macOS 14+ and the Xcode Command Line Tools (`swift build` is the build).
 - `~/.ssh/config` with one `Host <alias>` for the machine (root) and one
-  `Host <user>-<alias>` per context user. Workspaces are discovered from that
-  suffix.
+  `Host <user>-<alias>` per context user. The workspace list itself comes from
+  the devmachine CLI's `workspaces list`; the ssh config supplies the alias
+  each workspace connects through.
 - Optional: `mosh` (`brew install mosh`) — terminals use it when present and
   fall back to `ssh`. Optional: the 1Password ssh agent for signing.
 

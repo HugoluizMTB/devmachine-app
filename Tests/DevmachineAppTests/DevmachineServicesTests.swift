@@ -7,6 +7,19 @@ struct FixtureWorkspaceSource: WorkspaceSource {
     func workspaces(suffix: String) throws -> [Workspace] { values }
 }
 
+private struct CLIServiceRunner: CommandRunner {
+    var result: (stdout: String, stderr: String, exitCode: Int32)
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        try runCapturing(executable: executable, args: args, environment: environment).stdout
+    }
+
+    func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        result
+    }
+}
+
 struct FixtureSessionSource: SessionSource {
     var remote: [TmuxSession] = []
     var local = LocalSessionSnapshot(sessions: [], harnesses: [:])
@@ -81,11 +94,36 @@ final class DevmachineServicesTests: XCTestCase {
         XCTAssertEqual(runner.calls.count, 0)
     }
 
-    func testSSHWorkspaceSourceReadsConfiguredSuffix() throws {
-        let source = SSHConfigWorkspaceSource(readConfig: {
-            "Host acme-lab\nHost beta-devmachine\nHost gamma-lab\n"
-        })
-        XCTAssertEqual(try source.workspaces(suffix: "-lab").map(\.name), ["acme", "gamma"])
+    func testCLIWorkspaceSourceMapsEntriesToTheSSHAliasSuffixInOrder() throws {
+        let body = #"""
+        {"workspaces":[
+            {"name":"alice","machine":"main","user":"alice","packages":["workspace"]},
+            {"name":"bob","machine":"main","user":"bob","packages":["workspace"]}
+        ]}
+        """#
+        let runner = CLIServiceRunner(result: (body, "", 0))
+        let source = CLIWorkspaceSource(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+
+        let workspaces = try source.workspaces(suffix: "-lab")
+
+        XCTAssertEqual(workspaces, [
+            Workspace(name: "alice", alias: "alice-lab"),
+            Workspace(name: "bob", alias: "bob-lab"),
+        ])
+    }
+
+    func testCLIWorkspaceSourceReturnsEmptyOnCLIFailure() throws {
+        let runner = CLIServiceRunner(result: ("", "config folder missing", 1))
+        let source = CLIWorkspaceSource(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+
+        XCTAssertEqual(try source.workspaces(suffix: "-lab"), [])
+    }
+
+    func testCLIWorkspaceSourceReturnsEmptyOnMalformedJSON() throws {
+        let runner = CLIServiceRunner(result: ("not json", "", 0))
+        let source = CLIWorkspaceSource(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+
+        XCTAssertEqual(try source.workspaces(suffix: "-lab"), [])
     }
 
     func testContextFacadeReturnsNoContextForUnsupportedHarnesses() throws {

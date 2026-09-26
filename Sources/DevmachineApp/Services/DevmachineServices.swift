@@ -4,7 +4,7 @@ struct DevmachineServices: Sendable {
     let contextSource: any ContextSource
 
     init(
-        workspaceSource: any WorkspaceSource = SSHConfigWorkspaceSource(),
+        workspaceSource: any WorkspaceSource = CLIWorkspaceSource(),
         sessionSource: any SessionSource = CommandSessionSource(),
         contextSource: any ContextSource = CommandContextSource()
     ) {
