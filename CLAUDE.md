@@ -2,7 +2,8 @@
 
 Native macOS app (Swift 6 / SwiftUI / AppKit, SwiftPM) that operates the
 `devmachine` VPS: tmux sessions per context-user, PRs, files, Caddy subdomains,
-VPS stats, and coding-harness usage. Sibling of `~/dev/devmachine` (the ops repo).
+VPS stats, and coding-harness usage. It reads the devmachine CLI's configuration
+folder (`~/.config/devmachine`) and publishes through the CLI.
 
 ## Language — ABSOLUTE, overrides everything
 **All code, identifiers, comments, and git commit messages are ENGLISH.** No
@@ -20,7 +21,7 @@ comments, commit messages, screenshots or assets.
   paths under `/Users/alice`; IPs from the documentation ranges `203.0.113.x`
   (public) and `100.64.0.x` (tailnet); PR numbers arbitrary.
 - Real values enter only two ways: the app's Setup/Settings page (`AppSettings`,
-  persisted in `UserDefaults`) and the ops repo on disk. A feature that needs an
+  persisted in `UserDefaults`) and the CLI's configuration folder on disk. A feature that needs an
   infra value reads `AppSettings`; it never carries a literal.
 - Before any push run `scripts/check-real-data.sh`. It greps the tree with the
   owner's private pattern list (`~/.config/devmachine-app/private-patterns`,

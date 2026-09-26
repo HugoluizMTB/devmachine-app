@@ -2,7 +2,7 @@ import XCTest
 @testable import DevmachineCore
 
 private let goodSettings = AppSettings(
-    opsRepoPath: "/Users/alice/dev/devmachine",
+    opsRepoPath: "/Users/alice/.config/devmachine",
     hostAlias: "devmachine",
     publicIP: "203.0.113.7",
     baseDomain: "example.com"
@@ -14,7 +14,7 @@ private func existing(_ paths: String...) -> (String) -> Bool {
 }
 
 private func fullRepo() -> (String) -> Bool {
-    existing("/Users/alice/dev/devmachine", "/Users/alice/dev/devmachine/ansible/site.yml")
+    existing("/Users/alice/.config/devmachine", "/Users/alice/.config/devmachine/config.yml")
 }
 
 final class AppSettingsTests: XCTestCase {
@@ -146,13 +146,23 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testPrefillProposesTheOpsRepoWhenItExists() {
-        let repo = NSHomeDirectory() + "/dev/devmachine"
+        let dir = NSHomeDirectory() + "/.config/devmachine"
         let settings = AppSettings.prefill(
             sshConfig: "",
             sshResolve: { _ in nil },
-            fileExists: { $0 == repo }
+            fileExists: { $0 == dir + "/config.yml" }
         )
-        XCTAssertEqual(settings.opsRepoPath, repo)
+        XCTAssertEqual(settings.opsRepoPath, dir)
+    }
+
+    func testPrefillIgnoresAConfigurationFolderWithNoConfiguration() {
+        let dir = NSHomeDirectory() + "/.config/devmachine"
+        let settings = AppSettings.prefill(
+            sshConfig: "",
+            sshResolve: { _ in nil },
+            fileExists: { $0 == dir }
+        )
+        XCTAssertEqual(settings.opsRepoPath, "")
     }
 
     func testNewSettingsStartOnTheBundledWallpaper() {
@@ -174,7 +184,7 @@ final class AppSettingsTests: XCTestCase {
     func testSettingsSavedBeforeWallpapersStillDecode() throws {
         let old = Data("""
         {
-          "opsRepoPath": "/Users/alice/dev/devmachine",
+          "opsRepoPath": "/Users/alice/.config/devmachine",
           "hostAlias": "devmachine",
           "publicIP": "203.0.113.7",
           "baseDomain": "example.com"
@@ -292,5 +302,14 @@ extension AppSettingsTests {
         XCTAssertEqual(settings.enabledHarnesses, [.claude])
         XCTAssertEqual(settings.localSessionProgram, .harness(.claude))
         XCTAssertEqual(settings.remoteSessionProgram, .harness(.claude))
+    }
+
+    func testValidateRejectsTheOldAnsibleRepository() {
+        var settings = goodSettings
+        settings.opsRepoPath = "/Users/alice/dev/devmachine"
+        let old = existing("/Users/alice/dev/devmachine", "/Users/alice/dev/devmachine/ansible/site.yml")
+        let issues = AppSettings.validate(settings, fileExists: old)
+        XCTAssertEqual(issues.map(\.field), [.opsRepoPath])
+        XCTAssertTrue(issues.first?.message.contains("config.yml") ?? false)
     }
 }

@@ -20,7 +20,7 @@ enum SettingsSection: String, CaseIterable {
 
     var subtitle: String {
         switch self {
-        case .connection: return "The host this app talks to, and the ops repo it applies."
+        case .connection: return "The host this app talks to, and the devmachine configuration it reads."
         case .workspaces: return "Which workspaces the sidebar shows and the app reaches."
         case .harnesses: return "Choose what new sessions start with."
         case .appearance: return "The wallpaper behind the panes, and the size of the interface."
@@ -264,11 +264,11 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: 16) {
             field(
                 title: "Ops repo folder",
-                hint: "Holds \(AppSettings.opsRepoMarker) — the Ansible playbook this app applies.",
+                hint: "Holds \(AppSettings.opsRepoMarker) — the devmachine CLI's configuration, usually ~/.config/devmachine.",
                 field: .opsRepoPath
             ) {
                 HStack(spacing: 8) {
-                    TextField("/Users/you/dev/ops", text: $opsRepoPath)
+                    TextField("/Users/you/.config/devmachine", text: $opsRepoPath)
                         .textFieldStyle(.plain)
                         .setupField()
                     Button("Choose…") { chooseFolder() }

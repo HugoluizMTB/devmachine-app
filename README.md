@@ -5,8 +5,9 @@ over ssh: tmux sessions per context user as floating terminals, stack grids per
 workspace, a context panel fed by the host, Caddy subdomains, host stats, PRs,
 and coding-harness usage in the menu bar.
 
-The host itself is provisioned by a separate ops repo (Ansible). The app only
-needs an ssh alias to it and the path of that repo on this Mac.
+The host itself is provisioned by the [devmachine CLI](https://github.com/adevmachine/cli).
+The app only needs an ssh alias to it and the CLI's configuration folder on this
+Mac, usually `~/.config/devmachine`.
 
 ## Requirements
 
@@ -24,7 +25,7 @@ needs an ssh alias to it and the path of that repo on this Mac.
 ```
 
 Builds a release bundle and installs `/Applications/Devmachine.app`. The first
-launch shows a Setup card: ops repo folder, host ssh alias, public IP, base
+launch shows a Setup card: configuration folder, host ssh alias, public IP, base
 domain, wallpaper. Change them later with `⌘,`.
 
 Settings can enable multiple coding harnesses installed on this Mac. Each local

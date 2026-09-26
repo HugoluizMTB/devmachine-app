@@ -246,7 +246,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"
     public static let domainPattern = "^[a-z0-9-]+(\\.[a-z0-9-]+)+$"
 
-    public static let opsRepoMarker = "ansible/site.yml"
+    public static let opsRepoMarker = "config.yml"
 
     public static func validate(
         _ settings: AppSettings,
@@ -255,7 +255,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         var issues: [SettingsIssue] = []
 
         if settings.opsRepoPath.isEmpty {
-            issues.append(SettingsIssue(field: .opsRepoPath, message: "Choose the folder of the ops repo."))
+            issues.append(SettingsIssue(field: .opsRepoPath, message: "Choose the devmachine configuration folder."))
         } else if !fileExists(settings.opsRepoPath) {
             issues.append(SettingsIssue(field: .opsRepoPath, message: "This folder does not exist."))
         } else if !fileExists(settings.opsRepoPath + "/" + opsRepoMarker) {
@@ -285,10 +285,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> AppSettings {
         let alias = SSHConfigParser.hostTokens(sshConfig).contains("devmachine") ? "devmachine" : ""
-        let repoPath = NSHomeDirectory() + "/dev/devmachine"
+        let repoPath = NSHomeDirectory() + "/.config/devmachine"
 
         return AppSettings(
-            opsRepoPath: fileExists(repoPath) ? repoPath : "",
+            opsRepoPath: fileExists(repoPath + "/" + opsRepoMarker) ? repoPath : "",
             hostAlias: alias,
             publicIP: alias.isEmpty ? "" : resolveIPv4(alias: alias, sshResolve: sshResolve),
             baseDomain: ""
