@@ -7,8 +7,14 @@ struct FixtureWorkspaceSource: WorkspaceSource {
     func workspaces(suffix: String) throws -> [Workspace] { values }
 }
 
-private struct CLIServiceRunner: CommandRunner {
+private final class CLIServiceRunner: CommandRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedCalls: [(String, [String])] = []
     var result: (stdout: String, stderr: String, exitCode: Int32)
+
+    init(result: (String, String, Int32)) {
+        self.result = result
+    }
 
     func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
         try runCapturing(executable: executable, args: args, environment: environment).stdout
@@ -16,7 +22,47 @@ private struct CLIServiceRunner: CommandRunner {
 
     func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32) {
-        result
+        lock.lock()
+        storedCalls.append((executable, args))
+        lock.unlock()
+        return result
+    }
+
+    var calls: [(String, [String])] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedCalls
+    }
+}
+
+/// Answers `machines list` with a fixed body and every other call (the
+/// engine run itself) with whatever `nextContextResult` holds at the time.
+private final class CLIStagedRunner: CommandRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedCalls: [(String, [String])] = []
+    private let machinesResult: (stdout: String, stderr: String, exitCode: Int32)
+    var nextContextResult: (stdout: String, stderr: String, exitCode: Int32) = ("", "", 0)
+
+    init(machines machinesResult: (stdout: String, stderr: String, exitCode: Int32)) {
+        self.machinesResult = machinesResult
+    }
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        try runCapturing(executable: executable, args: args, environment: environment).stdout
+    }
+
+    func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        lock.lock()
+        storedCalls.append((executable, args))
+        lock.unlock()
+        return args.contains("machines") ? machinesResult : nextContextResult
+    }
+
+    var calls: [(String, [String])] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedCalls
     }
 }
 
@@ -38,7 +84,7 @@ final class FixtureContextSource: ContextSource, @unchecked Sendable {
         gate = blocked ? DispatchSemaphore(value: 0) : nil
     }
 
-    func context(for target: CommandTarget) throws -> ContextState? {
+    func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState? {
         lock.lock()
         targets.append(target)
         lock.unlock()
@@ -65,33 +111,66 @@ func fixtureServices(
 }
 
 final class DevmachineServicesTests: XCTestCase {
-    func testCommandContextSourcePreservesLocalAndRemoteEngineCommands() throws {
-        let local = ContextCommandRecorder()
-        let remote = ContextCommandRecorder()
-        let source = CommandContextSource(
-            host: HostRunner(remote: RemoteService(runner: remote), local: local),
-            localEngineAvailable: { true })
-        let localState = try source.context(for: .local(session: "shell", path: "/Users/alice/dev/acme"))
-        XCTAssertEqual(localState?.harness, .claude)
-        XCTAssertEqual(remote.calls.count, 0)
-        let localCall = try XCTUnwrap(local.calls.first)
-        XCTAssertEqual(localCall.0, "/bin/sh")
-        XCTAssertTrue(localCall.1.last?.hasSuffix("--project '/Users/alice/dev/acme'") == true)
-        XCTAssertNotNil(localCall.2?["PATH"])
+    private let settings = AppSettings(
+        opsRepoPath: "/Users/alice/dev", hostAlias: "lab", publicIP: "", baseDomain: "")
 
-        let remoteState = try source.context(for: .remote(alias: "acme-devmachine", session: "dash"))
-        XCTAssertEqual(remoteState?.harness, .claude)
-        let remoteCall = try XCTUnwrap(remote.calls.first)
-        XCTAssertEqual(remoteCall.0, "/usr/bin/ssh")
-        XCTAssertEqual(remoteCall.1.last, "devmachine-infer --session 'dash'")
+    func testCLIContextSourceRunsAWorkspaceSessionThroughTheCLI() throws {
+        let body = #"{"cwd":"/home/acme/dev","harness":"claude","updatedAt":"now","prs":[],"links":[]}"#
+        let runner = CLIServiceRunner(result: (body, "", 0))
+        let source = CLIContextSource(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+
+        let state = try source.context(
+            for: .remote(alias: "acme-lab", session: "dash"), settings: settings)
+
+        XCTAssertEqual(state?.harness, .claude)
+        XCTAssertEqual(runner.calls.last?.1, [
+            "run", "--workspace", "acme", "--package", "devmachine-app",
+            "--", "context", "--session", "dash",
+        ])
     }
 
-    func testMissingLocalEngineReturnsNoContextWithoutRunningACommand() throws {
-        let runner = ContextCommandRecorder()
-        let source = CommandContextSource(
-            host: HostRunner(local: runner), localEngineAvailable: { false })
-        XCTAssertNil(try source.context(for: .local(session: "shell", path: "/Users/alice/dev/acme")))
-        XCTAssertEqual(runner.calls.count, 0)
+    func testCLIContextSourceRunsALocalProjectOnTheCachedSelfMachine() throws {
+        let machinesBody = #"[{"name":"other","self":false},{"name":"studio","self":true}]"#
+        let contextBody = #"{"cwd":"/Users/alice/dev/acme","harness":"claude","updatedAt":"now","prs":[],"links":[]}"#
+        let runner = CLIStagedRunner(machines: (machinesBody, "", 0))
+        let cli: @Sendable () throws -> DevmachineCLI = { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }
+        let source = CLIContextSource(cli: cli)
+        runner.nextContextResult = (contextBody, "", 0)
+
+        let state = try source.context(
+            for: .local(session: "shell", path: "~/dev/acme"), settings: settings)
+
+        XCTAssertEqual(state?.harness, .claude)
+        XCTAssertEqual(runner.calls.last?.1, [
+            "run", "--machine", "studio", "--package", "devmachine-app",
+            "--", "context", "--project", "\(NSHomeDirectory())/dev/acme",
+        ])
+
+        runner.nextContextResult = (contextBody, "", 0)
+        _ = try source.context(for: .local(session: "shell", path: "~/dev/acme"), settings: settings)
+        XCTAssertEqual(runner.calls.filter { $0.1.first == "--format" }.count, 1)
+    }
+
+    func testCLIContextSourceReturnsNoLocalContextWithoutASelfMachine() throws {
+        let machinesBody = #"[{"name":"other","self":false}]"#
+        let runner = CLIStagedRunner(machines: (machinesBody, "", 0))
+        let source = CLIContextSource(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+
+        let state = try source.context(
+            for: .local(session: "shell", path: "~/dev/acme"), settings: settings)
+
+        XCTAssertNil(state)
+        XCTAssertEqual(runner.calls.filter { $0.1.first == "run" }.count, 0)
+    }
+
+    func testCLIContextSourceReportsCLIFailureLikeAFailedEngineRun() {
+        let runner = CLIServiceRunner(result: ("", "no such package", 1))
+        let source = CLIContextSource(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+
+        XCTAssertThrowsError(try source.context(
+            for: .remote(alias: "acme-lab", session: "dash"), settings: settings)) { error in
+            XCTAssertEqual(error.localizedDescription, "no such package")
+        }
     }
 
     func testCLIWorkspaceSourceMapsEntriesToTheSSHAliasSuffixInOrder() throws {
@@ -131,20 +210,10 @@ final class DevmachineServicesTests: XCTestCase {
             cwd: "/home/acme/dev", isClaude: true, updatedAt: "now", plan: nil, prs: [], links: []))
         let facade = ContextFacade(source: source)
         let target = CommandTarget.remote(alias: "acme-devmachine", session: "dash")
-        XCTAssertNil(try facade.context(for: target, harnesses: [.codex]))
-        XCTAssertNil(try facade.context(for: target, harnesses: []))
+        XCTAssertNil(try facade.context(for: target, harnesses: [.codex], settings: settings))
+        XCTAssertNil(try facade.context(for: target, harnesses: [], settings: settings))
         XCTAssertEqual(source.calls, [])
-        XCTAssertNotNil(try facade.context(for: target, harnesses: [.claude, .codex]))
+        XCTAssertNotNil(try facade.context(for: target, harnesses: [.claude, .codex], settings: settings))
         XCTAssertEqual(source.calls, [target])
-    }
-}
-
-private final class ContextCommandRecorder: CommandRunner, @unchecked Sendable {
-    var calls: [(String, [String], [String: String]?)] = []
-    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
-        calls.append((executable, args, environment))
-        return """
-        {"cwd":"/home/acme/dev","isClaude":true,"updatedAt":"now","prs":[],"links":[]}
-        """
     }
 }

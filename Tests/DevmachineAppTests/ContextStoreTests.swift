@@ -127,18 +127,7 @@ final class ContextStoreTests: XCTestCase {
 
 @MainActor
 final class LocalContextTests: XCTestCase {
-    func testTheFolderIsPassedAsTheProjectWithATildeExpanded() {
-        let command = LocalContext.command(for: .local(session: "acme", path: "~/dev/acme"))
-        XCTAssertTrue(command.hasSuffix("--project '\(NSHomeDirectory())/dev/acme'"))
-    }
-
-    func testAHostReadsItsOwnEngineBySessionName() {
-        XCTAssertEqual(
-            LocalContext.command(for: .remote(alias: "acme-devmachine", session: "dash")),
-            "devmachine-infer --session 'dash'")
-    }
-
-    func testThePathCarriesTheToolsTheEngineShellsOutTo() {
+    func testThePathCarriesTheToolsLocalCommandsShellOutTo() {
         let path = LocalContext.environment(home: "/Users/alice")["PATH"] ?? ""
         XCTAssertTrue(path.contains("/Users/alice/.local/bin"))
         XCTAssertTrue(path.contains("/opt/homebrew/bin"))

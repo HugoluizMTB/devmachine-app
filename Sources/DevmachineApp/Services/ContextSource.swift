@@ -1,24 +1,57 @@
 import Foundation
+import DevmachineCore
 
 protocol ContextSource: Sendable {
-    func context(for target: CommandTarget) throws -> ContextState?
+    func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState?
 }
 
-struct CommandContextSource: ContextSource {
-    let host: HostRunner
-    private let localEngineAvailable: @Sendable () -> Bool
+/// One `machines list` answers "which machine is this Mac" for the rest of
+/// the app's run: every local context request after the first reuses it.
+final class SelfMachineCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var resolved = false
+    private var name: String?
+
+    func name(cli: () throws -> DevmachineCLI) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        if !resolved {
+            resolved = true
+            name = try? cli().listMachines().first { $0.isSelf }?.name
+        }
+        return name
+    }
+}
+
+struct CLIContextSource: ContextSource {
+    private let cli: @Sendable () throws -> DevmachineCLI
+    private let selfMachine: SelfMachineCache
 
     init(
-        host: HostRunner = HostRunner(),
-        localEngineAvailable: @escaping @Sendable () -> Bool = { LocalContext.isInstalled }
+        cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
+        selfMachine: SelfMachineCache = SelfMachineCache()
     ) {
-        self.host = host
-        self.localEngineAvailable = localEngineAvailable
+        self.cli = cli
+        self.selfMachine = selfMachine
     }
 
-    func context(for target: CommandTarget) throws -> ContextState? {
-        if target.isLocal && !localEngineAvailable() { return nil }
-        let output = try host.runCapturingAnywhere(target, LocalContext.command(for: target)).stdout
+    func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState? {
+        let output: String
+        switch target {
+        case let .remote(alias, session):
+            output = try cli().context(workspace: workspaceName(for: alias, settings: settings), session: session)
+        case let .local(_, path):
+            guard let machine = selfMachine.name(cli: cli) else { return nil }
+            output = try cli().context(machine: machine, project: (path as NSString).expandingTildeInPath)
+        }
         return try JSONDecoder().decode(ContextState.self, from: Data(output.utf8))
+    }
+
+    /// The app grows an alias by appending its ssh suffix to the workspace's
+    /// own name (`CLIWorkspaceSource`); this undoes that to hand the CLI the
+    /// name it knows the workspace by.
+    private func workspaceName(for alias: String, settings: AppSettings) -> String {
+        let suffix = settings.workspaceSuffix
+        return alias.hasSuffix(suffix) ? String(alias.dropLast(suffix.count)) : alias
     }
 }

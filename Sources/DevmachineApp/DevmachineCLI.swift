@@ -18,6 +18,27 @@ private struct CLIWorkspaceList: Decodable {
     let workspaces: [CLIWorkspace]
 }
 
+struct CLIMachine: Decodable, Equatable, Sendable {
+    let name: String
+    let isSelf: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case isSelf = "self"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        isSelf = try c.decodeIfPresent(Bool.self, forKey: .isSelf) ?? false
+    }
+
+    init(name: String, isSelf: Bool) {
+        self.name = name
+        self.isSelf = isSelf
+    }
+}
+
 enum DevmachineCLIError: LocalizedError, Equatable {
     case commandFailed(String)
     case executableNotFound([String])
@@ -86,6 +107,46 @@ struct DevmachineCLI: Sendable {
         )
         try requireSuccess(result)
         return try JSONDecoder().decode(CLIWorkspaceList.self, from: Data(result.stdout.utf8)).workspaces
+    }
+
+    func listMachines() throws -> [CLIMachine] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "machines", "list"],
+            environment: nil
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode([CLIMachine].self, from: Data(result.stdout.utf8))
+    }
+
+    /// The context engine, reached as `devmachine-app`'s `context` entrypoint.
+    /// A workspace session runs it over the CLI's own ssh, as that workspace's
+    /// account.
+    func context(workspace: String, session: String) throws -> String {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: [
+                "run", "--workspace", workspace, "--package", "devmachine-app",
+                "--", "context", "--session", session,
+            ],
+            environment: nil
+        )
+        try requireSuccess(result)
+        return result.stdout
+    }
+
+    /// The same engine, run locally by the CLI on the named self machine.
+    func context(machine: String, project: String) throws -> String {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: [
+                "run", "--machine", machine, "--package", "devmachine-app",
+                "--", "context", "--project", project,
+            ],
+            environment: nil
+        )
+        try requireSuccess(result)
+        return result.stdout
     }
 
     private func requireSuccess(_ result: (stdout: String, stderr: String, exitCode: Int32)) throws {

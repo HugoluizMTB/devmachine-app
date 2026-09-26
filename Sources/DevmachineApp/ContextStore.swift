@@ -9,6 +9,7 @@ final class ContextStore: ObservableObject {
     private var timer: Timer?
     private var current: CommandTarget?
     private var harnesses: Set<HarnessID> = []
+    private var settings: AppSettings = .empty
     private var inFlight: Set<String> = []
     private var generation = UUID()
 
@@ -18,11 +19,12 @@ final class ContextStore: ObservableObject {
 
     var isPolling: Bool { timer != nil }
 
-    func start(_ target: CommandTarget, harnesses: Set<HarnessID> = [.claude]) {
+    func start(_ target: CommandTarget, harnesses: Set<HarnessID> = [.claude], settings: AppSettings = .empty) {
         guard facade.supports(harnesses) else { stop(); return }
-        if current == target, self.harnesses == harnesses, timer != nil { return }
+        if current == target, self.harnesses == harnesses, self.settings == settings, timer != nil { return }
         current = target
         self.harnesses = harnesses
+        self.settings = settings
         generation = UUID()
         clearState()
         poll()
@@ -48,9 +50,10 @@ final class ContextStore: ObservableObject {
         guard inFlight.insert(key).inserted else { return }
         let facade = self.facade
         let harnesses = self.harnesses
+        let settings = self.settings
         let generation = self.generation
         Task.detached {
-            let parsed = try? facade.context(for: target, harnesses: harnesses)
+            let parsed = try? facade.context(for: target, harnesses: harnesses, settings: settings)
             await MainActor.run {
                 self.inFlight.remove(key)
                 guard self.generation == generation else {
@@ -76,30 +79,10 @@ final class ContextStore: ObservableObject {
     }
 }
 
-/// The context engine as it runs on this Mac. Installed by the operator repo
-/// (`ansible/mac.yml --tags mac_infer`), the same script the hosts run.
+/// The context engine is the `devmachine-app` package's `context` entrypoint,
+/// reached through the devmachine CLI (`DevmachineCLI.context`) rather than
+/// run directly by the app.
 enum LocalContext {
-    /// One engine, two sides: the host already has `devmachine-infer` on its
-    /// PATH, and here it is the script this Mac installed.
-    static func command(for target: CommandTarget) -> String {
-        switch target {
-        case let .remote(_, session):
-            return "devmachine-infer --session \(RemoteCommands.shellSingleQuoted(session))"
-        case let .local(_, path):
-            return RemoteCommands.shellSingleQuoted(scriptPath)
-                + " --project "
-                + RemoteCommands.shellSingleQuoted((path as NSString).expandingTildeInPath)
-        }
-    }
-
-    static var scriptPath: String {
-        NSHomeDirectory() + "/.local/bin/devmachine-infer"
-    }
-
-    static var isInstalled: Bool {
-        FileManager.default.isExecutableFile(atPath: scriptPath)
-    }
-
     /// A login shell's PATH is not inherited by an app started from Finder, and
     /// the script shells out to `git` and `gh`.
     static func environment(home: String = NSHomeDirectory()) -> [String: String] {

@@ -9,8 +9,8 @@ struct ContextFacade: Sendable {
         harnesses.contains(.claude)
     }
 
-    func context(for target: CommandTarget, harnesses: Set<HarnessID>) throws -> ContextState? {
+    func context(for target: CommandTarget, harnesses: Set<HarnessID>, settings: AppSettings) throws -> ContextState? {
         guard supports(harnesses) else { return nil }
-        return try source.context(for: target)
+        return try source.context(for: target, settings: settings)
     }
 }

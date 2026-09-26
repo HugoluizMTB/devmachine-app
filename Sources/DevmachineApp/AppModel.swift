@@ -1269,7 +1269,7 @@ final class AppModel: ObservableObject {
             updateSelectionPoll()
             return
         }
-        context.start(target, harnesses: selectedSessionHarnesses)
+        context.start(target, harnesses: selectedSessionHarnesses, settings: settings ?? .empty)
         updateSelectionPoll()
     }
 
