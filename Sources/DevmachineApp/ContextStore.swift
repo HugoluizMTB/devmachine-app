@@ -63,10 +63,14 @@ final class ContextStore: ObservableObject {
         setStatus(.idle)
     }
 
-    /// An explicit read, from the panel's Retry button.
+    /// An explicit read, from the panel's Retry button. With context already
+    /// on screen the status stays as it is until the read answers, so the
+    /// stale-data banner does not vanish and come back.
     func retry() {
         guard current != nil else { return }
-        setStatus(.loading)
+        if state == nil {
+            setStatus(.loading)
+        }
         poll()
     }
 

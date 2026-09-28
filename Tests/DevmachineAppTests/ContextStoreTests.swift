@@ -190,6 +190,21 @@ final class ContextStoreTests: XCTestCase {
         XCTAssertEqual(store.state, state)
     }
 
+    func testRetryOverStaleContextKeepsTheFailureUntilTheReadAnswers() async throws {
+        let source = FixtureContextSource(state: state)
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.status == .loaded }
+        source.failure = DevmachineCLIError.commandFailed("timeout")
+        store.poll()
+        try await waitUntil { store.status == .failed("timeout") }
+        source.failure = nil
+        store.retry()
+        XCTAssertEqual(store.status, .failed("timeout"))
+        try await waitUntil { store.status == .loaded }
+    }
+
     func testStopGoesBackToIdle() async throws {
         let source = FixtureContextSource(state: state)
         let store = ContextStore(services: fixtureServices(context: source))

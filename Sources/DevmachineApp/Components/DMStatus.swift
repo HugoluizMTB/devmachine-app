@@ -45,9 +45,13 @@ struct DMStatusView: View {
                         .font(.dm(12, weight: .semibold))
                         .foregroundStyle(Color.dmRowText)
                 }
+                // A CLI's stderr can run to a traceback; the cap keeps Retry
+                // inside a narrow panel, and the tooltip holds the rest.
                 caption(message)
+                    .lineLimit(6)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
+                    .help(message)
                 if let retry {
                     Button("Retry", action: retry)
                 }

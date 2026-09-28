@@ -101,3 +101,22 @@ final class DevmachineCLITests: XCTestCase {
         }
     }
 }
+
+final class SelfMachineCacheTests: XCTestCase {
+    func testAFailedLookupIsReportedAndTriedAgain() throws {
+        let cache = SelfMachineCache()
+        XCTAssertThrowsError(try cache.name { throw DevmachineCLIError.executableNotFound(["/opt/devmachine"]) })
+        let runner = CLIRecordingRunner(result: (#"[{"name":"alice-mac","self":true}]"#, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+        XCTAssertEqual(try cache.name { cli }, "alice-mac")
+    }
+
+    func testAnAnswerIsKeptForTheRestOfTheRun() throws {
+        let cache = SelfMachineCache()
+        let runner = CLIRecordingRunner(result: (#"[{"name":"alice-mac","self":true}]"#, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+        XCTAssertEqual(try cache.name { cli }, "alice-mac")
+        XCTAssertEqual(try cache.name { cli }, "alice-mac")
+        XCTAssertEqual(runner.calls.count, 1)
+    }
+}

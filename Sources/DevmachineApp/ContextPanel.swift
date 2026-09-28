@@ -80,12 +80,6 @@ struct ContextPanel: View {
             ShortcutsSection(target: commandTarget)
         }
         if let state = store.state {
-            if case .failed(let reason) = store.status {
-                DMBanner(message: "Couldn't refresh: \(reason)", lineLimit: 2) {
-                    DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.retry() }
-                        .help("Try again")
-                }
-            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     runningSection("MONITORS", state.monitors)
@@ -100,8 +94,22 @@ struct ContextPanel: View {
                     }
                 }
             }
+            // An overlay, not a row above the list: a failed poll every 5s on a
+            // flaky link would otherwise push the whole list down and back.
+            .overlay(alignment: .bottom) { staleBanner }
         } else {
             contextStatus
+        }
+    }
+
+    @ViewBuilder
+    private var staleBanner: some View {
+        if case .failed(let reason) = store.status {
+            DMBanner(message: "Couldn't refresh: \(reason)", lineLimit: 2) {
+                DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.retry() }
+                    .help("Try again")
+            }
+            .background(Color.dmSidebarBg)
         }
     }
 

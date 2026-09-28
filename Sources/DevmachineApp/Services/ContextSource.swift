@@ -6,18 +6,20 @@ protocol ContextSource: Sendable {
 }
 
 /// One `machines list` answers "which machine is this Mac" for the rest of
-/// the app's run: every local context request after the first reuses it.
+/// the app's run: every local context request after the first reuses it. A
+/// failed lookup is thrown and not kept, so the panel shows why and Retry
+/// asks again.
 final class SelfMachineCache: @unchecked Sendable {
     private let lock = NSLock()
     private var resolved = false
     private var name: String?
 
-    func name(cli: () throws -> DevmachineCLI) -> String? {
+    func name(cli: () throws -> DevmachineCLI) throws -> String? {
         lock.lock()
         defer { lock.unlock() }
         if !resolved {
+            name = try cli().listMachines().first { $0.isSelf }?.name
             resolved = true
-            name = try? cli().listMachines().first { $0.isSelf }?.name
         }
         return name
     }
@@ -41,7 +43,7 @@ struct CLIContextSource: ContextSource {
         case let .remote(alias, session):
             output = try cli().context(workspace: workspaceName(for: alias, settings: settings), session: session)
         case let .local(_, path):
-            guard let machine = selfMachine.name(cli: cli) else { return nil }
+            guard let machine = try selfMachine.name(cli: cli) else { return nil }
             output = try cli().context(machine: machine, project: (path as NSString).expandingTildeInPath)
         }
         return try JSONDecoder().decode(ContextState.self, from: Data(output.utf8))
