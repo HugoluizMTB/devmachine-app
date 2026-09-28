@@ -80,6 +80,12 @@ struct ContextPanel: View {
             ShortcutsSection(target: commandTarget)
         }
         if let state = store.state {
+            if case .failed(let reason) = store.status {
+                DMBanner(message: "Couldn't refresh: \(reason)", lineLimit: 2) {
+                    DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.retry() }
+                        .help("Try again")
+                }
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     runningSection("MONITORS", state.monitors)
@@ -95,6 +101,22 @@ struct ContextPanel: View {
                 }
             }
         } else {
+            contextStatus
+        }
+    }
+
+    @ViewBuilder
+    private var contextStatus: some View {
+        switch store.status {
+        case .loading:
+            DMStatusView(kind: .loading("Reading context…"))
+        case .failed(let reason):
+            DMStatusView(kind: .failed(
+                title: "Couldn't read the context", message: reason, retry: { store.retry() }))
+        case .empty:
+            DMStatusView(kind: .empty(
+                systemImage: "text.bubble", text: "Nothing to show for this session yet"))
+        case .idle, .loaded:
             message("No context")
         }
     }

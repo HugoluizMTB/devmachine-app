@@ -123,6 +123,81 @@ final class ContextStoreTests: XCTestCase {
         XCTAssertFalse(store.isPolling)
         XCTAssertEqual(source.calls, [remote])
     }
+
+    func testTheFirstReadIsLoadingUntilItAnswers() async throws {
+        let source = FixtureContextSource(state: state, blocked: true)
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop(); source.gate?.signal() }
+        XCTAssertEqual(store.status, .idle)
+        store.start(remote)
+        XCTAssertEqual(store.status, .loading)
+        source.gate?.signal()
+        try await waitUntil { store.status == .loaded }
+        XCTAssertEqual(store.state, state)
+    }
+
+    func testAnEngineWithNothingToSayIsEmptyNotLoading() async throws {
+        let source = FixtureContextSource(state: nil)
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.status == .empty }
+        XCTAssertNil(store.state)
+    }
+
+    func testAFailedReadSaysWhy() async throws {
+        let source = FixtureContextSource(failure: DevmachineCLIError.commandFailed("ssh: host unreachable\n"))
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.status != .loading }
+        XCTAssertEqual(store.status, .failed("ssh: host unreachable"))
+        XCTAssertNil(store.state)
+    }
+
+    func testAnUnreadableAnswerIsNamedPlainly() async throws {
+        let bad = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "junk"))
+        let source = FixtureContextSource(failure: bad)
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.status != .loading }
+        XCTAssertEqual(store.status, .failed(ContextLoadStatus.unreadableAnswer))
+    }
+
+    func testAFailedRefreshKeepsTheLastContextOnScreen() async throws {
+        let source = FixtureContextSource(state: state)
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.status == .loaded }
+        source.failure = DevmachineCLIError.commandFailed("timeout")
+        store.poll()
+        try await waitUntil { store.status == .failed("timeout") }
+        XCTAssertEqual(store.state, state)
+    }
+
+    func testRetryAfterAFailureLoadsAgain() async throws {
+        let source = FixtureContextSource(state: state, failure: DevmachineCLIError.commandFailed("timeout"))
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.status == .failed("timeout") }
+        source.failure = nil
+        store.retry()
+        XCTAssertEqual(store.status, .loading)
+        try await waitUntil { store.status == .loaded }
+        XCTAssertEqual(store.state, state)
+    }
+
+    func testStopGoesBackToIdle() async throws {
+        let source = FixtureContextSource(state: state)
+        let store = ContextStore(services: fixtureServices(context: source))
+        store.start(remote)
+        try await waitUntil { store.status == .loaded }
+        store.stop()
+        XCTAssertEqual(store.status, .idle)
+    }
 }
 
 @MainActor

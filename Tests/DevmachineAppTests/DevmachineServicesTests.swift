@@ -76,19 +76,28 @@ struct FixtureSessionSource: SessionSource {
 final class FixtureContextSource: ContextSource, @unchecked Sendable {
     private let lock = NSLock()
     private var targets: [CommandTarget] = []
+    private var error: Error?
     let state: ContextState?
     let gate: DispatchSemaphore?
 
-    init(state: ContextState? = nil, blocked: Bool = false) {
+    init(state: ContextState? = nil, failure: Error? = nil, blocked: Bool = false) {
         self.state = state
+        error = failure
         gate = blocked ? DispatchSemaphore(value: 0) : nil
+    }
+
+    var failure: Error? {
+        get { lock.lock(); defer { lock.unlock() }; return error }
+        set { lock.lock(); error = newValue; lock.unlock() }
     }
 
     func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState? {
         lock.lock()
         targets.append(target)
+        let error = self.error
         lock.unlock()
         gate?.wait()
+        if let error { throw error }
         return state
     }
 
