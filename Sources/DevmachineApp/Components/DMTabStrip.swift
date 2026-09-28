@@ -9,7 +9,7 @@ struct DMTabStrip<Tab: Hashable>: View {
     var fontSize: CGFloat = 13
     var horizontalPadding: CGFloat = 12
     var verticalPadding: CGFloat = 5
-    var cornerRadius: CGFloat = 7
+    var cornerRadius: CGFloat = DMRadius.control
     var spacing: CGFloat = 6
 
     var body: some View {
@@ -73,7 +73,7 @@ private struct DMTabButton: View {
 
     private var backgroundFill: Color {
         if selected {
-            return Color.white.opacity(0.10)
+            return Color.dmActive
         }
         return hovering ? Color.white.opacity(0.05) : Color.clear
     }

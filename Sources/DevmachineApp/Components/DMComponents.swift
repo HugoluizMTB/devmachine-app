@@ -4,10 +4,13 @@ import SwiftUI
 struct DMRowBackground: View {
     let selected: Bool
     var hovering: Bool = false
+    var cornerRadius: CGFloat = DMRadius.row
+    var style: RoundedCornerStyle = .circular
+    var selectedColor: Color = .dmSelection
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 6)
-            .fill(selected ? Color.dmSelection : (hovering ? Color.dmHover : .clear))
+        RoundedRectangle(cornerRadius: cornerRadius, style: style)
+            .fill(selected ? selectedColor : (hovering ? Color.dmHover : .clear))
     }
 }
 
@@ -232,11 +235,7 @@ struct DMStatBubble: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .padding(.horizontal, 16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(.white.opacity(0.15), lineWidth: 0.5)
-        )
+        .dmGlass(radius: DMRadius.bubble, stroke: .white.opacity(0.15))
     }
 }
 
@@ -276,11 +275,7 @@ struct DMToastCard: View {
         }
         .frame(width: DMToastCard.width, alignment: .leading)
         .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(.white.opacity(0.12), lineWidth: 0.5)
-        )
+        .dmGlass(radius: DMRadius.toast)
         .shadow(radius: 10, y: 3)
     }
 }
