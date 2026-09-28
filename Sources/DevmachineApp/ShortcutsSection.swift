@@ -17,16 +17,9 @@ struct ShortcutsSection: View {
                     .foregroundStyle(Color.dmMuted)
             },
             trailing: {
-                Button {
+                DMIconButton(systemImage: "gearshape", size: 11, hitSize: DMHitSize.compact) {
                     showEditor = true
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.dm(11))
-                        .foregroundStyle(Color.dmMuted)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
                 .help("Edit shortcuts")
                 .popover(isPresented: $showEditor) {
                     SkillsEditorView()
@@ -49,7 +42,6 @@ struct ShortcutsSection: View {
 private struct SkillButton: View {
     let skill: SkillCommand
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -60,13 +52,8 @@ private struct SkillButton: View {
                     .font(.dm(11))
                     .lineLimit(1)
             }
-            .foregroundStyle(Color.dmRowText)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(hovering ? Color.dmHover : Color.clear, in: RoundedRectangle(cornerRadius: 5))
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .buttonStyle(.dmChip)
     }
 }
 
@@ -97,13 +84,9 @@ private struct SkillsEditorView: View {
                             .font(.dm(11))
                             .foregroundStyle(Color.dmMuted)
                         Spacer()
-                        Button {
+                        DMIconButton(systemImage: "minus.circle") {
                             skillsStore.remove(skill)
-                        } label: {
-                            Image(systemName: "minus.circle")
-                                .foregroundStyle(Color.dmMuted)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }

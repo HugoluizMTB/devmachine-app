@@ -35,11 +35,10 @@ struct FileViewerView: View {
                         .font(.dm(11.5))
                         .foregroundStyle(.white.opacity(0.9))
                         .lineLimit(1)
-                    Button { store.close() } label: {
-                        Image(systemName: "xmark").font(.dm(9, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.45))
+                    DMIconButton(
+                        systemImage: "xmark", size: 9, weight: .semibold,
+                        tint: .white.opacity(0.45)
+                    ) { store.close() }
                     .help("Close the file")
                 }
                 .padding(.horizontal, 10)
@@ -69,11 +68,10 @@ struct FileViewerView: View {
                         .font(.dm(10, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.4))
                 }
-                Button { store.reload() } label: {
-                    Image(systemName: "arrow.clockwise").font(.dm(10, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white.opacity(0.5))
+                DMIconButton(
+                    systemImage: "arrow.clockwise", size: 10, weight: .semibold,
+                    tint: .white.opacity(0.5)
+                ) { store.reload() }
                 .help("Read the file again")
             }
             .padding(.horizontal, 12)

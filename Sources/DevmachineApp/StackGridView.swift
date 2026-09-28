@@ -76,41 +76,29 @@ struct StackGridView: View {
         let isLast = index == (refs.count - 1)
 
         return HStack(spacing: 2) {
-            Button {
+            DMIconButton(systemImage: "chevron.left", tint: nil, hitSize: DMHitSize.strip) {
                 model.moveStackCell(ref, by: -1)
-            } label: {
-                Image(systemName: "chevron.left")
             }
-            .buttonStyle(.plain)
             .disabled(isFirst)
-            .frame(width: 22, height: 22)
-            .contentShape(Rectangle())
 
-            Button {
+            DMIconButton(
+                systemImage: sizeIcon(model.stackCellSize(ref)), tint: nil,
+                hitSize: DMHitSize.strip
+            ) {
                 model.cycleStackCellSize(ref)
-            } label: {
-                Image(systemName: sizeIcon(model.stackCellSize(ref)))
             }
-            .buttonStyle(.plain)
-            .frame(width: 22, height: 22)
-            .contentShape(Rectangle())
             .help("Size: auto/half/full — click to cycle")
 
-            Button {
+            DMIconButton(systemImage: "chevron.right", tint: nil, hitSize: DMHitSize.strip) {
                 model.moveStackCell(ref, by: 1)
-            } label: {
-                Image(systemName: "chevron.right")
             }
-            .buttonStyle(.plain)
             .disabled(isLast)
-            .frame(width: 22, height: 22)
-            .contentShape(Rectangle())
         }
         .font(.dm(11, weight: .medium))
         .foregroundStyle(.white.opacity(0.85))
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
-        .background(.ultraThinMaterial, in: Capsule())
+        .dmGlass(in: Capsule())
     }
 
     private func sizeIcon(_ size: StackCellSize) -> String {

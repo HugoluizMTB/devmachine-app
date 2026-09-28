@@ -50,21 +50,11 @@ struct SubdomainsView: View {
             if store.isLoading {
                 ProgressView().controlSize(.small)
             }
-            Button {
-                showAdd = true
-            } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.plain)
+            DMIconButton(systemImage: "plus", tint: nil) { showAdd = true }
             .disabled(settingsStore.settings == nil)
             .help("Add subdomain")
-            Button {
-                refresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.plain)
-            .help("Refresh")
+            DMIconButton(systemImage: "arrow.clockwise", tint: nil) { refresh() }
+                .help("Refresh")
         }
         .padding(10)
     }
@@ -101,12 +91,7 @@ struct SubdomainsView: View {
                 .foregroundStyle(Color.dmRowText)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
-            Button {
-                store.addError = nil
-            } label: {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.plain)
+            DMIconButton(systemImage: "xmark", tint: nil) { store.addError = nil }
         }
         .padding(10)
         .background(Color.orange.opacity(0.12))

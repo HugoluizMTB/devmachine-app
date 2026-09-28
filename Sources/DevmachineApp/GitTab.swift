@@ -72,16 +72,9 @@ struct GitTab: View {
                     .truncationMode(.middle)
             },
             trailing: {
-                Button {
+                DMIconButton(systemImage: "arrow.clockwise", size: 11, hitSize: DMHitSize.compact) {
                     store.refresh()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.dm(11))
-                        .foregroundStyle(Color.dmMuted)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
                 .help("Refresh")
             }
         ) {

@@ -72,16 +72,7 @@ struct ShortcutsSheet: View {
                                 HStack(spacing: 12) {
                                     HStack(spacing: 4) {
                                         ForEach(item.keys, id: \.self) { key in
-                                            Text(verbatim: key)
-                                                .font(.dm(11, weight: .medium, design: .monospaced))
-                                                .foregroundStyle(Color.dmRowText)
-                                                .padding(.horizontal, 7)
-                                                .padding(.vertical, 3)
-                                                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 5)
-                                                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                                                )
+                                            DMKeyCap(key: key)
                                         }
                                     }
                                     .frame(width: 130, alignment: .leading)

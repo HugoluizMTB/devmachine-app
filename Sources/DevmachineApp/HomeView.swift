@@ -116,12 +116,8 @@ struct HomeView: View {
             onRefresh: { usage.refresh(force: true) },
             scrollsContent: false)
         .frame(width: HomeUsageLayout.cardWidth)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(.white.opacity(0.15), lineWidth: 0.5)
-        )
+        .clipShape(RoundedRectangle(cornerRadius: DMRadius.card))
+        .dmGlass(radius: DMRadius.card, stroke: .white.opacity(0.15))
     }
 
     private var compactStatCluster: some View {
@@ -136,11 +132,7 @@ struct HomeView: View {
         .foregroundStyle(.white.opacity(0.65))
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(.white.opacity(0.12), lineWidth: 0.5)
-        )
+        .dmGlass(radius: DMRadius.pill)
     }
 
 }

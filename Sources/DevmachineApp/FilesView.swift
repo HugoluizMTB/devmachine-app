@@ -33,12 +33,7 @@ struct FilesView: View {
                 ProgressView().controlSize(.small)
             }
 
-            Button {
-                store.uploadFiles()
-            } label: {
-                Image(systemName: "arrow.up.doc")
-            }
-            .buttonStyle(.plain)
+            DMIconButton(systemImage: "arrow.up.doc", tint: nil) { store.uploadFiles() }
             .help("Upload…")
         }
         .padding(10)
@@ -46,12 +41,7 @@ struct FilesView: View {
 
     private var pathBar: some View {
         HStack(spacing: 8) {
-            Button {
-                store.up()
-            } label: {
-                Image(systemName: "arrow.up")
-            }
-            .buttonStyle(.plain)
+            DMIconButton(systemImage: "arrow.up", tint: nil) { store.up() }
             .disabled(!store.canGoUp)
             .help("Up")
 
@@ -63,13 +53,8 @@ struct FilesView: View {
 
             Spacer()
 
-            Button {
-                store.refresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.plain)
-            .help("Refresh")
+            DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.refresh() }
+                .help("Refresh")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -129,12 +114,9 @@ struct FilesView: View {
             iconColor: entry.isDir ? .blue : .dmMuted,
             title: entry.name,
             trailing: entry.isDir ? nil : AnyView(
-                Button {
+                DMIconButton(systemImage: "arrow.down.circle", tint: nil) {
                     store.download(entry)
-                } label: {
-                    Image(systemName: "arrow.down.circle")
                 }
-                .buttonStyle(.plain)
                 .help("Download")
             ),
             tap: entry.isDir ? { store.cd(entry) } : { open(entry) }

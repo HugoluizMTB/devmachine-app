@@ -237,8 +237,7 @@ struct ContentView: View {
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
                 .padding(9)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.15), lineWidth: 0.5))
+                .dmGlass(in: Circle(), stroke: .white.opacity(0.15))
                 .shadow(radius: 6, y: 2)
         }
         .buttonStyle(.plain)

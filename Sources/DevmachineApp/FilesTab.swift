@@ -85,16 +85,9 @@ struct FilesTab: View {
                     .help(root)
             },
             trailing: {
-                Button {
+                DMIconButton(systemImage: "arrow.clockwise", size: 11, hitSize: DMHitSize.compact) {
                     store.refresh()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.dm(11))
-                        .foregroundStyle(Color.dmMuted)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
                 .help("Refresh")
             }
         )
@@ -103,34 +96,22 @@ struct FilesTab: View {
     /// The same engine as ⌘P, in the panel: a field that finds a file anywhere
     /// in the repository, without opening the tree folder by folder.
     private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .font(.dm(10))
-                .foregroundStyle(Color.dmMuted)
-            TextField("Find a file", text: $query)
-                .textFieldStyle(.plain)
-                .font(.dm(11.5))
-                .foregroundStyle(Color.dmRowText)
-                .onSubmit { openFirstHit() }
+        DMSearchField(
+            prompt: "Find a file", text: $query, fontSize: 11.5, iconSize: 10, spacing: 6,
+            textColor: .dmRowText
+        ) {
             if !query.isEmpty {
-                Button { query = "" } label: {
-                    Image(systemName: "xmark.circle.fill").font(.dm(10))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.dmMuted)
+                DMIconButton(systemImage: "xmark.circle.fill", size: 10) { query = "" }
             }
-            Button { store.toggleAll() } label: {
-                Image(systemName: store.hasExpandedFolders
-                      ? "arrow.down.right.and.arrow.up.left"
-                      : "arrow.up.left.and.arrow.down.right")
-                    .font(.dm(10))
-                    .foregroundStyle(Color.dmMuted)
-                    .frame(width: 18, height: 18)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            DMIconButton(
+                systemImage: store.hasExpandedFolders
+                    ? "arrow.down.right.and.arrow.up.left"
+                    : "arrow.up.left.and.arrow.down.right",
+                size: 10, hitSize: DMHitSize.compact
+            ) { store.toggleAll() }
             .help(store.hasExpandedFolders ? "Collapse every folder" : "Expand the folders read so far")
         }
+        .onSubmit { openFirstHit() }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
         .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.dmDivider), alignment: .bottom)
@@ -347,8 +328,8 @@ private struct FileTreeRowView: View {
     }
 
     private var background: some View {
-        RoundedRectangle(cornerRadius: 6)
-            .fill(selected ? Self.accent.opacity(0.22) : (hovering ? Color.dmHover : .clear))
+        DMRowBackground(
+            selected: selected, hovering: hovering, selectedColor: Self.accent.opacity(0.22))
     }
 
     private var dimmed: Bool {

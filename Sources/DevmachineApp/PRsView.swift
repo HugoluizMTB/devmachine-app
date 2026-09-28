@@ -29,15 +29,13 @@ struct PRsView: View {
             .labelsHidden()
             .frame(maxWidth: 190)
 
-            Button {
+            DMIconButton(
+                systemImage: store.isFavorite(store.selectedOwner) ? "star.fill" : "star",
+                tint: store.isFavorite(store.selectedOwner) ? .yellow : .secondary
+            ) {
                 store.toggleFavorite(store.selectedOwner)
-            } label: {
-                Image(systemName: store.isFavorite(store.selectedOwner) ? "star.fill" : "star")
-                    .foregroundColor(store.isFavorite(store.selectedOwner) ? .yellow : .secondary)
             }
-            .buttonStyle(.plain)
             .disabled(!canFavorite)
-            .opacity(canFavorite ? 1 : 0.35)
             .help(store.isFavorite(store.selectedOwner) ? "Unfavorite" : "Favorite — pins it to the top")
 
             Spacer()
@@ -45,13 +43,8 @@ struct PRsView: View {
             if store.isLoading {
                 ProgressView().controlSize(.small)
             }
-            Button {
-                store.refresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.plain)
-            .help("Refresh")
+            DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.refresh() }
+                .help("Refresh")
         }
         .padding(10)
     }

@@ -149,15 +149,10 @@ struct MenuBarPanel: View {
     }
 
     private func footerButton(_ systemImage: String, help: String, action: @escaping () -> Void) -> some View {
-        Button {
+        DMIconButton(systemImage: systemImage, size: 12) {
             NSApp.activate(ignoringOtherApps: true)
             action()
-        } label: {
-            Image(systemName: systemImage)
-                .font(.dm(12))
-                .foregroundStyle(Color.dmMuted)
         }
-        .buttonStyle(.plain)
         .help(help)
     }
 }

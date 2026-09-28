@@ -143,12 +143,10 @@ struct SetupPage: View {
                 footer
             }
         }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.14), lineWidth: 0.5)
-        )
+        .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.14))
+        .background(
+            Color.black.opacity(0.35),
+            in: RoundedRectangle(cornerRadius: DMRadius.panel, style: .continuous))
         .environment(\.colorScheme, .dark)
     }
 
@@ -198,9 +196,9 @@ struct SetupPage: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(selected ? Color.white.opacity(0.14) : .clear)
-        )
+            DMRowBackground(
+                selected: selected, cornerRadius: DMRadius.control, style: .continuous,
+                selectedColor: .white.opacity(0.14)))
         .padding(.horizontal, 8)
         .contentShape(Rectangle())
         .onTapGesture { section = item }
@@ -269,8 +267,7 @@ struct SetupPage: View {
             ) {
                 HStack(spacing: 8) {
                     TextField("/Users/you/.config/devmachine", text: $opsRepoPath)
-                        .textFieldStyle(.plain)
-                        .setupField()
+                        .dmField()
                     Button("Choose…") { chooseFolder() }
                         .buttonStyle(.bordered)
                 }
@@ -282,8 +279,7 @@ struct SetupPage: View {
                 field: .hostAlias
             ) {
                 TextField("myhost", text: $hostAlias)
-                    .textFieldStyle(.plain)
-                    .setupField()
+                    .dmField()
             }
 
             field(
@@ -292,8 +288,7 @@ struct SetupPage: View {
                 field: .publicIP
             ) {
                 TextField("203.0.113.10", text: $publicIP)
-                    .textFieldStyle(.plain)
-                    .setupField()
+                    .dmField()
             }
 
             field(
@@ -302,8 +297,7 @@ struct SetupPage: View {
                 field: .baseDomain
             ) {
                 TextField("example.com", text: $baseDomain)
-                    .textFieldStyle(.plain)
-                    .setupField()
+                    .dmField()
             }
         }
     }
@@ -441,9 +435,8 @@ struct SetupPage: View {
                             Button("Use remote fallback") {
                                 workspaceSessionPrograms.removeValue(forKey: workspace.alias)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.dmText(tint: .white.opacity(0.55)))
                             .font(.dm(10, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.55))
                         }
                     }
                 }
@@ -649,24 +642,7 @@ struct SetupPage: View {
     }
 
     private func chip(id: String, title: String) -> some View {
-        let selected = themeID == id
-        return Text(verbatim: title)
-            .font(.dm(11, weight: .medium))
-            .foregroundStyle(selected ? Color.white : Color.white.opacity(0.7))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                selected ? Color.white.opacity(0.18) : Color.white.opacity(0.07),
-                in: Capsule()
-            )
-            .overlay(
-                Capsule().stroke(
-                    selected ? Color.accentColor : Color.white.opacity(0.12),
-                    lineWidth: selected ? 1 : 0.5
-                )
-            )
-            .contentShape(Capsule())
-            .onTapGesture { themeID = id }
+        DMChip(title: title, selected: themeID == id) { themeID = id }
     }
 
     private func photoCell(_ photo: WallpaperPhoto) -> some View {
@@ -682,9 +658,9 @@ struct SetupPage: View {
             }
         }
         .frame(height: 62)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
         .overlay(ring(selected: wallpaper == Self.choice(for: photo)))
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
         .onTapGesture { select(photo) }
         .onAppear { wallpapers.ensureThumbnail(photo) }
     }
@@ -692,7 +668,7 @@ struct SetupPage: View {
     private func gradientCell(_ gradient: WallpaperGradient) -> some View {
         gradient.swatch
             .frame(height: 62)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
             .overlay(alignment: .bottomLeading) {
                 Text(verbatim: gradient.title)
                     .font(.dm(10, weight: .medium))
@@ -700,12 +676,12 @@ struct SetupPage: View {
                     .padding(6)
             }
             .overlay(ring(selected: wallpaper == .gradient(name: gradient.name)))
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
             .onTapGesture { wallpaper = .gradient(name: gradient.name) }
     }
 
     private func ring(selected: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
+        RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous)
             .stroke(
                 selected ? Color.accentColor : Color.white.opacity(0.12),
                 lineWidth: selected ? 2 : 0.5
@@ -822,20 +798,5 @@ struct SetupPage: View {
         // now, and the reload must not bring their poll back.
         model.applyHiddenWorkspaces()
         model.loadWorkspaces()
-    }
-}
-
-private extension View {
-    func setupField() -> some View {
-        self
-            .font(.dm(13))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-            )
     }
 }

@@ -20,15 +20,10 @@ struct CommandPaletteView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Search sessions…", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.dm(15))
-                    .focused($focused)
-                    .onSubmit(openSelected)
-            }
+            DMSearchField(
+                prompt: "Search sessions…", text: $query, focus: $focused,
+                fontSize: 15, iconSize: 13, spacing: 10, iconColor: .secondary)
+            .onSubmit(openSelected)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
 
@@ -51,8 +46,7 @@ struct CommandPaletteView: View {
             }
         }
         .frame(width: 560)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.12), lineWidth: 0.5))
+        .dmGlass(radius: DMRadius.panel)
         .shadow(radius: 30, y: 12)
         .onAppear { focused = true; index = 0 }
         .onChange(of: query) { _, _ in index = 0 }
@@ -88,9 +82,8 @@ struct CommandPaletteView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(i == index ? Color.white.opacity(0.10) : .clear)
-        )
+            DMRowBackground(
+                selected: i == index, cornerRadius: DMRadius.control, selectedColor: .dmActive))
         .contentShape(Rectangle())
         .onTapGesture { model.openPalette(item) }
     }

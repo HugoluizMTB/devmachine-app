@@ -45,13 +45,8 @@ struct StatsView: View {
             if store.isLoading {
                 ProgressView().controlSize(.small)
             }
-            Button {
-                refresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.plain)
-            .help("Refresh")
+            DMIconButton(systemImage: "arrow.clockwise", tint: nil) { refresh() }
+                .help("Refresh")
         }
         .padding(10)
     }

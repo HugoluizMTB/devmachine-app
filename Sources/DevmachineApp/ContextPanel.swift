@@ -127,14 +127,9 @@ struct ContextPanel: View {
                 )
             },
             trailing: {
-                Button {
+                DMIconButton(systemImage: "sidebar.right", size: 13, weight: .semibold) {
                     withAnimation(.easeInOut(duration: 0.18)) { model.contextCollapsed = true }
-                } label: {
-                    Image(systemName: "sidebar.right")
-                        .font(.dm(13, weight: .semibold))
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.dmMuted)
                 .help("Close context")
             }
         )

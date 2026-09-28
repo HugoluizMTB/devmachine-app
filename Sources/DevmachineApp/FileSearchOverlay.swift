@@ -35,15 +35,7 @@ struct FileSearchOverlay: View {
     }
 
     private var field: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.dm(11))
-                .foregroundStyle(Color.dmMuted)
-            TextField("Find a file", text: $store.query)
-                .textFieldStyle(.plain)
-                .font(.dm(12))
-                .focused($focused)
-                .onSubmit { copySelected() }
+        DMSearchField(prompt: "Find a file", text: $store.query, focus: $focused) {
             Text(verbatim: "\(store.fileCount)")
                 .font(.dm(10))
                 .foregroundStyle(Color.dmMuted)
@@ -52,13 +44,11 @@ struct FileSearchOverlay: View {
                 onClose()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.dm(10))
-                    .foregroundStyle(Color.dmMuted)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.dmIcon(size: 10))
             .keyboardShortcut(.cancelAction)
         }
+        .onSubmit { copySelected() }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
     }

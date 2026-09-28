@@ -23,8 +23,7 @@ struct FileSearchPaletteView: View {
             footer
         }
         .frame(width: 620)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.12), lineWidth: 0.5))
+        .dmGlass(radius: DMRadius.panel)
         .shadow(radius: 30, y: 12)
         .onAppear {
             focused = true
@@ -49,15 +48,13 @@ struct FileSearchPaletteView: View {
     }
 
     private var field: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Find a file in this session…", text: $store.query)
-                .textFieldStyle(.plain)
-                .font(.dm(15))
-                .focused($focused)
-                .onSubmit(typeSelected)
+        DMSearchField(
+            prompt: "Find a file in this session…", text: $store.query, focus: $focused,
+            fontSize: 15, iconSize: 13, spacing: 10, iconColor: .secondary
+        ) {
             if store.isLoading { ProgressView().controlSize(.small) }
         }
+        .onSubmit(typeSelected)
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
     }
@@ -111,22 +108,16 @@ struct FileSearchPaletteView: View {
             // The row says both things it can do, so neither is a secret.
             if i == index {
                 Button("Open") { index = i; openSelected() }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.dmChipProminent)
                     .font(.dm(10, weight: .medium))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.14)))
-                    .foregroundStyle(.white.opacity(0.9))
                     .help("Open the file (⇧⏎)")
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(i == index ? Color.white.opacity(0.10) : .clear)
-        )
+            DMRowBackground(
+                selected: i == index, cornerRadius: DMRadius.control, selectedColor: .dmActive))
         .contentShape(Rectangle())
         .onTapGesture { index = i; typeSelected() }
         .contextMenu {

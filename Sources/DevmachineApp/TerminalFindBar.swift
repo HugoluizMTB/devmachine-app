@@ -12,52 +12,35 @@ struct TerminalFindBar: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11))
-                .foregroundStyle(Color.dmMuted)
-            TextField("Find", text: $term)
-                .textFieldStyle(.plain)
-                .font(.dm(12))
-                .foregroundStyle(missed ? Color.red.opacity(0.9) : Color.dmRowText)
-                .frame(width: 180)
-                .focused($focused)
-                .onSubmit { step(forward: true) }
-                .onChange(of: term) { _, _ in missed = false }
+        DMSearchField(
+            prompt: "Find", text: $term, focus: $focused, spacing: 6,
+            textColor: missed ? Color.red.opacity(0.9) : Color.dmRowText, fieldWidth: 180
+        ) {
             stepButton("chevron.up", forward: false)
                 .keyboardShortcut(.return, modifiers: .shift)
             stepButton("chevron.down", forward: true)
             Button(action: close) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.dmMuted)
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.dmIcon(size: 10, weight: .semibold, hitSize: DMHitSize.regular))
             .keyboardShortcut(.escape, modifiers: [])
         }
+        .onSubmit { step(forward: true) }
+        .onChange(of: term) { _, _ in missed = false }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.dmSidebarBg.opacity(0.96))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8).stroke(Color.dmDivider, lineWidth: 1))
-        )
+        .dmSurface(
+            Color.dmSidebarBg.opacity(0.96), radius: DMRadius.tile, stroke: .dmDivider,
+            lineWidth: 1)
         .padding(12)
         .onAppear { focused = true }
     }
 
     private func stepButton(_ icon: String, forward: Bool) -> some View {
-        Button { step(forward: forward) } label: {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.dmRowText)
-                .frame(width: 20, height: 20)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        DMIconButton(
+            systemImage: icon, size: 10, weight: .semibold, tint: .dmRowText,
+            hitSize: DMHitSize.regular
+        ) { step(forward: forward) }
         .disabled(term.isEmpty)
     }
 

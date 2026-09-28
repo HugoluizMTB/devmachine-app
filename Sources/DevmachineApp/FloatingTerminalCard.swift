@@ -13,7 +13,7 @@ struct FloatingTerminalCard: ViewModifier {
         // border, next to the ring of padding, and the pane is meant to look
         // like one surface.
         content
-            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: DMRadius.terminal, style: .continuous))
     }
 }
 

@@ -42,56 +42,25 @@ struct SidebarView: View {
 
     private var footerRow: some View {
         HStack(spacing: 0) {
-            Button {
-                model.showPage(.stats)
-            } label: {
-                Image(systemName: "chart.bar")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 24)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.dmMuted)
-            .help("Stats")
-
-            Button {
-                model.showPage(.subdomains)
-            } label: {
-                Image(systemName: "globe")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 24)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.dmMuted)
-            .help("Subdomains")
-
-            Button {
-                model.showPage(.setup)
-            } label: {
-                Image(systemName: "gearshape")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 24)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.dmMuted)
-            .help("Settings (⌘,)")
-
-            Button {
+            footerButton("chart.bar") { model.showPage(.stats) }
+                .help("Stats")
+            footerButton("globe") { model.showPage(.subdomains) }
+                .help("Subdomains")
+            footerButton("gearshape") { model.showPage(.setup) }
+                .help("Settings (⌘,)")
+            footerButton("sidebar.left") {
                 withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = true }
-            } label: {
-                Image(systemName: "sidebar.left")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 24)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.dmMuted)
             .help("Close sidebar (⌘B)")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private func footerButton(_ systemImage: String, action: @escaping () -> Void) -> some View {
+        DMIconButton(
+            systemImage: systemImage, hitSize: DMHitSize.footer, fillsWidth: true,
+            action: action)
     }
 
     private var topBar: some View {
@@ -105,14 +74,8 @@ struct SidebarView: View {
                     .kerning(0.8)
             },
             trailing: {
-                Button {
-                    model.refreshAll()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.dmMuted)
-                .help("Refresh")
+                DMIconButton(systemImage: "arrow.clockwise") { model.refreshAll() }
+                    .help("Refresh")
 
                 Menu {
                     ForEach(model.workspaces) { ws in
@@ -156,39 +119,24 @@ struct SidebarView: View {
                 }
             },
             trailing: {
-                Button {
-                    model.stackWorkspace(alias)
-                } label: {
-                    Image(systemName: model.isWorkspaceStacked(alias) ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2")
-                        .frame(width: 20, height: 16)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(model.isWorkspaceStacked(alias) ? Color.accentColor : Color.dmMuted)
-                .font(.dm(11))
+                DMIconButton(
+                    systemImage: model.isWorkspaceStacked(alias) ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2",
+                    size: 11,
+                    tint: model.isWorkspaceStacked(alias) ? Color.accentColor : Color.dmMuted,
+                    hitSize: DMHitSize.header
+                ) { model.stackWorkspace(alias) }
                 .help("Workspace home")
 
                 if filesButton {
-                    Button {
+                    DMIconButton(systemImage: "folder", size: 11, hitSize: DMHitSize.header) {
                         openFiles(alias: alias)
-                    } label: {
-                        Image(systemName: "folder")
-                            .frame(width: 20, height: 16)
-                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain).foregroundStyle(Color.dmMuted)
-                    .font(.dm(11))
                     .help("Files…")
                 }
 
                 if let action {
-                    Button(action: action) {
-                        Image(systemName: "plus")
-                            .frame(width: 20, height: 16)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain).foregroundStyle(Color.dmMuted)
-                    .font(.dm(11))
+                    DMIconButton(
+                        systemImage: "plus", size: 11, hitSize: DMHitSize.header, action: action)
                 }
             }
         )
