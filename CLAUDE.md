@@ -65,9 +65,54 @@ segmented control.
 - `DevmachineServices` is the boundary for workspace, session, and context data.
   Its current sources preserve the existing SSH and `devmachine-infer` behavior;
   a future `devmachine-cli` source can replace them without changing views.
-- Shared UI in `Sources/DevmachineApp/Components/DMComponents.swift`
-  (`DMRow`, `DMSection`, `DMPill`, `DMProgressBar`, `DMToastCard`, `DMStatBubble`)
-  + `Theme.swift` (`Color.dm*`). Reuse these; match the dark palette.
+- Shared UI lives in `Sources/DevmachineApp/Components/` + `Theme.swift`
+  (`Color.dm*`). See "Component library" below.
+
+## Component library — use what exists, never reinvent
+`Sources/DevmachineApp/Components/` is the app's own component library. Before
+writing any UI, look there first. The order is fixed:
+
+1. **A `DM*` component or style already does it** → use it. Add a parameter if
+   it is close but not quite right; do not copy it.
+2. **Nothing in `Components/` fits** → use the native SwiftUI/AppKit control
+   (`Toggle`, `Picker`, `Menu`, `.bordered`, `.borderedProminent`, `.link`,
+   `.roundedBorder` in a native sheet).
+3. **Neither fits and the thing appears twice** → add a new `DM*` component to
+   `Components/`, then use it in both places. One-off layout stays in its view.
+
+What is there:
+- Tokens (`DMTokens.swift`): `DMRadius.*` for every corner radius, `DMHitSize.*`
+  for icon click areas, `Color.dm*` (incl. `dmFill`, `dmStroke`, `dmActive`).
+  No number literals for radii in views.
+- Buttons (`DMButtons.swift`): `DMIconButton` / `.buttonStyle(.dmIcon(...))` for
+  every bare SF Symbol button; `.dmChip` / `.dmChipProminent` for small labelled
+  buttons; `.dmText(tint:)` for a text-only secondary action.
+- Fields (`DMFields.swift`): `DMSearchField` (magnifier + borderless field +
+  trailing slot, optional focus binding); `.dmField()` for a text input on a
+  dark surface.
+- Surfaces (`DMSurfaces.swift`): `.dmGlass(radius:)` / `.dmGlass(in:)` for frosted
+  cards, palettes, toasts; `.dmSurface(_:radius:)` for any filled shape with a
+  hairline edge; `DMKeyCap`; `DMChip`.
+- Rows and sections (`DMComponents.swift`): `DMRow`, `DMRowBackground`
+  (radius and selected colour are parameters), `DMSection`, `DMSectionLabel`,
+  `DMSectionValue`, `DMPill`, `DMProgressBar`, `DMStatBubble`, `DMToastCard`;
+  `DMTabStrip`, `FlowLayout`.
+
+Rules:
+- Never hand-roll `.buttonStyle(.plain)` + `Image` + `.foregroundStyle` +
+  `.frame` + `.contentShape` for an icon button: that is `DMIconButton`.
+  `.buttonStyle(.plain)` stays only for a button whose label is a whole row or
+  panel.
+- Never write `.background(.ultraThinMaterial, in:)` + a stroke overlay: that is
+  `.dmGlass`.
+- `DMComponentsRenderTests` renders a gallery of every component; add a new
+  component to it. `DEVMACHINE_RENDER=1 swift test --filter DMComponentsRenderTests`
+  writes `/tmp/devmachine-components.png` to look at.
+- `HarnessUsageKit` never imports app components (it depends only on
+  Foundation/SwiftUI/Charts); it keeps its own small styles.
+- No third-party UI kit (e.g. shadcn ports): they bring a web look, blur-heavy
+  overlays and their own window/hosting code, which clash with the hard UI rules
+  below.
 
 ## Hard UI rules
 - **Never put a `Divider` inside a `ZStack`** — it becomes horizontal and greedy.
