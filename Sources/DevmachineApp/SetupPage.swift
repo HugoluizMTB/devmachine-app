@@ -136,10 +136,10 @@ struct SetupPage: View {
     private var card: some View {
         HStack(spacing: 0) {
             rail
-            Divider().overlay(Color.white.opacity(0.12))
+            Divider().overlay(Color.dmStroke)
             VStack(spacing: 0) {
                 sectionBody
-                Divider().overlay(Color.white.opacity(0.12))
+                Divider().overlay(Color.dmStroke)
                 footer
             }
         }
@@ -683,7 +683,7 @@ struct SetupPage: View {
     private func ring(selected: Bool) -> some View {
         RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous)
             .stroke(
-                selected ? Color.accentColor : Color.white.opacity(0.12),
+                selected ? Color.accentColor : Color.dmStroke,
                 lineWidth: selected ? 2 : 0.5
             )
     }

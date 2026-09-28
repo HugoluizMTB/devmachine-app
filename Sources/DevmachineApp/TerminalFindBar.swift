@@ -22,7 +22,7 @@ struct TerminalFindBar: View {
             Button(action: close) {
                 Image(systemName: "xmark")
             }
-            .buttonStyle(.dmIcon(size: 10, weight: .semibold, hitSize: DMHitSize.regular))
+            .buttonStyle(DMIconButtonStyle(size: 10, weight: .semibold, hitSize: DMHitSize.regular))
             .keyboardShortcut(.escape, modifiers: [])
         }
         .onSubmit { step(forward: true) }

@@ -96,7 +96,7 @@ struct FileSearchPaletteView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(.white.opacity(0.08)), alignment: .top)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.dmSelection), alignment: .top)
     }
 
     private func row(i: Int, hit: FileSearch.Hit) -> some View {

@@ -98,7 +98,7 @@ struct StackGridView: View {
         .foregroundStyle(.white.opacity(0.85))
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
-        .dmGlass(in: Capsule())
+        .dmGlass(in: Capsule(), stroke: .clear)
     }
 
     private func sizeIcon(_ size: StackCellSize) -> String {

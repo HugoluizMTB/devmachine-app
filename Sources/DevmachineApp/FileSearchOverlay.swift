@@ -45,7 +45,7 @@ struct FileSearchOverlay: View {
             } label: {
                 Image(systemName: "xmark")
             }
-            .buttonStyle(.dmIcon(size: 10))
+            .buttonStyle(DMIconButtonStyle(size: 10))
             .keyboardShortcut(.cancelAction)
         }
         .onSubmit { copySelected() }
@@ -87,7 +87,7 @@ struct FileSearchOverlay: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 4)
-        .background(index == selection ? Color.white.opacity(0.08) : .clear)
+        .background(index == selection ? Color.dmSelection : .clear)
         .contentShape(Rectangle())
         .onTapGesture { selection = index; copySelected() }
         .contextMenu {

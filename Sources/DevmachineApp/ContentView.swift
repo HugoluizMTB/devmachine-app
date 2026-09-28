@@ -234,13 +234,11 @@ struct ContentView: View {
             withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = false }
         } label: {
             Image(systemName: "sidebar.left")
-                .font(.dm(13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
                 .padding(9)
                 .dmGlass(in: Circle(), stroke: .white.opacity(0.15))
                 .shadow(radius: 6, y: 2)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(DMIconButtonStyle(size: 13, weight: .semibold, tint: .white.opacity(0.9)))
         .help("Open sidebar (⌘B)")
         .padding(.top, 18)
         .padding(.leading, 14)

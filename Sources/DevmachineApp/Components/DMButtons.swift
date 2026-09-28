@@ -23,8 +23,8 @@ private struct DMIconButtonBody: View {
 
     var body: some View {
         configuration.label
-            .font(style.size.map { .dm($0, weight: style.weight) })
-            .foregroundStyle(style.tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.foreground))
+            .modifier(DMInheritableFont(size: style.size, weight: style.weight))
+            .modifier(DMInheritableTint(tint: style.tint))
             .frame(width: style.fillsWidth ? nil : style.hitSize?.width,
                    height: style.hitSize?.height)
             .frame(maxWidth: style.fillsWidth ? .infinity : nil)
@@ -33,31 +33,53 @@ private struct DMIconButtonBody: View {
     }
 }
 
-extension ButtonStyle where Self == DMIconButtonStyle {
-    static func dmIcon(
-        size: CGFloat? = nil, weight: Font.Weight = .regular, tint: Color? = .dmMuted,
-        hitSize: CGSize? = nil, fillsWidth: Bool = false
-    ) -> DMIconButtonStyle {
-        DMIconButtonStyle(
-            size: size, weight: weight, tint: tint, hitSize: hitSize, fillsWidth: fillsWidth)
+/// Nil leaves the environment alone, so the value set by a parent still applies.
+struct DMInheritableFont: ViewModifier {
+    let size: CGFloat?
+    var weight: Font.Weight = .regular
+
+    func body(content: Content) -> some View {
+        if let size {
+            content.font(.dm(size, weight: weight))
+        } else {
+            content
+        }
+    }
+}
+
+struct DMInheritableTint: ViewModifier {
+    let tint: Color?
+
+    func body(content: Content) -> some View {
+        if let tint {
+            content.foregroundStyle(tint)
+        } else {
+            content
+        }
     }
 }
 
 struct DMIconButton: View {
     let systemImage: String
-    var size: CGFloat?
-    var weight: Font.Weight = .regular
-    var tint: Color? = .dmMuted
-    var hitSize: CGSize?
-    var fillsWidth = false
+    let style: DMIconButtonStyle
     let action: () -> Void
+
+    init(
+        systemImage: String, size: CGFloat? = nil, weight: Font.Weight = .regular,
+        tint: Color? = .dmMuted, hitSize: CGSize? = nil, fillsWidth: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.systemImage = systemImage
+        self.style = DMIconButtonStyle(
+            size: size, weight: weight, tint: tint, hitSize: hitSize, fillsWidth: fillsWidth)
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
         }
-        .buttonStyle(.dmIcon(
-            size: size, weight: weight, tint: tint, hitSize: hitSize, fillsWidth: fillsWidth))
+        .buttonStyle(style)
     }
 }
 

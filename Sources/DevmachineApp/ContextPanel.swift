@@ -122,7 +122,7 @@ struct ContextPanel: View {
                     fontSize: 11,
                     horizontalPadding: 8,
                     verticalPadding: 3,
-                    cornerRadius: 6,
+                    cornerRadius: DMRadius.row,
                     spacing: 2
                 )
             },

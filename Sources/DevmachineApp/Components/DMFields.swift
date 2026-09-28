@@ -22,7 +22,7 @@ struct DMSearchField<Trailing: View>: View {
             TextField(prompt, text: $text)
                 .textFieldStyle(.plain)
                 .font(.dm(fontSize))
-                .foregroundStyle(textColor.map(AnyShapeStyle.init) ?? AnyShapeStyle(.foreground))
+                .modifier(DMInheritableTint(tint: textColor))
                 .frame(width: fieldWidth)
                 .modifier(DMOptionalFocus(focus: focus))
             trailing()
@@ -64,6 +64,6 @@ extension View {
             .foregroundStyle(.white)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .dmSurface(Color.dmFill, radius: DMRadius.row, style: .continuous)
+            .dmSurface(Color.dmSelection, radius: DMRadius.row, style: .continuous)
     }
 }

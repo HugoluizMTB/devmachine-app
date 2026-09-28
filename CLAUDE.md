@@ -82,9 +82,9 @@ writing any UI, look there first. The order is fixed:
 
 What is there:
 - Tokens (`DMTokens.swift`): `DMRadius.*` for every corner radius, `DMHitSize.*`
-  for icon click areas, `Color.dm*` (incl. `dmFill`, `dmStroke`, `dmActive`).
+  for icon click areas, `Color.dm*` (incl. `dmSelection`, `dmStroke`, `dmActive`).
   No number literals for radii in views.
-- Buttons (`DMButtons.swift`): `DMIconButton` / `.buttonStyle(.dmIcon(...))` for
+- Buttons (`DMButtons.swift`): `DMIconButton` / `.buttonStyle(DMIconButtonStyle(...))` for
   every bare SF Symbol button; `.dmChip` / `.dmChipProminent` for small labelled
   buttons; `.dmText(tint:)` for a text-only secondary action.
 - Fields (`DMFields.swift`): `DMSearchField` (magnifier + borderless field +

@@ -41,7 +41,7 @@ struct DMKeyCap: View {
             .foregroundStyle(Color.dmRowText)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .dmSurface(Color.dmFill, radius: DMRadius.keyCap)
+            .dmSurface(Color.dmSelection, radius: DMRadius.keyCap)
     }
 }
 
