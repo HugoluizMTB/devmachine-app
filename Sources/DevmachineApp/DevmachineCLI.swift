@@ -48,7 +48,7 @@ enum DevmachineCLIError: LocalizedError, Equatable {
         case .commandFailed(let detail):
             return detail.trimmingCharacters(in: .whitespacesAndNewlines)
         case .executableNotFound(let paths):
-            return "Devmachine CLI was not found at \(paths.joined(separator: " or ")). Install it with `brew install adevmachine/tap/devmachine`."
+            return "Devmachine CLI was not found at \(paths.joined(separator: " or ")). Install it with `brew install mydevmachine/tap/devmachine`."
         }
     }
 }
@@ -84,7 +84,7 @@ struct DevmachineCLI: Sendable {
                 "expose", "add", workspace, String(port),
                 "--host", host, "--publish",
             ],
-            environment: nil
+            environment: Self.environment()
         )
         try requireSuccess(result)
     }
@@ -93,7 +93,7 @@ struct DevmachineCLI: Sendable {
         let result = try runner.runCapturing(
             executable: executable,
             args: ["--format", "json", "expose", "list"],
-            environment: nil
+            environment: Self.environment()
         )
         try requireSuccess(result)
         return try JSONDecoder().decode([PublishedSite].self, from: Data(result.stdout.utf8))
@@ -103,7 +103,7 @@ struct DevmachineCLI: Sendable {
         let result = try runner.runCapturing(
             executable: executable,
             args: ["--format", "json", "workspaces", "list"],
-            environment: nil
+            environment: Self.environment()
         )
         try requireSuccess(result)
         return try JSONDecoder().decode(CLIWorkspaceList.self, from: Data(result.stdout.utf8)).workspaces
@@ -113,7 +113,7 @@ struct DevmachineCLI: Sendable {
         let result = try runner.runCapturing(
             executable: executable,
             args: ["--format", "json", "machines", "list"],
-            environment: nil
+            environment: Self.environment()
         )
         try requireSuccess(result)
         return try JSONDecoder().decode([CLIMachine].self, from: Data(result.stdout.utf8))
@@ -129,7 +129,7 @@ struct DevmachineCLI: Sendable {
                 "run", "--workspace", workspace, "--package", "devmachine-app",
                 "--", "context", "--session", session,
             ],
-            environment: nil
+            environment: Self.environment()
         )
         try requireSuccess(result)
         return result.stdout
@@ -143,10 +143,18 @@ struct DevmachineCLI: Sendable {
                 "run", "--machine", machine, "--package", "devmachine-app",
                 "--", "context", "--project", project,
             ],
-            environment: nil
+            environment: Self.environment()
         )
         try requireSuccess(result)
         return result.stdout
+    }
+
+    // An app opened from the Dock inherits launchd's empty SSH agent, not the
+    // shell's, and the CLI reaches every machine through whatever agent it gets.
+    private static func environment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        environment["SSH_AUTH_SOCK"] = RemoteCommands.onePasswordSocketPath
+        return environment
     }
 
     private func requireSuccess(_ result: (stdout: String, stderr: String, exitCode: Int32)) throws {

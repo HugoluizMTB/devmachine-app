@@ -11,6 +11,7 @@ private final class CLIRecordingRunner: CommandRunner, @unchecked Sendable {
 
     private let lock = NSLock()
     private var storedCalls: [Call] = []
+    private var storedEnvironments: [[String: String]?] = []
     var result: (stdout: String, stderr: String, exitCode: Int32)
 
     init(result: (String, String, Int32) = ("", "", 0)) {
@@ -25,6 +26,7 @@ private final class CLIRecordingRunner: CommandRunner, @unchecked Sendable {
         -> (stdout: String, stderr: String, exitCode: Int32) {
         lock.lock()
         storedCalls.append(Call(executable: executable, args: args))
+        storedEnvironments.append(environment)
         let result = self.result
         lock.unlock()
         return result
@@ -34,6 +36,12 @@ private final class CLIRecordingRunner: CommandRunner, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return storedCalls
+    }
+
+    var environments: [[String: String]?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedEnvironments
     }
 }
 
@@ -89,6 +97,21 @@ final class DevmachineCLITests: XCTestCase {
 
         XCTAssertThrowsError(try DevmachineCLI(executable: "/x", runner: runner).listWorkspaces()) { error in
             XCTAssertEqual(error.localizedDescription, "config folder missing")
+        }
+    }
+
+    func testEveryCallHandsTheCLITheSSHAgentAndKeepsTheInheritedPath() throws {
+        let runner = CLIRecordingRunner(result: ("", "", 0))
+        let cli = DevmachineCLI(executable: "/x", runner: runner)
+
+        _ = try cli.context(workspace: "acme", session: "main")
+        _ = try cli.context(machine: "mac", project: "/Users/alice/acme")
+        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+
+        XCTAssertEqual(runner.environments.count, 3)
+        for environment in runner.environments {
+            XCTAssertEqual(environment?["SSH_AUTH_SOCK"], RemoteCommands.onePasswordSocketPath)
+            XCTAssertEqual(environment?["PATH"], ProcessInfo.processInfo.environment["PATH"])
         }
     }
 

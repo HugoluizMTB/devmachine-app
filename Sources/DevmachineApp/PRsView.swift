@@ -10,7 +10,7 @@ struct PRsView: View {
             Rectangle().fill(Color.dmDivider).frame(height: 1)
             content
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.dmContentBg)
     }
 
