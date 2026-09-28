@@ -83,56 +83,21 @@ struct SubdomainsView: View {
     }
 
     private func addErrorBanner(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.dm(12))
-                .foregroundStyle(Color.dmRowText)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer()
+        DMBanner(message: message) {
             DMIconButton(systemImage: "xmark", tint: nil) { store.addError = nil }
         }
-        .padding(10)
-        .background(Color.orange.opacity(0.12))
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.title)
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.dm(12))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Retry") { refresh() }
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        DMStatusView(kind: .failed(message: message, retry: refresh))
     }
 
     private var loadingView: some View {
-        VStack(spacing: 8) {
-            ProgressView()
-            Text("Loading…")
-                .font(.dm(12))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        DMStatusView(kind: .loading("Loading…"))
     }
 
     private var emptyView: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "globe")
-                .font(.title)
-                .foregroundStyle(.secondary)
-            Text("No subdomains found")
-                .font(.dm(12))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        DMStatusView(kind: .empty(systemImage: "globe", text: "No subdomains found"))
     }
 
     /// A site whose port belongs to a workspace turned off in Settings is left

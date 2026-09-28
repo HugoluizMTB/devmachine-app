@@ -69,6 +69,20 @@ private struct DMComponentsGallery: View {
                 .frame(maxWidth: .infinity)
                 .dmGlass(radius: DMRadius.panel)
             DMProgressBar(done: 3, total: 5)
+            DMBanner(message: "Couldn't refresh: ssh: connect to host timed out", lineLimit: 2) {
+                DMIconButton(systemImage: "arrow.clockwise", tint: nil) {}
+            }
+            HStack(alignment: .top, spacing: 0) {
+                DMStatusView(kind: .loading("Reading context…"), fillsHeight: false)
+                DMStatusView(
+                    kind: .empty(systemImage: "text.bubble", text: "Nothing to show yet"),
+                    fillsHeight: false)
+                DMStatusView(
+                    kind: .failed(
+                        title: "Couldn't read the context", message: "ssh: host unreachable",
+                        retry: {}),
+                    fillsHeight: false)
+            }
         }
         .padding(16)
     }

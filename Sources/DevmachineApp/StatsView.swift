@@ -72,41 +72,15 @@ struct StatsView: View {
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.title)
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.dm(12))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Retry") { refresh() }
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        DMStatusView(kind: .failed(message: message, retry: refresh))
     }
 
     private var loadingView: some View {
-        VStack(spacing: 8) {
-            ProgressView()
-            Text("Loading…")
-                .font(.dm(12))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        DMStatusView(kind: .loading("Loading…"))
     }
 
     private var emptyView: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "chart.bar")
-                .font(.title)
-                .foregroundStyle(.secondary)
-            Text("No stats available")
-                .font(.dm(12))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        DMStatusView(kind: .empty(systemImage: "chart.bar", text: "No stats available"))
     }
 
     private func snapshotView(_ snapshot: StatsSnapshot) -> some View {

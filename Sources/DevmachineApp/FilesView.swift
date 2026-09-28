@@ -63,30 +63,12 @@ struct FilesView: View {
     @ViewBuilder
     private var content: some View {
         if let err = store.errorText {
-            VStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.title)
-                    .foregroundStyle(.orange)
-                Text(err)
-                    .font(.dm(12))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Retry") { store.refresh() }
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity)
+            DMStatusView(
+                kind: .failed(message: err, retry: { store.refresh() }), fillsHeight: false)
         } else if store.entries.isEmpty {
-            VStack(spacing: 8) {
-                Image(systemName: "folder")
-                    .font(.title)
-                    .foregroundStyle(.secondary)
-                Text(store.isLoading ? "Loading…" : "Empty")
-                    .font(.dm(12))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity)
+            DMStatusView(
+                kind: .empty(systemImage: "folder", text: store.isLoading ? "Loading…" : "Empty"),
+                fillsHeight: false)
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
