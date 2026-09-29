@@ -2,6 +2,11 @@ import XCTest
 @testable import DevmachineCore
 
 final class RemoteCommandsTests: XCTestCase {
+    override func tearDown() {
+        RemoteCommands.SSHAgentSocketPreference.shared.update(nil)
+        super.tearDown()
+    }
+
     func testListSessionsHasSentinelAndDelimiter() {
         let c = RemoteCommands.listSessions
         XCTAssertTrue(c.contains("list-sessions"))
@@ -170,6 +175,31 @@ final class RemoteCommandsTests: XCTestCase {
             RemoteCommands.sendKeys(session: "dash", text: "$(rm -rf /); `whoami`"),
             "tmux send-keys -t 'dash' -- '$(rm -rf /); `whoami`' Enter"
         )
+    }
+
+    func testSSHAgentSocketPreferenceStartsUnset() {
+        XCTAssertNil(RemoteCommands.SSHAgentSocketPreference.shared.current())
+    }
+
+    func testSSHAgentSocketPreferenceRoundTrips() {
+        RemoteCommands.SSHAgentSocketPreference.shared.update("/tmp/pref.sock")
+        XCTAssertEqual(RemoteCommands.SSHAgentSocketPreference.shared.current(), "/tmp/pref.sock")
+    }
+
+    func testSshEnvironmentDefaultsToTheSharedPreferenceWhenNoCustomSocketIsPassed() {
+        RemoteCommands.SSHAgentSocketPreference.shared.update("/tmp/pref.sock")
+
+        let env = RemoteCommands.sshEnvironment(fileExists: { _ in false }, environment: [:])
+
+        XCTAssertEqual(env["SSH_AUTH_SOCK"], "/tmp/pref.sock")
+    }
+
+    func testTerminalEnvironmentDefaultsToTheSharedPreferenceWhenNoCustomSocketIsPassed() {
+        RemoteCommands.SSHAgentSocketPreference.shared.update("/tmp/pref.sock")
+
+        let env = RemoteCommands.terminalEnvironment(fileExists: { _ in false }, environment: [:])
+
+        XCTAssertTrue(env.contains("SSH_AUTH_SOCK=/tmp/pref.sock"))
     }
 
     func testRemoteSessionsReportAsTmuxNotXterm() {

@@ -15,6 +15,7 @@ final class SettingsStoreTests: XCTestCase {
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
+        RemoteCommands.SSHAgentSocketPreference.shared.update(nil)
         super.tearDown()
     }
 
@@ -53,5 +54,37 @@ final class SettingsStoreTests: XCTestCase {
 
         XCTAssertNil(defaults.data(forKey: "appSettings"))
         XCTAssertNil(SettingsStore(defaults: defaults).settings)
+    }
+
+    func testCommittingSettingsUpdatesTheSharedSSHAgentSocketPreferenceAtOnce() {
+        var withSocket = sample
+        withSocket.sshAgentSocket = "/tmp/custom.sock"
+        let store = SettingsStore(defaults: defaults)
+
+        store.settings = withSocket
+
+        XCTAssertEqual(RemoteCommands.SSHAgentSocketPreference.shared.current(), "/tmp/custom.sock")
+    }
+
+    func testClearingSettingsClearsTheSharedSSHAgentSocketPreferenceToo() {
+        var withSocket = sample
+        withSocket.sshAgentSocket = "/tmp/custom.sock"
+        let store = SettingsStore(defaults: defaults)
+        store.settings = withSocket
+
+        store.settings = nil
+
+        XCTAssertNil(RemoteCommands.SSHAgentSocketPreference.shared.current())
+    }
+
+    func testLoadingAnExistingSocketPreferenceOnLaunchSyncsItAtOnce() {
+        var withSocket = sample
+        withSocket.sshAgentSocket = "/tmp/custom.sock"
+        SettingsStore(defaults: defaults).settings = withSocket
+        RemoteCommands.SSHAgentSocketPreference.shared.update(nil)
+
+        _ = SettingsStore(defaults: defaults)
+
+        XCTAssertEqual(RemoteCommands.SSHAgentSocketPreference.shared.current(), "/tmp/custom.sock")
     }
 }

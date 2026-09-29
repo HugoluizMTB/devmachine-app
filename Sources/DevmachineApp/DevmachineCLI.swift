@@ -77,7 +77,7 @@ struct DevmachineCLI: Sendable {
     static func resolve(
         injected: String? = nil,
         runner: any CommandRunner = ProcessRunner(),
-        customSocket: String? = nil,
+        customSocket: String? = RemoteCommands.SSHAgentSocketPreference.shared.current(),
         exists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
     ) throws -> DevmachineCLI {
         let paths = [injected].compactMap { $0 } + [

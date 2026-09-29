@@ -126,7 +126,8 @@ final class FilesStore: ObservableObject {
                             alias: alias, localPath: url.path, remotePath: destination)
                         _ = try await Task.detached {
                             try runner.run(
-                                executable: "/usr/bin/scp", args: args, environment: nil)
+                                executable: "/usr/bin/scp", args: args,
+                                environment: RemoteCommands.sshEnvironment())
                         }.value
                     case .local:
                         // Both sides are this Mac, so it is a copy, not a transfer.
@@ -154,7 +155,11 @@ final class FilesStore: ObservableObject {
         let runner = self.runner
         Task {
             do {
-                _ = try await Task.detached { try runner.run(executable: "/usr/bin/scp", args: args, environment: nil) }.value
+                _ = try await Task.detached {
+                    try runner.run(
+                        executable: "/usr/bin/scp", args: args,
+                        environment: RemoteCommands.sshEnvironment())
+                }.value
             } catch {
                 self.errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }

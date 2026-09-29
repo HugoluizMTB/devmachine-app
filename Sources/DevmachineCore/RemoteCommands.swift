@@ -32,6 +32,32 @@ public enum RemoteCommands {
         NSHomeDirectory() + "/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
     }
 
+    /// The one place the app's whole process reads and writes the SSH agent
+    /// socket preference. `SettingsStore` (`DevmachineApp`) keeps it in sync on
+    /// every change; everything that opens an ssh/mosh connection — including
+    /// code in `DevmachineCore`, which cannot see `SettingsStore` — reads it
+    /// here instead of each threading its own copy of the setting through.
+    /// A lock guards it because ssh calls run off the main actor
+    /// (`Task.detached`), while `SettingsStore` writes on the main actor.
+    public final class SSHAgentSocketPreference: @unchecked Sendable {
+        public static let shared = SSHAgentSocketPreference()
+
+        private let lock = NSLock()
+        private var value: String?
+
+        public func current() -> String? {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+
+        public func update(_ newValue: String?) {
+            lock.lock()
+            defer { lock.unlock() }
+            value = newValue
+        }
+    }
+
     /// Picks the ssh agent socket: an explicit override from Settings wins,
     /// then the 1Password agent if that socket file actually exists, then
     /// whatever this process inherited, and otherwise none. Forcing the
@@ -192,7 +218,7 @@ public enum RemoteCommands {
     }
 
     public static func sshEnvironment(
-        customSocket: String? = nil,
+        customSocket: String? = SSHAgentSocketPreference.shared.current(),
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> [String: String] {
@@ -212,7 +238,7 @@ public enum RemoteCommands {
 
     public static func terminalEnvironment(
         term: String = "xterm-256color",
-        customSocket: String? = nil,
+        customSocket: String? = SSHAgentSocketPreference.shared.current(),
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> [String] {

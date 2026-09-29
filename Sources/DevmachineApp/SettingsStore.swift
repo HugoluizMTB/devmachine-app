@@ -58,7 +58,10 @@ final class SettingsStore: ObservableObject {
     private static let key = "appSettings"
 
     @Published var settings: AppSettings? {
-        didSet { save() }
+        didSet {
+            save()
+            syncSSHAgentSocketPreference()
+        }
     }
 
     private let defaults: UserDefaults
@@ -67,6 +70,15 @@ final class SettingsStore: ObservableObject {
         self.defaults = defaults
         guard let data = defaults.data(forKey: Self.key) else { return }
         settings = try? JSONDecoder().decode(AppSettings.self, from: data)
+        syncSSHAgentSocketPreference()
+    }
+
+    /// Keeps `RemoteCommands.SSHAgentSocketPreference` current, so any code
+    /// that opens an ssh/mosh connection — including `DevmachineCore`, which
+    /// cannot see this store — picks up a changed preference for its very
+    /// next connection, without threading the setting through by hand.
+    private func syncSSHAgentSocketPreference() {
+        RemoteCommands.SSHAgentSocketPreference.shared.update(settings?.sshAgentSocket)
     }
 
     var isConfigured: Bool { settings != nil }
