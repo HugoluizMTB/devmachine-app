@@ -72,6 +72,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var localSessionHarnesses: [String: Set<HarnessID>] = [:]
 
     var localSessions: [LocalSession] {
+        // Demo sessions never go through `addedLocalSessions`: that property
+        // persists to `UserDefaults` on every change, and a demo session has
+        // no business surviving into the next real launch.
+        if DemoMode.isActive { return DemoData.localSessions }
         let remembered = [LocalSession(name: Workspace.operatorSession, path: operatorPath)]
             + addedLocalSessions
         let all = LocalSessionScan.merge(
@@ -1237,6 +1241,10 @@ final class AppModel: ObservableObject {
     /// nothing below it starts. Once found, it falls through exactly where a
     /// normal launch would: Setup if unconfigured, else load the workspaces.
     func checkCLIAndProceed(isConfigured: Bool) {
+        if DemoMode.isActive {
+            seedDemoState()
+            return
+        }
         cliMissing = !cliAvailabilityCheck()
         guard !cliMissing else { return }
         if isConfigured {
@@ -1244,6 +1252,24 @@ final class AppModel: ObservableObject {
         } else {
             activePage = .setup
         }
+    }
+
+    /// `DEVMACHINE_DEMO=1`: skips the CLI gate, Setup, and every ssh/CLI call
+    /// `loadWorkspaces()` would make, and instead seeds the sidebar directly
+    /// from `DemoData`. Every terminal pane renders a static transcript
+    /// (`TerminalRegistry.start` short-circuits the same way) instead of
+    /// spawning mosh/ssh/zmx.
+    private func seedDemoState() {
+        cliMissing = false
+        settings = .empty
+        workspaces = DemoData.workspaces
+        sessionsByAlias = DemoData.sessionsByAlias
+        // `localSessions` (below) reads `DemoData.localSessions` directly in
+        // demo mode; `addedLocalSessions` is left untouched so nothing here
+        // is ever written to `UserDefaults`.
+        packageGate = .ok
+        hasCaddyMachine = true
+        activePage = nil
     }
 
     func loadWorkspaces() {

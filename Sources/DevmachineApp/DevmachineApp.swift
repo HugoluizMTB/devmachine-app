@@ -24,8 +24,17 @@ struct DevmachineApp: App {
     init() {
         let facade = HarnessSettingsFacade()
         harnessSettingsFacade = facade
-        let settings = SettingsStore.shared.settings ?? .empty
-        let providers = facade.usageRegistrations(for: settings).map(\.provider)
+        // `DEVMACHINE_DEMO=1`: every store seeds itself from `DemoData` (see
+        // `DemoMode.swift`) instead of reading real usage files, the CLI, or
+        // ssh/gh. This is the one place that picks a provider list, so it is
+        // also the one place that swaps in the demo providers.
+        let providers: [any HarnessUsageProvider]
+        if DemoMode.isActive {
+            providers = DemoData.usageProviders
+        } else {
+            let settings = SettingsStore.shared.settings ?? .empty
+            providers = facade.usageRegistrations(for: settings).map(\.provider)
+        }
         _usageStore = StateObject(wrappedValue: HarnessUsageStore(providers: providers))
     }
 

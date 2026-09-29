@@ -43,10 +43,23 @@ final class PRStore: ObservableObject {
 
     init(client: GHClient = GHClient()) {
         self.client = client
+        if DemoMode.isActive {
+            seedDemo()
+            return
+        }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshIfIdle() }
         }
+    }
+
+    private func seedDemo() {
+        let prs = DemoData.pullRequests
+        forest = buildStackForest(prs)
+        owners = [allOwnersSentinel] + Set(prs.map(\.owner)).sorted()
+        openCount = prs.count
+        errorText = nil
+        isLoading = false
     }
 
     // A cycle slower than the 60s tick would otherwise overlap with the next
@@ -73,6 +86,7 @@ final class PRStore: ObservableObject {
     }
 
     func refresh() {
+        guard !DemoMode.isActive else { return }
         let gen = coordinator.begin()
         let owner = selectedOwner
         refreshTask?.cancel()

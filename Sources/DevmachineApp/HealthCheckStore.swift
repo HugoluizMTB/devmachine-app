@@ -35,6 +35,13 @@ final class HealthCheckStore: ObservableObject {
     }
 
     func run() {
+        if DemoMode.isActive {
+            results = DemoData.machineHealth
+            lastRunAt = Date()
+            isRunning = false
+            commandErrorText = nil
+            return
+        }
         runTask?.cancel()
         isRunning = true
         commandErrorText = nil

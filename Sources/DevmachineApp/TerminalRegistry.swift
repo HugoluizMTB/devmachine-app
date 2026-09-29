@@ -278,6 +278,7 @@ final class TerminalRegistry: NSObject {
     private func redrawAfterReattach(_ kind: TerminalKind) {
         terminals[kind]?.requestRedraw()
         guard reattached.remove(kind) != nil else { return }
+        if DemoMode.isActive { return }
         switch kind {
         case let .remote(alias, session):
             PaneLog.log("refresh pane=\(kind)")
@@ -348,6 +349,7 @@ final class TerminalRegistry: NSObject {
     /// Ends the multiplexer session behind a local pane, so removing a session
     /// from the sidebar removes the shell too.
     func killLocalSession(named name: String) {
+        guard !DemoMode.isActive else { return }
         guard let zmx = LocalTools.zmxPath() else { return }
         let socketDirectory = Zmx.socketDirectory()
         let session = Zmx.sessionName(from: name, socketDirectory: socketDirectory)
@@ -373,6 +375,10 @@ final class TerminalRegistry: NSObject {
     }
 
     private func start(_ kind: TerminalKind, in term: LocalProcessTerminalView) {
+        if DemoMode.isActive {
+            term.feed(text: DemoData.terminalTranscript(for: kind))
+            return
+        }
         PaneLog.log("start pane=\(kind)")
         let customSocket = SettingsStore.shared.settings?.sshAgentSocket
         switch kind {

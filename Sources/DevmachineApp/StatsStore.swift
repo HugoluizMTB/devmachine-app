@@ -91,6 +91,14 @@ final class StatsStore: ObservableObject {
     /// falls back to the first machine), then fetches the selected machine
     /// and, when there is more than one, every machine for the overview row.
     func loadMachines() {
+        if DemoMode.isActive {
+            machines = DemoData.statsMachines
+            selectedMachine = "main"
+            states = DemoData.statsSnapshots.mapValues {
+                MachineStatsState(snapshot: $0, isLoading: false, errorText: nil, refreshedAt: Date())
+            }
+            return
+        }
         loadMachinesTask?.cancel()
         let cli = self.cli
         loadMachinesTask = Task {
@@ -124,6 +132,7 @@ final class StatsStore: ObservableObject {
     }
 
     func refresh() {
+        guard !DemoMode.isActive else { return }
         guard let machine = selectedMachine else { return }
         refreshTask?.cancel()
         setLoading(machine, true)
@@ -139,6 +148,7 @@ final class StatsStore: ObservableObject {
     /// time — the overview row's compact cards need every machine's numbers,
     /// not just the selected one.
     func refreshOverview() {
+        guard !DemoMode.isActive else { return }
         overviewTask?.cancel()
         let names = machines.map(\.name)
         guard !names.isEmpty else { return }

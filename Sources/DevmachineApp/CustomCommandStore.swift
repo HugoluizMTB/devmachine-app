@@ -14,7 +14,7 @@ final class CustomCommandStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.commands = Self.load(from: defaults)
+        self.commands = DemoMode.isActive ? DemoData.customCommands : Self.load(from: defaults)
     }
 
     private static func load(from defaults: UserDefaults) -> [CustomCommand] {

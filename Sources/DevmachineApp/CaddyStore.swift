@@ -43,6 +43,14 @@ final class CaddyStore: ObservableObject {
     }
 
     func refresh() {
+        if DemoMode.isActive {
+            rows = DemoData.subdomainRows
+            domain = DemoData.domain
+            dnsProviders = DemoData.dnsProviders
+            errorText = nil
+            isLoading = false
+            return
+        }
         refreshTask?.cancel()
         isLoading = true
         errorText = nil
@@ -65,6 +73,11 @@ final class CaddyStore: ObservableObject {
     }
 
     func loadDNSProviders() {
+        if DemoMode.isActive {
+            dnsProviders = DemoData.dnsProviders
+            isLoadingDNSProviders = false
+            return
+        }
         dnsProvidersTask?.cancel()
         isLoadingDNSProviders = true
         dnsProvidersError = nil
@@ -88,6 +101,11 @@ final class CaddyStore: ObservableObject {
     /// call while the first is still running, or already loaded, is a no-op
     /// unless `force`.
     func loadRecords(provider: String, force: Bool = false) {
+        if DemoMode.isActive {
+            dnsRecordsByProvider[provider] = DemoData.dnsRecordsByProvider[provider] ?? []
+            dnsLoadingProviders.remove(provider)
+            return
+        }
         guard force || (dnsRecordsByProvider[provider] == nil && dnsRecordTasks[provider] == nil) else { return }
         guard !domain.isEmpty else { return }
         dnsRecordTasks[provider]?.cancel()
@@ -112,6 +130,10 @@ final class CaddyStore: ObservableObject {
     }
 
     func addSubdomain(_ req: SubdomainRequest, workspace: String, settings: AppSettings) {
+        guard !DemoMode.isActive else {
+            addError = "Demo mode never publishes a real subdomain."
+            return
+        }
         addTask?.cancel()
         addError = nil
         let runner: AddSubdomainRunner
