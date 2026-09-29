@@ -22,6 +22,21 @@ enum DemoMode {
     /// every call, so a code path that reaches it fails loudly instead of
     /// quietly touching a real machine.
     static let runner: any CommandRunner = DemoCommandRunner()
+
+    /// `ContextStore`'s source, picked once here so nothing else has to ask
+    /// `DemoMode.isActive` before building one.
+    static func defaultContextSource() -> any ContextSource {
+        isActive ? (DemoContextSource() as any ContextSource) : (CLIContextSource() as any ContextSource)
+    }
+}
+
+/// A `ContextSource` that hands back the same fixed `DemoData.contextState`
+/// for every target — used only in demo mode, in place of `CLIContextSource`,
+/// which shells out to the CLI or reads real session transcripts.
+struct DemoContextSource: ContextSource {
+    func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState? {
+        DemoData.contextState(for: target)
+    }
 }
 
 enum DemoModeError: Error, LocalizedError {

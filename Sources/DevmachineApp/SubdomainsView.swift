@@ -27,9 +27,15 @@ struct SubdomainsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @State private var showAdd = false
     @State private var searchText = ""
-    @State private var selectedTab: SubdomainsTab = .sites
+    @State private var selectedTab: SubdomainsTab
     @State private var logsRequest: LogsRequest?
     @State private var confirmRemoveHost: String?
+
+    /// `initialTab` only ever differs from `.sites` for the website's demo
+    /// screenshots, which need to open straight onto a DNS provider tab.
+    init(initialTab: SubdomainsTab = .sites) {
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

@@ -55,6 +55,12 @@ struct DevmachineApp: App {
                 .environment(\.harnessSettingsFacade, harnessSettingsFacade)
                 .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
                 .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
+                .onAppear {
+                    DemoSnapshots.runIfNeeded(DemoSnapshots.Environment(
+                        model: model, prStore: prStore, usageStore: usageStore, caddyStore: caddyStore,
+                        settingsStore: settingsStore, wallpaperStore: wallpaperStore,
+                        harnessSettingsFacade: harnessSettingsFacade))
+                }
                 .onChange(of: settingsStore.settings?.uiFontScale) { _, scale in
                     DMFont.scale = scale ?? 1
                 }

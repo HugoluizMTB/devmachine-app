@@ -10,6 +10,11 @@ final class QuickPublishState: ObservableObject {
     @Published var suggestions = QuickPublishSuggestions()
 
     func start(workspace: String) {
+        if DemoMode.isActive {
+            suggestions = DemoData.publishSuggestions
+            self.workspace = workspace
+            return
+        }
         Task {
             let suggestions = await Task.detached {
                 PublishSuggestionsService().suggestions(forWorkspace: workspace)

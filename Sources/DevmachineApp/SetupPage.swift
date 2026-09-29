@@ -123,7 +123,13 @@ struct SetupPage: View {
 
     private var isFirstRun: Bool { !settingsStore.isConfigured }
 
-    @State private var section = SettingsSection.connection
+    @State private var section: SettingsSection
+
+    /// `initialSection` only ever differs from `.connection` for the
+    /// website's demo screenshots, which need to open straight onto Health.
+    init(initialSection: SettingsSection = .connection) {
+        _section = State(initialValue: initialSection)
+    }
 
     var body: some View {
         ZStack {

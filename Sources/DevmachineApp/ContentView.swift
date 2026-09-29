@@ -24,7 +24,10 @@ struct ContentView: View {
             } else if settingsStore.isConfigured, case let .missing(machines) = model.packageGate {
                 OnboardingPage(initialMachine: machines.first, onFinished: { model.checkPackageGate() })
             } else if model.activePage == .setup {
-                SetupPage()
+                // `DemoSnapshots.setupInitialSection` only ever differs from
+                // `.connection` while the website's screenshot walk owns the
+                // window (see `DemoSnapshots.swift`).
+                SetupPage(initialSection: DemoSnapshots.setupInitialSection)
             } else {
                 mainRow
                 if model.sidebarCollapsed { collapsedSidebarButton }
@@ -257,7 +260,9 @@ private struct PageHost: View {
         switch page {
         case .setup: EmptyView()
         case .stats: StatsView()
-        case .subdomains: SubdomainsView()
+        // `DemoSnapshots.subdomainsInitialTab` only ever differs from `.sites`
+        // while the website's screenshot walk owns the window.
+        case .subdomains: SubdomainsView(initialTab: DemoSnapshots.subdomainsInitialTab)
         case .customCommands: CustomCommandsPage()
         case .stack(let refs): StackGridView(refs: refs).ignoresSafeArea(edges: .top)
         }

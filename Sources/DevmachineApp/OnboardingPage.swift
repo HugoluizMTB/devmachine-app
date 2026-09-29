@@ -12,6 +12,11 @@ struct OnboardingPage: View {
     var initialMachine: String? = nil
     var onFinished: () -> Void = {}
 
+    /// Set only for the website's demo screenshots: a fixed "fresh user"
+    /// detection, shown instead of `.task`'s real Homebrew/CLI/machine probe
+    /// so the page never depends on what is actually installed.
+    var demoDetection: OnboardingDetection?
+
     @StateObject private var runner = OnboardingRunner()
     @State private var detection: OnboardingDetection = .empty
     @State private var path: ChosenPath?
@@ -282,6 +287,10 @@ struct OnboardingPage: View {
     // MARK: - Detection
 
     private func refreshDetection() async {
+        if let demoDetection {
+            detection = demoDetection
+            return
+        }
         let next = await Task.detached { OnboardingDetector.detect() }.value
         detection = next
     }

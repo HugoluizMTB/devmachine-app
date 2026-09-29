@@ -21,8 +21,10 @@ enum DemoData {
 
     static let sessionsByAlias: [String: [TmuxSession]] = [
         "acme-devmachine": [
-            TmuxSession(name: "api — payments refactor", windows: 3, harnesses: [.claude]),
-            TmuxSession(name: "web — landing page", windows: 2, harnesses: [.codex]),
+            TmuxSession(name: "claude — payments refactor", windows: 3, harnesses: [.claude]),
+            TmuxSession(name: "codex — landing page", windows: 2, harnesses: [.codex]),
+            TmuxSession(name: "api — tests", windows: 1, harnesses: []),
+            TmuxSession(name: "web — dev server", windows: 1, harnesses: []),
         ],
         "globex-devmachine": [
             TmuxSession(name: "dashboard — tests", windows: 1, harnesses: []),
@@ -44,44 +46,50 @@ enum DemoData {
 
     // MARK: Terminal transcripts
 
+    // Lines are kept short (well under 45 columns): a stacked grid cell is
+    // narrow, and a terminal wraps mid-word rather than mid-sentence — a long
+    // line here reads fine alone but breaks ugly once four panes share a
+    // window.
     private static let claudeTranscript = """
-    \u{1B}[1m\u{1B}[36m● Claude Code\u{1B}[0m — api — payments refactor
+    \u{1B}[1m\u{1B}[36m● Claude Code\u{1B}[0m — payments refactor
 
-    \u{1B}[2mReading Sources/Payments/ChargeService.swift\u{1B}[0m
-    \u{1B}[2mReading Sources/Payments/RefundService.swift\u{1B}[0m
+    \u{1B}[2mReading ChargeService.swift\u{1B}[0m
+    \u{1B}[2mReading RefundService.swift\u{1B}[0m
 
-    I found the retry loop that double-charges when the gateway times out.
-    Fixing it and adding a test.
+    Found the retry loop that double-
+    charges on a gateway timeout.
 
     \u{1B}[1mTodo\u{1B}[0m
-      \u{1B}[32m✔\u{1B}[0m Reproduce the double-charge with a fake gateway
-      \u{1B}[32m✔\u{1B}[0m Add an idempotency key to ChargeService
-      \u{1B}[33m→\u{1B}[0m Cover the timeout-then-retry path with a test
+      \u{1B}[32m✔\u{1B}[0m Reproduce with a fake gateway
+      \u{1B}[32m✔\u{1B}[0m Add an idempotency key
+      \u{1B}[33m→\u{1B}[0m Cover the retry path in a test
       \u{1B}[2m○ Update CHANGELOG\u{1B}[0m
 
-    \u{1B}[2m--- a/Sources/Payments/ChargeService.swift\u{1B}[0m
-    \u{1B}[2m+++ b/Sources/Payments/ChargeService.swift\u{1B}[0m
-    \u{1B}[31m-        try gateway.charge(order: order)\u{1B}[0m
-    \u{1B}[32m+        try gateway.charge(order: order, idempotencyKey: order.id)\u{1B}[0m
+    \u{1B}[2m--- a/ChargeService.swift\u{1B}[0m
+    \u{1B}[2m+++ b/ChargeService.swift\u{1B}[0m
+    \u{1B}[31m-   try gateway.charge(order)\u{1B}[0m
+    \u{1B}[32m+   try gateway.charge(order,\u{1B}[0m
+    \u{1B}[32m+     idempotencyKey: order.id)\u{1B}[0m
 
-    \u{1B}[2m$\u{1B}[0m swift test --filter ChargeServiceTests
-    \u{1B}[32mTest Suite 'ChargeServiceTests' passed\u{1B}[0m at 2026-09-29 09:14:02.
-    \u{1B}[32m     Executed 6 tests, with 0 failures\u{1B}[0m
+    \u{1B}[2m$\u{1B}[0m swift test --filter Charge
+    \u{1B}[32mTest Suite passed\u{1B}[0m at 09:14:02.
+    \u{1B}[32m  6 tests, 0 failures\u{1B}[0m
 
     \u{1B}[36m❯\u{1B}[0m
     """
 
     private static let codexTranscript = """
-    \u{1B}[1m\u{1B}[35m● Codex\u{1B}[0m — web — landing page
+    \u{1B}[1m\u{1B}[35m● Codex\u{1B}[0m — landing page
 
-    \u{1B}[2m› rewriting the hero section to load the video lazily\u{1B}[0m
+    \u{1B}[2m› lazy-loading the hero video\u{1B}[0m
 
-    \u{1B}[2mediting src/components/Hero.tsx\u{1B}[0m
+    \u{1B}[2mediting Hero.tsx\u{1B}[0m
     \u{1B}[31m- <video autoPlay src={hero} />\u{1B}[0m
-    \u{1B}[32m+ <video autoPlay src={hero} preload="none" loading="lazy" />\u{1B}[0m
+    \u{1B}[32m+ <video autoPlay src={hero}\u{1B}[0m
+    \u{1B}[32m+   preload="none" loading="lazy" />\u{1B}[0m
 
     \u{1B}[2m$\u{1B}[0m npm run build
-    \u{1B}[32mvite v5 building for production...\u{1B}[0m
+    \u{1B}[32mvite v5 building...\u{1B}[0m
     \u{1B}[32m✓ 412 modules transformed.\u{1B}[0m
     \u{1B}[32m✓ built in 3.81s\u{1B}[0m
 
@@ -92,14 +100,13 @@ enum DemoData {
     \u{1B}[2m$\u{1B}[0m swift test
     \u{1B}[2mBuilding for debugging...\u{1B}[0m
     \u{1B}[2mBuild complete! (4.92s)\u{1B}[0m
-    \u{1B}[2mTest Suite 'All tests' started\u{1B}[0m
 
-    \u{1B}[32m✔\u{1B}[0m DashboardViewTests (18 tests, 0.41s)
-    \u{1B}[32m✔\u{1B}[0m ExportServiceTests (9 tests, 0.12s)
-    \u{1B}[32m✔\u{1B}[0m WebhookRouterTests (14 tests, 0.08s)
+    \u{1B}[32m✔\u{1B}[0m DashboardViewTests (18 tests)
+    \u{1B}[32m✔\u{1B}[0m ExportServiceTests (9 tests)
+    \u{1B}[32m✔\u{1B}[0m WebhookRouterTests (14 tests)
 
-    \u{1B}[32mTest Suite 'All tests' passed\u{1B}[0m at 2026-09-29 09:20:11.
-    \u{1B}[32m     Executed 41 tests, with 0 failures (0 unexpected) in 0.61 seconds\u{1B}[0m
+    \u{1B}[32mAll tests passed\u{1B}[0m at 09:20:11.
+    \u{1B}[32m41 tests, 0 failures, 0.61s\u{1B}[0m
 
     \u{1B}[36m$\u{1B}[0m
     """
@@ -109,22 +116,22 @@ enum DemoData {
 
     \u{1B}[32m  VITE v5.2.0\u{1B}[0m  ready in 318 ms
 
-    \u{1B}[2m  ➜\u{1B}[0m  Local:   \u{1B}[36mhttp://localhost:5173/\u{1B}[0m
-    \u{1B}[2m  ➜\u{1B}[0m  Network: \u{1B}[36mhttp://100.64.0.12:5173/\u{1B}[0m
+    \u{1B}[2m  ➜\u{1B}[0m  Local:  \u{1B}[36mlocalhost:5173\u{1B}[0m
+    \u{1B}[2m  ➜\u{1B}[0m  Net:    \u{1B}[36m100.64.0.12:5173\u{1B}[0m
 
-    \u{1B}[2m9:24:03 AM\u{1B}[0m \u{1B}[36m[vite]\u{1B}[0m hmr update /src/App.tsx
-    \u{1B}[2m9:24:41 AM\u{1B}[0m \u{1B}[36m[vite]\u{1B}[0m hmr update /src/components/Nav.tsx
+    \u{1B}[2m9:24 AM\u{1B}[0m \u{1B}[36m[vite]\u{1B}[0m hmr App.tsx
+    \u{1B}[2m9:24 AM\u{1B}[0m \u{1B}[36m[vite]\u{1B}[0m hmr Nav.tsx
 
     \u{1B}[36m$\u{1B}[0m
     """
 
     private static let operatorTranscript = """
     \u{1B}[2m$\u{1B}[0m devmachine workspaces list
-    NAME        ALIAS               STATUS
-    acme        acme-devmachine     online
-    globex      globex-devmachine   online
-    initech     initech-devmachine  online
-    umbrella    umbrella-devmachine online
+    NAME      STATUS
+    acme      online
+    globex    online
+    initech   online
+    umbrella  online
 
     \u{1B}[36m$\u{1B}[0m
     """
@@ -133,6 +140,20 @@ enum DemoData {
     /// name and kind suggest — this is cosmetic only, so a name that does not
     /// match anything falls back to a plain shell.
     static func terminalTranscript(for kind: TerminalKind) -> String {
+        // A live pane's text always arrives through a PTY, which turns a
+        // program's bare "\n" into "\r\n" — a carriage return as well as a
+        // line feed. `feed(text:)` skips the PTY, so a Swift multi-line
+        // string's plain "\n" only moves the cursor down a row, at whatever
+        // column it was already at, leaving every line after the first
+        // starting mid-row instead of at the left edge.
+        //
+        // The leading "clear screen, cursor home" sequence is what a real
+        // shell sends on start too, so the pane opens at the top-left the
+        // same way a live session does.
+        "\u{1B}[2J\u{1B}[H" + rawTranscript(for: kind).replacingOccurrences(of: "\n", with: "\r\n")
+    }
+
+    private static func rawTranscript(for kind: TerminalKind) -> String {
         switch kind {
         case let .remote(_, session):
             let lowered = session.lowercased()
@@ -233,10 +254,17 @@ enum DemoData {
             containers: [
                 ContainerStat(name: "restic", memUsedBytes: 64_000_000, memLimitBytes: 256_000_000, cpuPercent: 1.1, owner: nil),
             ]),
+        "staging": snapshot(
+            loadFactor: 0.5,
+            users: [UserRAM(user: "globex", rssBytes: 480_000_000)],
+            containers: [
+                ContainerStat(name: "dashboard", memUsedBytes: 180_000_000, memLimitBytes: 512_000_000, cpuPercent: 2.4, owner: "globex"),
+            ]),
     ]
 
     static let statsMachines: [StatsMachine] = [
         StatsMachine(name: "backup", firstAddress: "203.0.113.11"),
+        StatsMachine(name: "staging", firstAddress: "203.0.113.12"),
     ]
 
     // MARK: Health
@@ -301,6 +329,56 @@ enum DemoData {
                 stats: nil,
                 summaryMetrics: [UsageSummaryMetric(id: "session", label: "Session", value: "35%")])),
     ]
+
+    // MARK: Session context (the context panel)
+
+    /// The context panel's demo data: one fixed answer for every session, so
+    /// a Claude session's panel always has a plan, pull requests and links to
+    /// show, the way a real mid-task session would.
+    static let contextState = ContextState(
+        cwd: "/Users/alice/dev/acme-app",
+        isClaude: true,
+        updatedAt: ISO8601DateFormatter().string(from: Date()),
+        plan: ContextState.Plan(
+            title: "Fix double-charge on gateway timeout",
+            source: "session",
+            done: 2,
+            total: 4,
+            items: [
+                ContextState.Plan.Item(text: "Reproduce the double-charge with a fake gateway", state: "done"),
+                ContextState.Plan.Item(text: "Add an idempotency key to ChargeService", state: "done"),
+                ContextState.Plan.Item(text: "Cover the timeout-then-retry path with a test", state: "active"),
+                ContextState.Plan.Item(text: "Update CHANGELOG", state: "pending"),
+            ]),
+        prs: [
+            ContextState.PR(
+                number: 412, repo: "acme/api", title: "Fix double-charge on gateway timeout",
+                url: "https://github.com/acme/api/pull/412", ci: "success", review: "approved", state: "open",
+                threads: 2, lastSeen: nil),
+            ContextState.PR(
+                number: 3, repo: "acme/api", title: "Bump the webhook signing key rotation to 30 days",
+                url: "https://github.com/acme/api/pull/3", ci: "failure", review: "changes_requested", state: "open",
+                threads: 1, lastSeen: nil),
+        ],
+        links: [
+            ContextState.Link(url: "https://github.com/acme/api/issues/398", label: "double-charge on retry", kind: "issue"),
+            ContextState.Link(url: "https://acme.example.com/docs/payments", label: "payments runbook", kind: "doc"),
+        ])
+
+    /// One `ContextSource.context(for:settings:)` answer, the same for every
+    /// target: the panel needs no live process to show something realistic.
+    static func contextState(for target: CommandTarget) -> ContextState? {
+        contextState
+    }
+
+    // MARK: Publish-a-port suggestions
+
+    static let publishSuggestions = QuickPublishSuggestions(
+        ports: [
+            PortSuggestion(port: 3000, containerName: "web"),
+            PortSuggestion(port: 8080, containerName: "api"),
+        ],
+        domain: domain)
 }
 
 /// A `HarnessUsageProvider` that hands back a fixed snapshot — used only in
