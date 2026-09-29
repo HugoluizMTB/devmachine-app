@@ -255,6 +255,7 @@ private struct PageHost: View {
         case .setup: EmptyView()
         case .stats: StatsView()
         case .subdomains: SubdomainsView()
+        case .customCommands: CustomCommandsPage()
         case .stack(let refs): StackGridView(refs: refs).ignoresSafeArea(edges: .top)
         }
     }

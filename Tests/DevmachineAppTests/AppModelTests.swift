@@ -1339,6 +1339,86 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(view.process.running ? true : nil)
     }
 
+    func testCustomCommandOnLocalOpensANewSessionRunningItExactlyOnce() async throws {
+        // A second local session under the same folder is born "base 2": the
+        // custom command's own session, next to the one the selection points
+        // at, the same numbering a duplicated session gets.
+        let runner = HarnessProcessRunner(
+            zmxListing: "name=base\tpid=100\tclients=1\tcwd=/Users/alice/dev/base\n"
+                + "name=base 2\tpid=101\tclients=1\tcwd=/Users/alice/dev/base")
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: HarnessProcessRunner()),
+            localRunner: runner,
+            sessionCommandSender: sender,
+            zmxPath: "/fixtures/zmx")
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com")
+        model.addLocalSession(path: "/Users/alice/dev/base")
+        let command = CustomCommand(
+            name: "Claude (work)", command: "CLAUDE_CONFIG_DIR=~/.claude-work claude")
+
+        model.runCustomCommand(command, forWorkspaceAlias: Workspace.local.alias)
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "CLAUDE_CONFIG_DIR=~/.claude-work claude")
+        guard case let .local(session, path) = sender.sent.first?.target else {
+            return XCTFail("expected a local target")
+        }
+        XCTAssertEqual(session, "base 2")
+        XCTAssertEqual(path, "/Users/alice/dev/base")
+        model.removeLocalSession(handle: "base")
+        model.removeLocalSession(handle: "base 2")
+    }
+
+    func testCustomCommandOnARemoteWorkspaceOpensANewSessionRunningItExactlyOnce() async throws {
+        let runner = HarnessProcessRunner()
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: runner),
+            sessionCommandSender: sender)
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com")
+        let command = CustomCommand(name: "npm dev", command: "npm run dev")
+
+        model.runCustomCommand(command, forWorkspaceAlias: "acme-devmachine")
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "npm run dev")
+        XCTAssertEqual(runner.callCount(for: "/usr/bin/ssh"), 1)
+        guard case let .remote(alias, _) = sender.sent.first?.target else {
+            return XCTFail("expected a remote target")
+        }
+        XCTAssertEqual(alias, "acme-devmachine")
+    }
+
+    func testCurrentWorkspaceAliasFollowsTheSelectionForKeyboardShortcuts() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+
+        model.selection = .session(alias: "acme-devmachine", name: "web")
+        XCTAssertEqual(model.currentWorkspaceAlias, "acme-devmachine")
+
+        model.selection = .localSession(name: "base", path: "/Users/alice/dev/base")
+        XCTAssertEqual(model.currentWorkspaceAlias, Workspace.local.alias)
+
+        model.selection = nil
+        XCTAssertNil(model.currentWorkspaceAlias)
+    }
+
+    func testCurrentWorkspaceAliasPrefersAVisibleStackOverAStaleSelection() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        // A workspace stack (opened from the grid icon) covers the terminal
+        // without clearing the old selection: the target has to be read off
+        // the visible page, not the leftover selection.
+        model.selection = .session(alias: "acme-devmachine", name: "web")
+
+        model.stackSessions([SessionRef(alias: "beta-devmachine", name: "dash")])
+
+        XCTAssertEqual(model.currentWorkspaceAlias, "beta-devmachine")
+    }
+
 }
 
 private final class ThrowingRunner: CommandRunner, @unchecked Sendable {

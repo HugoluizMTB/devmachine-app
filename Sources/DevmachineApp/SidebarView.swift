@@ -5,6 +5,7 @@ import DevmachineCore
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
+    @EnvironmentObject var customCommandsStore: CustomCommandStore
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -46,6 +47,8 @@ struct SidebarView: View {
                 .help("Stats")
             footerButton("globe") { model.showPage(.subdomains) }
                 .help("Subdomains")
+            footerButton("command") { model.showPage(.customCommands) }
+                .help("Custom commands")
             footerButton("gearshape") { model.showPage(.setup) }
                 .help("Settings (⌘,)")
             footerButton("sidebar.left") {
@@ -135,14 +138,45 @@ struct SidebarView: View {
                 }
 
                 if let action {
-                    DMIconButton(
-                        systemImage: "plus", size: 11, hitSize: DMHitSize.header, action: action)
+                    newSessionButton(alias: alias, action: action)
                 }
             }
         )
         .contextMenu {
             Button("Open workspace home") { model.stackWorkspace(alias) }
             Button("Files…") { openFiles(alias: alias) }
+        }
+    }
+
+    /// A plain "+" with no custom command applicable here, else a menu
+    /// offering "New session" plus every custom command in scope for this
+    /// workspace (or this Mac).
+    @ViewBuilder
+    private func newSessionButton(alias: String, action: @escaping () -> Void) -> some View {
+        let isLocal = alias == Workspace.local.alias
+        let applicable = customCommandsStore.applicable(toLocal: isLocal, alias: alias)
+        if applicable.isEmpty {
+            DMIconButton(systemImage: "plus", size: 11, hitSize: DMHitSize.header, action: action)
+        } else {
+            Menu {
+                Button("New session", action: action)
+                Divider()
+                ForEach(applicable) { command in
+                    Button {
+                        model.runCustomCommand(command, forWorkspaceAlias: alias)
+                    } label: {
+                        Label(command.name, systemImage: command.icon.systemImage)
+                    }
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: DMHitSize.header.width, height: DMHitSize.header.height)
+            .help("New session…")
         }
     }
 
