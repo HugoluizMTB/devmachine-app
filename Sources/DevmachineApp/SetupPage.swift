@@ -601,6 +601,10 @@ struct SetupPage: View {
                 + "— to ~/.devmachine-app/terminal.log. Turn it on only while "
                 + "chasing something; off, nothing is written. The file keeps "
                 + "itself under a megabyte.")
+
+            Rectangle().fill(Color.dmDivider).frame(height: 1).padding(.vertical, 4)
+
+            HealthCheckView()
         }
     }
 

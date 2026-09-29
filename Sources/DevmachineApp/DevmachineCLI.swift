@@ -315,6 +315,53 @@ struct DevmachineCLI: Sendable {
         return result.stdout
     }
 
+    /// What `doctor` produced: a parsed report, or — when the CLI printed a
+    /// text table this app's parser does not recognize — its raw stdout, so
+    /// nothing is thrown away just because it could not be parsed.
+    enum DoctorOutcome: Equatable, Sendable {
+        case report(DoctorReport)
+        case raw(String)
+    }
+
+    /// `devmachine doctor --machine <machine>`: the health of a configured,
+    /// non-self machine.
+    func doctor(machine: String) throws -> DoctorOutcome {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "doctor", "--machine", machine],
+            environment: environment()
+        )
+        return try doctorOutcome(from: result)
+    }
+
+    /// `devmachine machine doctor`: what this Mac itself is missing, for the
+    /// configured self machine.
+    func machineDoctor() throws -> DoctorOutcome {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "machine", "doctor"],
+            environment: environment()
+        )
+        return try doctorOutcome(from: result)
+    }
+
+    // `doctor` exits 1 when a check fails — that is its normal, informative
+    // result, not a command failure, so the exit code is never used to decide
+    // whether this throws. Only stdout that carries nothing usable at all
+    // (the command could not even start reporting) is a real failure.
+    private func doctorOutcome(
+        from result: (stdout: String, stderr: String, exitCode: Int32)
+    ) throws -> DoctorOutcome {
+        if let report = DoctorParser.parse(result.stdout) {
+            return .report(report)
+        }
+        if !result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .raw(result.stdout)
+        }
+        let detail = result.stderr.isEmpty ? result.stdout : result.stderr
+        throw DevmachineCLIError.commandFailed(detail.isEmpty ? "Devmachine CLI failed." : detail)
+    }
+
     /// The context engine, reached as `devmachine-app`'s `context` entrypoint.
     /// A workspace session runs it over the CLI's own ssh, as that workspace's
     /// account.

@@ -13,6 +13,7 @@ struct DevmachineApp: App {
     @StateObject private var skillsStore = SkillsStore()
     @StateObject private var customCommandsStore = CustomCommandStore()
     @StateObject private var statsStore = StatsStore()
+    @StateObject private var healthCheckStore = HealthCheckStore()
     @StateObject private var usageStore: HarnessUsageStore
     @StateObject private var settingsStore = SettingsStore.shared
     @StateObject private var wallpaperStore = WallpaperStore()
@@ -39,6 +40,7 @@ struct DevmachineApp: App {
                 .environmentObject(customCommandsStore)
                 .environmentObject(caddyStore)
                 .environmentObject(statsStore)
+                .environmentObject(healthCheckStore)
                 .environmentObject(usageStore)
                 .environmentObject(settingsStore)
                 .environment(\.harnessSettingsFacade, harnessSettingsFacade)

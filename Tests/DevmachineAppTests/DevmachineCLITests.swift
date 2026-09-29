@@ -328,4 +328,60 @@ final class DevmachineCLIAutoDetectEndpointsTests: XCTestCase {
             XCTAssertFalse(cliError.isUnknownPackageCommand)
         }
     }
+
+    func testDoctorBuildsTheCommandLineForANamedMachine() throws {
+        let body = #"{"checks":[{"name":"configuration","status":"pass","detail":"ok"}],"ok":true}"#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let outcome = try cli.doctor(machine: "box")
+
+        XCTAssertEqual(runner.calls.last?.args, ["--format", "json", "doctor", "--machine", "box"])
+        XCTAssertEqual(outcome, .report(DoctorReport(
+            checks: [DoctorCheck(name: "configuration", status: .pass, detail: "ok")], ok: true)))
+    }
+
+    func testMachineDoctorBuildsTheCommandLineForThisMac() throws {
+        let body = #"{"checks":[{"name":"ssh","status":"pass","detail":""}],"ok":true}"#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let outcome = try cli.machineDoctor()
+
+        XCTAssertEqual(runner.calls.last?.args, ["--format", "json", "machine", "doctor"])
+        XCTAssertEqual(outcome, .report(DoctorReport(
+            checks: [DoctorCheck(name: "ssh", status: .pass, detail: "")], ok: true)))
+    }
+
+    func testDoctorReadsTheReportEvenWhenExitCodeIsOneBecauseAFailingCheckIsNotACommandFailure() throws {
+        let body = #"""
+        {"checks":[{"name":"connection","status":"fail","detail":"run `devmachine machines trust box`"}],"ok":false}
+        """#
+        let runner = CLIRecordingRunner(result: (body, "some checks failed", 1))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let outcome = try cli.doctor(machine: "box")
+
+        XCTAssertEqual(outcome, .report(DoctorReport(
+            checks: [DoctorCheck(name: "connection", status: .fail, detail: "run `devmachine machines trust box`")],
+            ok: false)))
+    }
+
+    func testDoctorFallsBackToRawOutputWhenItCannotBeParsed() throws {
+        let runner = CLIRecordingRunner(result: ("something this app's parser does not recognize", "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let outcome = try cli.doctor(machine: "box")
+
+        XCTAssertEqual(outcome, .raw("something this app's parser does not recognize"))
+    }
+
+    func testDoctorThrowsTheCLIsStderrWhenNothingCouldBeReportedAtAll() {
+        let runner = CLIRecordingRunner(result: ("", "dial tcp: no route to host", 1))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        XCTAssertThrowsError(try cli.doctor(machine: "box")) { error in
+            XCTAssertEqual(error.localizedDescription, "dial tcp: no route to host")
+        }
+    }
 }
