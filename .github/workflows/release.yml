@@ -19,6 +19,9 @@ jobs:
   release:
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      # `secrets` cannot appear in a step's `if:`, so its presence is read here.
+      HAS_TAP_TOKEN: ${{ secrets.TAP_TOKEN != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -106,7 +109,7 @@ jobs:
             --notes "sha256: ${{ steps.sha.outputs.sha256 }}"
 
       - name: Render Homebrew cask
-        if: ${{ secrets.TAP_TOKEN != '' }}
+        if: env.HAS_TAP_TOKEN == 'true'
         env:
           GH_TOKEN: ${{ secrets.TAP_TOKEN }}
           TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
