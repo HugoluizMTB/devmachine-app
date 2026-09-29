@@ -16,12 +16,35 @@ env:
   RELEASES_REPO: ${{ vars.RELEASES_REPO || 'mydevmachine/app-releases' }}
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflow YAML with Ruby
+        run: |
+          set -euo pipefail
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -e "$f" ] || continue
+            ruby -ryaml -e "YAML.safe_load(File.read(ARGV[0]), aliases: true)" "$f"
+            echo "ok: $f"
+          done
+      - name: "Refuse a step if: that reads secrets directly"
+        run: |
+          set -euo pipefail
+          if grep -RnE '^\s*if:\s*.*\bsecrets\.' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; then
+            echo "a step 'if:' reads the secrets context directly; GitHub Actions forbids this" >&2
+            echo "read the secret's presence into a job-level env var first" >&2
+            exit 1
+          fi
+
   release:
+    needs: validate
     runs-on: macos-15
     timeout-minutes: 90
     env:
       # `secrets` cannot appear in a step's `if:`, so its presence is read here.
       HAS_TAP_TOKEN: ${{ secrets.TAP_TOKEN != '' }}
+      HAS_TAP_APP: ${{ secrets.TAP_APP_ID != '' && secrets.TAP_APP_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -104,7 +127,10 @@ jobs:
         id: sha
         run: |
           dmg="build/Devmachine-${{ steps.version.outputs.version }}.dmg"
+          stable="build/Devmachine.dmg"
+          cp "$dmg" "$stable"
           echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
+          echo "stable=$stable" >> "$GITHUB_OUTPUT"
           echo "sha256=$(shasum -a 256 "$dmg" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
@@ -112,16 +138,20 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" "${{ steps.sha.outputs.dmg }}" \
+          # Two copies of the same dmg: the versioned one is the release asset
+          # of record (and what the Homebrew cask points at), and the
+          # stable-named copy is what
+          # .../releases/latest/download/Devmachine.dmg always serves, so a
+          # direct download link never has to change.
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ steps.sha.outputs.dmg }}" "${{ steps.sha.outputs.stable }}" \
             --repo "$RELEASES_REPO" \
             --title "Devmachine ${{ steps.version.outputs.version }}" \
             --notes "sha256: ${{ steps.sha.outputs.sha256 }}"
 
       - name: Render Homebrew cask
-        if: env.HAS_TAP_TOKEN == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        id: render-cask
+        if: env.HAS_TAP_APP == 'true' || env.HAS_TAP_TOKEN == 'true'
         run: |
           set -euo pipefail
           sed \
@@ -129,7 +159,48 @@ jobs:
             -e "s/{{SHA256}}/${{ steps.sha.outputs.sha256 }}/" \
             -e "s#{{RELEASES_REPO}}#$RELEASES_REPO#" \
             packaging/devmachine-app.rb.template > devmachine-app.rb
+          ruby -c devmachine-app.rb
 
+      # A GitHub App token is preferred over a personal token: it does not
+      # expire, so a release cannot break a year from now because nobody
+      # rotated a token (same setup the CLI repo's release uses, see
+      # docs/RELEASING.md "Homebrew cask").
+      - uses: actions/create-github-app-token@v2
+        id: tap-app-token
+        if: env.HAS_TAP_APP == 'true'
+        with:
+          app-id: ${{ secrets.TAP_APP_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
+          owner: mydevmachine
+          repositories: homebrew-tap
+
+      - name: Update Homebrew cask (GitHub App)
+        if: env.HAS_TAP_APP == 'true'
+        env:
+          GH_TOKEN: ${{ steps.tap-app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/mydevmachine/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          cp devmachine-app.rb "$RUNNER_TEMP/tap/Casks/devmachine-app.rb"
+          cd "$RUNNER_TEMP/tap"
+          ruby -c Casks/devmachine-app.rb
+          # Signed commits are not possible from CI (no way to hold a GPG/SSH
+          # signing key for the app bot); an ordinary commit by the bot is
+          # fine here.
+          git -c user.name=devmachine-release -c user.email=release@mydevmachine.sh \
+            commit -am "feat: devmachine-app ${{ steps.version.outputs.version }}"
+          git push origin HEAD:main
+
+      # Fallback: a plain fine-grained token against the tap, opening a PR
+      # instead of committing straight to main. Used only when no GitHub App
+      # is configured on this repo.
+      - name: Render Homebrew cask PR (fallback token)
+        if: env.HAS_TAP_APP != 'true' && env.HAS_TAP_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          set -euo pipefail
           branch="release-${{ steps.version.outputs.version }}"
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/mydevmachine/homebrew-tap.git" "$RUNNER_TEMP/tap"
           cp devmachine-app.rb "$RUNNER_TEMP/tap/Casks/devmachine-app.rb"

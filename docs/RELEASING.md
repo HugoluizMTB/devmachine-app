@@ -42,9 +42,41 @@ section on every release after the first.
    `RELEASES_REPO` points at). Grant it repository permission **Contents:
    Read and write**. Nothing more.
 
-5. **(Optional) a token for the Homebrew tap.** Needed only if you want the
-   workflow to open the automated cask-bump PR. Scope it to
-   `mydevmachine/homebrew-tap` with **Contents: Read and write**.
+5. **Homebrew cask update — pick one.** The workflow updates
+   `mydevmachine/homebrew-tap` on its own once one of these is set. Without
+   either, this step is skipped and you update the tap by hand.
+
+   - **Preferred: reuse the CLI repo's GitHub App.** The `devmachine-cli`
+     repo already has a GitHub App (`devmachine-release`) installed on
+     `homebrew-tap` with **Contents: Read and write** — see that repo's
+     `docs/releasing.md`, "The credential in place today". Add the same App
+     ID and a private key to **this** repo (a GitHub App's credentials work
+     from any repo the app owner adds them to; the install on
+     `homebrew-tap` is what grants the write, not which repo holds the
+     secret):
+     - `TAP_APP_ID` — the App's ID (same value as the CLI repo's
+       `TAP_APP_ID`, visible on the App's settings page).
+     - `TAP_APP_PRIVATE_KEY` — a private key for that App. Generate a new
+       one on the App's settings page (**Generate a private key**) rather
+       than reusing the CLI repo's downloaded `.pem` — Apple- and
+       GitHub-style keys can only be downloaded once, so a fresh key avoids
+       needing the original file. Add it with:
+       ```
+       gh secret set TAP_APP_PRIVATE_KEY --repo mydevmachine/devmachine-app < path/to/key.pem
+       ```
+     With this set, the release commits the cask straight to
+     `homebrew-tap`'s `main` (message `feat: devmachine-app vX.Y.Z`, one
+     line) — no PR to merge by hand. GitHub Apps cannot produce a GPG/SSH
+     signed commit from Actions, so this commit is unsigned; that is
+     expected.
+
+   - **Fallback: a fine-grained token, opens a PR instead.** Only used when
+     `TAP_APP_ID`/`TAP_APP_PRIVATE_KEY` are not set. Create a token scoped to
+     `mydevmachine/homebrew-tap` with **Contents: Read and write** (and
+     **Pull requests: Read and write** to open the PR), then:
+     ```
+     gh secret set TAP_TOKEN --repo mydevmachine/devmachine-app
+     ```
 
 ## Secrets
 
@@ -75,8 +107,11 @@ These have no file to pipe in, so `gh secret set NAME` prompts for the value:
   pass it directly: `gh secret set APPLE_API_KEY_ID --body <key id>`.
 - `APPLE_API_ISSUER_ID` — the Issuer ID from the same key.
 - `RELEASES_TOKEN` — the fine-grained PAT from step 4 above.
-- `TAP_TOKEN` (optional) — the token from step 5, only if you want the
-  Homebrew cask-bump PR.
+- `TAP_APP_ID` (optional, preferred) — from step 5, if reusing the CLI
+  repo's GitHub App. You can also pass it directly:
+  `gh secret set TAP_APP_ID --body <app id>`.
+- `TAP_TOKEN` (optional, fallback) — the token from step 5, only if you are
+  not using the GitHub App.
 
 **Warning:** `gh secret set NAME` reads the value from standard input. Run it
 in a real interactive terminal, one with a TTY. If you run it from a script or
@@ -127,10 +162,18 @@ downloaded them (usually `~/Downloads`). They have no reason to stay on disk.
        Gatekeeper refuses any Developer ID build that is not notarized yet —
        checking earlier would always fail.
    - Publishes the `.dmg` as a GitHub release on `RELEASES_REPO`, using the
-     `RELEASES_TOKEN` secret.
-   - If `TAP_TOKEN` is set, renders `packaging/devmachine-app.rb.template`
-     into a Homebrew cask and opens a PR against
-     `mydevmachine/homebrew-tap` with the bump.
+     `RELEASES_TOKEN` secret — twice, once as `Devmachine-X.Y.Z.dmg` (the
+     asset of record) and once as a stable-named copy `Devmachine.dmg`, so
+     `.../releases/latest/download/Devmachine.dmg` always serves the newest
+     build without anyone having to know the version.
+   - Renders `packaging/devmachine-app.rb.template` into a Homebrew cask,
+     then updates `mydevmachine/homebrew-tap`:
+     - If `TAP_APP_ID`/`TAP_APP_PRIVATE_KEY` are set, mints a short-lived
+       GitHub App token and commits the cask straight to the tap's `main`
+       (`feat: devmachine-app vX.Y.Z`).
+     - Else, if `TAP_TOKEN` is set, opens a PR against
+       `mydevmachine/homebrew-tap` with the bump instead.
+     - If neither is set, this step is skipped.
 
 ### Retrying a failed release
 
@@ -147,12 +190,15 @@ git push origin v1.2.3
 
 If the workflow run fails instantly, even on an ordinary push to `main`
 (which does not trigger a release, but still parses the workflow file), the
-cause is usually a YAML syntax or config error, not your code. One gotcha
-this workflow already works around: GitHub Actions will not let a step's
-`if:` read the `secrets` context directly. That is why `HAS_TAP_TOKEN` is
-computed once, in the job's `env:`, and the "Render Homebrew cask" step
-checks `env.HAS_TAP_TOKEN` instead of `secrets.TAP_TOKEN` directly. Keep that
-pattern if you add a similar conditional step.
+cause is usually a YAML syntax or config error, not your code. A `validate`
+job (Ruby's YAML parser, plus a grep that a step's `if:` never reads
+`secrets` directly) runs first on `ubuntu-latest` and catches this before
+the expensive `macos-15` job starts. One gotcha this workflow already works
+around: GitHub Actions will not let a step's `if:` read the `secrets`
+context directly. That is why `HAS_TAP_TOKEN` and `HAS_TAP_APP` are computed
+once, in the job's `env:`, and steps check `env.HAS_TAP_TOKEN` /
+`env.HAS_TAP_APP` instead of `secrets.TAP_TOKEN` / `secrets.TAP_APP_ID`
+directly. Keep that pattern if you add a similar conditional step.
 
 ### Cost
 
@@ -178,11 +224,19 @@ secrets from the "Secrets" section above. There is no way to exercise
 ## Homebrew cask
 
 The cask template lives at `packaging/devmachine-app.rb.template`. The
-release workflow fills in `{{VERSION}}`, `{{SHA256}}`, and
-`{{RELEASES_REPO}}`, then opens a PR against `mydevmachine/homebrew-tap` —
-but only when the `TAP_TOKEN` secret is set. Without it, this step is
-skipped and the cask does not update automatically; update
-`mydevmachine/homebrew-tap` by hand in that case.
+release workflow fills in `{{VERSION}}`, `{{SHA256}}` (of the versioned
+`.dmg`), and `{{RELEASES_REPO}}`, checks the rendered file with `ruby -c`,
+then updates `mydevmachine/homebrew-tap`:
+
+- **`TAP_APP_ID` + `TAP_APP_PRIVATE_KEY` set (preferred):** mints a token
+  scoped to `homebrew-tap` through the GitHub App and commits the cask
+  straight to the tap's `main`, one line, `feat: devmachine-app vX.Y.Z`. No
+  PR to merge — the release is done once the workflow finishes. See
+  "One-time setup" above for where to get the App ID and private key.
+- **Only `TAP_TOKEN` set (fallback):** opens a PR against
+  `mydevmachine/homebrew-tap` with the bump instead; merge it by hand.
+- **Neither set:** this step is skipped and the cask does not update
+  automatically; update `mydevmachine/homebrew-tap` by hand.
 
 ## Build and install locally
 
