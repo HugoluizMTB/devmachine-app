@@ -1,13 +1,13 @@
 import Foundation
 import DevmachineCore
 
-/// Whether the admin machine has what the app needs to read stats, Caddy
-/// logs, and subdomain logs through the CLI instead of raw ssh. `.ok` also
-/// covers "could not tell" (offline, `packages` too old): the gate fails
+/// Whether every configured machine has what the app needs to read stats,
+/// Caddy logs, and subdomain logs through the CLI instead of raw ssh. `.ok`
+/// also covers "could not tell" (offline, `packages` too old): the gate fails
 /// open rather than locking the person out of a Mac that just lost network.
 enum PackageGateState: Equatable, Sendable {
     case ok
-    case missing(machine: String)
+    case missing(machines: [String])
 }
 
 enum PackageGateMessage {
@@ -26,12 +26,12 @@ enum PackageGateMessage {
 enum PackageGateChecker {
     static func check(cli: @Sendable () throws -> DevmachineCLI) -> PackageGateState {
         guard let instance = try? cli() else { return .ok }
-        guard let machine = try? instance.resolveAdminMachine() else { return .ok }
+        guard let machines = try? instance.nonSelfMachines(), !machines.isEmpty else { return .ok }
         guard let packages = try? instance.packages() else { return .ok }
-        guard let devmachineApp = packages.first(where: { $0.name == "devmachine-app" }),
-              devmachineApp.isInstalled(onMachine: machine) else {
-            return .missing(machine: machine)
-        }
-        return .ok
+        let devmachineApp = packages.first { $0.name == "devmachine-app" }
+        let missing = machines
+            .map(\.name)
+            .filter { !(devmachineApp?.isInstalled(onMachine: $0) ?? false) }
+        return missing.isEmpty ? .ok : .missing(machines: missing)
     }
 }

@@ -13,6 +13,11 @@ private func memSize(_ bytes: Int64) -> String {
         : "\(gb(bytes)) GB"
 }
 
+private func percent(_ used: Int64, _ total: Int64) -> String {
+    guard total > 0 else { return "--" }
+    return String(format: "%.0f%%", Double(used) / Double(total) * 100)
+}
+
 struct StatsView: View {
     @EnvironmentObject var store: StatsStore
     @EnvironmentObject var model: AppModel
@@ -21,17 +26,26 @@ struct StatsView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Rectangle().fill(Color.dmDivider).frame(height: 1)
+            // A single machine reads exactly like the page did before this
+            // switcher existed — no tabs, no overview row.
+            if store.showsSwitcher {
+                overviewRow
+                Rectangle().fill(Color.dmDivider).frame(height: 1)
+                machineSwitcher
+                Rectangle().fill(Color.dmDivider).frame(height: 1)
+            }
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.dmContentBg)
         .onAppear {
-            if store.snapshot == nil { refresh() }
+            if store.machines.isEmpty { store.loadMachines() }
         }
     }
 
     private func refresh() {
         store.refresh()
+        if store.showsSwitcher { store.refreshOverview() }
     }
 
     private var header: some View {
@@ -63,6 +77,58 @@ struct StatsView: View {
         formatter.dateFormat = "HH:mm"
         return formatter
     }()
+
+    private var overviewRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(store.machines) { machine in
+                    MachineOverviewCard(
+                        machine: machine,
+                        state: store.state(for: machine.name),
+                        selected: store.selectedMachine == machine.name,
+                        action: { store.select(machine.name) }
+                    )
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    private var machineSwitcher: some View {
+        HStack(spacing: 6) {
+            ForEach(store.machines) { machine in
+                machineTab(machine)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+    }
+
+    private func machineTab(_ machine: StatsMachine) -> some View {
+        let selected = store.selectedMachine == machine.name
+        return Button {
+            store.select(machine.name)
+        } label: {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: machine.name)
+                    .font(.dm(12, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Color.dmRowText : Color.dmMuted)
+                if let address = machine.firstAddress {
+                    Text(verbatim: address)
+                        .font(.dm(9.5))
+                        .foregroundStyle(Color.dmMuted.opacity(0.7))
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: DMRadius.control, style: .continuous)
+                    .fill(selected ? Color.dmSelection : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+    }
 
     @ViewBuilder
     private var content: some View {
@@ -261,5 +327,68 @@ struct StatsView: View {
                 }
             }
         )
+    }
+}
+
+/// One compact card in the "All machines" overview row: RAM used %, disk
+/// free, load 1m and container count for a machine, clickable to switch
+/// Stats to it.
+private struct MachineOverviewCard: View {
+    let machine: StatsMachine
+    let state: MachineStatsState?
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: machine.name)
+                    .font(.dm(12, weight: .semibold))
+                    .foregroundStyle(Color.dmRowText)
+                    .lineLimit(1)
+                body(for: state)
+            }
+            .padding(10)
+            .frame(width: 150, alignment: .leading)
+            .dmSurface(
+                selected ? Color.dmSelection : Color.dmHover,
+                radius: DMRadius.control)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func body(for state: MachineStatsState?) -> some View {
+        if let snapshot = state?.snapshot {
+            VStack(alignment: .leading, spacing: 2) {
+                statLine("RAM", percent(snapshot.memory.usedBytes, snapshot.memory.totalBytes))
+                statLine("Disk free", "\(gb(snapshot.disk.availableBytes)) GB")
+                statLine("Load 1m", String(format: "%.2f", snapshot.load.load1))
+                statLine("Containers", "\(snapshot.containers.count)")
+            }
+        } else if let error = state?.errorText {
+            Text(verbatim: error)
+                .font(.dm(10.5))
+                .foregroundStyle(.red.opacity(0.85))
+                .lineLimit(2)
+        } else if state?.isLoading == true {
+            ProgressView().controlSize(.small)
+        } else {
+            Text("No data")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+        }
+    }
+
+    private func statLine(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.dm(10.5))
+                .foregroundStyle(Color.dmMuted)
+            Spacer(minLength: 6)
+            Text(verbatim: value)
+                .font(.dm(10.5, weight: .medium))
+                .foregroundStyle(Color.dmRowText)
+        }
     }
 }

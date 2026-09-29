@@ -5,14 +5,16 @@ import AppKit
 /// the `devmachine-app` package yet — stats, Caddy logs and subdomain logs
 /// all run through it instead of raw ssh, so none of those work without it.
 struct PackageGatePage: View {
-    let machine: String
+    let machines: [String]
     let onCheckAgain: () -> Void
 
-    @State private var copiedAdd = false
-    @State private var copiedSync = false
+    @State private var copiedAdd: Set<String> = []
+    @State private var copiedSync: Set<String> = []
 
-    private var addCommand: String { "devmachine packages add devmachine-app --machine \(machine)" }
-    private var syncCommand: String { "devmachine sync --machine \(machine)" }
+    private func addCommand(_ machine: String) -> String {
+        "devmachine packages add devmachine-app --machine \(machine)"
+    }
+    private func syncCommand(_ machine: String) -> String { "devmachine sync --machine \(machine)" }
 
     var body: some View {
         ZStack {
@@ -31,15 +33,21 @@ struct PackageGatePage: View {
                 Text("Add the devmachine-app package")
                     .font(.dm(18, weight: .semibold))
                     .foregroundStyle(.white)
-                Text(verbatim: "\"\(machine)\" needs it for stats, Caddy logs and subdomain logs — "
-                    + "the app no longer reads those over raw ssh.")
+                Text(verbatim: summary)
                     .font(.dm(12.5))
                     .foregroundStyle(.white.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            commandBox(addCommand, copied: $copiedAdd)
-            commandBox(syncCommand, copied: $copiedSync)
+            ForEach(machines, id: \.self) { machine in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(verbatim: machine)
+                        .font(.dm(12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                    commandBox(addCommand(machine), copied: copiedBinding($copiedAdd, machine))
+                    commandBox(syncCommand(machine), copied: copiedBinding($copiedSync, machine))
+                }
+            }
 
             Text("Sync installs the package on the server; nothing changes until it runs.")
                 .font(.dm(11.5))
@@ -58,6 +66,23 @@ struct PackageGatePage: View {
             Color.black.opacity(0.35),
             in: RoundedRectangle(cornerRadius: DMRadius.panel, style: .continuous))
         .environment(\.colorScheme, .dark)
+    }
+
+    private var summary: String {
+        machines.count == 1
+            ? "\"\(machines[0])\" needs it for stats, Caddy logs and subdomain logs — "
+                + "the app no longer reads those over raw ssh."
+            : "These machines need it for stats, Caddy logs and subdomain logs — "
+                + "the app no longer reads those over raw ssh."
+    }
+
+    private func copiedBinding(_ set: Binding<Set<String>>, _ machine: String) -> Binding<Bool> {
+        Binding(
+            get: { set.wrappedValue.contains(machine) },
+            set: { isCopied in
+                if isCopied { set.wrappedValue.insert(machine) } else { set.wrappedValue.remove(machine) }
+            }
+        )
     }
 
     private func commandBox(_ command: String, copied: Binding<Bool>) -> some View {

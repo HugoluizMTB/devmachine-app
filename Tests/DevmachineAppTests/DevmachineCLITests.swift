@@ -260,6 +260,38 @@ final class DevmachineCLIAutoDetectEndpointsTests: XCTestCase {
         XCTAssertEqual(runner.calls.last?.args, ["--format", "json", "config", "show"])
     }
 
+    func testListConfigMachinesDecodesTheSameShapeAsConfigShow() throws {
+        let body = #"""
+        [
+          {"name": "acme", "hosts": ["100.64.0.5", "203.0.113.10"], "admin_user": "root", "port": 22, "workspaces": ["alice"]},
+          {"name": "beta", "hosts": ["203.0.113.20"], "admin_user": "root", "port": 22, "workspaces": []},
+          {"name": "mac", "hosts": [], "admin_user": "", "port": 0, "workspaces": [], "self": true}
+        ]
+        """#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let machines = try cli.listConfigMachines()
+
+        XCTAssertEqual(machines.map(\.name), ["acme", "beta", "mac"])
+        XCTAssertEqual(machines[0].hosts, ["100.64.0.5", "203.0.113.10"])
+        XCTAssertEqual(runner.calls.last?.args, ["--format", "json", "machines", "list"])
+    }
+
+    func testNonSelfMachinesDropsTheSelfEntry() throws {
+        let body = #"""
+        [
+          {"name": "acme", "hosts": ["203.0.113.10"], "admin_user": "root", "port": 22, "workspaces": []},
+          {"name": "beta", "hosts": ["203.0.113.20"], "admin_user": "root", "port": 22, "workspaces": []},
+          {"name": "mac", "hosts": [], "admin_user": "", "port": 0, "workspaces": [], "self": true}
+        ]
+        """#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        XCTAssertEqual(try cli.nonSelfMachines().map(\.name), ["acme", "beta"])
+    }
+
     func testAliasesDecodesEveryEntry() throws {
         let body = #"""
         {"aliases": [

@@ -37,7 +37,7 @@ final class PackageGateCheckerTests: XCTestCase {
             "list": (#"{"packages":[{"name":"base","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
         ])
         let state = PackageGateChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
-        XCTAssertEqual(state, .missing(machine: "acme"))
+        XCTAssertEqual(state, .missing(machines: ["acme"]))
     }
 
     func testMissingWhenThePackageIsInstalledOnADifferentMachine() {
@@ -46,7 +46,16 @@ final class PackageGateCheckerTests: XCTestCase {
             "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine mac"]}]}"#, "", 0),
         ])
         let state = PackageGateChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
-        XCTAssertEqual(state, .missing(machine: "acme"))
+        XCTAssertEqual(state, .missing(machines: ["acme"]))
+    }
+
+    func testListsEveryMachineMissingThePackageWhenThereAreSeveral() {
+        let runner = ScriptedRunner(byCommand: [
+            "machines": (#"[{"name":"acme"},{"name":"beta"},{"name":"gamma"},{"name":"mac","self":true}]"#, "", 0),
+            "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine beta"]}]}"#, "", 0),
+        ])
+        let state = PackageGateChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
+        XCTAssertEqual(state, .missing(machines: ["acme", "gamma"]))
     }
 
     func testFailsOpenWhenPackagesListItselfFails() {

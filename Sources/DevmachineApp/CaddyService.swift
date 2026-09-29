@@ -22,11 +22,14 @@ struct CaddyService: Sendable {
         }
     }
 
-    func logs(lines: Int = 200) throws -> String {
+    /// `machine` is nil for the existing single-machine caller, which still
+    /// gets the cached first non-self machine; a caller that knows there are
+    /// several (the Stats machine switcher) names the one it wants logs from.
+    func logs(machine: String? = nil, lines: Int = 200) throws -> String {
         let cli = try resolvedCLI()
-        let machine = try adminMachine.name { cli }
+        let resolvedMachine = try machine ?? adminMachine.name { cli }
         return try cli.run(
-            machine: machine, package: "devmachine-app",
+            machine: resolvedMachine, package: "devmachine-app",
             args: ["caddy-logs", "--lines", String(lines)])
     }
 

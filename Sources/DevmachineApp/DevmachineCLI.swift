@@ -221,6 +221,25 @@ struct DevmachineCLI: Sendable {
         return try JSONDecoder().decode([CLIMachine].self, from: Data(result.stdout.utf8))
     }
 
+    /// `machines list`, decoded with every field `config show`'s `machines`
+    /// carries (hosts included) — the same JSON shape, so the app can show a
+    /// machine's address without a second call to `configShow()`.
+    func listConfigMachines() throws -> [CLIConfigMachine] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "machines", "list"],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode([CLIConfigMachine].self, from: Data(result.stdout.utf8))
+    }
+
+    /// Every configured machine that is not this Mac — the set Stats and the
+    /// package gate check, instead of only the first one.
+    func nonSelfMachines() throws -> [CLIConfigMachine] {
+        try listConfigMachines().filter { !$0.isSelf }
+    }
+
     /// Where the CLI keeps its configuration — the folder the app used to ask
     /// the person to type by hand.
     func configPath() throws -> CLIConfigPath {
