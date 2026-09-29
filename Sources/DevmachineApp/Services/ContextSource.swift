@@ -36,8 +36,12 @@ final class SelfMachineCache: @unchecked Sendable {
 }
 
 /// The same idea, for the other direction: which machine an admin-level
-/// command (stats, Caddy's own logs) runs on.
+/// command (stats, Caddy's own logs) runs on. `.shared` is what every store
+/// that needs it defaults to, so Stats and Subdomains answer the same
+/// `machines list` call instead of each making their own.
 final class AdminMachineCache: @unchecked Sendable {
+    static let shared = AdminMachineCache()
+
     private let cache = ResolvedOnce<String>()
 
     func name(cli: () throws -> DevmachineCLI) throws -> String {

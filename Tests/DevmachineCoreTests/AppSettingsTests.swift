@@ -23,8 +23,6 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testWorkspaceSuffixFallsBackToDevmachineWhenAliasIsEmpty() {
-        // `devmachine aliases --write` always names a workspace's Host entry
-        // `<workspace>-devmachine`; a bare `-` would match no real alias.
         var settings = goodSettings
         settings.hostAlias = ""
         XCTAssertEqual(settings.workspaceSuffix, "-devmachine")
@@ -52,8 +50,6 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testValidateAcceptsEmptyAlias() {
-        // No admin command needs it anymore: it only narrows which
-        // ~/.ssh/config entries count as this machine's workspaces.
         var settings = goodSettings
         settings.hostAlias = ""
         XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
@@ -96,8 +92,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
     }
 
-    func testValidateReportsEveryBadFieldAtOnce() {
-        // hostAlias is excluded: empty is valid for it now.
+    func testValidateReportsEveryBadFieldAtOnceExceptTheNowOptionalAlias() {
         let fields = AppSettings.validate(AppSettings.empty, fileExists: existing()).map(\.field)
         XCTAssertEqual(fields, [.opsRepoPath, .publicIP, .baseDomain])
     }

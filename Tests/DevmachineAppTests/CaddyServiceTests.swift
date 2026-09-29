@@ -44,7 +44,7 @@ final class CaddyServiceTests: XCTestCase {
 
     func testLogsRunThroughTheCLIAsTheNonSelfMachinesAdmin() throws {
         let cli = DevmachineCLI(executable: "/fake/devmachine", runner: CaddyServiceRunner())
-        let service = CaddyService(cli: cli)
+        let service = CaddyService(cli: cli, adminMachine: AdminMachineCache())
 
         XCTAssertEqual(try service.logs(), "acme.example.com tls handshake ok")
     }

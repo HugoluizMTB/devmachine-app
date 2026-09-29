@@ -2,10 +2,7 @@ import XCTest
 import DevmachineCore
 @testable import DevmachineApp
 
-/// Answers `machines list` with a fixed self+non-self pair and every other
-/// call with whatever `nextResult` holds, recording the args it was given so
-/// a test can check the exact `run --machine …` invocation.
-private final class StatsRunner: CommandRunner, @unchecked Sendable {
+private final class MachinesListThenNextResultRunner: CommandRunner, @unchecked Sendable {
     private let lock = NSLock()
     private var storedCalls: [[String]] = []
     var nextResult: (stdout: String, stderr: String, exitCode: Int32)
@@ -64,8 +61,10 @@ private let goodSnapshot = """
 @MainActor
 final class StatsStoreTests: XCTestCase {
     func testRefreshRunsTheSnapshotThroughTheDevmachineCLIAsTheNonSelfMachinesAdmin() async throws {
-        let runner = StatsRunner(nextResult: (goodSnapshot, "", 0))
-        let store = StatsStore { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }
+        let runner = MachinesListThenNextResultRunner(nextResult: (goodSnapshot, "", 0))
+        let store = StatsStore(
+            cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) },
+            adminMachine: AdminMachineCache())
 
         store.refresh()
         try await waitUntil { store.snapshot != nil }
@@ -78,8 +77,10 @@ final class StatsStoreTests: XCTestCase {
     }
 
     func testAFailedRunSurfacesTheCLIsStderrAndKeepsTheLastGoodSnapshot() async throws {
-        let runner = StatsRunner(nextResult: (goodSnapshot, "", 0))
-        let store = StatsStore { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }
+        let runner = MachinesListThenNextResultRunner(nextResult: (goodSnapshot, "", 0))
+        let store = StatsStore(
+            cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) },
+            adminMachine: AdminMachineCache())
 
         store.refresh()
         try await waitUntil { store.snapshot != nil }
@@ -95,8 +96,10 @@ final class StatsStoreTests: XCTestCase {
     }
 
     func testEmptyOutputIsAnErrorNeverAZeroSnapshotAndNeverSetsRefreshedAt() async throws {
-        let runner = StatsRunner(nextResult: ("", "", 0))
-        let store = StatsStore { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }
+        let runner = MachinesListThenNextResultRunner(nextResult: ("", "", 0))
+        let store = StatsStore(
+            cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) },
+            adminMachine: AdminMachineCache())
 
         store.refresh()
         try await waitUntil { store.errorText != nil }

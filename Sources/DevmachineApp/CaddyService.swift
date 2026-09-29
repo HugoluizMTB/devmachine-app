@@ -5,7 +5,7 @@ struct CaddyService: Sendable {
     let cli: DevmachineCLI?
     private let adminMachine: AdminMachineCache
 
-    init(cli: DevmachineCLI? = nil, adminMachine: AdminMachineCache = AdminMachineCache()) {
+    init(cli: DevmachineCLI? = nil, adminMachine: AdminMachineCache = .shared) {
         self.cli = cli
         self.adminMachine = adminMachine
     }

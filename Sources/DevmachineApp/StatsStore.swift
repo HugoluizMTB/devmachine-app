@@ -9,11 +9,15 @@ final class StatsStore: ObservableObject {
     @Published var refreshedAt: Date?
 
     private let cli: @Sendable () throws -> DevmachineCLI
-    private let adminMachine = AdminMachineCache()
+    private let adminMachine: AdminMachineCache
     private nonisolated(unsafe) var refreshTask: Task<Void, Never>?
 
-    init(cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() }) {
+    init(
+        cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
+        adminMachine: AdminMachineCache = .shared
+    ) {
         self.cli = cli
+        self.adminMachine = adminMachine
     }
 
     deinit {
