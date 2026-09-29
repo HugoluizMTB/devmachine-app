@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+    No App Sandbox. This is a Developer ID app that spawns ssh/mosh/devmachine
+    on the PATH and reads arbitrary files the owner points it at (Files
+    window, workspace folders); the sandbox would need broad exceptions for
+    both and buys nothing a non-sandboxed, notarized, hardened-runtime app
+    does not already have.
+
+    Hardened Runtime turns on a set of restrictions by default (no unsigned
+    executable memory, no DYLD_* injection, no debugger attach, library
+    validation) and every one of them is fine as-is:
+      - zmx ships as its own embedded, separately-signed executable and runs
+        as a child process (Process/NSTask), never dlopen'd into this process,
+        so library validation does not touch it and
+        `com.apple.security.cs.disable-library-validation` is not needed.
+      - SwiftTerm, HighlightSwift and swift-markdown-ui link in as ordinary
+        signed frameworks/dylibs from the same signing identity — hardened
+        runtime's default library validation already allows same-team code.
+      - No JIT, no unsigned/writable executable memory, no AppleScript/Apple
+        Events, no microphone/camera/location, no downloaded-executable exec.
+
+    So this file exists to be explicit that nothing was skipped, not because
+    a key was needed. If a future dependency needs one of the `com.apple.
+    security.cs.*` relaxations, add it here with the same kind of comment:
+    which binary needs it and why.
+    -->
+</dict>
+</plist>

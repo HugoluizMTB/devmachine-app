@@ -8,6 +8,10 @@ rm -rf build && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 swift build -c release
 cp .build/release/DevmachineApp "$APP/Contents/MacOS/DevmachineApp"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+if [ -n "${DEVMACHINE_APP_VERSION:-}" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $DEVMACHINE_APP_VERSION" \
+    "$APP/Contents/Info.plist"
+fi
 cp wallpaper.jpg "$APP/Contents/Resources/wallpaper.jpg"
 cp Resources/wallpapers.json "$APP/Contents/Resources/wallpapers.json"
 
@@ -41,10 +45,24 @@ chmod 755 "$APP/Contents/Resources/zmx/zmx"
 # binary signed afterwards breaks the seal. `-` is an ad-hoc signature, which
 # is all a local install needs; notarizing needs a Developer ID identity here.
 IDENTITY="${DEVMACHINE_CODESIGN_IDENTITY:--}"
+ENTITLEMENTS="Resources/Devmachine.entitlements"
+
 SIGN=(codesign --force --sign "$IDENTITY")
 if [ "$IDENTITY" != "-" ]; then
-  SIGN+=(--options runtime --timestamp)
+  SIGN+=(--options runtime --timestamp --entitlements "$ENTITLEMENTS")
 fi
+
+# Every nested executable/dylib/framework first, then the app that seals them.
+# zmx is the only one this bundle carries today; a future embedded binary
+# joins this list before the final "${SIGN[@]}" "$APP" line.
 "${SIGN[@]}" "$APP/Contents/Resources/zmx/zmx"
 "${SIGN[@]}" "$APP"
+
+codesign --verify --deep --strict --verbose=2 "$APP"
+if [ "$IDENTITY" != "-" ]; then
+  # spctl rejects an ad-hoc signature by design, so this check only makes
+  # sense once a real Developer ID identity signed the bundle.
+  spctl -a -vvv -t exec "$APP"
+fi
+
 echo "Built: $APP"
