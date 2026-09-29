@@ -5,6 +5,14 @@ private func gb(_ bytes: Int64) -> String {
     String(format: "%.1f", Double(bytes) / 1_073_741_824)
 }
 
+/// MB below a gigabyte, GB above it — a container using 120 MB should not
+/// read as "0.1 GB".
+private func memSize(_ bytes: Int64) -> String {
+    bytes < 1_073_741_824
+        ? String(format: "%.0f MB", Double(bytes) / 1_048_576)
+        : "\(gb(bytes)) GB"
+}
+
 struct StatsView: View {
     @EnvironmentObject var store: StatsStore
     @EnvironmentObject var model: AppModel
@@ -112,10 +120,10 @@ struct StatsView: View {
             columns: [GridItem(.adaptive(minimum: 150), spacing: 12, alignment: .top)],
             spacing: 12
         ) {
-            DMStatBubble(value: "\(gb(snapshot.memUsed)) GB", label: "RAM used")
-            DMStatBubble(value: "\(gb(snapshot.diskAvail)) GB", label: "Disk free")
+            DMStatBubble(value: "\(gb(snapshot.memory.usedBytes)) GB", label: "RAM used")
+            DMStatBubble(value: "\(gb(snapshot.disk.availableBytes)) GB", label: "Disk free")
             DMStatBubble(value: "\(containers(snapshot).count)", label: "Containers")
-            DMStatBubble(value: String(format: "%.2f", snapshot.load1), label: "Load 1m")
+            DMStatBubble(value: String(format: "%.2f", snapshot.load.load1), label: "Load 1m")
         }
         .padding(16)
         .frame(maxWidth: .infinity)
@@ -135,21 +143,21 @@ struct StatsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         DMProgressBar(
-                            done: Int(snapshot.memUsed / 1_048_576),
-                            total: Int(snapshot.memTotal / 1_048_576)
+                            done: Int(snapshot.memory.usedBytes / 1_048_576),
+                            total: Int(snapshot.memory.totalBytes / 1_048_576)
                         )
-                        Text(verbatim: "\(gb(snapshot.memUsed)) / \(gb(snapshot.memTotal)) GB used")
+                        Text(verbatim: "\(gb(snapshot.memory.usedBytes)) / \(gb(snapshot.memory.totalBytes)) GB used")
                             .font(.dm(11))
                             .foregroundStyle(Color.dmMuted)
                     }
-                    if snapshot.swapTotal > 0 {
+                    if snapshot.swap.totalBytes > 0 {
                         VStack(alignment: .leading, spacing: 4) {
                             DMProgressBar(
-                                done: Int(snapshot.swapUsed / 1_048_576),
-                                total: Int(snapshot.swapTotal / 1_048_576),
+                                done: Int(snapshot.swap.usedBytes / 1_048_576),
+                                total: Int(snapshot.swap.totalBytes / 1_048_576),
                                 fillColor: .orange
                             )
-                            Text(verbatim: "\(gb(snapshot.swapUsed)) / \(gb(snapshot.swapTotal)) GB swap")
+                            Text(verbatim: "\(gb(snapshot.swap.usedBytes)) / \(gb(snapshot.swap.totalBytes)) GB swap")
                                 .font(.dm(11))
                                 .foregroundStyle(Color.dmMuted)
                         }
@@ -171,8 +179,8 @@ struct StatsView: View {
             },
             content: {
                 VStack(alignment: .leading, spacing: 4) {
-                    DMProgressBar(done: snapshot.diskPercent, total: 100)
-                    Text(verbatim: "\(gb(snapshot.diskUsed)) GB used · \(gb(snapshot.diskAvail)) GB free")
+                    DMProgressBar(done: snapshot.disk.usedPercent, total: 100)
+                    Text(verbatim: "\(gb(snapshot.disk.usedBytes)) GB used · \(gb(snapshot.disk.availableBytes)) GB free")
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                 }
@@ -199,7 +207,7 @@ struct StatsView: View {
                             iconColor: .dmMuted,
                             title: container.name,
                             trailing: AnyView(
-                                Text(verbatim: "\(container.mem) · \(container.cpu)")
+                                Text(verbatim: "\(memSize(container.memUsedBytes)) · \(String(format: "%.1f", container.cpuPercent))%")
                                     .font(.dm(11))
                                     .foregroundStyle(Color.dmMuted)
                             )

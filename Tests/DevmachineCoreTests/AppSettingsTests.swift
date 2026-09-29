@@ -368,4 +368,45 @@ extension AppSettingsTests {
         XCTAssertEqual(issues.map(\.field), [.opsRepoPath])
         XCTAssertTrue(issues.first?.message.contains("config.yml") ?? false)
     }
+
+    func testHostAliasUsesTheDetectedMapWhenPresent() {
+        var settings = goodSettings
+        settings.workspaceAliases = ["acme": "acme-devmachine"]
+        XCTAssertEqual(settings.hostAlias(forWorkspace: "acme"), "acme-devmachine")
+    }
+
+    func testHostAliasFallsBackToTheGuessedSuffixWhenUndetected() {
+        var settings = goodSettings
+        settings.workspaceAliases = [:]
+        XCTAssertEqual(settings.hostAlias(forWorkspace: "acme"), "acme" + settings.workspaceSuffix)
+    }
+
+    func testWorkspaceNameReversesTheDetectedMap() {
+        var settings = goodSettings
+        settings.workspaceAliases = ["acme": "acme-devmachine"]
+        XCTAssertEqual(settings.workspaceName(forAlias: "acme-devmachine"), "acme")
+    }
+
+    func testWorkspaceNameFallsBackToStrippingTheGuessedSuffix() {
+        var settings = goodSettings
+        settings.workspaceAliases = [:]
+        XCTAssertEqual(settings.workspaceName(forAlias: "acme" + settings.workspaceSuffix), "acme")
+    }
+
+    func testWorkspaceAliasesRoundTripThroughEncoding() throws {
+        var settings = goodSettings
+        settings.workspaceAliases = ["acme": "acme-devmachine"]
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.workspaceAliases, ["acme": "acme-devmachine"])
+    }
+
+    func testSettingsSavedBeforeWorkspaceAliasesExistedDecodeToEmpty() throws {
+        var values = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(goodSettings)) as! [String: Any]
+        values.removeValue(forKey: "workspaceAliases")
+        let data = try JSONSerialization.data(withJSONObject: values)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.workspaceAliases, [:])
+    }
 }

@@ -39,7 +39,7 @@ final class CaddyStore: ObservableObject {
                 self.errorText = nil
             } catch {
                 guard !Task.isCancelled else { return }
-                self.errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                self.errorText = PackageGateMessage.friendly(for: error)
             }
             if !Task.isCancelled { self.isLoading = false }
         }

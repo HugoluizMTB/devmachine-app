@@ -73,11 +73,10 @@ struct CLIContextSource: ContextSource {
         return try JSONDecoder().decode(ContextState.self, from: Data(output.utf8))
     }
 
-    /// The app grows an alias by appending its ssh suffix to the workspace's
-    /// own name (`CLIWorkspaceSource`); this undoes that to hand the CLI the
-    /// name it knows the workspace by.
+    /// The sidebar's alias is the workspace's detected ssh `Host` name
+    /// (`CLIWorkspaceSource`, from `settings.hostAlias(forWorkspace:)`); this
+    /// undoes that to hand the CLI the name it knows the workspace by.
     private func workspaceName(for alias: String, settings: AppSettings) -> String {
-        let suffix = settings.workspaceSuffix
-        return alias.hasSuffix(suffix) ? String(alias.dropLast(suffix.count)) : alias
+        settings.workspaceName(forAlias: alias)
     }
 }

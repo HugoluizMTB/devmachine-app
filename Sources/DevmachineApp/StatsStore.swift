@@ -35,7 +35,7 @@ final class StatsStore: ObservableObject {
             do {
                 let output = try await Task.detached {
                     let machine = try adminMachine.name(cli: cli)
-                    return try cli().run(machine: machine, command: RemoteCommands.statsSnapshot)
+                    return try cli().run(machine: machine, package: "devmachine-app", args: ["stats"])
                 }.value
                 guard !Task.isCancelled else { return }
                 guard let parsed = StatsParser.parse(output) else {
@@ -51,7 +51,7 @@ final class StatsStore: ObservableObject {
                 // The last good snapshot stays on screen, under the error
                 // banner: a blip does not have to blank the panel a beta
                 // tester was just reading.
-                self.errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                self.errorText = PackageGateMessage.friendly(for: error)
             }
             if !Task.isCancelled { self.isLoading = false }
         }

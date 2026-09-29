@@ -18,7 +18,7 @@ private struct CaddyServiceRunner: CommandRunner {
         if args == ["--format", "json", "machines", "list"] {
             return (#"[{"name":"self","self":true},{"name":"box"}]"#, "", 0)
         }
-        if args == ["run", "--machine", "box", "--", "journalctl -u caddy -n 200 --no-pager"] {
+        if args == ["run", "--machine", "box", "--package", "devmachine-app", "--", "caddy-logs", "--lines", "200"] {
             return ("acme.example.com tls handshake ok", "", 0)
         }
         throw NSError(domain: "unexpected remote command", code: 1, userInfo: [

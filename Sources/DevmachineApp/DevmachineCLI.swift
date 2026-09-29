@@ -18,6 +18,87 @@ private struct CLIWorkspaceList: Decodable {
     let workspaces: [CLIWorkspace]
 }
 
+struct CLIConfigPath: Decodable, Equatable, Sendable {
+    let path: String
+    let source: String
+}
+
+/// One entry of `config show`'s `machines` list. `hosts` is every address the
+/// CLI would try in order (tailnet first, then a public fallback) — the app
+/// only needs one to show, so it picks the first that is not a tailnet
+/// address (`100.64.0.0/10`).
+struct CLIConfigMachine: Decodable, Equatable, Sendable {
+    let name: String
+    let hosts: [String]
+    let adminUser: String
+    let port: Int
+    let workspaces: [String]
+    let isSelf: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case name, hosts, workspaces, port
+        case adminUser = "admin_user"
+        case isSelf = "self"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        hosts = try c.decodeIfPresent([String].self, forKey: .hosts) ?? []
+        adminUser = try c.decodeIfPresent(String.self, forKey: .adminUser) ?? ""
+        port = try c.decodeIfPresent(Int.self, forKey: .port) ?? 0
+        workspaces = try c.decodeIfPresent([String].self, forKey: .workspaces) ?? []
+        isSelf = try c.decodeIfPresent(Bool.self, forKey: .isSelf) ?? false
+    }
+}
+
+struct CLIConfigWorkspace: Decodable, Equatable, Sendable {
+    let name: String
+    let machine: String
+    let user: String
+}
+
+struct CLIConfigShow: Decodable, Equatable, Sendable {
+    let machines: [CLIConfigMachine]
+    let workspaces: [CLIConfigWorkspace]
+    let domain: String
+}
+
+/// One entry of `devmachine --format json aliases` — the exact ssh host
+/// name for a workspace, as the CLI itself wrote it, instead of the app
+/// guessing at a `<workspace>-<suffix>` pattern.
+struct CLIAlias: Decodable, Equatable, Sendable {
+    let name: String
+    let host: String
+    let user: String
+    let port: Int
+}
+
+private struct CLIAliasList: Decodable {
+    let aliases: [CLIAlias]
+}
+
+/// One entry of `packages list`: `installedOn` reads like `"machine devmachine"`
+/// or `"workspace acme"`.
+struct CLIPackage: Decodable, Equatable, Sendable {
+    let name: String
+    let scope: String
+    let installedOn: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case name, scope
+        case installedOn = "installed_on"
+    }
+
+    func isInstalled(onMachine machine: String) -> Bool {
+        installedOn.contains("machine \(machine)")
+    }
+}
+
+private struct CLIPackageList: Decodable {
+    let packages: [CLIPackage]
+}
+
 struct CLIMachine: Decodable, Equatable, Sendable {
     let name: String
     let isSelf: Bool
@@ -50,6 +131,14 @@ enum DevmachineCLIError: LocalizedError, Equatable {
         case .executableNotFound(let paths):
             return "Devmachine CLI was not found at \(paths.joined(separator: " or ")). Install it with `brew install mydevmachine/tap/devmachine`."
         }
+    }
+
+    /// A package command the installed release does not know yet — the
+    /// machine has an older `devmachine-app` than the app expects. The fix is
+    /// `devmachine packages pin` then `sync`, not the "add the package" gate.
+    var isUnknownPackageCommand: Bool {
+        guard case let .commandFailed(detail) = self else { return false }
+        return detail.contains("does not accept")
     }
 }
 
@@ -132,6 +221,55 @@ struct DevmachineCLI: Sendable {
         return try JSONDecoder().decode([CLIMachine].self, from: Data(result.stdout.utf8))
     }
 
+    /// Where the CLI keeps its configuration — the folder the app used to ask
+    /// the person to type by hand.
+    func configPath() throws -> CLIConfigPath {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "config", "path"],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLIConfigPath.self, from: Data(result.stdout.utf8))
+    }
+
+    /// Every machine and workspace the CLI knows about, plus the base domain
+    /// new subdomains are created under.
+    func configShow() throws -> CLIConfigShow {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "config", "show"],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLIConfigShow.self, from: Data(result.stdout.utf8))
+    }
+
+    /// The exact ssh `Host` entry name for every workspace, as the CLI wrote
+    /// it to `~/.ssh/config` — the app no longer has to guess a suffix.
+    func aliases() throws -> [CLIAlias] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "aliases"],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLIAliasList.self, from: Data(result.stdout.utf8)).aliases
+    }
+
+    /// Every package the CLI knows about, and which machine or workspace has
+    /// it — used to check whether a machine has `devmachine-app` before the
+    /// app relies on it for stats or Caddy logs.
+    func packages() throws -> [CLIPackage] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "packages", "list"],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLIPackageList.self, from: Data(result.stdout.utf8)).packages
+    }
+
     /// The machine workspaces live on, for a command that has to run as that
     /// machine's admin rather than inside a workspace — stats, Caddy's own
     /// logs. `self` is the Mac the app runs on, never the target. Several
@@ -155,6 +293,22 @@ struct DevmachineCLI: Sendable {
         let result = try runner.runCapturing(
             executable: executable,
             args: ["run", "--machine", machine, "--", command],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return result.stdout
+    }
+
+    /// Runs a command from a package installed on `machine`'s admin account —
+    /// `devmachine-app`'s `stats` and `caddy-logs`. Distinct from `run(machine:command:)`,
+    /// which runs a plain shell snippet: this goes through the package's own
+    /// entrypoint, so the machine needs the package installed (`packages()`
+    /// checks that first) and a released version new enough to accept the
+    /// command (`DevmachineCLIError.commandFailed` with `isUnknownPackageCommand`).
+    func run(machine: String, package: String, args: [String]) throws -> String {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["run", "--machine", machine, "--package", package, "--"] + args,
             environment: environment()
         )
         try requireSuccess(result)

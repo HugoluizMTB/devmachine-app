@@ -20,6 +20,8 @@ struct ContentView: View {
                 CLIGatePage(onCheckAgain: {
                     model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
                 })
+            } else if settingsStore.isConfigured, case let .missing(machine) = model.packageGate {
+                PackageGatePage(machine: machine, onCheckAgain: { model.checkPackageGate() })
             } else if model.activePage == .setup {
                 SetupPage()
             } else {

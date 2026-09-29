@@ -336,6 +336,11 @@ struct SetupPage: View {
                     .font(.dm(11))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
+            } else if isDetected(field) {
+                Text("Detected from the devmachine CLI — type over it to use something else.")
+                    .font(.dm(11))
+                    .foregroundStyle(.blue)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(hint)
                     .font(.dm(11))
@@ -774,17 +779,41 @@ struct SetupPage: View {
             debugLogging = current.debugLogging
             hiddenWorkspaces = current.hiddenWorkspaces
             applyHarnessSettings(current)
-            return
+        } else {
+            let configPath = NSHomeDirectory() + "/.ssh/config"
+            let config = (try? String(contentsOfFile: configPath, encoding: .utf8)) ?? ""
+            let proposed = AppSettings.prefill(sshConfig: config, sshResolve: Self.resolveHostname)
+            opsRepoPath = proposed.opsRepoPath
+            hostAlias = proposed.hostAlias
+            publicIP = proposed.publicIP
+            baseDomain = proposed.baseDomain
+            applyHarnessSettings(proposed)
         }
 
-        let configPath = NSHomeDirectory() + "/.ssh/config"
-        let config = (try? String(contentsOfFile: configPath, encoding: .utf8)) ?? ""
-        let proposed = AppSettings.prefill(sshConfig: config, sshResolve: Self.resolveHostname)
-        opsRepoPath = proposed.opsRepoPath
-        hostAlias = proposed.hostAlias
-        publicIP = proposed.publicIP
-        baseDomain = proposed.baseDomain
-        applyHarnessSettings(proposed)
+        fillFromDetected()
+    }
+
+    /// Whatever the CLI already told the app (`AppModel.detected`, read at
+    /// launch) fills in for what would otherwise be a blank, required field —
+    /// Setup should have little or nothing left to type. A field that already
+    /// carries a value, typed or previously saved, is left alone.
+    private func fillFromDetected() {
+        let detected = model.detected
+        if opsRepoPath.isEmpty, let path = detected.opsRepoPath { opsRepoPath = path }
+        if publicIP.isEmpty, let ip = detected.publicIP { publicIP = ip }
+        if baseDomain.isEmpty, let domain = detected.baseDomain { baseDomain = domain }
+    }
+
+    /// Whether a Connection field's current value is exactly what the CLI
+    /// detected — Setup shows that as a hint instead of asking the person to
+    /// re-type it, with an option to type something else instead.
+    private func isDetected(_ field: SettingsIssue.Field) -> Bool {
+        switch field {
+        case .opsRepoPath: return !opsRepoPath.isEmpty && opsRepoPath == model.detected.opsRepoPath
+        case .publicIP: return !publicIP.isEmpty && publicIP == model.detected.publicIP
+        case .baseDomain: return !baseDomain.isEmpty && baseDomain == model.detected.baseDomain
+        case .hostAlias: return false
+        }
     }
 
     private static func resolveHostname(_ alias: String) -> String? {

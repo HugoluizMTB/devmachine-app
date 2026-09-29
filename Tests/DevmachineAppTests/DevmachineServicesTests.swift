@@ -4,7 +4,7 @@ import DevmachineCore
 
 struct FixtureWorkspaceSource: WorkspaceSource {
     var values: [Workspace] = []
-    func workspaces(suffix: String) throws -> [Workspace] { values }
+    func workspaces(resolveAlias: (String) -> String) throws -> [Workspace] { values }
 }
 
 private final class CLIServiceRunner: CommandRunner, @unchecked Sendable {
@@ -192,7 +192,7 @@ final class DevmachineServicesTests: XCTestCase {
         let runner = CLIServiceRunner(result: (body, "", 0))
         let source = CLIWorkspaceSource(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        let workspaces = try source.workspaces(suffix: "-lab")
+        let workspaces = try source.workspaces(resolveAlias: { $0 + "-lab" })
 
         XCTAssertEqual(workspaces, [
             Workspace(name: "alice", alias: "alice-lab"),
@@ -204,14 +204,14 @@ final class DevmachineServicesTests: XCTestCase {
         let runner = CLIServiceRunner(result: ("", "config folder missing", 1))
         let source = CLIWorkspaceSource(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        XCTAssertEqual(try source.workspaces(suffix: "-lab"), [])
+        XCTAssertEqual(try source.workspaces(resolveAlias: { $0 + "-lab" }), [])
     }
 
     func testCLIWorkspaceSourceReturnsEmptyOnMalformedJSON() throws {
         let runner = CLIServiceRunner(result: ("not json", "", 0))
         let source = CLIWorkspaceSource(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        XCTAssertEqual(try source.workspaces(suffix: "-lab"), [])
+        XCTAssertEqual(try source.workspaces(resolveAlias: { $0 + "-lab" }), [])
     }
 
     func testContextFacadeReturnsNoContextForUnsupportedHarnesses() throws {

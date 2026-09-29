@@ -223,3 +223,109 @@ final class SelfMachineCacheTests: XCTestCase {
         XCTAssertEqual(runner.calls.count, 1)
     }
 }
+
+final class DevmachineCLIAutoDetectEndpointsTests: XCTestCase {
+    func testConfigPathDecodesThePathAndItsSource() throws {
+        let runner = CLIRecordingRunner(result: (
+            #"{"path":"/Users/alice/.config/devmachine","source":"default"}"#, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let result = try cli.configPath()
+
+        XCTAssertEqual(result, CLIConfigPath(path: "/Users/alice/.config/devmachine", source: "default"))
+        XCTAssertEqual(runner.calls.last?.args, ["--format", "json", "config", "path"])
+    }
+
+    func testConfigShowDecodesMachinesWorkspacesAndDomain() throws {
+        let body = #"""
+        {
+          "machines": [
+            {"name": "acme", "hosts": ["100.64.0.5", "203.0.113.10"], "admin_user": "root", "port": 22, "workspaces": ["alice"]},
+            {"name": "mac", "hosts": [], "admin_user": "", "port": 0, "workspaces": [], "self": true}
+          ],
+          "workspaces": [{"name": "alice", "machine": "acme", "user": "alice"}],
+          "domain": "example.com"
+        }
+        """#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let result = try cli.configShow()
+
+        XCTAssertEqual(result.domain, "example.com")
+        XCTAssertEqual(result.machines.count, 2)
+        XCTAssertEqual(result.machines[0].hosts, ["100.64.0.5", "203.0.113.10"])
+        XCTAssertFalse(result.machines[0].isSelf)
+        XCTAssertTrue(result.machines[1].isSelf)
+        XCTAssertEqual(runner.calls.last?.args, ["--format", "json", "config", "show"])
+    }
+
+    func testAliasesDecodesEveryEntry() throws {
+        let body = #"""
+        {"aliases": [
+          {"name": "alice-devmachine", "host": "100.64.0.5", "user": "alice", "port": 22}
+        ]}
+        """#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let result = try cli.aliases()
+
+        XCTAssertEqual(result, [CLIAlias(name: "alice-devmachine", host: "100.64.0.5", user: "alice", port: 22)])
+        XCTAssertEqual(runner.calls.last?.args, ["--format", "json", "aliases"])
+    }
+
+    func testPackagesDecodesInstalledOnAndReportsMachineMembership() throws {
+        let body = #"""
+        {"packages": [
+          {"name": "devmachine-app", "scope": "machine", "installed_on": ["machine acme"]},
+          {"name": "base", "scope": "machine", "installed_on": ["machine acme", "machine mac"]}
+        ]}
+        """#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let result = try cli.packages()
+
+        let devmachineApp = try XCTUnwrap(result.first { $0.name == "devmachine-app" })
+        XCTAssertTrue(devmachineApp.isInstalled(onMachine: "acme"))
+        XCTAssertFalse(devmachineApp.isInstalled(onMachine: "mac"))
+        XCTAssertEqual(runner.calls.last?.args, ["--format", "json", "packages", "list"])
+    }
+
+    func testRunWithPackageJoinsMachinePackageAndArgs() throws {
+        let runner = CLIRecordingRunner(result: ("stats output", "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        let output = try cli.run(machine: "acme", package: "devmachine-app", args: ["stats"])
+
+        XCTAssertEqual(output, "stats output")
+        XCTAssertEqual(runner.calls.last?.args, [
+            "run", "--machine", "acme", "--package", "devmachine-app", "--", "stats",
+        ])
+    }
+
+    func testUnknownPackageCommandIsRecognizedFromTheCLIsOwnWording() {
+        let runner = CLIRecordingRunner(result: ("", #"error: devmachine-app does not accept "stats". It accepts context"#, 1))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        XCTAssertThrowsError(try cli.run(machine: "acme", package: "devmachine-app", args: ["stats"])) { error in
+            guard let cliError = error as? DevmachineCLIError else {
+                return XCTFail("expected DevmachineCLIError")
+            }
+            XCTAssertTrue(cliError.isUnknownPackageCommand)
+        }
+    }
+
+    func testAConnectionFailureIsNotAnUnknownPackageCommand() {
+        let runner = CLIRecordingRunner(result: ("", "ssh: connect to host acme port 22: Connection refused", 1))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+
+        XCTAssertThrowsError(try cli.run(machine: "acme", package: "devmachine-app", args: ["stats"])) { error in
+            guard let cliError = error as? DevmachineCLIError else {
+                return XCTFail("expected DevmachineCLIError")
+            }
+            XCTAssertFalse(cliError.isUnknownPackageCommand)
+        }
+    }
+}

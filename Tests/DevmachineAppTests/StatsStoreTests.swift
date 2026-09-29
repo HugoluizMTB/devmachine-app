@@ -46,16 +46,17 @@ private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async
 }
 
 private let goodSnapshot = """
-@@MEM@@
-33554432000 12345678000 20000000000
-@@SWAP@@
-0 0
-@@DISK@@
-1 2 10%
-@@LOAD@@
-0.1 0.1 0.1
-@@DOCKER@@
-@@USERS@@
+{
+  "collected_at": "2026-09-29T16:23:11+00:00",
+  "memory": {"total_bytes": 33554432000, "used_bytes": 12345678000, "available_bytes": 20000000000},
+  "swap": {"total_bytes": 0, "used_bytes": 0},
+  "disk": {"path": "/", "used_bytes": 1, "available_bytes": 2, "used_percent": 10},
+  "load": {"load1": 0.1, "load5": 0.1, "load15": 0.1},
+  "docker": {"available": true, "containers": []},
+  "users": [],
+  "ports": [],
+  "errors": []
+}
 """
 
 @MainActor
@@ -72,7 +73,7 @@ final class StatsStoreTests: XCTestCase {
         XCTAssertEqual(store.errorText, nil)
         XCTAssertNotNil(store.refreshedAt)
         XCTAssertTrue(runner.calls.contains {
-            $0 == ["run", "--machine", "box", "--", RemoteCommands.statsSnapshot]
+            $0 == ["run", "--machine", "box", "--package", "devmachine-app", "--", "stats"]
         })
     }
 

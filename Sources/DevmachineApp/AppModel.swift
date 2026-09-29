@@ -362,6 +362,14 @@ final class AppModel: ObservableObject {
     /// until this clears.
     @Published private(set) var cliMissing = false
     @Published var settings: AppSettings? = nil
+    /// What the CLI answered about this Mac's setup — the config folder,
+    /// admin machine, base domain, and workspace aliases Setup shows
+    /// read-only instead of asking the person to type them.
+    @Published private(set) var detected: CLIDetectedSettings = .empty
+    /// Gates the main UI the same way `cliMissing` does, once the CLI itself
+    /// is found: stats, Caddy logs and subdomain logs all need the
+    /// `devmachine-app` package on the admin machine.
+    @Published private(set) var packageGate: PackageGateState = .ok
     @Published var stackCellSizes: [String: StackCellSize] = AppModel.loadStackCellSizes() {
         didSet { AppModel.saveStackCellSizes(stackCellSizes) }
     }
@@ -1228,8 +1236,15 @@ final class AppModel: ObservableObject {
 
     func loadWorkspaces() {
         guard let settings else { return }
-        workspaces = (try? services.workspaceSource.workspaces(suffix: settings.workspaceSuffix)) ?? []
+        let detected = CLIAutoDetect.detect(cli: { try DevmachineCLI.resolve() })
+        self.detected = detected
+        var settingsWithAliases = settings
+        settingsWithAliases.workspaceAliases = detected.workspaceAliases
+        self.settings = settingsWithAliases
+        workspaces = (try? services.workspaceSource.workspaces(
+            resolveAlias: { settingsWithAliases.hostAlias(forWorkspace: $0) })) ?? []
         refreshAll()
+        checkPackageGate()
         // A slow sweep of every workspace so an offline one comes back on its
         // own; the 5s timer only follows the selected one.
         sweepTimer?.invalidate()
@@ -1240,6 +1255,18 @@ final class AppModel: ObservableObject {
         localScanTimer?.invalidate()
         localScanTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.scanLocalSessions() }
+        }
+    }
+
+    /// Runs at launch (`loadWorkspaces`) and from the package gate page's
+    /// "Check again" button. Fails open: a `packages` read that itself fails
+    /// leaves the gate as it was rather than blocking the app on a flaky CLI.
+    func checkPackageGate() {
+        Task {
+            let state = await Task.detached {
+                PackageGateChecker.check(cli: { try DevmachineCLI.resolve() })
+            }.value
+            self.packageGate = state
         }
     }
 

@@ -2,7 +2,10 @@ import Foundation
 import DevmachineCore
 
 protocol WorkspaceSource: Sendable {
-    func workspaces(suffix: String) throws -> [Workspace]
+    /// `resolveAlias` maps a workspace's name to its ssh `Host` alias —
+    /// `settings.hostAlias(forWorkspace:)`, which uses the detected map from
+    /// `devmachine aliases` and falls back to the guessed suffix.
+    func workspaces(resolveAlias: (String) -> String) throws -> [Workspace]
 }
 
 struct CLIWorkspaceSource: WorkspaceSource {
@@ -12,9 +15,9 @@ struct CLIWorkspaceSource: WorkspaceSource {
         self.cli = cli
     }
 
-    func workspaces(suffix: String) -> [Workspace] {
+    func workspaces(resolveAlias: (String) -> String) -> [Workspace] {
         do {
-            return try cli().listWorkspaces().map { Workspace(name: $0.name, alias: $0.name + suffix) }
+            return try cli().listWorkspaces().map { Workspace(name: $0.name, alias: resolveAlias($0.name)) }
         } catch {
             PaneLog.log("workspace list failed: \(error)")
             return []

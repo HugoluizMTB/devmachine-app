@@ -1,24 +1,40 @@
 import Foundation
 
-public struct ContainerStat: Equatable, Sendable {
+public struct ContainerStat: Decodable, Equatable, Sendable {
     public let name: String
-    public let mem: String
-    public let cpu: String
+    public let memUsedBytes: Int64
+    public let memLimitBytes: Int64
+    public let cpuPercent: Double
     /// The context user the container belongs to, when the host says so.
     /// A container started outside a home folder has none, and is shown to
     /// everyone rather than guessed at.
-    public var owner: String?
+    public let owner: String?
 
-    public init(name: String, mem: String, cpu: String) {
+    enum CodingKeys: String, CodingKey {
+        case name
+        case memUsedBytes = "mem_used_bytes"
+        case memLimitBytes = "mem_limit_bytes"
+        case cpuPercent = "cpu_percent"
+        case owner
+    }
+
+    public init(name: String, memUsedBytes: Int64, memLimitBytes: Int64, cpuPercent: Double, owner: String? = nil) {
         self.name = name
-        self.mem = mem
-        self.cpu = cpu
+        self.memUsedBytes = memUsedBytes
+        self.memLimitBytes = memLimitBytes
+        self.cpuPercent = cpuPercent
+        self.owner = owner
     }
 }
 
-public struct UserRAM: Equatable, Sendable {
+public struct UserRAM: Decodable, Equatable, Sendable {
     public let user: String
     public let rssBytes: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case user
+        case rssBytes = "rss_bytes"
+    }
 
     public init(user: String, rssBytes: Int64) {
         self.user = user
@@ -26,143 +42,143 @@ public struct UserRAM: Equatable, Sendable {
     }
 }
 
-public struct StatsSnapshot: Equatable, Sendable {
-    public let memTotal: Int64
-    public let memUsed: Int64
-    public let memAvailable: Int64
-    public let swapTotal: Int64
-    public let swapUsed: Int64
-    public let diskUsed: Int64
-    public let diskAvail: Int64
-    public let diskPercent: Int
-    public let load1: Double
-    public let load5: Double
-    public let load15: Double
-    public let containers: [ContainerStat]
-    public let users: [UserRAM]
+public struct PortOwner: Decodable, Equatable, Sendable {
+    public let port: Int
+    public let owner: String?
 
-    public init(
-        memTotal: Int64,
-        memUsed: Int64,
-        memAvailable: Int64,
-        swapTotal: Int64,
-        swapUsed: Int64,
-        diskUsed: Int64,
-        diskAvail: Int64,
-        diskPercent: Int,
-        load1: Double,
-        load5: Double,
-        load15: Double,
-        containers: [ContainerStat],
-        users: [UserRAM]
-    ) {
-        self.memTotal = memTotal
-        self.memUsed = memUsed
-        self.memAvailable = memAvailable
-        self.swapTotal = swapTotal
-        self.swapUsed = swapUsed
-        self.diskUsed = diskUsed
-        self.diskAvail = diskAvail
-        self.diskPercent = diskPercent
-        self.load1 = load1
-        self.load5 = load5
-        self.load15 = load15
-        self.containers = containers
-        self.users = users
+    public init(port: Int, owner: String?) {
+        self.port = port
+        self.owner = owner
     }
 }
 
+/// The `devmachine-app` package's `stats` contract
+/// (`~/dev/packages/packages/devmachine-app/README.md`): one JSON document
+/// per read, replacing a shell snippet the app used to send over ssh and
+/// parse itself.
+public struct StatsSnapshot: Decodable, Equatable, Sendable {
+    public struct Memory: Decodable, Equatable, Sendable {
+        public let totalBytes: Int64
+        public let usedBytes: Int64
+        public let availableBytes: Int64
+
+        enum CodingKeys: String, CodingKey {
+            case totalBytes = "total_bytes"
+            case usedBytes = "used_bytes"
+            case availableBytes = "available_bytes"
+        }
+
+        public init(totalBytes: Int64, usedBytes: Int64, availableBytes: Int64) {
+            self.totalBytes = totalBytes
+            self.usedBytes = usedBytes
+            self.availableBytes = availableBytes
+        }
+    }
+
+    public struct Swap: Decodable, Equatable, Sendable {
+        public let totalBytes: Int64
+        public let usedBytes: Int64
+
+        enum CodingKeys: String, CodingKey {
+            case totalBytes = "total_bytes"
+            case usedBytes = "used_bytes"
+        }
+
+        public init(totalBytes: Int64, usedBytes: Int64) {
+            self.totalBytes = totalBytes
+            self.usedBytes = usedBytes
+        }
+    }
+
+    public struct Disk: Decodable, Equatable, Sendable {
+        public let path: String
+        public let usedBytes: Int64
+        public let availableBytes: Int64
+        public let usedPercent: Int
+
+        enum CodingKeys: String, CodingKey {
+            case path
+            case usedBytes = "used_bytes"
+            case availableBytes = "available_bytes"
+            case usedPercent = "used_percent"
+        }
+
+        public init(path: String, usedBytes: Int64, availableBytes: Int64, usedPercent: Int) {
+            self.path = path
+            self.usedBytes = usedBytes
+            self.availableBytes = availableBytes
+            self.usedPercent = usedPercent
+        }
+    }
+
+    public struct Load: Decodable, Equatable, Sendable {
+        public let load1: Double
+        public let load5: Double
+        public let load15: Double
+
+        public init(load1: Double, load5: Double, load15: Double) {
+            self.load1 = load1
+            self.load5 = load5
+            self.load15 = load15
+        }
+    }
+
+    public struct Docker: Decodable, Equatable, Sendable {
+        public let available: Bool
+        public let containers: [ContainerStat]
+
+        public init(available: Bool, containers: [ContainerStat]) {
+            self.available = available
+            self.containers = containers
+        }
+    }
+
+    public let collectedAt: String
+    public let memory: Memory
+    public let swap: Swap
+    public let disk: Disk
+    public let load: Load
+    public let docker: Docker
+    public let users: [UserRAM]
+    public let ports: [PortOwner]
+    public let errors: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case collectedAt = "collected_at"
+        case memory, swap, disk, load, docker, users, ports, errors
+    }
+
+    public init(
+        collectedAt: String,
+        memory: Memory,
+        swap: Swap,
+        disk: Disk,
+        load: Load,
+        docker: Docker,
+        users: [UserRAM],
+        ports: [PortOwner],
+        errors: [String]
+    ) {
+        self.collectedAt = collectedAt
+        self.memory = memory
+        self.swap = swap
+        self.disk = disk
+        self.load = load
+        self.docker = docker
+        self.users = users
+        self.ports = ports
+        self.errors = errors
+    }
+
+    public var containers: [ContainerStat] { docker.containers }
+}
+
 public enum StatsParser {
-    /// `nil` means the output carries no usable stats — a dropped connection,
-    /// a failed command, or anything else that returns empty or unrecognized
-    /// text. Memory is the one section every host always has, so its absence
-    /// (or a total of zero, which a real host never reports) is what tells a
-    /// failed read apart from a host that is genuinely idle everywhere else.
+    /// `nil` means the output carries no usable stats — empty text, or
+    /// anything that does not decode as the package's JSON contract.
     public static func parse(_ output: String) -> StatsSnapshot? {
-        let sections = splitSections(output)
-
-        let memValues = ints(sections["@@MEM@@"]?.first)
-        guard let memTotal = memValues.first, memTotal > 0 else { return nil }
-
-        let swapValues = ints(sections["@@SWAP@@"]?.first)
-        let diskLine = sections["@@DISK@@"]?.first
-        let diskValues = ints(diskLine)
-        let loadValues = doubles(sections["@@LOAD@@"]?.first)
-
-        return StatsSnapshot(
-            memTotal: memTotal,
-            memUsed: memValues.count > 1 ? memValues[1] : 0,
-            memAvailable: memValues.count > 2 ? memValues[2] : 0,
-            swapTotal: swapValues.count > 0 ? swapValues[0] : 0,
-            swapUsed: swapValues.count > 1 ? swapValues[1] : 0,
-            diskUsed: diskValues.count > 0 ? diskValues[0] : 0,
-            diskAvail: diskValues.count > 1 ? diskValues[1] : 0,
-            diskPercent: diskPercent(from: diskLine),
-            load1: loadValues.count > 0 ? loadValues[0] : 0,
-            load5: loadValues.count > 1 ? loadValues[1] : 0,
-            load15: loadValues.count > 2 ? loadValues[2] : 0,
-            containers: parseContainers(
-                sections["@@DOCKER@@"] ?? [],
-                owners: Ownership.containerOwners(
-                    (sections["@@OWNERS@@"] ?? []).joined(separator: "\n"))),
-            users: parseUsers(sections["@@USERS@@"] ?? [])
-        )
-    }
-
-    private static func splitSections(_ output: String) -> [String: [String]] {
-        var sections: [String: [String]] = [:]
-        var currentKey: String?
-
-        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = String(rawLine)
-            if line.hasPrefix("@@") && line.hasSuffix("@@") {
-                currentKey = line
-                sections[line] = []
-                continue
-            }
-            guard let key = currentKey else { continue }
-            if !line.isEmpty {
-                sections[key, default: []].append(line)
-            }
-        }
-
-        return sections
-    }
-
-    private static func ints(_ line: String?) -> [Int64] {
-        guard let line else { return [] }
-        return line.split(separator: " ").compactMap { Int64($0) }
-    }
-
-    private static func doubles(_ line: String?) -> [Double] {
-        guard let line else { return [] }
-        return line.split(separator: " ").compactMap { Double($0) }
-    }
-
-    private static func diskPercent(from line: String?) -> Int {
-        guard let line else { return 0 }
-        let parts = line.split(separator: " ")
-        guard let last = parts.last else { return 0 }
-        return Int(last.trimmingCharacters(in: CharacterSet(charactersIn: "%"))) ?? 0
-    }
-
-    private static func parseContainers(_ lines: [String], owners: [String: String])
-        -> [ContainerStat] {
-        lines.compactMap { line in
-            let parts = line.components(separatedBy: "|")
-            guard parts.count >= 3 else { return nil }
-            var stat = ContainerStat(name: parts[0], mem: parts[1], cpu: parts[2])
-            stat.owner = owners[parts[0]]
-            return stat
-        }
-    }
-
-    private static func parseUsers(_ lines: [String]) -> [UserRAM] {
-        let users: [UserRAM] = lines.compactMap { line in
-            let parts = line.split(separator: " ")
-            guard parts.count >= 2, let rssKB = Int64(parts[1]) else { return nil }
-            return UserRAM(user: String(parts[0]), rssBytes: rssKB * 1024)
-        }
-        return users.sorted { $0.rssBytes > $1.rssBytes }
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(StatsSnapshot.self, from: data)
     }
 }

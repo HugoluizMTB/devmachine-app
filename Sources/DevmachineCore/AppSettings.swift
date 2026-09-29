@@ -66,6 +66,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// appears on its own, which is what you want from a machine that gains
     /// contexts over time.
     public var hiddenWorkspaces: [String]
+    /// Workspace name → its ssh `Host` alias, as `devmachine aliases` reports
+    /// it. Refreshed from the CLI on every launch and workspace load; a
+    /// workspace missing from it falls back to `workspaceSuffix` guessing.
+    public var workspaceAliases: [String: String]
     /// What a session created from the app starts with.
     public var enabledHarnesses: [HarnessID] {
         didSet {
@@ -115,6 +119,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keptTerminals: Int = Appearance.defaultKeptTerminals,
         debugLogging: Bool = false,
         hiddenWorkspaces: [String] = [],
+        workspaceAliases: [String: String] = [:],
         enabledHarnesses: [HarnessID] = [.claude],
         localSessionProgram: SessionLaunchChoice = .terminal,
         remoteSessionProgram: SessionLaunchChoice = .terminal,
@@ -133,6 +138,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.keptTerminals = Appearance.clampKeptTerminals(keptTerminals)
         self.debugLogging = debugLogging
         self.hiddenWorkspaces = hiddenWorkspaces
+        self.workspaceAliases = workspaceAliases
         self.enabledHarnesses = enabledHarnesses
         self.localSessionProgram = localSessionProgram
         self.remoteSessionProgram = remoteSessionProgram
@@ -151,7 +157,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, sshAgentSocket, wallpaper
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging
-        case hiddenWorkspaces, enabledHarnesses, localSessionProgram, remoteSessionProgram
+        case hiddenWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram
     }
 
@@ -180,6 +186,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         debugLogging = try values.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? false
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
+        // Settings written before this existed decode to "nothing detected yet".
+        workspaceAliases =
+            try values.decodeIfPresent([String: String].self, forKey: .workspaceAliases) ?? [:]
         let enabledHarnesses = try values.decodeIfPresent([HarnessID].self, forKey: .enabledHarnesses)
         let localSessionProgram = try values.decodeIfPresent(SessionLaunchChoice.self, forKey: .localSessionProgram)
         let remoteSessionProgram = try values.decodeIfPresent(SessionLaunchChoice.self, forKey: .remoteSessionProgram)
@@ -227,6 +236,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(keptTerminals, forKey: .keptTerminals)
         try values.encode(debugLogging, forKey: .debugLogging)
         try values.encode(hiddenWorkspaces, forKey: .hiddenWorkspaces)
+        try values.encode(workspaceAliases, forKey: .workspaceAliases)
         try values.encode(enabledHarnesses, forKey: .enabledHarnesses)
         try values.encode(localSessionProgram, forKey: .localSessionProgram)
         try values.encode(remoteSessionProgram, forKey: .remoteSessionProgram)
@@ -254,6 +264,25 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// producing a bare `-`, which would match no real ssh alias and break
     /// every workspace session (open, list, kill).
     public var workspaceSuffix: String { "-" + (hostAlias.isEmpty ? "devmachine" : hostAlias) }
+
+    /// A workspace's ssh `Host` alias: what `devmachine aliases` reported for
+    /// it, or the guessed suffix when that has not been read yet (offline
+    /// launch, or a CLI too old to have the command).
+    public func hostAlias(forWorkspace workspace: String) -> String {
+        workspaceAliases[workspace] ?? workspace + workspaceSuffix
+    }
+
+    /// The reverse of `hostAlias(forWorkspace:)` — an ssh alias back to the
+    /// workspace name it belongs to, for a command that only carries the
+    /// alias (a session's `CommandTarget`). Falls back to stripping the
+    /// guessed suffix when the alias is not in the detected map.
+    public func workspaceName(forAlias alias: String) -> String {
+        if let name = workspaceAliases.first(where: { $0.value == alias })?.key {
+            return name
+        }
+        let suffix = workspaceSuffix
+        return alias.hasSuffix(suffix) ? String(alias.dropLast(suffix.count)) : alias
+    }
 
     public static let aliasPattern = "^[A-Za-z0-9._-]+$"
     public static let ipv4Pattern =
