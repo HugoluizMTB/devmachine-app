@@ -257,18 +257,32 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let opsRepoMarker = "config.yml"
 
+    /// What to do next, once the folder or the CLI itself turns out to be
+    /// missing — the same fix both times, so the same line names it.
+    public static let cliInstallHint =
+        "Install the CLI (brew install mydevmachine/tap/devmachine), run "
+        + "devmachine setup in a terminal, then come back."
+
     public static func validate(
         _ settings: AppSettings,
-        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        cliExecutableFound: Bool = true
     ) -> [SettingsIssue] {
         var issues: [SettingsIssue] = []
 
         if settings.opsRepoPath.isEmpty {
             issues.append(SettingsIssue(field: .opsRepoPath, message: "Choose the devmachine configuration folder."))
         } else if !fileExists(settings.opsRepoPath) {
-            issues.append(SettingsIssue(field: .opsRepoPath, message: "This folder does not exist."))
+            issues.append(SettingsIssue(
+                field: .opsRepoPath, message: "This folder does not exist. \(cliInstallHint)"))
         } else if !fileExists(settings.opsRepoPath + "/" + opsRepoMarker) {
-            issues.append(SettingsIssue(field: .opsRepoPath, message: "No \(opsRepoMarker) in this folder."))
+            issues.append(SettingsIssue(
+                field: .opsRepoPath, message: "No \(opsRepoMarker) in this folder. \(cliInstallHint)"))
+        }
+
+        if !cliExecutableFound {
+            issues.append(SettingsIssue(
+                field: .opsRepoPath, message: "Devmachine CLI was not found on this Mac. \(cliInstallHint)"))
         }
 
         if settings.hostAlias.isEmpty {

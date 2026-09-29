@@ -328,6 +328,33 @@ extension AppSettingsTests {
         XCTAssertEqual(settings.remoteSessionProgram, .harness(.claude))
     }
 
+    func testValidateGivesActionableAdviceWhenTheFolderIsMissing() {
+        let issues = AppSettings.validate(goodSettings, fileExists: existing())
+        XCTAssertEqual(issues.map(\.field), [.opsRepoPath])
+        XCTAssertTrue(issues.first?.message.contains("brew install mydevmachine/tap/devmachine") ?? false)
+        XCTAssertTrue(issues.first?.message.contains("devmachine setup") ?? false)
+    }
+
+    func testValidateGivesActionableAdviceWhenConfigYmlIsMissing() {
+        let issues = AppSettings.validate(
+            goodSettings, fileExists: existing("/Users/alice/.config/devmachine"))
+        XCTAssertEqual(issues.map(\.field), [.opsRepoPath])
+        XCTAssertTrue(issues.first?.message.contains("config.yml") ?? false)
+        XCTAssertTrue(issues.first?.message.contains("brew install mydevmachine/tap/devmachine") ?? false)
+    }
+
+    func testValidateReportsAMissingCLIExecutableEvenWithAGoodFolder() {
+        let issues = AppSettings.validate(goodSettings, fileExists: fullRepo(), cliExecutableFound: false)
+        XCTAssertEqual(issues.map(\.field), [.opsRepoPath])
+        XCTAssertTrue(issues.first?.message.contains("was not found on this Mac") ?? false)
+        XCTAssertTrue(issues.first?.message.contains("brew install mydevmachine/tap/devmachine") ?? false)
+    }
+
+    func testValidatePassesWhenTheCLIExecutableIsFound() {
+        XCTAssertTrue(
+            AppSettings.validate(goodSettings, fileExists: fullRepo(), cliExecutableFound: true).isEmpty)
+    }
+
     func testValidateRejectsTheOldAnsibleRepository() {
         var settings = goodSettings
         settings.opsRepoPath = "/Users/alice/dev/devmachine"

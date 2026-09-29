@@ -117,7 +117,9 @@ struct SetupPage: View {
         )
     }
 
-    private var issues: [SettingsIssue] { AppSettings.validate(draft) }
+    private var issues: [SettingsIssue] {
+        AppSettings.validate(draft, cliExecutableFound: (try? DevmachineCLI.resolve()) != nil)
+    }
 
     private var isFirstRun: Bool { !settingsStore.isConfigured }
 
