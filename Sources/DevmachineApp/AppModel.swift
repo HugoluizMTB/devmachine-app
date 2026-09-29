@@ -460,8 +460,16 @@ final class AppModel: ObservableObject {
     /// by one test run stays on disk and leaks into the next. Under XCTest
     /// this hands out a fresh, never-reused suite per `AppModel` instead, so
     /// no test ever sees another run's (or the real app's) local sessions.
+    ///
+    /// `XCTestConfigurationFilePath` is only set when Xcode launches the test
+    /// host; the `swift test` CLI never sets it, so this used to read false
+    /// under plain `swift test` and every `AppModel()` fell through to the
+    /// real, shared `UserDefaults.standard` — the whole `AppModelTests` class
+    /// sharing one on-disk domain, and failing depending on run order.
+    /// `NSClassFromString` finds the XCTest framework itself, which is loaded
+    /// under both.
     private static var isRunningTests: Bool {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        NSClassFromString("XCTestCase") != nil
     }
 
     private static func defaultDefaults() -> UserDefaults {
