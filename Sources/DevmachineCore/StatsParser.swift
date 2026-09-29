@@ -73,17 +73,24 @@ public struct StatsSnapshot: Equatable, Sendable {
 }
 
 public enum StatsParser {
-    public static func parse(_ output: String) -> StatsSnapshot {
+    /// `nil` means the output carries no usable stats — a dropped connection,
+    /// a failed command, or anything else that returns empty or unrecognized
+    /// text. Memory is the one section every host always has, so its absence
+    /// (or a total of zero, which a real host never reports) is what tells a
+    /// failed read apart from a host that is genuinely idle everywhere else.
+    public static func parse(_ output: String) -> StatsSnapshot? {
         let sections = splitSections(output)
 
         let memValues = ints(sections["@@MEM@@"]?.first)
+        guard let memTotal = memValues.first, memTotal > 0 else { return nil }
+
         let swapValues = ints(sections["@@SWAP@@"]?.first)
         let diskLine = sections["@@DISK@@"]?.first
         let diskValues = ints(diskLine)
         let loadValues = doubles(sections["@@LOAD@@"]?.first)
 
         return StatsSnapshot(
-            memTotal: memValues.count > 0 ? memValues[0] : 0,
+            memTotal: memTotal,
             memUsed: memValues.count > 1 ? memValues[1] : 0,
             memAvailable: memValues.count > 2 ? memValues[2] : 0,
             swapTotal: swapValues.count > 0 ? swapValues[0] : 0,

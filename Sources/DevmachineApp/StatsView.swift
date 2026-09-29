@@ -8,7 +8,6 @@ private func gb(_ bytes: Int64) -> String {
 struct StatsView: View {
     @EnvironmentObject var store: StatsStore
     @EnvironmentObject var model: AppModel
-    @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -24,8 +23,7 @@ struct StatsView: View {
     }
 
     private func refresh() {
-        guard let alias = settingsStore.settings?.hostAlias else { return }
-        store.refresh(alias: alias)
+        store.refresh()
     }
 
     private var header: some View {
@@ -60,14 +58,27 @@ struct StatsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if let err = store.errorText {
+        // A snapshot already on screen stays there under an error banner: a
+        // blip does not have to blank a panel the person was just reading.
+        if let snapshot = store.snapshot {
+            VStack(spacing: 0) {
+                if let err = store.errorText {
+                    errorBanner(err)
+                }
+                snapshotView(snapshot)
+            }
+        } else if let err = store.errorText {
             errorView(err)
-        } else if store.snapshot == nil && store.isLoading {
+        } else if store.isLoading {
             loadingView
-        } else if let snapshot = store.snapshot {
-            snapshotView(snapshot)
         } else {
             emptyView
+        }
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        DMBanner(message: message) {
+            DMIconButton(systemImage: "arrow.clockwise", tint: nil) { refresh() }
         }
     }
 

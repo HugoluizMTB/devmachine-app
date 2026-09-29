@@ -43,11 +43,12 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(fields, [.opsRepoPath])
     }
 
-    func testValidateRejectsEmptyAlias() {
+    func testValidateAcceptsEmptyAlias() {
+        // No admin command needs it anymore: it only narrows which
+        // ~/.ssh/config entries count as this machine's workspaces.
         var settings = goodSettings
         settings.hostAlias = ""
-        let fields = AppSettings.validate(settings, fileExists: fullRepo()).map(\.field)
-        XCTAssertEqual(fields, [.hostAlias])
+        XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
     }
 
     func testValidateRejectsAliasWithSpace() {
@@ -88,8 +89,9 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testValidateReportsEveryBadFieldAtOnce() {
+        // hostAlias is excluded: empty is valid for it now.
         let fields = AppSettings.validate(AppSettings.empty, fileExists: existing()).map(\.field)
-        XCTAssertEqual(fields, [.opsRepoPath, .hostAlias, .publicIP, .baseDomain])
+        XCTAssertEqual(fields, [.opsRepoPath, .publicIP, .baseDomain])
     }
 
     func testPrefillProposesAliasAndPublicIPFromPubHost() {

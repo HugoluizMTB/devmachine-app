@@ -2,7 +2,7 @@ import XCTest
 @testable import DevmachineCore
 
 final class StatsParserTests: XCTestCase {
-    func testParsesFullSample() {
+    func testParsesFullSample() throws {
         let output = """
         @@MEM@@
         33554432000 12345678000 20000000000
@@ -21,7 +21,7 @@ final class StatsParserTests: XCTestCase {
         dev 1024
         """
 
-        let snapshot = StatsParser.parse(output)
+        let snapshot = try XCTUnwrap(StatsParser.parse(output))
 
         XCTAssertEqual(snapshot, StatsSnapshot(
             memTotal: 33554432000,
@@ -47,7 +47,7 @@ final class StatsParserTests: XCTestCase {
         ))
     }
 
-    func testTruncatedOutputYieldsZerosAndEmptiesWithoutCrashing() {
+    func testTruncatedOutputYieldsZerosAndEmptiesWithoutCrashing() throws {
         let output = """
         @@MEM@@
         33554432000 12345678000 20000000000
@@ -55,7 +55,7 @@ final class StatsParserTests: XCTestCase {
         123450000000 67890000000 73%
         """
 
-        let snapshot = StatsParser.parse(output)
+        let snapshot = try XCTUnwrap(StatsParser.parse(output))
 
         XCTAssertEqual(snapshot.memTotal, 33554432000)
         XCTAssertEqual(snapshot.memUsed, 12345678000)
@@ -72,35 +72,50 @@ final class StatsParserTests: XCTestCase {
         XCTAssertEqual(snapshot.users, [])
     }
 
-    func testEmptyOutputNeverCrashes() {
-        let snapshot = StatsParser.parse("")
-
-        XCTAssertEqual(snapshot, StatsSnapshot(
-            memTotal: 0, memUsed: 0, memAvailable: 0,
-            swapTotal: 0, swapUsed: 0,
-            diskUsed: 0, diskAvail: 0, diskPercent: 0,
-            load1: 0, load5: 0, load15: 0,
-            containers: [], users: []
-        ))
+    func testEmptyOutputYieldsNoSnapshot() {
+        XCTAssertNil(StatsParser.parse(""))
     }
 
-    func testDiskPercentStripsTrailingPercentSign() {
+    func testMissingMemSectionYieldsNoSnapshot() {
         let output = """
+        @@DISK@@
+        123450000000 67890000000 73%
+        """
+
+        XCTAssertNil(StatsParser.parse(output))
+    }
+
+    func testZeroMemTotalYieldsNoSnapshot() {
+        let output = """
+        @@MEM@@
+        0 0 0
+        """
+
+        XCTAssertNil(StatsParser.parse(output))
+    }
+
+    func testDiskPercentStripsTrailingPercentSign() throws {
+        let output = """
+        @@MEM@@
+        33554432000 12345678000 20000000000
         @@DISK@@
         1 2 73%
         """
 
-        XCTAssertEqual(StatsParser.parse(output).diskPercent, 73)
+        let snapshot = try XCTUnwrap(StatsParser.parse(output))
+        XCTAssertEqual(snapshot.diskPercent, 73)
     }
 
-    func testUserRSSConvertsKilobytesToBytes() {
+    func testUserRSSConvertsKilobytesToBytes() throws {
         let output = """
+        @@MEM@@
+        33554432000 12345678000 20000000000
         @@USERS@@
         root 2048
         """
 
-        let users = StatsParser.parse(output).users
-        XCTAssertEqual(users, [UserRAM(user: "root", rssBytes: 2097152)])
+        let snapshot = try XCTUnwrap(StatsParser.parse(output))
+        XCTAssertEqual(snapshot.users, [UserRAM(user: "root", rssBytes: 2097152)])
     }
 
     func testRemoteCommandsStatsSnapshotString() {

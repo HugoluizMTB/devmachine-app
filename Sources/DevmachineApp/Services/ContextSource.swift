@@ -25,6 +25,24 @@ final class SelfMachineCache: @unchecked Sendable {
     }
 }
 
+/// The same idea as `SelfMachineCache`, for the other direction: which
+/// machine an admin-level command (stats, Caddy's own logs) runs on. A
+/// failed lookup is thrown and not kept, so the panel shows why and Retry
+/// asks again.
+final class AdminMachineCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var name: String?
+
+    func name(cli: () throws -> DevmachineCLI) throws -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        if let name { return name }
+        let resolved = try cli().resolveAdminMachine()
+        name = resolved
+        return resolved
+    }
+}
+
 struct CLIContextSource: ContextSource {
     private let cli: @Sendable () throws -> DevmachineCLI
     private let selfMachine: SelfMachineCache

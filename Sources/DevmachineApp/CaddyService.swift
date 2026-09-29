@@ -3,15 +3,15 @@ import DevmachineCore
 
 struct CaddyService: Sendable {
     let cli: DevmachineCLI?
-    let remote: RemoteService
+    private let adminMachine: AdminMachineCache
 
-    init(cli: DevmachineCLI? = nil, remote: RemoteService = RemoteService()) {
+    init(cli: DevmachineCLI? = nil, adminMachine: AdminMachineCache = AdminMachineCache()) {
         self.cli = cli
-        self.remote = remote
+        self.adminMachine = adminMachine
     }
 
-    func sites(alias: String) throws -> [CaddySite] {
-        let published = try (cli ?? DevmachineCLI.resolve()).listExposures()
+    func sites() throws -> [CaddySite] {
+        let published = try resolvedCLI().listExposures()
         return published.map {
             CaddySite(
                 address: $0.host,
@@ -22,7 +22,12 @@ struct CaddyService: Sendable {
         }
     }
 
-    func logs(alias: String, lines: Int = 200) throws -> String {
-        try remote.run(alias: alias, args: ["journalctl -u caddy -n \(lines) --no-pager"])
+    func logs(lines: Int = 200) throws -> String {
+        let machine = try adminMachine.name(cli: resolvedCLI)
+        return try resolvedCLI().run(machine: machine, command: "journalctl -u caddy -n \(lines) --no-pager")
+    }
+
+    private func resolvedCLI() throws -> DevmachineCLI {
+        try cli ?? DevmachineCLI.resolve()
     }
 }

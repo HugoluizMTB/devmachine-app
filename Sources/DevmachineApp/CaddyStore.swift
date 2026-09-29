@@ -23,7 +23,7 @@ final class CaddyStore: ObservableObject {
         addTask?.cancel()
     }
 
-    func refresh(alias: String) {
+    func refresh() {
         refreshTask?.cancel()
         isLoading = true
         errorText = nil
@@ -31,8 +31,8 @@ final class CaddyStore: ObservableObject {
 
         refreshTask = Task {
             do {
-                let sites = try await Task.detached { try service.sites(alias: alias) }.value
-                let logs = try await Task.detached { try service.logs(alias: alias) }.value
+                let sites = try await Task.detached { try service.sites() }.value
+                let logs = try await Task.detached { try service.logs() }.value
                 guard !Task.isCancelled else { return }
                 self.sites = sites
                 self.logs = logs
@@ -70,7 +70,7 @@ final class CaddyStore: ObservableObject {
             switch result {
             case .success:
                 self.task?.completed = total
-                self.refresh(alias: settings.hostAlias)
+                self.refresh()
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 if self.task?.id == taskID { self.task = nil }
             case .failure(let error):

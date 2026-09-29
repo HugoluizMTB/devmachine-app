@@ -285,9 +285,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 field: .opsRepoPath, message: "Devmachine CLI was not found on this Mac. \(cliInstallHint)"))
         }
 
-        if settings.hostAlias.isEmpty {
-            issues.append(SettingsIssue(field: .hostAlias, message: "Type the ssh alias of the host."))
-        } else if !matches(settings.hostAlias, aliasPattern) {
+        // No longer needed for an admin login — every admin command now runs
+        // through the devmachine CLI. Left blank, it only means the app
+        // cannot match `<workspace>-<alias>` entries in ~/.ssh/config yet.
+        if !settings.hostAlias.isEmpty, !matches(settings.hostAlias, aliasPattern) {
             issues.append(SettingsIssue(field: .hostAlias, message: "Only letters, digits, dot, dash and underscore."))
         }
 

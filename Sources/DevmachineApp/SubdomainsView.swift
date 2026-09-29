@@ -35,8 +35,7 @@ struct SubdomainsView: View {
     }
 
     private func refresh() {
-        guard let alias = settingsStore.settings?.hostAlias else { return }
-        store.refresh(alias: alias)
+        store.refresh()
     }
 
     private var header: some View {

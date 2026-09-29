@@ -170,6 +170,41 @@ final class DevmachineCLITests: XCTestCase {
     }
 }
 
+final class AdminMachineCacheTests: XCTestCase {
+    func testPicksTheFirstNonSelfMachine() throws {
+        let cache = AdminMachineCache()
+        let runner = CLIRecordingRunner(result: (#"[{"name":"laptop","self":true},{"name":"box"}]"#, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+        XCTAssertEqual(try cache.name { cli }, "box")
+    }
+
+    func testAnAnswerIsKeptForTheRestOfTheRun() throws {
+        let cache = AdminMachineCache()
+        let runner = CLIRecordingRunner(result: (#"[{"name":"laptop","self":true},{"name":"box"}]"#, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+        XCTAssertEqual(try cache.name { cli }, "box")
+        XCTAssertEqual(try cache.name { cli }, "box")
+        XCTAssertEqual(runner.calls.count, 1)
+    }
+
+    func testAFailedLookupIsReportedAndTriedAgain() throws {
+        let cache = AdminMachineCache()
+        XCTAssertThrowsError(try cache.name { throw DevmachineCLIError.executableNotFound(["/opt/devmachine"]) })
+        let runner = CLIRecordingRunner(result: (#"[{"name":"box"}]"#, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+        XCTAssertEqual(try cache.name { cli }, "box")
+    }
+
+    func testNoNonSelfMachineReportsAClearError() {
+        let cache = AdminMachineCache()
+        let runner = CLIRecordingRunner(result: (#"[{"name":"laptop","self":true}]"#, "", 0))
+        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
+        XCTAssertThrowsError(try cache.name { cli }) { error in
+            XCTAssertEqual(error.localizedDescription, "No machine is configured. Run `devmachine machines add` first.")
+        }
+    }
+}
+
 final class SelfMachineCacheTests: XCTestCase {
     func testAFailedLookupIsReportedAndTriedAgain() throws {
         let cache = SelfMachineCache()

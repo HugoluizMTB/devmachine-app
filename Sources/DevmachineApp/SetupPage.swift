@@ -279,7 +279,10 @@ struct SetupPage: View {
 
             field(
                 title: "Host ssh alias",
-                hint: "A Host entry in ~/.ssh/config. Workspaces are the aliases ending in -\(hostAlias.isEmpty ? "alias" : hostAlias).",
+                hint: "Optional. Only used to match workspace aliases in ~/.ssh/config, "
+                    + "the ones ending in -\(hostAlias.isEmpty ? "alias" : hostAlias) "
+                    + "(`devmachine aliases --write` names them after the machine). "
+                    + "Admin commands (stats, Caddy) run through the devmachine CLI and do not need it.",
                 field: .hostAlias
             ) {
                 TextField("myhost", text: $hostAlias)

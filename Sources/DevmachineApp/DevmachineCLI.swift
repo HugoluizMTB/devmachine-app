@@ -132,6 +132,35 @@ struct DevmachineCLI: Sendable {
         return try JSONDecoder().decode([CLIMachine].self, from: Data(result.stdout.utf8))
     }
 
+    /// The machine workspaces live on, for a command that has to run as that
+    /// machine's admin rather than inside a workspace — stats, Caddy's own
+    /// logs. `self` is the Mac the app runs on, never the target. Several
+    /// non-self machines are not disambiguated yet: the first one found is
+    /// used.
+    func resolveAdminMachine() throws -> String {
+        let machines = try listMachines()
+        guard let machine = machines.first(where: { !$0.isSelf }) else {
+            throw DevmachineCLIError.commandFailed(
+                "No machine is configured. Run `devmachine machines add` first.")
+        }
+        return machine.name
+    }
+
+    /// Runs a shell command as `machine`'s admin, through the CLI's own
+    /// connection (reused for 5 minutes, host key checked, the configured key
+    /// or agent, the address fallback including tailscale) — never a raw ssh
+    /// alias, which a machine's admin login may have no `~/.ssh/config` entry
+    /// for.
+    func run(machine: String, command: String) throws -> String {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["run", "--machine", machine, "--", command],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return result.stdout
+    }
+
     /// The context engine, reached as `devmachine-app`'s `context` entrypoint.
     /// A workspace session runs it over the CLI's own ssh, as that workspace's
     /// account.

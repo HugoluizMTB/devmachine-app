@@ -12,19 +12,27 @@ private struct CaddyServiceRunner: CommandRunner {
         guard executable == "/fake/devmachine" else {
             throw NSError(domain: "unexpected remote command", code: 1)
         }
-        return (#"[{"host":"app.example.com","port":8080,"workspace":"alice"}]"#, "", 0)
+        if args == ["--format", "json", "expose", "list"] {
+            return (#"[{"host":"app.example.com","port":8080,"workspace":"alice"}]"#, "", 0)
+        }
+        if args == ["--format", "json", "machines", "list"] {
+            return (#"[{"name":"self","self":true},{"name":"box"}]"#, "", 0)
+        }
+        if args == ["run", "--machine", "box", "--", "journalctl -u caddy -n 200 --no-pager"] {
+            return ("acme.example.com tls handshake ok", "", 0)
+        }
+        throw NSError(domain: "unexpected remote command", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "unexpected args: \(args)"
+        ])
     }
 }
 
 final class CaddyServiceTests: XCTestCase {
     func testSitesComeFromTheCLIWithTheirWorkspaceOwner() throws {
         let cli = DevmachineCLI(executable: "/fake/devmachine", runner: CaddyServiceRunner())
-        let service = CaddyService(
-            cli: cli,
-            remote: RemoteService(runner: CaddyServiceRunner())
-        )
+        let service = CaddyService(cli: cli)
 
-        XCTAssertEqual(try service.sites(alias: "must-not-be-used"), [
+        XCTAssertEqual(try service.sites(), [
             CaddySite(
                 address: "app.example.com",
                 target: "127.0.0.1:8080",
@@ -32,5 +40,12 @@ final class CaddyServiceTests: XCTestCase {
                 workspace: "alice"
             )
         ])
+    }
+
+    func testLogsRunThroughTheCLIAsTheNonSelfMachinesAdmin() throws {
+        let cli = DevmachineCLI(executable: "/fake/devmachine", runner: CaddyServiceRunner())
+        let service = CaddyService(cli: cli)
+
+        XCTAssertEqual(try service.logs(), "acme.example.com tls handshake ok")
     }
 }
