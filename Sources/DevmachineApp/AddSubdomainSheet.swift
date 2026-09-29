@@ -20,10 +20,25 @@ struct AddSubdomainForm {
     var label = ""
     var customHost = ""
     var port = ""
+    /// The workspace's own listening ports, offered as one-tap fills — the
+    /// quick-publish flow started from a workspace row.
+    var suggestedPorts: [PortSuggestion] = []
 
-    init(workspaces: [Workspace]) {
+    init(
+        workspaces: [Workspace], preselectedWorkspace: String? = nil,
+        suggestedPorts: [PortSuggestion] = [], suggestedLabel: String = ""
+    ) {
         workspaceNames = workspaces.filter { !$0.isLocal }.map(\.name)
-        selectedWorkspace = workspaceNames.first ?? ""
+        if let preselectedWorkspace, workspaceNames.contains(preselectedWorkspace) {
+            selectedWorkspace = preselectedWorkspace
+        } else {
+            selectedWorkspace = workspaceNames.first ?? ""
+        }
+        self.suggestedPorts = suggestedPorts
+        label = suggestedLabel
+        if let first = suggestedPorts.first {
+            port = String(first.port)
+        }
     }
 
     func request(baseDomain: String) -> SubdomainRequest? {
@@ -48,9 +63,14 @@ struct AddSubdomainSheet: View {
     @State private var form: AddSubdomainForm
     @State private var confirming = false
 
-    init(settings: AppSettings, workspaces: [Workspace]) {
+    init(
+        settings: AppSettings, workspaces: [Workspace], preselectedWorkspace: String? = nil,
+        suggestedPorts: [PortSuggestion] = [], suggestedLabel: String = ""
+    ) {
         self.settings = settings
-        _form = State(initialValue: AddSubdomainForm(workspaces: workspaces))
+        _form = State(initialValue: AddSubdomainForm(
+            workspaces: workspaces, preselectedWorkspace: preselectedWorkspace,
+            suggestedPorts: suggestedPorts, suggestedLabel: suggestedLabel))
     }
 
     private var request: SubdomainRequest? {
@@ -127,6 +147,9 @@ struct AddSubdomainSheet: View {
                     .foregroundStyle(Color.dmMuted)
                 TextField("8080", text: $form.port)
                     .textFieldStyle(.roundedBorder)
+                if !form.suggestedPorts.isEmpty {
+                    suggestedPortsRow
+                }
             }
 
             HStack {
@@ -152,6 +175,24 @@ struct AddSubdomainSheet: View {
                 dismiss()
             }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var suggestedPortsRow: some View {
+        FlowLayout(spacing: 4, rowSpacing: 4) {
+            ForEach(form.suggestedPorts) { suggestion in
+                Button {
+                    form.port = String(suggestion.port)
+                } label: {
+                    if let containerName = suggestion.containerName {
+                        Text(verbatim: "\(suggestion.port) · \(containerName)")
+                    } else {
+                        Text(verbatim: "\(suggestion.port)")
+                    }
+                }
+                .buttonStyle(.dmChip)
+                .font(.dm(11))
+            }
         }
     }
 }

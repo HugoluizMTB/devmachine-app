@@ -3,16 +3,32 @@ import DevmachineCore
 
 @MainActor
 final class CaddyStore: ObservableObject {
-    @Published var sites: [CaddySite] = []
-    @Published var logs: String = ""
+    @Published var rows: [SubdomainRow] = []
+    @Published var domain: String = ""
     @Published var isLoading = false
     @Published var errorText: String?
     @Published var task: BGTask?
     @Published var addError: String?
 
+    @Published var removingHost: String?
+    @Published var removeError: String?
+
+    /// Every installed DNS provider, loaded once per page visit — the tab
+    /// strip's own list, separate from each tab's records.
+    @Published var dnsProviders: [String] = []
+    @Published var dnsProvidersError: String?
+    @Published var isLoadingDNSProviders = false
+
+    @Published var dnsRecordsByProvider: [String: [DNSRecordRow]] = [:]
+    @Published var dnsErrorByProvider: [String: String] = [:]
+    @Published var dnsLoadingProviders: Set<String> = []
+
     private let service: CaddyService
     private nonisolated(unsafe) var refreshTask: Task<Void, Never>?
     private nonisolated(unsafe) var addTask: Task<Void, Never>?
+    private nonisolated(unsafe) var removeTask: Task<Void, Never>?
+    private nonisolated(unsafe) var dnsProvidersTask: Task<Void, Never>?
+    private nonisolated(unsafe) var dnsRecordTasks: [String: Task<Void, Never>] = [:]
 
     init(service: CaddyService = CaddyService()) {
         self.service = service
@@ -21,6 +37,9 @@ final class CaddyStore: ObservableObject {
     deinit {
         refreshTask?.cancel()
         addTask?.cancel()
+        removeTask?.cancel()
+        dnsProvidersTask?.cancel()
+        for task in dnsRecordTasks.values { task.cancel() }
     }
 
     func refresh() {
@@ -31,17 +50,64 @@ final class CaddyStore: ObservableObject {
 
         refreshTask = Task {
             do {
-                let sites = try await Task.detached { try service.sites() }.value
-                let logs = try await Task.detached { try service.logs() }.value
+                let snapshot = try await Task.detached { try service.snapshot() }.value
                 guard !Task.isCancelled else { return }
-                self.sites = sites
-                self.logs = logs
+                self.rows = snapshot.rows
+                self.domain = snapshot.domain
                 self.errorText = nil
             } catch {
                 guard !Task.isCancelled else { return }
                 self.errorText = PackageGateMessage.friendly(for: error)
             }
             if !Task.isCancelled { self.isLoading = false }
+        }
+        loadDNSProviders()
+    }
+
+    func loadDNSProviders() {
+        dnsProvidersTask?.cancel()
+        isLoadingDNSProviders = true
+        dnsProvidersError = nil
+        let service = self.service
+
+        dnsProvidersTask = Task {
+            do {
+                let names = try await Task.detached { try service.dnsProviderNames() }.value
+                guard !Task.isCancelled else { return }
+                self.dnsProviders = names
+                self.dnsProvidersError = nil
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.dnsProvidersError = PackageGateMessage.friendly(for: error)
+            }
+            if !Task.isCancelled { self.isLoadingDNSProviders = false }
+        }
+    }
+
+    /// Loads `provider`'s records for the configured domain, once — a second
+    /// call while the first is still running, or already loaded, is a no-op
+    /// unless `force`.
+    func loadRecords(provider: String, force: Bool = false) {
+        guard force || (dnsRecordsByProvider[provider] == nil && dnsRecordTasks[provider] == nil) else { return }
+        guard !domain.isEmpty else { return }
+        dnsRecordTasks[provider]?.cancel()
+        dnsLoadingProviders.insert(provider)
+        dnsErrorByProvider[provider] = nil
+        let service = self.service
+        let domain = self.domain
+
+        dnsRecordTasks[provider] = Task {
+            do {
+                let records = try await Task.detached { try service.dnsRecords(provider: provider, zone: domain) }.value
+                guard !Task.isCancelled else { return }
+                self.dnsRecordsByProvider[provider] = records
+                self.dnsErrorByProvider[provider] = nil
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.dnsErrorByProvider[provider] = PackageGateMessage.friendly(for: error)
+            }
+            self.dnsLoadingProviders.remove(provider)
+            self.dnsRecordTasks[provider] = nil
         }
     }
 
@@ -78,5 +144,31 @@ final class CaddyStore: ObservableObject {
                 self.task = nil
             }
         }
+    }
+
+    func remove(host: String) {
+        removeTask?.cancel()
+        removeError = nil
+        removingHost = host
+        let service = self.service
+
+        removeTask = Task {
+            do {
+                try await Task.detached { try service.remove(host: host) }.value
+                guard !Task.isCancelled else { return }
+                self.refresh()
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.removeError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+            if !Task.isCancelled { self.removingHost = nil }
+        }
+    }
+
+    /// The Caddy log tail for one host — read on demand for the row's "Logs"
+    /// action, not kept around once the popover closes.
+    func fetchLogs(host: String) async -> Result<String, Error> {
+        let service = self.service
+        return await Task.detached { Result { try service.logs(matching: host) } }.value
     }
 }

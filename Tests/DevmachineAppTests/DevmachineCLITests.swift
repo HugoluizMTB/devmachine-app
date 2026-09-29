@@ -71,13 +71,47 @@ final class DevmachineCLITests: XCTestCase {
     }
 
     func testListDecodesTheCLIJSONContract() throws {
-        let body = #"[{"host":"app.example.com","port":8080,"workspace":"alice"}]"#
+        let body = #"[{"host":"app.example.com","port":8080,"workspace":"alice","status":"published"}]"#
         let runner = CLIRecordingRunner(result: (body, "", 0))
 
         let sites = try DevmachineCLI(executable: "/x", runner: runner).listExposures()
 
-        XCTAssertEqual(sites, [.init(host: "app.example.com", port: 8080, workspace: "alice")])
+        XCTAssertEqual(sites, [.init(host: "app.example.com", port: 8080, workspace: "alice", status: .published)])
         XCTAssertEqual(runner.calls.first?.args, ["--format", "json", "expose", "list"])
+    }
+
+    func testUnexposeCallsExposeRmWithYes() throws {
+        let runner = CLIRecordingRunner()
+
+        try DevmachineCLI(executable: "/x", runner: runner).unexpose(host: "old.example.com")
+
+        XCTAssertEqual(runner.calls.first?.args, ["expose", "rm", "old.example.com", "--yes"])
+    }
+
+    func testDNSProvidersDecodesTheCLIJSONContract() throws {
+        let body = #"{"providers":[{"name":"Cloudflare","zones":["example.com"]},{"name":"Hostinger","zones":[],"error":"no token"}]}"#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+
+        let providers = try DevmachineCLI(executable: "/x", runner: runner).dnsProviders(machine: "box")
+
+        XCTAssertEqual(providers, [
+            CLIDNSProvider(name: "Cloudflare", zones: ["example.com"], error: nil),
+            CLIDNSProvider(name: "Hostinger", zones: [], error: "no token"),
+        ])
+        XCTAssertEqual(runner.calls.first?.args, ["--machine", "box", "--format", "json", "dns", "providers"])
+    }
+
+    func testDNSListDecodesTheCLIJSONContractAndPassesTheProvider() throws {
+        let body = #"{"zone":"example.com","provider":"Cloudflare","records":[{"name":"app","type":"A","value":"203.0.113.10","ttl":300}]}"#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+
+        let records = try DevmachineCLI(executable: "/x", runner: runner)
+            .dnsList(machine: "box", provider: "Cloudflare", zone: "example.com")
+
+        XCTAssertEqual(records, [DNSRecordRow(name: "app", type: "A", value: "203.0.113.10", ttl: 300)])
+        XCTAssertEqual(runner.calls.first?.args, [
+            "--machine", "box", "--format", "json", "dns", "list", "example.com", "--dns-provider", "Cloudflare",
+        ])
     }
 
     func testListWorkspacesDecodesTheCLIJSONContract() throws {

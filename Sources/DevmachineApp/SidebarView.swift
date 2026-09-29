@@ -6,6 +6,8 @@ struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
     @EnvironmentObject var customCommandsStore: CustomCommandStore
+    @EnvironmentObject var settingsStore: SettingsStore
+    @StateObject private var quickPublish = QuickPublishState()
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -39,14 +41,17 @@ struct SidebarView: View {
             footerRow
         }
         .background(Color.dmSidebarBg)
+        .quickPublishSheet(quickPublish, settings: settingsStore.settings, workspaces: model.visibleWorkspaces)
     }
 
     private var footerRow: some View {
         HStack(spacing: 0) {
             footerButton("chart.bar") { model.showPage(.stats) }
                 .help("Stats")
-            footerButton("globe") { model.showPage(.subdomains) }
-                .help("Subdomains")
+            if model.hasCaddyMachine {
+                footerButton("globe") { model.showPage(.subdomains) }
+                    .help("Subdomains")
+            }
             footerButton("command") { model.showPage(.customCommands) }
                 .help("Custom commands")
             footerButton("gearshape") { model.showPage(.setup) }
@@ -145,6 +150,11 @@ struct SidebarView: View {
         .contextMenu {
             Button("Open workspace home") { model.stackWorkspace(alias) }
             Button("Files…") { openFiles(alias: alias) }
+            if alias != Workspace.local.alias, model.hasCaddyMachine {
+                Button("Publish a port…") {
+                    quickPublish.start(workspace: title)
+                }
+            }
         }
     }
 

@@ -1,10 +1,23 @@
 import Foundation
 import DevmachineCore
 
-struct PublishedSite: Codable, Equatable, Sendable {
-    let host: String
-    let port: Int
-    let workspace: String?
+/// One installed DNS provider, as `dns providers` reports it — the app only
+/// needs the name for the tab strip; `dns list` resolves the provider and
+/// zone itself.
+struct CLIDNSProvider: Decodable, Equatable, Sendable {
+    let name: String
+    let zones: [String]
+    let error: String?
+}
+
+private struct CLIDNSProviderList: Decodable {
+    let providers: [CLIDNSProvider]
+}
+
+private struct CLIDNSListResult: Decodable {
+    let zone: String
+    let provider: String
+    let records: [DNSRecordRow]
 }
 
 struct CLIWorkspace: Codable, Equatable, Sendable {
@@ -191,14 +204,49 @@ struct DevmachineCLI: Sendable {
         try requireSuccess(result)
     }
 
-    func listExposures() throws -> [PublishedSite] {
+    func listExposures() throws -> [ExposedSite] {
         let result = try runner.runCapturing(
             executable: executable,
             args: ["--format", "json", "expose", "list"],
             environment: environment()
         )
         try requireSuccess(result)
-        return try JSONDecoder().decode([PublishedSite].self, from: Data(result.stdout.utf8))
+        return try JSONDecoder().decode([ExposedSite].self, from: Data(result.stdout.utf8))
+    }
+
+    /// Stops publishing a site at the next sync. `--yes` skips the CLI's own
+    /// confirmation prompt: the app already asked before calling this.
+    func unexpose(host: String) throws {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["expose", "rm", host, "--yes"],
+            environment: environment()
+        )
+        try requireSuccess(result)
+    }
+
+    /// Every DNS provider installed on `machine`, and the zones it can see —
+    /// the tab strip only shows a tab for a provider that is here.
+    func dnsProviders(machine: String) throws -> [CLIDNSProvider] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--machine", machine, "--format", "json", "dns", "providers"],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLIDNSProviderList.self, from: Data(result.stdout.utf8)).providers
+    }
+
+    /// Every record `provider` holds for `zone` on `machine` — read-only,
+    /// straight from the registrar.
+    func dnsList(machine: String, provider: String, zone: String) throws -> [DNSRecordRow] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--machine", machine, "--format", "json", "dns", "list", zone, "--dns-provider", provider],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLIDNSListResult.self, from: Data(result.stdout.utf8)).records
     }
 
     func listWorkspaces() throws -> [CLIWorkspace] {

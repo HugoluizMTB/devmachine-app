@@ -370,6 +370,10 @@ final class AppModel: ObservableObject {
     /// is found: stats, Caddy logs and subdomain logs all need the
     /// `devmachine-app` package on the admin machine.
     @Published private(set) var packageGate: PackageGateState = .ok
+    /// Whether the sidebar's Subdomains icon has anything to show for: at
+    /// least one configured machine has Caddy. Starts `true` so the icon does
+    /// not flash away before the first check answers.
+    @Published private(set) var hasCaddyMachine = true
     @Published var stackCellSizes: [String: StackCellSize] = AppModel.loadStackCellSizes() {
         didSet { AppModel.saveStackCellSizes(stackCellSizes) }
     }
@@ -1267,6 +1271,12 @@ final class AppModel: ObservableObject {
                 PackageGateChecker.check(cli: { try DevmachineCLI.resolve() })
             }.value
             self.packageGate = state
+        }
+        Task {
+            let hasCaddy = await Task.detached {
+                CaddyAvailabilityChecker.check(cli: { try DevmachineCLI.resolve() })
+            }.value
+            if let hasCaddy { self.hasCaddyMachine = hasCaddy }
         }
     }
 

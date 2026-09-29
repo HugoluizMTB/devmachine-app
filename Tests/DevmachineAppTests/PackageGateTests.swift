@@ -76,6 +76,53 @@ final class PackageGateCheckerTests: XCTestCase {
     }
 }
 
+final class CaddyAvailabilityCheckerTests: XCTestCase {
+    func testTrueWhenANonSelfMachineHasCaddyDirectly() {
+        let runner = ScriptedRunner(byCommand: [
+            "machines": (#"[{"name":"acme"},{"name":"mac","self":true}]"#, "", 0),
+            "list": (#"{"packages":[{"name":"caddy","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
+        ])
+        let state = CaddyAvailabilityChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
+        XCTAssertEqual(state, true)
+    }
+
+    func testTrueWhenANonSelfMachineHasEssentials() {
+        let runner = ScriptedRunner(byCommand: [
+            "machines": (#"[{"name":"acme"},{"name":"mac","self":true}]"#, "", 0),
+            "list": (#"{"packages":[{"name":"essentials","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
+        ])
+        let state = CaddyAvailabilityChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
+        XCTAssertEqual(state, true)
+    }
+
+    func testFalseWhenNoNonSelfMachineHasEitherPackage() {
+        let runner = ScriptedRunner(byCommand: [
+            "machines": (#"[{"name":"acme"},{"name":"mac","self":true}]"#, "", 0),
+            "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
+        ])
+        let state = CaddyAvailabilityChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
+        XCTAssertEqual(state, false)
+    }
+
+    func testFalseWithOnlyASelfMachineConfigured() {
+        let runner = ScriptedRunner(byCommand: [
+            "machines": (#"[{"name":"mac","self":true}]"#, "", 0),
+            "list": (#"{"packages":[]}"#, "", 0),
+        ])
+        let state = CaddyAvailabilityChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
+        XCTAssertEqual(state, false)
+    }
+
+    func testNilWhenPackagesListItselfFails() {
+        let runner = ScriptedRunner(byCommand: [
+            "machines": (#"[{"name":"acme"},{"name":"mac","self":true}]"#, "", 0),
+            "list": ("", "connection refused", 1),
+        ])
+        let state = CaddyAvailabilityChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
+        XCTAssertNil(state)
+    }
+}
+
 final class PackageGateMessageTests: XCTestCase {
     func testAnUnknownCommandGetsTheUpgradeInstructions() {
         let message = PackageGateMessage.friendly(

@@ -33,7 +33,9 @@ struct ContextPanel: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: ContextStore
     @StateObject private var gitStore = GitStore()
+    @StateObject private var quickPublish = QuickPublishState()
     @EnvironmentObject private var fileTreeStore: FileTreeStore
+    @EnvironmentObject private var settingsStore: SettingsStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -41,6 +43,7 @@ struct ContextPanel: View {
             tabBody
         }
         .background(Color.dmSidebarBg)
+        .quickPublishSheet(quickPublish, settings: settingsStore.settings, workspaces: model.visibleWorkspaces)
     }
 
     private var session: (alias: String, name: String)? {
@@ -79,6 +82,9 @@ struct ContextPanel: View {
         if let commandTarget {
             ShortcutsSection(target: commandTarget)
         }
+        if let alias = session?.alias, model.hasCaddyMachine, let workspaceName = model.visibleWorkspaces.first(where: { $0.alias == alias })?.name {
+            publishRow(workspaceName)
+        }
         if let state = store.state {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -100,6 +106,18 @@ struct ContextPanel: View {
         } else {
             contextStatus
         }
+    }
+
+    private func publishRow(_ workspaceName: String) -> some View {
+        Button {
+            quickPublish.start(workspace: workspaceName)
+        } label: {
+            Label("Publish a port…", systemImage: "globe")
+                .font(.dm(12))
+        }
+        .buttonStyle(.dmChip)
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
     }
 
     @ViewBuilder

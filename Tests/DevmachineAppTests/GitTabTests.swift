@@ -74,9 +74,13 @@ final class GitTabTests: XCTestCase {
 
     func testTheContextTabStripKeepsTheHeaderHeight() throws {
         let model = AppModel(store: SessionStore(runner: SilentRunner()))
+        let suiteName = "dev.devmachine.app.gittab.tests"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
         let panel = ContextPanel(store: ContextStore(services: fixtureServices()))
             .environmentObject(model)
             .environmentObject(SkillsStore())
+            .environmentObject(SettingsStore(defaults: defaults))
             .frame(width: 300, height: 400)
         let image = try XCTUnwrap(ImageRenderer(content: panel).nsImage)
 

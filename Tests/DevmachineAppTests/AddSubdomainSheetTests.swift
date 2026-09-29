@@ -22,6 +22,36 @@ final class AddSubdomainSheetTests: XCTestCase {
         XCTAssertEqual(form.workspaceNames, ["alice", "bob"])
     }
 
+    func testAPreselectedWorkspaceWinsOverTheFirstOne() {
+        let form = AddSubdomainForm(
+            workspaces: [
+                Workspace(name: "alice", alias: "alice-devmachine"),
+                Workspace(name: "bob", alias: "bob-devmachine"),
+            ],
+            preselectedWorkspace: "bob")
+
+        XCTAssertEqual(form.selectedWorkspace, "bob")
+    }
+
+    func testAPreselectedWorkspaceOutsideTheListIsIgnored() {
+        let form = AddSubdomainForm(
+            workspaces: [Workspace(name: "alice", alias: "alice-devmachine")],
+            preselectedWorkspace: "ghost")
+
+        XCTAssertEqual(form.selectedWorkspace, "alice")
+    }
+
+    func testSuggestedPortsFillTheFirstPortAndTheLabel() {
+        let form = AddSubdomainForm(
+            workspaces: [Workspace(name: "alice", alias: "alice-devmachine")],
+            suggestedPorts: [PortSuggestion(port: 8810, containerName: "web")],
+            suggestedLabel: "alice")
+
+        XCTAssertEqual(form.port, "8810")
+        XCTAssertEqual(form.label, "alice")
+        XCTAssertEqual(form.suggestedPorts, [PortSuggestion(port: 8810, containerName: "web")])
+    }
+
     func testAWorkspaceOutsideTheAvailableListIsRejected() {
         var form = AddSubdomainForm(workspaces: [
             Workspace(name: "alice", alias: "alice-devmachine"),
