@@ -47,6 +47,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var hostAlias: String
     public var publicIP: String
     public var baseDomain: String
+    /// An ssh agent socket to use instead of the 1Password default. Empty
+    /// means "figure it out": the 1Password socket if it exists, else
+    /// whatever `SSH_AUTH_SOCK` this process inherited.
+    public var sshAgentSocket: String
     public var wallpaper: WallpaperChoice
     /// How much of the wallpaper shows through a terminal, from `Appearance`.
     public var terminalOpacity: Double
@@ -103,6 +107,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         hostAlias: String,
         publicIP: String,
         baseDomain: String,
+        sshAgentSocket: String = "",
         wallpaper: WallpaperChoice = .bundled,
         terminalOpacity: Double = Appearance.defaultTerminalOpacity,
         terminalFontSize: Double = Appearance.defaultTerminalFontSize,
@@ -120,6 +125,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.hostAlias = hostAlias
         self.publicIP = publicIP
         self.baseDomain = baseDomain
+        self.sshAgentSocket = sshAgentSocket
         self.wallpaper = wallpaper
         self.terminalOpacity = Appearance.clampTerminalOpacity(terminalOpacity)
         self.terminalFontSize = Appearance.clampTerminalFontSize(terminalFontSize)
@@ -143,7 +149,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case opsRepoPath, hostAlias, publicIP, baseDomain, wallpaper
+        case opsRepoPath, hostAlias, publicIP, baseDomain, sshAgentSocket, wallpaper
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging
         case hiddenWorkspaces, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram
@@ -155,6 +161,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         hostAlias = try values.decode(String.self, forKey: .hostAlias)
         publicIP = try values.decode(String.self, forKey: .publicIP)
         baseDomain = try values.decode(String.self, forKey: .baseDomain)
+        // Settings written before this existed decode to "figure it out".
+        sshAgentSocket = try values.decodeIfPresent(String.self, forKey: .sshAgentSocket) ?? ""
         wallpaper = try values.decodeIfPresent(WallpaperChoice.self, forKey: .wallpaper) ?? .bundled
         // Settings written before these existed decode to the defaults.
         terminalOpacity = Appearance.clampTerminalOpacity(
@@ -211,6 +219,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(hostAlias, forKey: .hostAlias)
         try values.encode(publicIP, forKey: .publicIP)
         try values.encode(baseDomain, forKey: .baseDomain)
+        try values.encode(sshAgentSocket, forKey: .sshAgentSocket)
         try values.encode(wallpaper, forKey: .wallpaper)
         try values.encode(terminalOpacity, forKey: .terminalOpacity)
         try values.encode(terminalFontSize, forKey: .terminalFontSize)

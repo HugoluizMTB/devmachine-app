@@ -47,6 +47,8 @@ final class RemoteServiceTests: XCTestCase {
             "-o", "ServerAliveCountMax=2",
             "devmachine-infer", "--session", "dash"
         ])
-        XCTAssertEqual(fake.environment?["SSH_AUTH_SOCK"], RemoteCommands.onePasswordSocketPath)
+        // RemoteCommands.sshEnvironment already covers the socket-picking rule;
+        // this only checks RemoteService wires it in, not what it resolves to.
+        XCTAssertEqual(fake.environment, RemoteCommands.sshEnvironment())
     }
 }

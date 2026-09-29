@@ -81,6 +81,7 @@ struct SetupPage: View {
     @State private var hostAlias = ""
     @State private var publicIP = ""
     @State private var baseDomain = ""
+    @State private var sshAgentSocket = ""
     @State private var wallpaper = WallpaperChoice.bundled
     @State private var themeID = SetupPage.gradientTheme
     @State private var terminalOpacity = Appearance.defaultTerminalOpacity
@@ -101,6 +102,7 @@ struct SetupPage: View {
             hostAlias: hostAlias.trimmingCharacters(in: .whitespaces),
             publicIP: publicIP.trimmingCharacters(in: .whitespaces),
             baseDomain: baseDomain.trimmingCharacters(in: .whitespaces),
+            sshAgentSocket: sshAgentSocket.trimmingCharacters(in: .whitespaces),
             wallpaper: wallpaper,
             terminalOpacity: terminalOpacity,
             terminalFontSize: terminalFontSize,
@@ -298,6 +300,16 @@ struct SetupPage: View {
             ) {
                 TextField("example.com", text: $baseDomain)
                     .dmField()
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(verbatim: "SSH agent socket")
+                    .font(.dm(11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+                TextField("Leave empty to detect it automatically", text: $sshAgentSocket)
+                    .dmField()
+                note("Only needed if 1Password's agent is not what this Mac should use. "
+                    + "Empty tries the 1Password socket, then the ssh agent already running.")
             }
         }
     }
@@ -749,6 +761,7 @@ struct SetupPage: View {
             hostAlias = current.hostAlias
             publicIP = current.publicIP
             baseDomain = current.baseDomain
+            sshAgentSocket = current.sshAgentSocket
             terminalOpacity = current.terminalOpacity
             terminalFontSize = current.terminalFontSize
             uiFontScale = current.uiFontScale

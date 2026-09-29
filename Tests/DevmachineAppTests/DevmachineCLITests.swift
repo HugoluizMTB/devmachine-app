@@ -100,9 +100,11 @@ final class DevmachineCLITests: XCTestCase {
         }
     }
 
-    func testEveryCallHandsTheCLITheSSHAgentAndKeepsTheInheritedPath() throws {
+    func testEveryCallKeepsTheInheritedPath() throws {
         let runner = CLIRecordingRunner(result: ("", "", 0))
-        let cli = DevmachineCLI(executable: "/x", runner: runner)
+        let cli = DevmachineCLI(
+            executable: "/x", runner: runner, customSocket: nil,
+            socketFileExists: { _ in true }, processEnvironment: ["PATH": "/usr/bin"])
 
         _ = try cli.context(workspace: "acme", session: "main")
         _ = try cli.context(machine: "mac", project: "/Users/alice/acme")
@@ -110,9 +112,52 @@ final class DevmachineCLITests: XCTestCase {
 
         XCTAssertEqual(runner.environments.count, 3)
         for environment in runner.environments {
-            XCTAssertEqual(environment?["SSH_AUTH_SOCK"], RemoteCommands.onePasswordSocketPath)
-            XCTAssertEqual(environment?["PATH"], ProcessInfo.processInfo.environment["PATH"])
+            XCTAssertEqual(environment?["PATH"], "/usr/bin")
         }
+    }
+
+    func testUsesAn1PasswordSocketWhenItExists() throws {
+        let runner = CLIRecordingRunner(result: ("", "", 0))
+        let cli = DevmachineCLI(
+            executable: "/x", runner: runner, customSocket: nil,
+            socketFileExists: { $0 == RemoteCommands.onePasswordSocketPath }, processEnvironment: [:])
+
+        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+
+        XCTAssertEqual(runner.environments[0]?["SSH_AUTH_SOCK"], RemoteCommands.onePasswordSocketPath)
+    }
+
+    func testFallsBackToTheInheritedSocketWithout1Password() throws {
+        let runner = CLIRecordingRunner(result: ("", "", 0))
+        let cli = DevmachineCLI(
+            executable: "/x", runner: runner, customSocket: nil,
+            socketFileExists: { _ in false }, processEnvironment: ["SSH_AUTH_SOCK": "/tmp/inherited.sock"])
+
+        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+
+        XCTAssertEqual(runner.environments[0]?["SSH_AUTH_SOCK"], "/tmp/inherited.sock")
+    }
+
+    func testLeavesTheSocketUnsetWithNothingToOffer() throws {
+        let runner = CLIRecordingRunner(result: ("", "", 0))
+        let cli = DevmachineCLI(
+            executable: "/x", runner: runner, customSocket: nil,
+            socketFileExists: { _ in false }, processEnvironment: [:])
+
+        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+
+        XCTAssertNil(runner.environments[0]?["SSH_AUTH_SOCK"])
+    }
+
+    func testAnExplicitSettingsOverrideWinsOver1Password() throws {
+        let runner = CLIRecordingRunner(result: ("", "", 0))
+        let cli = DevmachineCLI(
+            executable: "/x", runner: runner, customSocket: "/tmp/custom.sock",
+            socketFileExists: { _ in true }, processEnvironment: [:])
+
+        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+
+        XCTAssertEqual(runner.environments[0]?["SSH_AUTH_SOCK"], "/tmp/custom.sock")
     }
 
     func testResolverReportsEveryCheckedHomebrewLocation() {

@@ -272,12 +272,13 @@ final class TerminalRegistry: NSObject {
         switch kind {
         case let .remote(alias, session):
             PaneLog.log("refresh pane=\(kind)")
+            let customSocket = SettingsStore.shared.settings?.sshAgentSocket
             Task.detached {
                 _ = try? ProcessRunner().run(
                     executable: "/usr/bin/ssh",
                     args: RemoteCommands.sshBaseArgs(alias: alias)
                         + [RemoteCommands.refreshClient(session: session)],
-                    environment: RemoteCommands.sshEnvironment())
+                    environment: RemoteCommands.sshEnvironment(customSocket: customSocket))
             }
         case let .local(session, _):
             // No refresh command in the local multiplexer, so the program is
@@ -364,6 +365,7 @@ final class TerminalRegistry: NSObject {
 
     private func start(_ kind: TerminalKind, in term: LocalProcessTerminalView) {
         PaneLog.log("start pane=\(kind)")
+        let customSocket = SettingsStore.shared.settings?.sshAgentSocket
         switch kind {
         case let .remote(alias, session):
             // Interactive: mosh (survives roaming/drops). Tailscale only
@@ -373,13 +375,15 @@ final class TerminalRegistry: NSObject {
                 term.startProcess(
                     executable: mosh,
                     args: [alias, "--", "tmux", "new-session", "-A", "-s", session],
-                    environment: RemoteCommands.terminalEnvironment(term: RemoteCommands.remoteTerm)
+                    environment: RemoteCommands.terminalEnvironment(
+                        term: RemoteCommands.remoteTerm, customSocket: customSocket)
                 )
             } else {
                 term.startProcess(
                     executable: "/usr/bin/ssh",
                     args: [alias, "-t", RemoteCommands.newSession(name: session)],
-                    environment: RemoteCommands.terminalEnvironment(term: RemoteCommands.remoteTerm)
+                    environment: RemoteCommands.terminalEnvironment(
+                        term: RemoteCommands.remoteTerm, customSocket: customSocket)
                 )
             }
         case let .local(session, path):
@@ -389,7 +393,7 @@ final class TerminalRegistry: NSObject {
                 term.startProcess(
                     executable: "/bin/zsh",
                     args: ["-i", "-l"],
-                    environment: RemoteCommands.terminalEnvironment(),
+                    environment: RemoteCommands.terminalEnvironment(customSocket: customSocket),
                     execName: "-zsh",
                     currentDirectory: path
                 )

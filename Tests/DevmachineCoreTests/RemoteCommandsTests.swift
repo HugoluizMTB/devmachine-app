@@ -49,10 +49,80 @@ final class RemoteCommandsTests: XCTestCase {
         )
     }
 
-    func testSshEnvironmentHasThe1PasswordSocket() {
-        let env = RemoteCommands.sshEnvironment()
-        XCTAssertEqual(env["SSH_AUTH_SOCK"], RemoteCommands.onePasswordSocketPath)
+    func testSshAuthSocketPrefersAnExplicitOverride() {
+        let socket = RemoteCommands.sshAuthSocket(
+            customSocket: "/tmp/custom.sock",
+            fileExists: { _ in true },
+            environment: ["SSH_AUTH_SOCK": "/tmp/inherited.sock"]
+        )
+        XCTAssertEqual(socket, "/tmp/custom.sock")
+    }
+
+    func testSshAuthSocketIgnoresABlankOverride() {
+        let socket = RemoteCommands.sshAuthSocket(
+            customSocket: "   ",
+            fileExists: { _ in true },
+            environment: [:]
+        )
+        XCTAssertEqual(socket, RemoteCommands.onePasswordSocketPath)
+    }
+
+    func testSshAuthSocketFallsBackTo1PasswordWhenItExists() {
+        let socket = RemoteCommands.sshAuthSocket(
+            customSocket: nil,
+            fileExists: { $0 == RemoteCommands.onePasswordSocketPath },
+            environment: ["SSH_AUTH_SOCK": "/tmp/inherited.sock"]
+        )
+        XCTAssertEqual(socket, RemoteCommands.onePasswordSocketPath)
+    }
+
+    func testSshAuthSocketFallsBackToTheInheritedSocketWithout1Password() {
+        let socket = RemoteCommands.sshAuthSocket(
+            customSocket: nil,
+            fileExists: { _ in false },
+            environment: ["SSH_AUTH_SOCK": "/tmp/inherited.sock"]
+        )
+        XCTAssertEqual(socket, "/tmp/inherited.sock")
+    }
+
+    func testSshAuthSocketIsNilWithNothingToOffer() {
+        let socket = RemoteCommands.sshAuthSocket(
+            customSocket: nil,
+            fileExists: { _ in false },
+            environment: [:]
+        )
+        XCTAssertNil(socket)
+    }
+
+    func testSshEnvironmentOmitsTheSocketWhenNoneIsAvailable() {
+        let env = RemoteCommands.sshEnvironment(
+            customSocket: nil,
+            fileExists: { _ in false },
+            environment: [:]
+        )
+        XCTAssertNil(env["SSH_AUTH_SOCK"])
         XCTAssertNotNil(env["HOME"])
+    }
+
+    func testSshEnvironmentSetsTheSocketWhenOneIsAvailable() {
+        let env = RemoteCommands.sshEnvironment(
+            customSocket: "/tmp/custom.sock",
+            fileExists: { _ in false },
+            environment: [:]
+        )
+        XCTAssertEqual(env["SSH_AUTH_SOCK"], "/tmp/custom.sock")
+    }
+
+    func testTerminalEnvironmentOmitsTheSocketWhenNoneIsAvailable() {
+        let env = RemoteCommands.terminalEnvironment(customSocket: nil, fileExists: { _ in false }, environment: [:])
+        XCTAssertFalse(env.contains { $0.hasPrefix("SSH_AUTH_SOCK=") })
+        XCTAssertTrue(env.contains { $0.hasPrefix("TERM=") })
+    }
+
+    func testTerminalEnvironmentSetsTheSocketWhenOneIsAvailable() {
+        let env = RemoteCommands.terminalEnvironment(
+            customSocket: "/tmp/custom.sock", fileExists: { _ in false }, environment: [:])
+        XCTAssertTrue(env.contains("SSH_AUTH_SOCK=/tmp/custom.sock"))
     }
 
     func testRenameEscapesBothNames() {

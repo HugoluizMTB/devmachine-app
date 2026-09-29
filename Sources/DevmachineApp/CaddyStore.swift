@@ -50,7 +50,7 @@ final class CaddyStore: ObservableObject {
         addError = nil
         let runner: AddSubdomainRunner
         do {
-            runner = AddSubdomainRunner(exposer: try DevmachineCLI.resolve())
+            runner = AddSubdomainRunner(exposer: try DevmachineCLI.resolve(customSocket: settings.sshAgentSocket))
         } catch {
             addError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return

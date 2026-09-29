@@ -32,6 +32,29 @@ public enum RemoteCommands {
         NSHomeDirectory() + "/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
     }
 
+    /// Picks the ssh agent socket: an explicit override from Settings wins,
+    /// then the 1Password agent if that socket file actually exists, then
+    /// whatever this process inherited, and otherwise none. Forcing the
+    /// 1Password path unconditionally broke everyone who does not run it — an
+    /// app launched from the Dock inherits launchd's empty agent, not the
+    /// shell's, which is why the fallback checks the process environment too.
+    public static func sshAuthSocket(
+        customSocket: String?,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        if let customSocket, !customSocket.trimmingCharacters(in: .whitespaces).isEmpty {
+            return customSocket
+        }
+        if fileExists(onePasswordSocketPath) {
+            return onePasswordSocketPath
+        }
+        if let inherited = environment["SSH_AUTH_SOCK"], !inherited.isEmpty {
+            return inherited
+        }
+        return nil
+    }
+
     public static let listSessions =
         "tmux list-sessions -F '#S|#{session_windows}' 2>/dev/null"
         + "; echo '\(paneSentinel)'"
@@ -168,11 +191,16 @@ public enum RemoteCommands {
         ]
     }
 
-    public static func sshEnvironment() -> [String: String] {
-        [
-            "SSH_AUTH_SOCK": onePasswordSocketPath,
-            "HOME": NSHomeDirectory()
-        ]
+    public static func sshEnvironment(
+        customSocket: String? = nil,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var result = ["HOME": NSHomeDirectory()]
+        if let socket = sshAuthSocket(customSocket: customSocket, fileExists: fileExists, environment: environment) {
+            result["SSH_AUTH_SOCK"] = socket
+        }
+        return result
     }
 
     // Remote sessions do not report as xterm: the host's tmux gives every
@@ -182,14 +210,22 @@ public enum RemoteCommands {
     // bracketed paste, focus, RGB and cursor style.
     public static let remoteTerm = "tmux-256color"
 
-    public static func terminalEnvironment(term: String = "xterm-256color") -> [String] {
-        [
+    public static func terminalEnvironment(
+        term: String = "xterm-256color",
+        customSocket: String? = nil,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String] {
+        var result = [
             "TERM=\(term)",
             "COLORTERM=truecolor",
             "HOME=\(NSHomeDirectory())",
-            "SSH_AUTH_SOCK=\(onePasswordSocketPath)",
             "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
             "LANG=en_US.UTF-8"
         ]
+        if let socket = sshAuthSocket(customSocket: customSocket, fileExists: fileExists, environment: environment) {
+            result.append("SSH_AUTH_SOCK=\(socket)")
+        }
+        return result
     }
 }

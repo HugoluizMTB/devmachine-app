@@ -198,6 +198,30 @@ final class AppSettingsTests: XCTestCase {
         settings.wallpaper = .gradient(name: "midnight")
         XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
     }
+
+    func testSshAgentSocketDefaultsToEmpty() {
+        XCTAssertEqual(goodSettings.sshAgentSocket, "")
+        XCTAssertEqual(AppSettings.empty.sshAgentSocket, "")
+    }
+
+    func testSshAgentSocketSurvivesARoundTrip() throws {
+        var settings = goodSettings
+        settings.sshAgentSocket = "/tmp/custom.sock"
+        let data = try JSONEncoder().encode(settings)
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: data), settings)
+    }
+
+    func testSettingsSavedBeforeTheSshAgentSocketStillDecodeToEmpty() throws {
+        let old = Data("""
+        {
+          "opsRepoPath": "/Users/alice/.config/devmachine",
+          "hostAlias": "devmachine",
+          "publicIP": "203.0.113.7",
+          "baseDomain": "example.com"
+        }
+        """.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: old).sshAgentSocket, "")
+    }
 }
 
 final class NewSessionProgramTests: XCTestCase {

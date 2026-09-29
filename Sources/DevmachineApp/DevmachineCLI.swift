@@ -56,15 +56,28 @@ enum DevmachineCLIError: LocalizedError, Equatable {
 struct DevmachineCLI: Sendable {
     let executable: String
     let runner: any CommandRunner
+    let customSocket: String?
+    let socketFileExists: @Sendable (String) -> Bool
+    let processEnvironment: [String: String]
 
-    init(executable: String, runner: any CommandRunner = ProcessRunner()) {
+    init(
+        executable: String,
+        runner: any CommandRunner = ProcessRunner(),
+        customSocket: String? = nil,
+        socketFileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
         self.executable = executable
         self.runner = runner
+        self.customSocket = customSocket
+        self.socketFileExists = socketFileExists
+        self.processEnvironment = processEnvironment
     }
 
     static func resolve(
         injected: String? = nil,
         runner: any CommandRunner = ProcessRunner(),
+        customSocket: String? = nil,
         exists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
     ) throws -> DevmachineCLI {
         let paths = [injected].compactMap { $0 } + [
@@ -74,7 +87,7 @@ struct DevmachineCLI: Sendable {
         guard let executable = paths.first(where: exists) else {
             throw DevmachineCLIError.executableNotFound(paths)
         }
-        return DevmachineCLI(executable: executable, runner: runner)
+        return DevmachineCLI(executable: executable, runner: runner, customSocket: customSocket)
     }
 
     func expose(workspace: String, port: Int, host: String) throws {
@@ -84,7 +97,7 @@ struct DevmachineCLI: Sendable {
                 "expose", "add", workspace, String(port),
                 "--host", host, "--publish",
             ],
-            environment: Self.environment()
+            environment: environment()
         )
         try requireSuccess(result)
     }
@@ -93,7 +106,7 @@ struct DevmachineCLI: Sendable {
         let result = try runner.runCapturing(
             executable: executable,
             args: ["--format", "json", "expose", "list"],
-            environment: Self.environment()
+            environment: environment()
         )
         try requireSuccess(result)
         return try JSONDecoder().decode([PublishedSite].self, from: Data(result.stdout.utf8))
@@ -103,7 +116,7 @@ struct DevmachineCLI: Sendable {
         let result = try runner.runCapturing(
             executable: executable,
             args: ["--format", "json", "workspaces", "list"],
-            environment: Self.environment()
+            environment: environment()
         )
         try requireSuccess(result)
         return try JSONDecoder().decode(CLIWorkspaceList.self, from: Data(result.stdout.utf8)).workspaces
@@ -113,7 +126,7 @@ struct DevmachineCLI: Sendable {
         let result = try runner.runCapturing(
             executable: executable,
             args: ["--format", "json", "machines", "list"],
-            environment: Self.environment()
+            environment: environment()
         )
         try requireSuccess(result)
         return try JSONDecoder().decode([CLIMachine].self, from: Data(result.stdout.utf8))
@@ -129,7 +142,7 @@ struct DevmachineCLI: Sendable {
                 "run", "--workspace", workspace, "--package", "devmachine-app",
                 "--", "context", "--session", session,
             ],
-            environment: Self.environment()
+            environment: environment()
         )
         try requireSuccess(result)
         return result.stdout
@@ -143,17 +156,21 @@ struct DevmachineCLI: Sendable {
                 "run", "--machine", machine, "--package", "devmachine-app",
                 "--", "context", "--project", project,
             ],
-            environment: Self.environment()
+            environment: environment()
         )
         try requireSuccess(result)
         return result.stdout
     }
 
     // An app opened from the Dock inherits launchd's empty SSH agent, not the
-    // shell's, and the CLI reaches every machine through whatever agent it gets.
-    private static func environment() -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
-        environment["SSH_AUTH_SOCK"] = RemoteCommands.onePasswordSocketPath
+    // shell's, so the CLI needs an explicit socket the same way a terminal
+    // does: an override from Settings, else the 1Password agent if it is
+    // actually there, else whatever this process inherited.
+    private func environment() -> [String: String] {
+        var environment = processEnvironment
+        let socket = RemoteCommands.sshAuthSocket(
+            customSocket: customSocket, fileExists: socketFileExists, environment: processEnvironment)
+        environment["SSH_AUTH_SOCK"] = socket
         return environment
     }
 
