@@ -128,6 +128,15 @@ final class TerminalRegistry: NSObject {
         return forward ? view.findNext(clean) : view.findPrevious(clean)
     }
 
+    /// How many times `term` appears in the pane's own scrollback, without
+    /// selecting or scrolling — onboarding polls this for its
+    /// `OnboardingMarker` exit-status echoes instead of using `find`, which
+    /// would move the person's view every time it checks.
+    func matchCount(_ term: String, in kind: TerminalKind) -> Int {
+        guard let view = terminals[kind] else { return 0 }
+        return view.searchMatchSummary(term).total
+    }
+
     /// Drops the highlight and gives the keyboard back to the session.
     func endFind(in kind: TerminalKind) {
         terminals[kind]?.clearSearch()

@@ -13,15 +13,16 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // The CLI gate owns the whole window, the same way Setup does:
-            // nothing else starts (no sweep, no stats, no context) until the
-            // executable is found.
+            // Onboarding owns the whole window, the same way Setup does:
+            // nothing else starts (no sweep, no stats, no context) until
+            // Homebrew, the CLI, a configured machine and the devmachine-app
+            // package are all in place.
             if model.cliMissing {
-                CLIGatePage(onCheckAgain: {
+                OnboardingPage(onFinished: {
                     model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
                 })
             } else if settingsStore.isConfigured, case let .missing(machines) = model.packageGate {
-                PackageGatePage(machines: machines, onCheckAgain: { model.checkPackageGate() })
+                OnboardingPage(initialMachine: machines.first, onFinished: { model.checkPackageGate() })
             } else if model.activePage == .setup {
                 SetupPage()
             } else {
