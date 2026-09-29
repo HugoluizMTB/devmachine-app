@@ -52,16 +52,14 @@ final class AppModel: ObservableObject {
     /// Sessions of the local workspace: the Operator shell plus whatever
     /// folders you added. The list is remembered, the shells are not — without
     /// a multiplexer a local shell ends when the app does.
-    @Published private(set) var addedLocalSessions: [LocalSession] =
-        AppModel.readLocalSessions() {
-        didSet { AppModel.writeLocalSessions(addedLocalSessions) }
+    @Published private(set) var addedLocalSessions: [LocalSession] = [] {
+        didSet { AppModel.writeLocalSessions(addedLocalSessions, to: defaults) }
     }
 
     /// Renames the sidebar shows, by handle. Kept apart from the stored list so
     /// the Operator session, which is not in that list, can be renamed too.
-    @Published private(set) var localSessionNames: [String: String] =
-        UserDefaults.standard.dictionary(forKey: AppModel.localNamesKey) as? [String: String] ?? [:] {
-        didSet { UserDefaults.standard.set(localSessionNames, forKey: AppModel.localNamesKey) }
+    @Published private(set) var localSessionNames: [String: String] = [:] {
+        didSet { defaults.set(localSessionNames, forKey: AppModel.localNamesKey) }
     }
 
     /// The pane whose find bar is open, if any. ⌘F sets it for the terminal
@@ -297,16 +295,16 @@ final class AppModel: ObservableObject {
     private static let localSessionsKey = "localSessions"
     private static let localNamesKey = "localSessionNames"
 
-    private static func readLocalSessions() -> [LocalSession] {
-        guard let data = UserDefaults.standard.data(forKey: localSessionsKey),
+    private static func readLocalSessions(from defaults: UserDefaults) -> [LocalSession] {
+        guard let data = defaults.data(forKey: localSessionsKey),
               let list = try? JSONDecoder().decode([LocalSession].self, from: data)
         else { return [] }
         return list
     }
 
-    private static func writeLocalSessions(_ list: [LocalSession]) {
+    private static func writeLocalSessions(_ list: [LocalSession], to defaults: UserDefaults) {
         guard let data = try? JSONEncoder().encode(list) else { return }
-        UserDefaults.standard.set(data, forKey: localSessionsKey)
+        defaults.set(data, forKey: localSessionsKey)
     }
     @Published var sessionsByAlias: [String: [TmuxSession]] = [:]
     @Published var offlineAliases: Set<String> = []
@@ -443,6 +441,21 @@ final class AppModel: ObservableObject {
     private var sweepTimer: Timer? = nil
     private var localScanTimer: Timer? = nil
     private var pollPausedUntil = Date.distantPast
+    private let defaults: UserDefaults
+
+    /// `swift test` runs unsandboxed on the developer's own Mac, so
+    /// `UserDefaults.standard` is a real, persistent domain — a session added
+    /// by one test run stays on disk and leaks into the next. Under XCTest
+    /// this hands out a fresh, never-reused suite per `AppModel` instead, so
+    /// no test ever sees another run's (or the real app's) local sessions.
+    private static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
+    private static func defaultDefaults() -> UserDefaults {
+        guard isRunningTests else { return .standard }
+        return UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)") ?? .standard
+    }
 
     init(
         store: SessionStore = SessionStore(runner: ProcessRunner()),
@@ -456,9 +469,13 @@ final class AppModel: ObservableObject {
         },
         cliAvailabilityCheck: @escaping @Sendable () -> Bool = {
             (try? DevmachineCLI.resolve()) != nil
-        }
+        },
+        defaults: UserDefaults = AppModel.defaultDefaults()
     ) {
         self.store = store
+        self.defaults = defaults
+        self.addedLocalSessions = AppModel.readLocalSessions(from: defaults)
+        self.localSessionNames = defaults.dictionary(forKey: AppModel.localNamesKey) as? [String: String] ?? [:]
         let services = services ?? DevmachineServices(sessionSource: CommandSessionSource(
             store: store, localRunner: localRunner, zmxPath: zmxPath,
             facade: SessionHarnessFacade(registry: harnessSettingsFacade.registry)))
