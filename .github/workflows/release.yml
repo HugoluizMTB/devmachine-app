@@ -18,7 +18,7 @@ env:
 jobs:
   release:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       # `secrets` cannot appear in a step's `if:`, so its presence is read here.
       HAS_TAP_TOKEN: ${{ secrets.TAP_TOKEN != '' }}
