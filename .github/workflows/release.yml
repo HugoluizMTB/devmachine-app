@@ -26,6 +26,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # SwiftTerm needs Swift 6.2; the runner's default Xcode ships an older one.
+      - name: Select the newest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show the toolchain
+        run: swift --version
+
       - name: Derive version from tag
         id: version
         run: |
