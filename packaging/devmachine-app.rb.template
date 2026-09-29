@@ -7,7 +7,7 @@ cask "devmachine-app" do
   desc "Native macOS app for operating a devmachine VPS"
   homepage "https://mydevmachine.sh/app/"
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Devmachine.app"
 
