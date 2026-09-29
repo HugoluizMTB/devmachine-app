@@ -5,41 +5,43 @@ protocol ContextSource: Sendable {
     func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState?
 }
 
-/// One `machines list` answers "which machine is this Mac" for the rest of
-/// the app's run: every local context request after the first reuses it. A
-/// failed lookup is thrown and not kept, so the panel shows why and Retry
-/// asks again.
-final class SelfMachineCache: @unchecked Sendable {
+/// Resolves a value once and reuses it for the rest of the app's run. A
+/// throwing resolution is not cached, so the next call tries again — used by
+/// `SelfMachineCache` and `AdminMachineCache`, which differ only in which
+/// machine they ask `machines list` for.
+private final class ResolvedOnce<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var resolved = false
-    private var name: String?
+    private var value: Value?
 
-    func name(cli: () throws -> DevmachineCLI) throws -> String? {
+    func get(_ resolve: () throws -> Value) throws -> Value {
         lock.lock()
         defer { lock.unlock() }
         if !resolved {
-            name = try cli().listMachines().first { $0.isSelf }?.name
+            value = try resolve()
             resolved = true
         }
-        return name
+        return value!
     }
 }
 
-/// The same idea as `SelfMachineCache`, for the other direction: which
-/// machine an admin-level command (stats, Caddy's own logs) runs on. A
-/// failed lookup is thrown and not kept, so the panel shows why and Retry
-/// asks again.
+/// One `machines list` answers "which machine is this Mac" for the rest of
+/// the app's run: every local context request after the first reuses it.
+final class SelfMachineCache: @unchecked Sendable {
+    private let cache = ResolvedOnce<String?>()
+
+    func name(cli: () throws -> DevmachineCLI) throws -> String? {
+        try cache.get { try cli().listMachines().first { $0.isSelf }?.name }
+    }
+}
+
+/// The same idea, for the other direction: which machine an admin-level
+/// command (stats, Caddy's own logs) runs on.
 final class AdminMachineCache: @unchecked Sendable {
-    private let lock = NSLock()
-    private var name: String?
+    private let cache = ResolvedOnce<String>()
 
     func name(cli: () throws -> DevmachineCLI) throws -> String {
-        lock.lock()
-        defer { lock.unlock() }
-        if let name { return name }
-        let resolved = try cli().resolveAdminMachine()
-        name = resolved
-        return resolved
+        try cache.get { try cli().resolveAdminMachine() }
     }
 }
 

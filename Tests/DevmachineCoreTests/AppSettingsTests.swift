@@ -22,6 +22,14 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(goodSettings.workspaceSuffix, "-devmachine")
     }
 
+    func testWorkspaceSuffixFallsBackToDevmachineWhenAliasIsEmpty() {
+        // `devmachine aliases --write` always names a workspace's Host entry
+        // `<workspace>-devmachine`; a bare `-` would match no real alias.
+        var settings = goodSettings
+        settings.hostAlias = ""
+        XCTAssertEqual(settings.workspaceSuffix, "-devmachine")
+    }
+
     func testValidateAcceptsCompleteSettings() {
         XCTAssertTrue(AppSettings.validate(goodSettings, fileExists: fullRepo()).isEmpty)
     }

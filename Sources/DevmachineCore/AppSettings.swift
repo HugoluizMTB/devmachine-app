@@ -248,7 +248,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let empty = AppSettings(opsRepoPath: "", hostAlias: "", publicIP: "", baseDomain: "")
 
-    public var workspaceSuffix: String { "-" + hostAlias }
+    /// `devmachine aliases --write` always names a workspace's Host entry
+    /// `<workspace>-devmachine` — the suffix is fixed by the CLI, not by
+    /// this field. An empty alias falls back to that fixed name instead of
+    /// producing a bare `-`, which would match no real ssh alias and break
+    /// every workspace session (open, list, kill).
+    public var workspaceSuffix: String { "-" + (hostAlias.isEmpty ? "devmachine" : hostAlias) }
 
     public static let aliasPattern = "^[A-Za-z0-9._-]+$"
     public static let ipv4Pattern =

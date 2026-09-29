@@ -23,8 +23,9 @@ struct CaddyService: Sendable {
     }
 
     func logs(lines: Int = 200) throws -> String {
-        let machine = try adminMachine.name(cli: resolvedCLI)
-        return try resolvedCLI().run(machine: machine, command: "journalctl -u caddy -n \(lines) --no-pager")
+        let cli = try resolvedCLI()
+        let machine = try adminMachine.name { cli }
+        return try cli.run(machine: machine, command: "journalctl -u caddy -n \(lines) --no-pager")
     }
 
     private func resolvedCLI() throws -> DevmachineCLI {

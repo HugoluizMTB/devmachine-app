@@ -279,9 +279,9 @@ struct SetupPage: View {
 
             field(
                 title: "Host ssh alias",
-                hint: "Optional. Only used to match workspace aliases in ~/.ssh/config, "
-                    + "the ones ending in -\(hostAlias.isEmpty ? "alias" : hostAlias) "
-                    + "(`devmachine aliases --write` names them after the machine). "
+                hint: "Optional — leave empty for the default, \"devmachine\", which is what "
+                    + "`devmachine aliases --write` names every workspace's ssh alias after "
+                    + "(the aliases ending in -\(hostAlias.isEmpty ? "devmachine" : hostAlias)). "
                     + "Admin commands (stats, Caddy) run through the devmachine CLI and do not need it.",
                 field: .hostAlias
             ) {
@@ -351,7 +351,7 @@ struct SetupPage: View {
     private var workspacesBlock: some View {
         if model.workspaces.isEmpty {
             note("No workspace yet. They are the ssh aliases ending in "
-                + "-\(hostAlias.isEmpty ? "alias" : hostAlias); the app reads them from "
+                + "-\(hostAlias.isEmpty ? "devmachine" : hostAlias); the app reads them from "
                 + "~/.ssh/config once the host above is set.")
         } else {
             VStack(alignment: .leading, spacing: 10) {
