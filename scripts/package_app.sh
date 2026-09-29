@@ -59,10 +59,5 @@ fi
 "${SIGN[@]}" "$APP"
 
 codesign --verify --deep --strict --verbose=2 "$APP"
-if [ "$IDENTITY" != "-" ]; then
-  # spctl rejects an ad-hoc signature by design, so this check only makes
-  # sense once a real Developer ID identity signed the bundle.
-  spctl -a -vvv -t exec "$APP"
-fi
 
 echo "Built: $APP"
