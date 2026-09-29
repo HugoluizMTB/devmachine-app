@@ -9,6 +9,7 @@ public struct HarnessID: RawRepresentable, Codable, Hashable, Sendable {
 
     public static let claude = HarnessID(rawValue: "claude")
     public static let codex = HarnessID(rawValue: "codex")
+    public static let pi = HarnessID(rawValue: "pi")
 }
 
 public enum SessionLaunchChoice: Codable, Equatable, Sendable {

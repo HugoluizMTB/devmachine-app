@@ -5,7 +5,10 @@ struct ContextFacade: Sendable {
     let source: any ContextSource
 
     func supports(_ harnesses: Set<HarnessID>) -> Bool {
-        // The current inference engine supplies Claude context only.
+        // This facade serves both the local native engine and the remote
+        // package call, which still answers for Claude only — so the gate
+        // stays Claude-only even though the native engine itself also reads
+        // Codex and Pi transcripts.
         harnesses.contains(.claude)
     }
 

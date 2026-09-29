@@ -52,25 +52,36 @@ final class AdminMachineCache: @unchecked Sendable {
 struct CLIContextSource: ContextSource {
     private let cli: @Sendable () throws -> DevmachineCLI
     private let selfMachine: SelfMachineCache
+    private let nativeEngine: NativeContextEngine
 
     init(
         cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
-        selfMachine: SelfMachineCache = SelfMachineCache()
+        selfMachine: SelfMachineCache = SelfMachineCache(),
+        nativeEngine: NativeContextEngine = NativeContextEngine()
     ) {
         self.cli = cli
         self.selfMachine = selfMachine
+        self.nativeEngine = nativeEngine
     }
 
     func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState? {
-        let output: String
         switch target {
         case let .remote(alias, session):
-            output = try cli().context(workspace: workspaceName(for: alias, settings: settings), session: session)
+            // Remote workspaces still go through the CLI's own devmachine-infer
+            // package call over ssh — only the local machine runs in-process.
+            let output = try cli().context(
+                workspace: workspaceName(for: alias, settings: settings), session: session
+            )
+            return try JSONDecoder().decode(ContextState.self, from: Data(output.utf8))
         case let .local(_, path):
-            guard let machine = try selfMachine.name(cli: cli) else { return nil }
-            output = try cli().context(machine: machine, project: (path as NSString).expandingTildeInPath)
+            // Still gated on this Mac being a registered `self:true` machine,
+            // same as the package path was — a local session with no such
+            // machine shows no context panel either way.
+            guard try selfMachine.name(cli: cli) != nil else { return nil }
+            let result = nativeEngine.buildContext(cwd: (path as NSString).expandingTildeInPath)
+            let data = try JSONEncoder().encode(result)
+            return try JSONDecoder().decode(ContextState.self, from: data)
         }
-        return try JSONDecoder().decode(ContextState.self, from: Data(output.utf8))
     }
 
     /// The sidebar's alias is the workspace's detected ssh `Host` name

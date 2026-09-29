@@ -138,25 +138,35 @@ final class DevmachineServicesTests: XCTestCase {
         ])
     }
 
-    func testCLIContextSourceRunsALocalProjectOnTheCachedSelfMachine() throws {
+    /// The local machine no longer shells out to the package: it reads the
+    /// transcript in-process through `NativeContextEngine`, still gated on
+    /// this Mac being a registered `self:true` machine (one `machines list`,
+    /// cached — never a `run --machine ... context` call).
+    func testCLIContextSourceRunsALocalProjectOnTheNativeEngine() throws {
         let machinesBody = #"[{"name":"other","self":false},{"name":"studio","self":true}]"#
-        let contextBody = #"{"cwd":"/Users/alice/dev/acme","harness":"claude","updatedAt":"now","prs":[],"links":[]}"#
         let runner = CLIStagedRunner(machines: (machinesBody, "", 0))
         let cli: @Sendable () throws -> DevmachineCLI = { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }
-        let source = CLIContextSource(cli: cli)
-        runner.nextContextResult = (contextBody, "", 0)
 
-        let state = try source.context(
-            for: .local(session: "shell", path: "~/dev/acme"), settings: settings)
+        let project = URL(fileURLWithPath: "/Users/alice/dev/acme")
+        let projectsDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let transcriptDir = projectsDir.appendingPathComponent(ClaudeHarness.slug(for: project))
+        try FileManager.default.createDirectory(at: transcriptDir, withIntermediateDirectories: true)
+        try #"{"timestamp":"2026-01-01T00:00:00Z","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}"#
+            .write(to: transcriptDir.appendingPathComponent("s1.jsonl"), atomically: true, encoding: .utf8)
+        let engine = NativeContextEngine(
+            runner: CLIServiceRunner(result: ("", "", 0)),
+            resolver: ContextGitHubResolver(runner: CLIServiceRunner(result: ("", "", 0))),
+            githubHosts: ["github.com"],
+            roots: ContextRoots(claudeProjectsDir: projectsDir)
+        )
+        let source = CLIContextSource(cli: cli, nativeEngine: engine)
+
+        let state = try source.context(for: .local(session: "shell", path: project.path), settings: settings)
 
         XCTAssertEqual(state?.harness, .claude)
-        XCTAssertEqual(runner.calls.last?.1, [
-            "run", "--machine", "studio", "--package", "devmachine-app",
-            "--", "context", "--project", "\(NSHomeDirectory())/dev/acme",
-        ])
+        XCTAssertTrue(runner.calls.allSatisfy { $0.1.contains("machines") })
 
-        runner.nextContextResult = (contextBody, "", 0)
-        _ = try source.context(for: .local(session: "shell", path: "~/dev/acme"), settings: settings)
+        _ = try source.context(for: .local(session: "shell", path: project.path), settings: settings)
         XCTAssertEqual(runner.calls.filter { $0.1.first == "--format" }.count, 1)
     }
 
