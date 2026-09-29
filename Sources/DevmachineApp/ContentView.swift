@@ -13,9 +13,14 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Setup owns the whole window: no sidebar, no context, just the
-            // photo and one card, so first run reads as a welcome, not a page.
-            if model.activePage == .setup {
+            // The CLI gate owns the whole window, the same way Setup does:
+            // nothing else starts (no sweep, no stats, no context) until the
+            // executable is found.
+            if model.cliMissing {
+                CLIGatePage(onCheckAgain: {
+                    model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
+                })
+            } else if model.activePage == .setup {
                 SetupPage()
             } else {
                 mainRow
@@ -59,11 +64,7 @@ struct ContentView: View {
         }
         .onAppear {
             model.settings = settingsStore.settings
-            if settingsStore.isConfigured {
-                model.loadWorkspaces()
-            } else {
-                model.activePage = .setup
-            }
+            model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
         }
         .onReceive(settingsStore.$settings) { model.settings = $0 }
         .sheet(isPresented: $model.showShortcuts) {

@@ -348,6 +348,11 @@ final class AppModel: ObservableObject {
             TerminalRegistry.shared.requestRepaint(selection.terminalKind)
         }
     }
+    /// True while the devmachine CLI executable is not found on disk. The gate
+    /// page owns the whole window while this is true, the same way `.setup`
+    /// does — no background service (session sweep, stats, context) is started
+    /// until this clears.
+    @Published private(set) var cliMissing = false
     @Published var settings: AppSettings? = nil
     @Published var stackCellSizes: [String: StackCellSize] = AppModel.loadStackCellSizes() {
         didSet { AppModel.saveStackCellSizes(stackCellSizes) }
@@ -418,6 +423,7 @@ final class AppModel: ObservableObject {
     private let sessionCommandSender: any SessionCommandSending
     private let zmxPath: String?
     private let sessionSuffix: @Sendable () -> String
+    private let cliAvailabilityCheck: @Sendable () -> Bool
     private var navigationHistory = NavigationHistory(initial: .home)
     private var isRestoringNavigation = false
     private var selectionPollTimer: Timer? = nil
@@ -437,6 +443,9 @@ final class AppModel: ObservableObject {
         zmxPath: String? = LocalTools.zmxPath(),
         sessionSuffix: @escaping @Sendable () -> String = {
             String(UUID().uuidString.prefix(2)).lowercased()
+        },
+        cliAvailabilityCheck: @escaping @Sendable () -> Bool = {
+            (try? DevmachineCLI.resolve()) != nil
         }
     ) {
         self.store = store
@@ -451,6 +460,7 @@ final class AppModel: ObservableObject {
         self.sessionCommandSender = sessionCommandSender
         self.zmxPath = zmxPath
         self.sessionSuffix = sessionSuffix
+        self.cliAvailabilityCheck = cliAvailabilityCheck
         AppModel.shared = self
         observeWake()
         TerminalRegistry.shared.onSessionEnded = { [weak self] kind in
@@ -1105,6 +1115,20 @@ final class AppModel: ObservableObject {
         // a few times until the new session shows up in the sidebar.
         for delay in [1.5, 3.0, 5.0] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self.refresh(alias: alias) }
+        }
+    }
+
+    /// Runs at launch and from the gate page's "Check again" button. While the
+    /// CLI is missing this only updates `cliMissing`, so the gate stays up and
+    /// nothing below it starts. Once found, it falls through exactly where a
+    /// normal launch would: Setup if unconfigured, else load the workspaces.
+    func checkCLIAndProceed(isConfigured: Bool) {
+        cliMissing = !cliAvailabilityCheck()
+        guard !cliMissing else { return }
+        if isConfigured {
+            loadWorkspaces()
+        } else {
+            activePage = .setup
         }
     }
 
