@@ -1,156 +1,201 @@
 # Releasing Devmachine.app
 
-Devmachine.app ships as **Developer ID** distribution outside the Mac App
-Store — never through the App Store. A tagged push builds a signed, notarized
-`.dmg` and publishes it as a GitHub release in the public releases repo
-(`RELEASES_REPO`, default `mydevmachine/app-releases`), never in this private
-repo.
+This page is the full release process. Follow it and you need no other help.
 
-Notarization is Apple's automatic malware scan. A downloaded Developer ID app
-needs it to launch without Gatekeeper blocking it.
+## Distribution model
+
+Devmachine.app ships outside the Mac App Store, signed with a Developer ID
+certificate. It never goes through the App Store.
+
+Apple notarizes every build. Notarization is Apple's automatic scan for
+malware. Without it, Gatekeeper blocks the app when a user opens a downloaded
+copy.
+
+A tagged push builds a signed, notarized `.dmg` and publishes it as a GitHub
+release in the public releases repo (`RELEASES_REPO`, default
+`mydevmachine/app-releases`) — never in this private repo.
 
 ## One-time setup
 
-1. **Developer ID Application certificate.** Xcode → Settings → Accounts →
-   select the team → Manage Certificates → + → Developer ID Application.
-   Export it from Keychain Access as a `.p12` file, with a password. The
-   account behind this certificate is referred to here only as "the owner's
-   Apple Developer account" — nothing about it (email, Team ID) belongs in
-   this repo.
+Do these once, as the owner of the app's Apple Developer account. Skip this
+section on every release after the first.
 
-2. **App Store Connect API key.** At
-   <https://appstoreconnect.apple.com/access/integrations/api>, create a key
-   with role **Developer**. The `.p8` file only downloads once — save a copy
-   in a password manager right away, along with its Key ID and Issuer ID.
+1. **Developer ID Application certificate.** In Xcode, go to Settings →
+   Accounts → select the team → Manage Certificates → click **+** →
+   **Developer ID Application**. Then open Keychain Access, find the new
+   certificate, and export it as a `.p12` file. Set a password on export —
+   you need it again later.
 
-3. **Public releases repo.** Built DMGs go to `mydevmachine/app-releases`
-   (the `RELEASES_REPO` default). Create it first if it does not exist yet.
+2. **App Store Connect API key.** Go to
+   <https://appstoreconnect.apple.com/access/integrations/api> and create a
+   key with role **Developer**. Apple lets you download the `.p8` file only
+   once. Save a copy in a password manager right away. Note the key's Key ID
+   and Issuer ID too — you need all three.
 
-4. **Fine-grained GitHub token for that repo.** At
-   <https://github.com/settings/personal-access-tokens/new>, create a token
-   with resource owner set to that org, repository access limited to just the
-   releases repo, and permission **Contents: read and write**. This becomes
-   `RELEASES_TOKEN`.
+3. **Public releases repo.** The workflow publishes to `RELEASES_REPO`, which
+   defaults to `mydevmachine/app-releases`. Make sure that repo exists (or
+   set the `RELEASES_REPO` repo/org variable to point at a different one).
 
-## Setting secrets without the value passing through chat or shell history
+4. **A fine-grained GitHub token for the releases repo.** Go to
+   <https://github.com/settings/personal-access-tokens/new>. Scope the token
+   to only the releases repo (`mydevmachine/app-releases`, or whatever
+   `RELEASES_REPO` points at). Grant it repository permission **Contents:
+   Read and write**. Nothing more.
 
-Set these in this repo's Settings → Secrets and variables → Actions.
+5. **(Optional) a token for the Homebrew tap.** Needed only if you want the
+   workflow to open the automated cask-bump PR. Scope it to
+   `mydevmachine/homebrew-tap` with **Contents: Read and write**.
 
-**File-based secrets** can be piped in from any terminal, so the value never
-sits in shell history or a chat window:
+## Secrets
 
-```
-gh secret set MACOS_CERTIFICATE_P12_BASE64 -R <app repo> < <(base64 -i devmachine.p12)
-gh secret set APPLE_API_KEY_P8 -R <app repo> < AuthKey_XXXX.p8
-gh secret set APPLE_API_KEY_ID -R <app repo> --body <key id>
-```
+Set these on this repo (Settings → Secrets and variables → Actions), or with
+the `gh` CLI. Run every command below from a real machine, never by pasting
+the secret value into chat.
 
-**Prompted secrets** — `MACOS_CERTIFICATE_PASSWORD`, `APPLE_API_ISSUER_ID`,
-`RELEASES_TOKEN` — must be set in a real interactive terminal with a TTY:
+### File-based secrets
 
-```
-gh secret set MACOS_CERTIFICATE_PASSWORD -R <app repo>
-gh secret set APPLE_API_ISSUER_ID -R <app repo>
-gh secret set RELEASES_TOKEN -R <app repo>
-```
-
-Without a TTY, `gh secret set` reads empty stdin and silently stores an
-**empty** secret — no error, no warning.
-
-Optional: `TAP_TOKEN`, a token with `contents: write` on
-`mydevmachine/homebrew-tap`. It only enables the automated cask-bump PR; the
-release itself works without it.
-
-One repo/org **variable**, only if it should differ from the default:
-
-| Variable | Value |
-| --- | --- |
-| `RELEASES_REPO` | `mydevmachine/app-releases` |
-
-Nothing identifying — team ID, certificate name, company name — lives in the
-workflow file. It reads the Developer ID identity back from the imported
-certificate at run time (`security find-identity`), never from a literal.
-
-**Afterwards, delete the `.p12` and `.p8` files from Downloads.**
-
-## Releasing
-
-Bumping `CFBundleShortVersionString` in `Resources/Info.plist` is optional —
-the workflow always sets the app version from the git tag.
+Pipe the file straight into `gh secret set`. This never types the secret and
+never puts it in shell history:
 
 ```
-git tag -s vX.Y.Z -m vX.Y.Z
-git push origin vX.Y.Z
+gh secret set MACOS_CERTIFICATE_P12_BASE64 < <(base64 -i devmachine.p12)
+gh secret set APPLE_API_KEY_P8 < AuthKey_XXXX.p8
 ```
 
-The `Release` workflow then:
+Run these from inside a clone of this repo, so `gh` picks the repo up on its
+own.
 
-1. Picks the newest available stable Xcode on the runner (needed because
-   SwiftTerm requires Swift 6.2, newer than the runner's default Xcode).
-2. Builds and runs tests (`swift build`, `swift test`).
-3. Imports the certificate into a temporary keychain and finds the Developer
-   ID identity itself — no identity name is ever written into the workflow.
-4. Signs the embedded `zmx` binary, then the app bundle, with the hardened
-   runtime (inside out: the nested binary is signed first, since signing the
-   bundle seals what is already inside it).
-5. Notarizes and staples the `.app`, so it still opens offline once someone
-   copies it out of the disk image.
-6. Builds the `.dmg`, signs it, notarizes and staples it too.
-7. Only then runs Gatekeeper's `spctl` check. Gatekeeper rejects any
-   Developer ID build before it is notarized ("Unnotarized Developer ID"
-   error) — running `spctl` last, after notarizing, is correct behavior, not
-   a bug to fix.
-8. Publishes the `.dmg` as a GitHub release on `RELEASES_REPO`.
-9. If `TAP_TOKEN` is set: renders `packaging/devmachine-app.rb.template` into
-   a cask with the new version and sha256, pushes a branch to
-   `mydevmachine/homebrew-tap`, and opens a PR there with the bumped cask.
+### Prompted secrets
 
-## Retrying a failed release
+These have no file to pipe in, so `gh secret set NAME` prompts for the value:
 
-Fix the issue, push it to `main`, then move the tag:
+- `MACOS_CERTIFICATE_PASSWORD` — the password you set when you exported the
+  `.p12`.
+- `APPLE_API_KEY_ID` — the Key ID from the App Store Connect key. You can also
+  pass it directly: `gh secret set APPLE_API_KEY_ID --body <key id>`.
+- `APPLE_API_ISSUER_ID` — the Issuer ID from the same key.
+- `RELEASES_TOKEN` — the fine-grained PAT from step 4 above.
+- `TAP_TOKEN` (optional) — the token from step 5, only if you want the
+  Homebrew cask-bump PR.
+
+**Warning:** `gh secret set NAME` reads the value from standard input. Run it
+in a real interactive terminal, one with a TTY. If you run it from a script or
+an agent without a TTY, it reads empty input and silently stores an EMPTY
+secret. There is no error and no warning — check the secret's "Updated" date
+in the GitHub UI if you are ever unsure.
+
+### Clean up
+
+Once every secret is set, delete the `.p12` and `.p8` files from wherever you
+downloaded them (usually `~/Downloads`). They have no reason to stay on disk.
+
+## Doing a release
+
+1. **Version number.** You do not need to bump anything in source.
+   `Resources/Info.plist` can keep a stale `CFBundleShortVersionString` — the
+   release workflow always overrides it from the git tag
+   (`DEVMACHINE_APP_VERSION`, passed to `scripts/make_dmg.sh`).
+
+2. **Tag and push:**
+
+   ```
+   git tag -s v1.2.3 -m v1.2.3
+   git push origin v1.2.3
+   ```
+
+3. **Watch the `Release` workflow.** It runs on `macos-15` and does, in
+   order:
+
+   - Selects the newest stable Xcode. The default Xcode on the runner ships
+     an older Swift than SwiftTerm (a dependency) needs; `latest-stable`
+     picks one with Swift 6.2.
+   - Builds and runs the test suite (`swift build`, `swift test`).
+   - Imports the Developer ID certificate into a temporary keychain, then
+     reads the signing identity back out of it with `security find-identity`
+     (never from a literal in the workflow).
+   - Runs `scripts/make_dmg.sh`, which:
+     - Builds the app and code-signs it (`scripts/package_app.sh`): first the
+       embedded `zmx` binary, then `DevmachineApp.app` itself, with hardened
+       runtime (`--options runtime --timestamp`) and its entitlements file.
+     - Notarizes and staples the `.app` (`scripts/notarize.sh`).
+     - Builds the `.dmg` with `hdiutil`.
+     - Signs the `.dmg` (hardened runtime, no entitlements — a disk image
+       does not need them).
+     - Notarizes and staples the `.dmg`.
+     - Runs Gatekeeper's check last: `spctl -a -vvv -t exec` on the `.app` and
+       `spctl -a -vvv -t open` on the `.dmg`. This has to come last because
+       Gatekeeper refuses any Developer ID build that is not notarized yet —
+       checking earlier would always fail.
+   - Publishes the `.dmg` as a GitHub release on `RELEASES_REPO`, using the
+     `RELEASES_TOKEN` secret.
+   - If `TAP_TOKEN` is set, renders `packaging/devmachine-app.rb.template`
+     into a Homebrew cask and opens a PR against
+     `mydevmachine/homebrew-tap` with the bump.
+
+### Retrying a failed release
+
+Fix the problem on `main`, then move the tag to the new commit:
 
 ```
-git push origin :refs/tags/vX.Y.Z
-git tag -d vX.Y.Z
-git tag -s vX.Y.Z -m vX.Y.Z
-git push origin vX.Y.Z
+git push origin :refs/tags/v1.2.3
+git tag -d v1.2.3
+git tag -s v1.2.3 -m v1.2.3
+git push origin v1.2.3
 ```
 
-## Troubleshooting
+### A run that fails in 0 seconds
 
-A workflow YAML syntax or config error can show up as a **0-second failed
-run**, even on an ordinary push to `main`. One known cause: `secrets` cannot
-be referenced directly inside a step's `if:` condition. Read the secret into
-a job-level `env:` var first (as `release.yml` does with `HAS_TAP_TOKEN`),
-then reference that env var in `if:`.
+If the workflow run fails instantly, even on an ordinary push to `main`
+(which does not trigger a release, but still parses the workflow file), the
+cause is usually a YAML syntax or config error, not your code. One gotcha
+this workflow already works around: GitHub Actions will not let a step's
+`if:` read the `secrets` context directly. That is why `HAS_TAP_TOKEN` is
+computed once, in the job's `env:`, and the "Render Homebrew cask" step
+checks `env.HAS_TAP_TOKEN` instead of `secrets.TAP_TOKEN` directly. Keep that
+pattern if you add a similar conditional step.
 
-**Cost note:** macOS GitHub-hosted runners bill at 10x the normal per-minute
-rate on a private repo. Worth knowing before iterating on the workflow — this
-is also why the release workflow only runs on a pushed tag, not on every push.
+### Cost
+
+macOS GitHub-hosted runners bill at roughly 10x the per-minute rate of a
+Linux runner, on a private repo. Keep that in mind if you iterate on this
+workflow with real tag pushes — prefer the local dry run below first.
 
 ## Local dry run
 
-Nothing above is needed to check the packaging mechanics:
+Check the packaging mechanics without touching Apple's servers:
 
 ```
 swift build && swift test
 ./scripts/package_app.sh                 # ad hoc signature
 codesign --verify --deep --strict build/DevmachineApp.app
-SKIP_NOTARIZE=1 scripts/make_dmg.sh       # builds & signs the dmg, skips Apple
+SKIP_NOTARIZE=1 ./scripts/make_dmg.sh     # builds & signs the dmg, skips notarizing
 ```
 
-Signing with a real Developer ID identity and notarizing both need the
-secrets above; there is no way to exercise `spctl -a -vvv -t exec` or
-`xcrun notarytool submit` without them.
+Signing with a real Developer ID identity, and notarizing, both need the
+secrets from the "Secrets" section above. There is no way to exercise
+`spctl -a -vvv -t exec` or `xcrun notarytool submit` for real without them.
+
+## Homebrew cask
+
+The cask template lives at `packaging/devmachine-app.rb.template`. The
+release workflow fills in `{{VERSION}}`, `{{SHA256}}`, and
+`{{RELEASES_REPO}}`, then opens a PR against `mydevmachine/homebrew-tap` —
+but only when the `TAP_TOKEN` secret is set. Without it, this step is
+skipped and the cask does not update automatically; update
+`mydevmachine/homebrew-tap` by hand in that case.
 
 ## Build and install locally
+
+To try a change without going through a release:
 
 ```
 swift build
 swift test
-scripts/install.sh
+./scripts/install.sh
 ```
 
-`scripts/install.sh` builds a release bundle, quits the running app, and
-relaunches the installed copy. Terminal sessions live on the remote host
-(tmux over ssh), not in the app process, so they survive the relaunch.
+`scripts/install.sh` builds the app, quits any running copy, and replaces
+`/Applications/Devmachine.app` with the new build, then relaunches it.
+Sessions run in a separate `zmx` process, not inside the app itself, and
+`install.sh` only quits `DevmachineApp` — so relaunching does not lose your
+open sessions.
