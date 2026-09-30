@@ -17,6 +17,7 @@ extension Color {
     static let dmDivider = Color.white.opacity(0.06)
     static let dmActive = Color.white.opacity(0.10)
     static let dmStroke = Color.white.opacity(0.12)
+    static let dmSkeleton = Color.white.opacity(0.07)
 }
 
 extension Color {

@@ -72,6 +72,13 @@ private struct DMComponentsGallery: View {
             DMBanner(message: "Couldn't refresh: ssh: connect to host timed out", lineLimit: 2) {
                 DMIconButton(systemImage: "arrow.clockwise", tint: nil) {}
             }
+            DMSkeleton {
+                VStack(alignment: .leading, spacing: 6) {
+                    DMSkeletonText(size: 13, width: .fraction(0.6))
+                    DMSkeletonText(size: 11, width: .fixed(80))
+                    DMSkeletonBlock(height: 5, radius: 3)
+                }
+            }
             HStack(alignment: .top, spacing: 0) {
                 DMStatusView(kind: .loading("Reading context…"), fillsHeight: false)
                 DMStatusView(
