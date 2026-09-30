@@ -1,5 +1,38 @@
 import Foundation
 
+/// Files inside a worktree that the session's account does not own — what a
+/// root container or a `sudo` build leaves behind, and what makes git fail
+/// halfway through a remove.
+public struct ForeignFiles: Equatable, Sendable {
+    /// The account the check ran as.
+    public let user: String
+    /// The first few, never more than `WorktreeRemoval.foreignFilesShown`.
+    public let paths: [String]
+    public let count: Int
+
+    public init(user: String, paths: [String], count: Int) {
+        self.user = user
+        self.paths = paths
+        self.count = count
+    }
+}
+
+/// A worktree folder after git gave up on it: still on disk or not, still
+/// known to git or not.
+public struct WorktreeLeftover: Equatable, Sendable {
+    public let path: String
+    public let exists: Bool
+    public let isRegistered: Bool
+    public let foreignFiles: ForeignFiles?
+
+    public init(path: String, exists: Bool, isRegistered: Bool, foreignFiles: ForeignFiles?) {
+        self.path = path
+        self.exists = exists
+        self.isRegistered = isRegistered
+        self.foreignFiles = foreignFiles
+    }
+}
+
 /// What a read-only look inside one worktree found, before anything is removed.
 public struct WorktreeCheck: Equatable, Sendable {
     public let path: String
@@ -13,11 +46,13 @@ public struct WorktreeCheck: Equatable, Sendable {
     public let mainBranch: String?
     public let isLocked: Bool
     public let lockReason: String?
+    /// nil when the check did not look (the merged sweep never does).
+    public let foreignFiles: ForeignFiles?
 
     public init(
         path: String, branch: String?, upstream: String?, uncommittedChanges: Int,
         unpushedCommits: Int?, unmergedCommits: Int?, mainBranch: String?,
-        isLocked: Bool, lockReason: String?
+        isLocked: Bool, lockReason: String?, foreignFiles: ForeignFiles? = nil
     ) {
         self.path = path
         self.branch = branch
@@ -28,8 +63,10 @@ public struct WorktreeCheck: Equatable, Sendable {
         self.mainBranch = mainBranch
         self.isLocked = isLocked
         self.lockReason = lockReason
+        self.foreignFiles = foreignFiles
     }
 
+    public var hasForeignFiles: Bool { (foreignFiles?.count ?? 0) > 0 }
     public var isDirty: Bool { uncommittedChanges > 0 }
     public var isMergedIntoMain: Bool { unmergedCommits == 0 }
     public var isCleanAndMerged: Bool { !isDirty && isMergedIntoMain && !isLocked }
@@ -54,11 +91,18 @@ public enum WorktreeRemoval {
         public var discardChanges: Bool
         public var removeLocked: Bool
         public var deleteBranch: Bool
+        /// The second, explicit checkbox before the machine's admin deletes
+        /// what the user cannot.
+        public var removeAsAdmin: Bool
 
-        public init(discardChanges: Bool = false, removeLocked: Bool = false, deleteBranch: Bool = false) {
+        public init(
+            discardChanges: Bool = false, removeLocked: Bool = false, deleteBranch: Bool = false,
+            removeAsAdmin: Bool = false
+        ) {
             self.discardChanges = discardChanges
             self.removeLocked = removeLocked
             self.deleteBranch = deleteBranch
+            self.removeAsAdmin = removeAsAdmin
         }
     }
 
@@ -100,9 +144,20 @@ public enum WorktreeRemoval {
     private static let recordSeparator: Character = "\u{1e}"
     private static let groupSeparator: Character = "\u{1d}"
 
+    public static let foreignFilesShown = 10
+
+    /// Prints the account, the first few paths it does not own, then how many
+    /// there are. A folder it cannot read is skipped, not fatal.
+    public static func ownershipProbe(path: String) -> String {
+        "{ u=$(id -un) && printf '%s\\n' \"$u\" && find \(quote(path)) ! -user \"$u\" -print 2>/dev/null"
+            + " | awk 'NR<=\(foreignFilesShown) {print} END {print NR}'; }"
+    }
+
     /// Reads, never writes. Each probe that may fail on its own (no upstream,
-    /// no main branch) prints nothing instead of stopping the rest.
-    public static func checkCommand(path: String, mainBranch: String?) -> String {
+    /// no main branch) prints nothing instead of stopping the rest. The
+    /// ownership walk costs a pass over every file, so only the check for
+    /// one worktree makes it.
+    public static func checkCommand(path: String, mainBranch: String?, includeOwnership: Bool = true) -> String {
         let separator = " && printf '\\036' && "
         let upstream = "{ git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true; }"
         let unpushed = "{ git rev-list --count '@{upstream}..HEAD' 2>/dev/null || true; }"
@@ -114,13 +169,14 @@ public enum WorktreeRemoval {
             + separator + unpushed
             + separator + unmerged
             + separator + "git worktree list --porcelain"
+            + (includeOwnership ? separator + ownershipProbe(path: path) : "")
     }
 
     /// One round trip for every worktree; a path that fails leaves an empty
     /// group, not a wrong answer.
     public static func checkAllCommand(paths: [String], mainBranch: String?) -> String {
         paths
-            .map { "( \(checkCommand(path: $0, mainBranch: mainBranch)) ); printf '\\035'" }
+            .map { "( \(checkCommand(path: $0, mainBranch: mainBranch, includeOwnership: false)) ); printf '\\035'" }
             .joined(separator: "; ")
     }
 
@@ -141,7 +197,57 @@ public enum WorktreeRemoval {
             unmergedCommits: mainBranch == nil ? nil : trimmed(sections[3]).flatMap { Int($0) },
             mainBranch: mainBranch,
             isLocked: entry.isLocked,
-            lockReason: entry.lockReason)
+            lockReason: entry.lockReason,
+            foreignFiles: sections.count > 5 ? parseForeignFiles(sections[5]) : nil)
+    }
+
+    public static func parseForeignFiles(_ section: String) -> ForeignFiles? {
+        let lines = section.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+        guard lines.count >= 2, let count = Int(lines[lines.count - 1]) else { return nil }
+        return ForeignFiles(user: lines[0], paths: Array(lines[1..<(lines.count - 1)]), count: count)
+    }
+
+    /// After git gave up: is the folder still there, does git still know it,
+    /// and who owns what is left. Reads only.
+    public static func leftoverCommand(path: String, mainWorktree: String) -> String {
+        "cd \(quote(mainWorktree))"
+            + " && { [ -e \(quote(path)) ] && echo present || echo gone; }"
+            + " && printf '\\036' && git worktree list --porcelain"
+            + " && printf '\\036' && { [ ! -e \(quote(path)) ] || \(ownershipProbe(path: path)); }"
+    }
+
+    public static func parseLeftover(_ output: String, path: String) -> WorktreeLeftover? {
+        let sections = output
+            .split(separator: recordSeparator, omittingEmptySubsequences: false)
+            .map(String.init)
+        guard sections.count >= 3 else { return nil }
+        let state = sections[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard state == "present" || state == "gone" else { return nil }
+        return WorktreeLeftover(
+            path: path,
+            exists: state == "present",
+            isRegistered: GitSnapshotParser.parseWorktreeList(sections[1]).contains { $0.path == path },
+            foreignFiles: parseForeignFiles(sections[2]))
+    }
+
+    /// git's record of a worktree whose folder is already gone.
+    public static func pruneCommand(mainWorktree: String) -> String {
+        "cd \(quote(mainWorktree)) && git worktree prune"
+    }
+
+    /// A folder git no longer knows and the user owns entirely: a read-only
+    /// subfolder is what stops `rm`, so it is made writable first. Never the
+    /// main checkout or anything holding it. BSD `chmod` reads `--` after the
+    /// mode as a file name; the path is absolute, so it can't pass for a flag.
+    public static func deleteLeftoverCommand(path: String, mainWorktree: String) -> String? {
+        guard isRemovablePath(path, mainWorktree: mainWorktree) else { return nil }
+        return "cd \(quote(mainWorktree)) && chmod -R u+w \(quote(path))"
+            + " && rm -rf -- \(quote(path)) && git worktree prune"
+    }
+
+    static func isRemovablePath(_ path: String, mainWorktree: String) -> Bool {
+        guard path.hasPrefix("/"), path.count > 1, !path.hasSuffix("/") else { return false }
+        return path != mainWorktree && !mainWorktree.hasPrefix(path + "/")
     }
 
     public static func parseCheckAll(_ output: String, paths: [String], mainBranch: String?) -> [WorktreeCheck] {

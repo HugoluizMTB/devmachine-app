@@ -63,7 +63,7 @@ enum DemoSnapshots {
     static func chrome(for screenID: String) -> SnapshotChrome.Kind {
         switch screenID {
         case "pull-requests", "publish-port", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
-             "worktree-remove", "worktrees-merged":
+             "worktree-remove", "worktrees-merged", "worktree-foreign":
             return .panel
         default:
             return .window
@@ -156,6 +156,7 @@ enum DemoSnapshots {
         Screen(id: "git-worktrees", fileName: "31-git-worktrees.png", settleNanoseconds: 900_000_000),
         Screen(id: "worktree-remove", fileName: "32-worktree-remove.png", settleNanoseconds: 400_000_000),
         Screen(id: "worktrees-merged", fileName: "33-worktrees-merged.png", settleNanoseconds: 400_000_000),
+        Screen(id: "worktree-foreign", fileName: "34-worktree-foreign.png", settleNanoseconds: 400_000_000),
     ]
 
     static func walk(environment: [String: String] = ProcessInfo.processInfo.environment) -> [Screen] {
@@ -240,9 +241,11 @@ enum DemoSnapshots {
             case "publish-port":
                 view = standaloneView(publishSheet(environment), fittingSize: NSSize(width: 480, height: 620))
             case "worktree-remove":
-                view = standaloneView(worktreeRemovalSheet, fittingSize: NSSize(width: 420, height: 400))
+                view = standaloneView(worktreeRemovalSheet, fittingSize: NSSize(width: 460, height: 400))
             case "worktrees-merged":
                 view = standaloneView(mergedWorktreesSheet, fittingSize: NSSize(width: 420, height: 360))
+            case "worktree-foreign":
+                view = standaloneView(foreignWorktreeSheet, fittingSize: NSSize(width: 460, height: 560))
             default:
                 window.displayIfNeeded()
                 view = window.contentView ?? NSView()
@@ -375,7 +378,19 @@ enum DemoSnapshots {
             ?? DemoData.gitSnapshot.worktrees[0]
         return WorktreeRemovalSheet(
             request: WorktreeRemovalRequest(worktree: worktree, check: check, phase: .ready),
-            onRemove: { _ in }, onCancel: {})
+            onRemove: { _ in }, onRemoveAsAdmin: { _ in }, onPrune: {}, onDeleteLeftover: {}, onCancel: {})
+            .background(Color.dmSidebarBg)
+    }
+
+    private static var foreignWorktreeSheet: some View {
+        let check = DemoData.foreignWorktreeCheck
+        let worktree = GitSnapshot.Worktree(path: check.path, head: "4d5e6f7a", branch: check.branch, isMain: false)
+        var request = WorktreeRemovalRequest(worktree: worktree, check: check, phase: .ready)
+        request.route = .admin(machine: "main")
+        request.mainWorktree = "/home/acme/dev/api"
+        return WorktreeRemovalSheet(
+            request: request,
+            onRemove: { _ in }, onRemoveAsAdmin: { _ in }, onPrune: {}, onDeleteLeftover: {}, onCancel: {})
             .background(Color.dmSidebarBg)
     }
 

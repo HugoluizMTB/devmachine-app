@@ -2,18 +2,59 @@ import Foundation
 import Combine
 import DevmachineCore
 
+/// Runs the one thing the app does as a machine's admin, and says which
+/// machine a workspace lives on.
+protocol WorktreeAdmin: Sendable {
+    func machine(forWorkspace workspace: String) -> WorktreeAdminRemoval.Machine?
+    func run(machine: String, script: String) throws -> (stdout: String, stderr: String, exitCode: Int32)
+}
+
+/// Through the devmachine CLI: `run --machine` logs in as the admin with
+/// the CLI's own key and host check.
+struct CLIWorktreeAdmin: WorktreeAdmin {
+    func machine(forWorkspace workspace: String) -> WorktreeAdminRemoval.Machine? {
+        guard let cli = try? DevmachineCLI.resolve(),
+              let name = try? cli.listWorkspaces().first(where: { $0.name == workspace })?.machine,
+              let machine = try? cli.listConfigMachines().first(where: { $0.name == name })
+        else { return nil }
+        return WorktreeAdminRemoval.Machine(name: machine.name, isSelf: machine.isSelf)
+    }
+
+    func run(machine: String, script: String) throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        let cli = try DevmachineCLI.resolve()
+        return try cli.runner.runCapturing(
+            executable: cli.executable, args: ["run", "--machine", machine, "--", script],
+            environment: cli.environment())
+    }
+}
+
 /// One worktree on its way out: the read-only check first, then the
-/// confirmation, then the remove.
+/// confirmation, then the remove. A worktree whose folder is gone only needs
+/// a prune; a folder git no longer knows is checked as a leftover.
 struct WorktreeRemovalRequest: Identifiable, Equatable {
     enum Phase: Equatable {
         case checking, ready, removing
         case failed(DMErrorState)
     }
 
+    enum Kind: Equatable {
+        case worktree, prunable, leftover
+    }
+
     var id: String { worktree.path }
     let worktree: GitSnapshot.Worktree
+    var kind: Kind = .worktree
     var check: WorktreeCheck?
     var phase: Phase
+    /// What is left after git gave up, or of a folder git no longer knows.
+    var leftover: WorktreeLeftover?
+    /// Who can delete what the user cannot; nil until it is known.
+    var route: WorktreeAdminRemoval.Route?
+    var isLocalSession = false
+    var mainWorktree: String?
+
+    var foreignFiles: ForeignFiles? { leftover?.foreignFiles ?? check?.foreignFiles }
+    var sessionUser: String? { foreignFiles?.user }
 
     var error: DMErrorState? {
         if case let .failed(state) = phase { return state }
@@ -41,18 +82,22 @@ final class GitStore: ObservableObject {
     @Published private(set) var mergedWorktrees: [WorktreeCheck] = []
 
     private let host: HostRunner
+    private let admin: WorktreeAdmin
     private let demo: Bool
     private var timer: Timer?
     private var current: CommandTarget?
+    private var workspace: String?
     private var inFlight: String?
     private var checkedPaths: [String]?
 
-    init(host: HostRunner = HostRunner(), demo: Bool = DemoMode.isActive) {
+    init(host: HostRunner = HostRunner(), admin: WorktreeAdmin = CLIWorktreeAdmin(), demo: Bool = DemoMode.isActive) {
         self.host = host
+        self.admin = admin
         self.demo = demo
     }
 
-    func start(_ target: CommandTarget) {
+    func start(_ target: CommandTarget, workspace: String? = nil) {
+        self.workspace = workspace
         if current == target, timer != nil || demo { return }
         current = target
         clear()
@@ -107,7 +152,11 @@ final class GitStore: ObservableObject {
             removal = WorktreeRemovalRequest(worktree: worktree, check: check, phase: .ready)
             return
         }
-        removal = WorktreeRemovalRequest(worktree: worktree, check: nil, phase: .checking)
+        if worktree.isPrunable {
+            removal = newRequest(worktree, kind: .prunable, phase: .ready, target: target)
+            return
+        }
+        removal = newRequest(worktree, kind: .worktree, phase: .checking, target: target)
         let command = WorktreeRemoval.checkCommand(path: worktree.path, mainBranch: mainBranch)
         run(command, on: target) { store, result in
             guard store.removal?.id == worktree.path else { return }
@@ -115,14 +164,77 @@ final class GitStore: ObservableObject {
                let check = WorktreeRemoval.parseCheck(result.stdout, path: worktree.path, mainBranch: mainBranch) {
                 store.removal?.check = check
                 store.removal?.phase = .ready
+                store.resolveRoute(path: worktree.path, user: check.foreignFiles?.user)
             } else {
                 store.removal?.phase = .failed(Self.errorState("Could not check the worktree", result))
             }
         }
     }
 
+    /// A folder the snapshot found that git no longer lists.
+    func requestLeftoverRemoval(_ path: String) {
+        guard let target = current, let snapshot, snapshot.leftovers.contains(path), !demo else { return }
+        let worktree = GitSnapshot.Worktree(path: path, head: "", branch: nil, isMain: false)
+        removal = newRequest(worktree, kind: .leftover, phase: .checking, target: target)
+        checkLeftover(path, then: .ready)
+    }
+
+    private func newRequest(
+        _ worktree: GitSnapshot.Worktree, kind: WorktreeRemovalRequest.Kind,
+        phase: WorktreeRemovalRequest.Phase, target: CommandTarget
+    ) -> WorktreeRemovalRequest {
+        var request = WorktreeRemovalRequest(worktree: worktree, kind: kind, check: nil, phase: phase)
+        request.isLocalSession = target.isLocal
+        request.mainWorktree = snapshot.flatMap(Self.mainWorktree)
+        return request
+    }
+
+    /// Reads what is left of `path`. After a failed remove the error stays on
+    /// screen and only the leftover is filled in; for a leftover row the
+    /// sheet becomes ready.
+    private func checkLeftover(_ path: String, then phase: WorktreeRemovalRequest.Phase?) {
+        guard let target = current, let main = snapshot.flatMap(Self.mainWorktree) else { return }
+        run(WorktreeRemoval.leftoverCommand(path: path, mainWorktree: main), on: target) { store, result in
+            guard store.removal?.id == path else { return }
+            let leftover = result.flatMap { $0.exitCode == 0 ? WorktreeRemoval.parseLeftover($0.stdout, path: path) : nil }
+            store.removal?.leftover = leftover
+            if let phase {
+                store.removal?.phase = leftover == nil
+                    ? .failed(Self.errorState("Could not check the folder", result))
+                    : phase
+            }
+            store.resolveRoute(path: path, user: leftover?.foreignFiles?.user)
+        }
+    }
+
+    /// Local sessions never go through an admin, so the CLI is asked only
+    /// for a remote one with files another account owns, and off the main
+    /// thread.
+    private func resolveRoute(path: String, user: String?) {
+        guard let request = removal, request.id == path else { return }
+        let main = request.mainWorktree ?? ""
+        let isLocal = request.isLocalSession
+        guard !isLocal, let user, request.foreignFiles?.count ?? 0 > 0 else {
+            removal?.route = WorktreeAdminRemoval.route(
+                isLocalSession: isLocal, machine: nil, user: user ?? "", path: path, mainWorktree: main)
+            return
+        }
+        let admin = self.admin
+        let workspace = self.workspace
+        let target = current
+        Task.detached {
+            let machine = workspace.flatMap { admin.machine(forWorkspace: $0) }
+            await MainActor.run {
+                guard self.current == target, self.removal?.id == path else { return }
+                self.removal?.route = WorktreeAdminRemoval.route(
+                    isLocalSession: false, machine: machine, user: user, path: path, mainWorktree: main)
+            }
+        }
+    }
+
     func confirmRemoval(options: WorktreeRemoval.Options) {
-        guard let request = removal, request.phase == .ready, let check = request.check else { return }
+        guard let request = removal, request.phase == .ready, request.kind == .worktree,
+              let check = request.check else { return }
         if demo {
             removal = nil
             return
@@ -135,7 +247,77 @@ final class GitStore: ObservableObject {
             if let result, result.exitCode == 0 {
                 if store.removal?.id == request.id { store.removal = nil }
             } else if store.removal?.id == request.id {
-                store.removal?.phase = .failed(Self.errorState("Could not remove the worktree", result))
+                store.removal?.phase = .failed(Self.removeError(result, check: check))
+                if Self.isFileAccessFailure(result) {
+                    store.checkLeftover(request.id, then: nil)
+                }
+            }
+            store.reload()
+        }
+    }
+
+    /// The machine's admin deletes the folder; then, as the user, git's
+    /// record goes with a prune and the branch with `-d`.
+    func confirmAdminRemoval(options: WorktreeRemoval.Options) {
+        guard let request = removal, request.phase == .ready || request.error != nil,
+              let route = request.route, case let .admin(machine) = route,
+              options.removeAsAdmin, request.foreignFiles?.count ?? 0 > 0,
+              let user = request.sessionUser, let main = request.mainWorktree,
+              let target = current, !demo
+        else { return }
+        if request.kind == .worktree, request.leftover == nil {
+            guard let check = request.check,
+                  WorktreeAdminRemoval.canRemove(check, options: options, route: route) else { return }
+        }
+        guard let script = WorktreeAdminRemoval.script(path: request.id, mainWorktree: main, user: user) else { return }
+        let branch = request.check.flatMap { check -> String? in
+            guard options.deleteBranch, WorktreeRemoval.canDeleteBranch(check) else { return nil }
+            return check.branch
+        }
+        let unlock = request.check?.isLocked == true && options.removeLocked
+        let after = WorktreeAdminRemoval.afterAdminCommand(
+            path: request.id, mainWorktree: main, unlock: unlock, branch: branch)
+        removal?.phase = .removing
+        let admin = self.admin
+        Task.detached {
+            let result = try? admin.run(machine: machine, script: script)
+            await MainActor.run {
+                guard self.current == target, self.removal?.id == request.id else { return }
+                guard let result, result.exitCode == 0 else {
+                    self.removal?.phase = .failed(Self.errorState("The machine admin did not remove it", result))
+                    return
+                }
+                self.finish(after, request: request, title: "Removed, but git's record was not pruned")
+            }
+        }
+    }
+
+    /// A worktree whose folder is already gone, or one the admin just deleted.
+    func prune() {
+        guard let request = removal, request.phase != .removing, let main = request.mainWorktree, !demo else { return }
+        removal?.phase = .removing
+        finish(WorktreeRemoval.pruneCommand(mainWorktree: main), request: request, title: "Could not prune the worktree")
+    }
+
+    /// A leftover folder with nothing in it that belongs to someone else.
+    func deleteLeftover() {
+        guard let request = removal, request.phase != .removing, request.leftover?.exists == true,
+              request.foreignFiles?.count == 0, let main = request.mainWorktree, !demo,
+              let command = WorktreeRemoval.deleteLeftoverCommand(path: request.id, mainWorktree: main)
+        else { return }
+        removal?.phase = .removing
+        finish(command, request: request, title: "Could not delete the folder")
+    }
+
+    private func finish(_ command: String, request: WorktreeRemovalRequest, title: String) {
+        guard let target = current else { return }
+        run(command, on: target) { store, result in
+            if store.removal?.id == request.id {
+                if let result, result.exitCode == 0 {
+                    store.removal = nil
+                } else {
+                    store.removal?.phase = .failed(Self.errorState(title, result))
+                }
             }
             store.reload()
         }
@@ -221,7 +403,7 @@ final class GitStore: ObservableObject {
     private func checkMerged(_ snapshot: GitSnapshot?, target: CommandTarget) {
         guard let snapshot else { return }
         let paths = snapshot.worktrees
-            .filter { WorktreeRemoval.block($0, currentRoot: snapshot.root) == nil }
+            .filter { WorktreeRemoval.block($0, currentRoot: snapshot.root) == nil && !$0.isPrunable }
             .map(\.path)
         guard paths != checkedPaths else { return }
         checkedPaths = paths
@@ -247,6 +429,23 @@ final class GitStore: ObservableObject {
 
     private static func mainWorktree(_ snapshot: GitSnapshot) -> String? {
         snapshot.worktrees.first(where: \.isMain)?.path
+    }
+
+    private static func isFileAccessFailure(_ result: Result?) -> Bool {
+        guard let result else { return false }
+        return FailureCause(message: result.stderr) == .fileAccessDenied
+    }
+
+    /// git's "Permission denied" names a file the account cannot delete, not
+    /// a login the machine refused, so it says whose account and where.
+    private static func removeError(_ result: Result?, check: WorktreeCheck) -> DMErrorState {
+        let state = errorState("Could not remove the worktree", result)
+        guard isFileAccessFailure(result), let result else { return state }
+        let deniedAt = check.foreignFiles?.paths.first ?? WorktreeRemovalText.deniedPath(result.stderr)
+        return DMErrorState(
+            title: state.title,
+            cause: WorktreeRemovalText.permissionCause(user: check.foreignFiles?.user, path: deniedAt),
+            details: state.details)
     }
 
     private static func errorState(_ title: String, _ result: Result?) -> DMErrorState {

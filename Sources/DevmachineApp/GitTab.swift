@@ -5,6 +5,7 @@ import DevmachineCore
 struct GitTab: View {
     @ObservedObject var store: GitStore
     let target: CommandTarget
+    var workspace: String?
     @EnvironmentObject var model: AppModel
 
     private static let sectionPadding = EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
@@ -20,13 +21,16 @@ struct GitTab: View {
                 stateMessage
             }
         }
-        .onAppear { store.start(target) }
+        .onAppear { store.start(target, workspace: workspace) }
         .onDisappear { store.stop() }
-        .onChange(of: target.key) { _, _ in store.start(target) }
+        .onChange(of: target.key) { _, _ in store.start(target, workspace: workspace) }
         .sheet(item: $store.removal) { request in
             WorktreeRemovalSheet(
                 request: request,
                 onRemove: { store.confirmRemoval(options: $0) },
+                onRemoveAsAdmin: { store.confirmAdminRemoval(options: $0) },
+                onPrune: { store.prune() },
+                onDeleteLeftover: { store.deleteLeftover() },
                 onCancel: { store.cancelRemoval() })
         }
         .sheet(item: $store.mergedRemoval) { request in
@@ -41,8 +45,8 @@ struct GitTab: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 headBlock(snapshot)
-                if snapshot.worktrees.count > 1 {
-                    worktreesSection(snapshot.worktrees, root: snapshot.root)
+                if snapshot.worktrees.count > 1 || !snapshot.leftovers.isEmpty {
+                    worktreesSection(snapshot.worktrees, leftovers: snapshot.leftovers, root: snapshot.root)
                 }
                 historySection(snapshot)
             }
@@ -111,7 +115,9 @@ struct GitTab: View {
         }
     }
 
-    private func worktreesSection(_ worktrees: [GitSnapshot.Worktree], root: String) -> some View {
+    private func worktreesSection(
+        _ worktrees: [GitSnapshot.Worktree], leftovers: [String], root: String
+    ) -> some View {
         DMSection(
             contentSpacing: 6,
             padding: Self.sectionPadding,
@@ -139,6 +145,9 @@ struct GitTab: View {
                         block: WorktreeRemoval.block(worktree, currentRoot: root),
                         accent: Self.accent,
                         onRemove: { store.requestRemoval(worktree) })
+                }
+                ForEach(leftovers, id: \.self) { path in
+                    LeftoverRow(path: path, onRemove: { store.requestLeftoverRemoval(path) })
                 }
             }
         }
@@ -266,6 +275,8 @@ enum WorktreeDot {
     static let other = Color.dmDivider
     static let currentHelp = "This session is in this worktree"
     static let otherHelp = "Another worktree of this repository"
+    static let prunableHelp = "Its folder is gone; git still remembers it"
+    static let leftoverHelp = "A folder left behind after git stopped listing this worktree"
     static let legend = "Green: \(currentHelp.lowercased()). Dim: \(otherHelp.lowercased())."
 }
 
@@ -292,6 +303,9 @@ private struct WorktreeRow: View {
                 Image(systemName: "lock.fill")
                     .font(.dm(8))
                     .foregroundStyle(Color.dmMuted)
+            }
+            if worktree.isPrunable {
+                DMKindLabel(text: "folder gone")
             }
             Spacer(minLength: 4)
             if let branch = worktree.branch {
@@ -328,6 +342,9 @@ private struct WorktreeRow: View {
 
     private var tooltip: String {
         var lines = [worktree.path, isCurrent ? WorktreeDot.currentHelp : WorktreeDot.otherHelp]
+        if worktree.isPrunable {
+            lines.append(WorktreeDot.prunableHelp)
+        }
         if worktree.isLocked {
             lines.append("Locked" + (worktree.lockReason.map { ": \($0)" } ?? ""))
         }
@@ -335,6 +352,38 @@ private struct WorktreeRow: View {
             lines.append(block.reason)
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+/// A folder git no longer lists as a worktree, still on disk.
+private struct LeftoverRow: View {
+    let path: String
+    let onRemove: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .strokeBorder(Color.yellow, lineWidth: 1)
+                .frame(width: 5, height: 5)
+            Text(verbatim: WorktreeRemovalText.shortPath(path))
+                .font(.dm(11, design: .monospaced))
+                .foregroundStyle(Color.dmMuted)
+                .lineLimit(1)
+                .truncationMode(.head)
+            Spacer(minLength: 4)
+            DMKindLabel(text: "leftover")
+            DMButton(icon: "trash", label: "Remove Leftover Folder…", variant: .ghostDanger, size: .small, action: onRemove)
+                .opacity(hovering ? 1 : 0)
+                .allowsHitTesting(hovering)
+        }
+        .frame(minHeight: 24)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Button("Remove Leftover Folder…", action: onRemove)
+        }
+        .help(path + "\n" + WorktreeDot.leftoverHelp)
     }
 }
 

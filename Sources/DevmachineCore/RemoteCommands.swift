@@ -132,6 +132,33 @@ public enum RemoteCommands {
         + " && git worktree list --porcelain"
         + " && printf '\\x1e'"
         + " && git log --format='%h%x1f%s%x1f%an%x1f%ar%x1f%D' -n 80"
+        + " && printf '\\x1e'"
+        + " && sh -c " + shellSingleQuoted(leftoverScan)
+
+    // A remove that fails halfway drops git's record of the worktree but
+    // leaves the folder. One that still holds a `.git` file pointing at the
+    // dropped record is a leftover wherever it is; one with no `.git` at all
+    // only inside the repository's own `.worktrees` folder, since beside
+    // other worktrees it may be any unrelated project. `sh -c` because the
+    // login shell may be zsh, which aborts on a glob that matches nothing.
+    static let leftoverScan = """
+        c=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 0
+        w=${c%/.git}/.worktrees
+        { git worktree list --porcelain | sed -n 's/^worktree //p' | sed 1d \\
+            | while IFS= read -r x; do dirname -- "$x"; done
+          printf '%s\\n' "$w"; } | sort -u | while IFS= read -r d; do
+          for g in "$d"/*/; do
+            g=${g%/}
+            [ -d "$g" ] || continue
+            if [ -f "$g/.git" ]; then
+              t=$(sed -n 's/^gitdir: //p' "$g/.git" | head -n 1)
+              case "$t" in "$c"/worktrees/*) [ -d "$t" ] || printf '%s\\n' "$g";; esac
+            elif [ "$d" = "$w" ] && [ ! -e "$g/.git" ]; then
+              printf '%s\\n' "$g"
+            fi
+          done
+        done
+        """
 
     public static func gitSnapshot(session: String) -> String {
         inSessionDirectory(session: session, command: gitSnapshotBody)

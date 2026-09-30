@@ -181,7 +181,9 @@ final class DemoSnapshotsTests: XCTestCase {
 
     func testTheWorktreeWalkIsItsOwnSetAndPickedByTheEnvironment() {
         let names = DemoSnapshots.worktreeScreens.map(\.fileName)
-        XCTAssertEqual(names, ["31-git-worktrees.png", "32-worktree-remove.png", "33-worktrees-merged.png"])
+        XCTAssertEqual(names, [
+            "31-git-worktrees.png", "32-worktree-remove.png", "33-worktrees-merged.png", "34-worktree-foreign.png",
+        ])
         XCTAssertTrue(Set(names).isDisjoint(with: DemoSnapshots.screens.map(\.fileName)))
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "worktrees"]).map(\.id),
                        DemoSnapshots.worktreeScreens.map(\.id))

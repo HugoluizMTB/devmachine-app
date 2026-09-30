@@ -52,6 +52,11 @@ struct ContextPanel: View {
         return (alias, name)
     }
 
+    private var workspaceName: String? {
+        guard let alias = session?.alias else { return nil }
+        return model.visibleWorkspaces.first(where: { $0.alias == alias })?.name
+    }
+
     /// Where the Files and Git tabs read from: the host for a remote session,
     /// this Mac for a local one.
     private var commandTarget: CommandTarget? {
@@ -71,7 +76,7 @@ struct ContextPanel: View {
             }
         case .git:
             if let commandTarget {
-                GitTab(store: gitStore, target: commandTarget)
+                GitTab(store: gitStore, target: commandTarget, workspace: workspaceName)
             } else {
                 message("No session")
             }

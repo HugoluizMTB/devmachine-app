@@ -8,10 +8,12 @@ public struct GitSnapshot: Equatable, Sendable {
         public let isMain: Bool
         public let isLocked: Bool
         public let lockReason: String?
+        /// Its folder is gone; only `git worktree prune` is left to do.
+        public let isPrunable: Bool
 
         public init(
             path: String, head: String, branch: String?, isMain: Bool,
-            isLocked: Bool = false, lockReason: String? = nil
+            isLocked: Bool = false, lockReason: String? = nil, isPrunable: Bool = false
         ) {
             self.path = path
             self.head = head
@@ -19,6 +21,7 @@ public struct GitSnapshot: Equatable, Sendable {
             self.isMain = isMain
             self.isLocked = isLocked
             self.lockReason = lockReason
+            self.isPrunable = isPrunable
         }
     }
 
@@ -54,6 +57,9 @@ public struct GitSnapshot: Equatable, Sendable {
     public let detachedHead: String?
     public let worktrees: [Worktree]
     public let commits: [Commit]
+    /// Folders that still point at this repository as a worktree git no
+    /// longer lists: what a remove that failed halfway leaves behind.
+    public let leftovers: [String]
 
     public init(
         root: String,
@@ -64,7 +70,8 @@ public struct GitSnapshot: Equatable, Sendable {
         dirtyFiles: Int = 0,
         detachedHead: String? = nil,
         worktrees: [Worktree] = [],
-        commits: [Commit] = []
+        commits: [Commit] = [],
+        leftovers: [String] = []
     ) {
         self.root = root
         self.branch = branch
@@ -75,6 +82,7 @@ public struct GitSnapshot: Equatable, Sendable {
         self.detachedHead = detachedHead
         self.worktrees = worktrees
         self.commits = commits
+        self.leftovers = leftovers
     }
 
     public var isDirty: Bool { dirtyFiles > 0 }
@@ -104,7 +112,8 @@ public enum GitSnapshotParser {
             dirtyFiles: status.dirtyFiles,
             detachedHead: status.detachedHead,
             worktrees: parseWorktreeList(sections.count > 1 ? sections[1] : ""),
-            commits: parseCommits(sections.count > 2 ? sections[2] : "")
+            commits: parseCommits(sections.count > 2 ? sections[2] : ""),
+            leftovers: sections.count > 3 ? lines(sections[3]).filter { $0.hasPrefix("/") } : []
         )
     }
 
@@ -162,13 +171,14 @@ public enum GitSnapshotParser {
         var branch: String?
         var isLocked = false
         var lockReason: String?
+        var isPrunable = false
 
         func flush() {
             guard let path else { return }
             worktrees.append(
                 GitSnapshot.Worktree(
                     path: path, head: head, branch: branch, isMain: worktrees.isEmpty,
-                    isLocked: isLocked, lockReason: lockReason)
+                    isLocked: isLocked, lockReason: lockReason, isPrunable: isPrunable)
             )
         }
 
@@ -180,6 +190,9 @@ public enum GitSnapshotParser {
                 branch = nil
                 isLocked = false
                 lockReason = nil
+                isPrunable = false
+            } else if line == "prunable" || line.hasPrefix("prunable ") {
+                isPrunable = true
             } else if line == "locked" {
                 isLocked = true
             } else if let value = value(of: "locked", in: line) {

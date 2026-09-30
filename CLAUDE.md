@@ -294,6 +294,23 @@ Rules:
   locked needs its own checkbox before `--force` / `--force --force`; a branch
   is deleted only with `-d`, only when merged into the main checkout's branch.
   Paths and branches are single-quoted; the remove runs from the main checkout.
+- **"Permission denied" is a refused login only in ssh's own words**
+  (`FailureCause.isSSHLoginRefused`: `Permission denied (publickey…)`,
+  `…, please try again`, too many auth failures). git and rm say it about a
+  file (`fileAccessDenied`), and git exits 255 too, so the exit code proves
+  nothing. The worktree sheet names the account and the path instead.
+- **Files another account owns stop a worktree remove halfway** (a root
+  container's bind mount, a `sudo` build). The check lists up to 10 and a
+  count (`find ! -user`). git then drops its record and its `.git` file
+  early and leaves the rest: the snapshot lists such folders as leftovers
+  (a `.git` file pointing at a dropped record, or no `.git` at all inside
+  `<main>/.worktrees`). Only a remote non-self machine, a path inside
+  `/home/<user>`, and a second checkbox get "Remove as machine admin…"
+  (`WorktreeAdminRemoval`): `devmachine run --machine` runs a script with
+  base64 arguments that checks again as root (canonical paths, not a mount
+  point, the `.git` proof) before `rm --one-file-system`; the prune and
+  `branch -d` run after, as the user. This Mac never deletes as admin; it
+  shows the commands. A folder already gone is a "Prune".
 - **Hiding a workspace also empties its rows from Stats and the subdomain
   list.** The host is what says who owns a row: a container by the folder it was
   started from (compose or the Supabase CLI writes it, and it lives under

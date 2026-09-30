@@ -52,22 +52,47 @@ enum WorktreeRemovalText {
         return warnings
     }
 
+    static func foreignWarning(_ foreign: ForeignFiles) -> String {
+        let files = foreign.count == 1 ? "1 file here belongs" : "\(foreign.count) files here belong"
+        return "\(files) to another user (e.g. root) — git can't delete them"
+    }
+
+    static func permissionCause(user: String?, path: String?) -> String {
+        let who = user.map { "by \($0)" } ?? "by this account"
+        return "Some files in this worktree can't be deleted \(who)" + (path.map { ": \($0)" } ?? ".")
+    }
+
+    /// The path git or rm names in "failed to delete '…'" / "cannot remove '…'".
+    static func deniedPath(_ stderr: String) -> String? {
+        for line in stderr.split(separator: "\n") where line.localizedCaseInsensitiveContains("permission denied") {
+            guard let open = line.firstIndex(of: "'"),
+                  let close = line[line.index(after: open)...].firstIndex(of: "'") else { continue }
+            return String(line[line.index(after: open)..<close])
+        }
+        return nil
+    }
+
     static func plural(_ count: Int, _ noun: String) -> String {
         "\(count) \(noun)\(count == 1 ? "" : "s")"
     }
 }
 
 /// Removing a worktree cannot be undone, so Return and Escape both cancel and
-/// removing takes a click or ⌘⌫, like the end-session sheet.
+/// removing takes a click or ⌘⌫, like the end-session sheet. Files another
+/// account owns get their own section: the machine's admin can delete them,
+/// behind a second checkbox, or the sheet shows the commands to run.
 struct WorktreeRemovalSheet: View {
     let request: WorktreeRemovalRequest
     let onRemove: (WorktreeRemoval.Options) -> Void
+    let onRemoveAsAdmin: (WorktreeRemoval.Options) -> Void
+    let onPrune: () -> Void
+    let onDeleteLeftover: () -> Void
     let onCancel: () -> Void
     @State private var options = WorktreeRemoval.Options()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(verbatim: "Remove worktree?")
+            Text(verbatim: WorktreeRemovalText.sheetTitle(request.kind))
                 .font(.headline)
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: request.worktree.path)
@@ -75,9 +100,11 @@ struct WorktreeRemovalSheet: View {
                     .foregroundStyle(Color.dmRowText)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(verbatim: request.worktree.branch.map { "on \($0)" } ?? "detached HEAD")
-                    .font(.dm(11.5))
-                    .foregroundStyle(Color.dmMuted)
+                if request.kind != .leftover {
+                    Text(verbatim: request.worktree.branch.map { "on \($0)" } ?? "detached HEAD")
+                        .font(.dm(11.5))
+                        .foregroundStyle(Color.dmMuted)
+                }
             }
             phaseBody
             HStack {
@@ -85,18 +112,34 @@ struct WorktreeRemovalSheet: View {
                 DMButton("Cancel", variant: .outline, action: onCancel)
                     .keyboardShortcut(.defaultAction)
                     .disabled(request.phase == .removing)
-                DMButton(
-                    "Remove", variant: .danger, role: .destructive,
-                    isLoading: request.phase == .removing
-                ) { onRemove(options) }
-                    .keyboardShortcut(.delete, modifiers: .command)
-                    .disabled(!canRemove)
+                primaryButton
             }
         }
         .padding(20)
-        .frame(width: 420)
+        .frame(width: 460)
         .onExitCommand(perform: onCancel)
         .interactiveDismissDisabled(request.phase == .removing)
+    }
+
+    private var isRemoving: Bool { request.phase == .removing }
+
+    @ViewBuilder
+    private var primaryButton: some View {
+        switch WorktreeRemovalText.primaryAction(request) {
+        case .remove:
+            DMButton("Remove", variant: .danger, role: .destructive, isLoading: isRemoving) { onRemove(options) }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(!canRemove)
+        case .prune:
+            DMButton("Prune", variant: .primary, isLoading: isRemoving, action: onPrune)
+                .disabled(isRemoving || request.phase == .checking)
+        case .deleteFolder:
+            DMButton("Delete folder", variant: .danger, role: .destructive, isLoading: isRemoving, action: onDeleteLeftover)
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(isRemoving)
+        case nil:
+            EmptyView()
+        }
     }
 
     private var canRemove: Bool {
@@ -110,18 +153,49 @@ struct WorktreeRemovalSheet: View {
         case .checking:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(verbatim: "Checking the worktree…")
+                Text(verbatim: request.kind == .leftover ? "Checking the folder…" : "Checking the worktree…")
                     .font(.dm(12))
                     .foregroundStyle(Color.dmMuted)
             }
         case let .failed(state):
             DMErrorStateView(state: state, startsExpanded: true)
                 .frame(maxWidth: .infinity)
+            if let leftover = request.leftover {
+                leftoverBody(leftover)
+            }
         case .ready, .removing:
-            if let check = request.check {
-                details(check)
+            switch request.kind {
+            case .worktree:
+                if let check = request.check {
+                    details(check)
+                }
+            case .prunable:
+                note("Its folder is already gone. Prune removes git's record of it.")
+            case .leftover:
+                if let leftover = request.leftover {
+                    leftoverBody(leftover)
+                }
             }
         }
+    }
+
+    @ViewBuilder
+    private func leftoverBody(_ leftover: WorktreeLeftover) -> some View {
+        if !leftover.exists {
+            note("The folder is gone now. Prune removes what git still remembers of it.")
+        } else if let foreign = leftover.foreignFiles, foreign.count > 0 {
+            note("Git no longer lists this worktree, but its folder is still here.")
+            ownership(foreign)
+        } else {
+            note("Git no longer lists this worktree, but its folder is still here. Every file in it is yours, so it can be deleted without an admin.")
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(.dm(12))
+            .foregroundStyle(Color.dmMuted)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func details(_ check: WorktreeCheck) -> some View {
@@ -159,8 +233,138 @@ struct WorktreeRemovalSheet: View {
             }
             .toggleStyle(.checkbox)
             .font(.dm(12))
-            .disabled(request.phase == .removing)
+            .disabled(isRemoving)
+            if let foreign = check.foreignFiles, foreign.count > 0 {
+                ownership(foreign)
+            }
         }
+    }
+
+    private func ownership(_ foreign: ForeignFiles) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label {
+                Text(verbatim: WorktreeRemovalText.foreignWarning(foreign))
+            } icon: {
+                Image(systemName: "person.crop.circle.badge.exclamationmark")
+            }
+            .font(.dm(12))
+            .foregroundStyle(Color.yellow)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(foreign.paths, id: \.self) { path in
+                    Text(verbatim: path)
+                        .font(.dm(11, design: .monospaced))
+                        .foregroundStyle(Color.dmRowText)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                        .help(path)
+                }
+                if let more = WorktreeRemovalText.moreForeign(foreign) {
+                    Text(verbatim: more)
+                        .font(.dm(11))
+                        .foregroundStyle(Color.dmMuted)
+                }
+            }
+            .textSelection(.enabled)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.dmBand, in: RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
+            routeBody
+        }
+    }
+
+    @ViewBuilder
+    private var routeBody: some View {
+        switch request.route {
+        case nil:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                note("Looking up the machine…")
+            }
+        case let .admin(machine):
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(isOn: $options.removeAsAdmin) {
+                    Text(verbatim: WorktreeRemovalText.adminConsent(machine: machine))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .toggleStyle(.checkbox)
+                .font(.dm(12))
+                .disabled(isRemoving)
+                HStack {
+                    Spacer()
+                    DMButton(
+                        "Remove as machine admin…", systemImage: "exclamationmark.shield",
+                        variant: .danger, role: .destructive, isLoading: isRemoving
+                    ) { onRemoveAsAdmin(options) }
+                        .disabled(!canRemoveAsAdmin)
+                        .help(WorktreeRemovalText.adminHelp(machine: machine))
+                }
+            }
+        case let .manual(reason):
+            let steps = WorktreeAdminRemoval.manualSteps(
+                path: request.id, mainWorktree: request.mainWorktree ?? "", isLocalSession: request.isLocalSession)
+            VStack(alignment: .leading, spacing: 6) {
+                note(reason.text + " To remove it by hand:")
+                Text(verbatim: request.isLocalSession ? "In a terminal on this Mac:" : "On the machine, as its admin:")
+                    .font(.dm(11.5))
+                    .foregroundStyle(Color.dmMuted)
+                DMCommandBlock(steps.asAdmin)
+                Text(verbatim: "Then, as \(request.sessionUser ?? "the session's user"):")
+                    .font(.dm(11.5))
+                    .foregroundStyle(Color.dmMuted)
+                DMCommandBlock(steps.asUser)
+            }
+        }
+    }
+
+    private var canRemoveAsAdmin: Bool {
+        guard let route = request.route, !isRemoving, options.removeAsAdmin else { return false }
+        if request.kind == .worktree, request.leftover == nil {
+            guard let check = request.check, request.phase == .ready else { return false }
+            return WorktreeAdminRemoval.canRemove(check, options: options, route: route)
+        }
+        if case .admin = route { return true }
+        return false
+    }
+}
+
+extension WorktreeRemovalText {
+    enum PrimaryAction: Equatable {
+        case remove, prune, deleteFolder
+    }
+
+    static func sheetTitle(_ kind: WorktreeRemovalRequest.Kind) -> String {
+        switch kind {
+        case .worktree: return "Remove worktree?"
+        case .prunable: return "Prune worktree?"
+        case .leftover: return "Remove leftover folder?"
+        }
+    }
+
+    /// The button beside Cancel. Removing as the admin is never here: it
+    /// lives under the files it deletes, behind its own checkbox.
+    static func primaryAction(_ request: WorktreeRemovalRequest) -> PrimaryAction? {
+        if let leftover = request.leftover {
+            if !leftover.exists { return .prune }
+            return leftover.foreignFiles?.count == 0 ? .deleteFolder : nil
+        }
+        switch request.kind {
+        case .worktree: return request.error == nil ? .remove : nil
+        case .prunable: return .prune
+        case .leftover: return nil
+        }
+    }
+
+    static func moreForeign(_ foreign: ForeignFiles) -> String? {
+        let more = foreign.count - foreign.paths.count
+        return more > 0 ? "and \(more) more" : nil
+    }
+
+    static func adminConsent(machine: String) -> String {
+        "Delete this folder as \(machine)'s admin, other users' files included. This can't be undone."
+    }
+
+    static func adminHelp(machine: String) -> String {
+        "Runs on \(machine) as its admin through the devmachine CLI, after checking again that this is a worktree inside the account's home"
     }
 }
 

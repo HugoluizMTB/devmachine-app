@@ -200,6 +200,6 @@ final class GitSnapshotParserTests: XCTestCase {
         XCTAssertTrue(command.contains("git status --porcelain=v2 --branch"))
         XCTAssertTrue(command.contains("git worktree list --porcelain"))
         XCTAssertTrue(command.contains("git log --format='%h%x1f%s%x1f%an%x1f%ar%x1f%D' -n 80"))
-        XCTAssertEqual(command.components(separatedBy: "printf '\\x1e'").count - 1, 2)
+        XCTAssertEqual(command.components(separatedBy: "printf '\\x1e'").count - 1, 3)
     }
 }

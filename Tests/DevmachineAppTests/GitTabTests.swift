@@ -110,6 +110,61 @@ final class GitTabTests: XCTestCase {
         XCTAssertEqual(WorktreeRemovalText.removeMergedTitle(3), "Remove 3 merged…")
     }
 
+    func testTheOwnershipSectionRendersForEveryRoute() throws {
+        let check = DemoData.foreignWorktreeCheck
+        let worktree = GitSnapshot.Worktree(path: check.path, head: "4d5e6f7a", branch: check.branch, isMain: false)
+        let routes: [WorktreeAdminRemoval.Route?] = [
+            nil, .admin(machine: "main"), .manual(.thisMac), .manual(.selfMachine), .manual(.noCLI),
+        ]
+        for route in routes {
+            var request = WorktreeRemovalRequest(worktree: worktree, check: check, phase: .ready)
+            request.route = route
+            request.mainWorktree = "/home/acme/dev/api"
+            let sheet = WorktreeRemovalSheet(
+                request: request,
+                onRemove: { _ in }, onRemoveAsAdmin: { _ in }, onPrune: {}, onDeleteLeftover: {}, onCancel: {})
+            XCTAssertEqual(try XCTUnwrap(ImageRenderer(content: sheet).nsImage, "\(String(describing: route))").size.width, 460)
+        }
+    }
+
+    func testTheSheetOffersOnlyTheActionThatFits() {
+        let worktree = GitSnapshot.Worktree(path: "/home/acme/dev/api/.worktrees/x", head: "", branch: nil, isMain: false)
+        var request = WorktreeRemovalRequest(worktree: worktree, check: nil, phase: .ready)
+        XCTAssertEqual(WorktreeRemovalText.primaryAction(request), .remove)
+        request.kind = .prunable
+        XCTAssertEqual(WorktreeRemovalText.primaryAction(request), .prune)
+        request.kind = .leftover
+        request.leftover = WorktreeLeftover(
+            path: worktree.path, exists: true, isRegistered: false,
+            foreignFiles: ForeignFiles(user: "acme", paths: [], count: 0))
+        XCTAssertEqual(WorktreeRemovalText.primaryAction(request), .deleteFolder)
+        request.leftover = WorktreeLeftover(
+            path: worktree.path, exists: true, isRegistered: false,
+            foreignFiles: ForeignFiles(user: "acme", paths: [worktree.path + "/db"], count: 1))
+        XCTAssertNil(WorktreeRemovalText.primaryAction(request))
+        request.leftover = WorktreeLeftover(path: worktree.path, exists: false, isRegistered: true, foreignFiles: nil)
+        XCTAssertEqual(WorktreeRemovalText.primaryAction(request), .prune)
+        request.kind = .worktree
+        request.leftover = nil
+        request.phase = .failed(DMErrorState(title: "Could not remove the worktree", message: "x"))
+        XCTAssertNil(WorktreeRemovalText.primaryAction(request))
+    }
+
+    func testThePermissionWordsNameTheAccountAndThePath() {
+        XCTAssertEqual(
+            WorktreeRemovalText.deniedPath("error: failed to delete '/home/acme/dev/api/.worktrees/x': Permission denied\n"),
+            "/home/acme/dev/api/.worktrees/x")
+        XCTAssertNil(WorktreeRemovalText.deniedPath("fatal: not a working tree"))
+        XCTAssertEqual(
+            WorktreeRemovalText.permissionCause(user: nil, path: nil),
+            "Some files in this worktree can't be deleted by this account.")
+        XCTAssertEqual(
+            WorktreeRemovalText.foreignWarning(ForeignFiles(user: "acme", paths: [], count: 1)),
+            "1 file here belongs to another user (e.g. root) — git can't delete them")
+        XCTAssertEqual(WorktreeRemovalText.moreForeign(ForeignFiles(user: "acme", paths: ["/a"], count: 3)), "and 2 more")
+        XCTAssertNil(WorktreeRemovalText.moreForeign(ForeignFiles(user: "acme", paths: ["/a"], count: 1)))
+    }
+
     func testTheRemovalSheetsRenderEveryPhase() throws {
         let worktree = try XCTUnwrap(DemoData.gitSnapshot.worktrees.first { $0.path.hasSuffix("api-webhooks") })
         let check = DemoData.worktreeChecks.first { $0.path == worktree.path }
@@ -120,9 +175,9 @@ final class GitTabTests: XCTestCase {
         for phase in phases {
             let sheet = WorktreeRemovalSheet(
                 request: WorktreeRemovalRequest(worktree: worktree, check: check, phase: phase),
-                onRemove: { _ in }, onCancel: {})
+                onRemove: { _ in }, onRemoveAsAdmin: { _ in }, onPrune: {}, onDeleteLeftover: {}, onCancel: {})
             let image = try XCTUnwrap(ImageRenderer(content: sheet).nsImage, "\(phase)")
-            XCTAssertEqual(image.size.width, 420)
+            XCTAssertEqual(image.size.width, 460)
         }
         let merged = MergedWorktreesRemovalSheet(
             request: MergedRemovalRequest(checks: DemoData.worktreeChecks.filter(\.isCleanAndMerged)),

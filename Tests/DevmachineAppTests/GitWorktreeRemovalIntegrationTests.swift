@@ -21,6 +21,7 @@ final class GitWorktreeRemovalIntegrationTests: XCTestCase {
 
     override func tearDown() async throws {
         if base.contains("/dm-worktrees-") {
+            _ = try? shell("chmod -R u+w '\(base)'")
             try? FileManager.default.removeItem(atPath: base)
         }
     }
@@ -43,6 +44,16 @@ final class GitWorktreeRemovalIntegrationTests: XCTestCase {
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0, "git \(args.joined(separator: " "))")
         return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    }
+
+    @discardableResult
+    private func shell(_ command: String) throws -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", command]
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus
     }
 
     private func branches() throws -> [String] {
@@ -146,5 +157,97 @@ final class GitWorktreeRemovalIntegrationTests: XCTestCase {
         XCTAssertEqual(try branches().sorted(), ["main", "wip"])
         XCTAssertTrue(FileManager.default.fileExists(atPath: base + "/dash-wip"))
         try await waitUntil { store.mergedWorktrees.isEmpty }
+    }
+
+    func testAFileGitCannotDeleteLeavesALeftoverTheNextCheckFindsAndRemoves() async throws {
+        let stuck = repo + "/.worktrees/stuck"
+        try git(["worktree", "add", "-q", "-b", "stuck", stuck], in: repo)
+        XCTAssertEqual(try shell("mkdir -p '\(stuck)/build/cache' && touch '\(stuck)/build/cache/db' && chmod 555 '\(stuck)/build/cache'"), 0)
+
+        let admin = RefusingAdmin()
+        let store = GitStore(host: HostRunner(), admin: admin, demo: false)
+        defer { store.stop() }
+        store.start(.local(session: "dash", path: repo))
+        try await waitUntil { store.snapshot?.worktrees.count == 2 }
+
+        store.requestRemoval(try XCTUnwrap(store.snapshot?.worktrees.first { $0.path == stuck }))
+        try await waitUntil { store.removal?.phase == .ready && store.removal?.route != nil }
+        let check = try XCTUnwrap(store.removal?.check)
+        XCTAssertEqual(check.foreignFiles, ForeignFiles(user: NSUserName(), paths: [], count: 0))
+        XCTAssertEqual(store.removal?.route, .manual(.thisMac))
+
+        XCTAssertTrue(check.isDirty)
+        store.confirmRemoval(options: .init(discardChanges: true))
+        try await waitUntil { store.removal?.error != nil && store.removal?.leftover != nil }
+        let error = try XCTUnwrap(store.removal?.error)
+        XCTAssertTrue(error.details.contains("Permission denied"), error.details)
+        XCTAssertEqual(error.cause, "Some files in this worktree can't be deleted by \(NSUserName()): \(stuck)")
+        let leftover = try XCTUnwrap(store.removal?.leftover)
+        XCTAssertTrue(leftover.exists)
+        XCTAssertFalse(leftover.isRegistered)
+        XCTAssertEqual(leftover.foreignFiles?.count, 0)
+        XCTAssertEqual(WorktreeRemovalText.primaryAction(try XCTUnwrap(store.removal)), .deleteFolder)
+        store.cancelRemoval()
+
+        try await waitUntil { store.snapshot?.leftovers == [stuck] }
+        XCTAssertEqual(store.snapshot?.worktrees.count, 1)
+        store.requestLeftoverRemoval(stuck)
+        try await waitUntil { store.removal?.phase == .ready }
+        store.deleteLeftover()
+        try await waitUntil { store.removal == nil }
+        try await waitUntil { store.snapshot?.leftovers.isEmpty == true }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stuck))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: repo + "/.git"))
+        XCTAssertTrue(admin.wasCalled == false)
+    }
+
+    func testAFolderWithoutItsGitFileCountsAsALeftoverOnlyInsideDotWorktrees() async throws {
+        let half = repo + "/.worktrees/half"
+        let sibling = base + "/dash-feature"
+        try git(["worktree", "add", "-q", "-b", "half", half], in: repo)
+        try git(["worktree", "add", "-q", "-b", "feature", sibling], in: repo)
+        XCTAssertEqual(try shell("rm -f '\(half)/.git' && rm -rf '\(repo)/.git/worktrees/half'"), 0)
+        XCTAssertEqual(try shell("mkdir -p '\(base)/unrelated/src'"), 0)
+
+        let store = GitStore(host: HostRunner(), admin: RefusingAdmin(), demo: false)
+        defer { store.stop() }
+        store.start(.local(session: "dash", path: repo))
+        try await waitUntil { store.snapshot != nil }
+        XCTAssertEqual(store.snapshot?.worktrees.count, 2)
+        XCTAssertEqual(store.snapshot?.leftovers, [half])
+    }
+
+    func testAWorktreeWhoseFolderIsGoneIsPruned() async throws {
+        let gone = base + "/dash-gone"
+        try git(["worktree", "add", "-q", "-b", "gone", gone], in: repo)
+        try FileManager.default.removeItem(atPath: gone)
+
+        let store = GitStore(host: HostRunner(), admin: RefusingAdmin(), demo: false)
+        defer { store.stop() }
+        store.start(.local(session: "dash", path: repo))
+        try await waitUntil { store.snapshot?.worktrees.count == 2 }
+        let row = try XCTUnwrap(store.snapshot?.worktrees.first { $0.path == gone })
+        XCTAssertTrue(row.isPrunable)
+
+        store.requestRemoval(row)
+        XCTAssertEqual(store.removal?.kind, .prunable)
+        store.prune()
+        try await waitUntil { store.removal == nil }
+        try await waitUntil { store.snapshot?.worktrees.count == 1 }
+        XCTAssertTrue(try branches().contains("gone"))
+    }
+}
+
+private final class RefusingAdmin: WorktreeAdmin, @unchecked Sendable {
+    private(set) var wasCalled = false
+
+    func machine(forWorkspace workspace: String) -> WorktreeAdminRemoval.Machine? {
+        wasCalled = true
+        return nil
+    }
+
+    func run(machine: String, script: String) throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        wasCalled = true
+        return ("", "never on this Mac", 1)
     }
 }

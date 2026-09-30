@@ -625,4 +625,18 @@ extension DemoData {
             uncommittedChanges: 3, unpushedCommits: 1, unmergedCommits: 4, mainBranch: "main",
             isLocked: false, lockReason: nil),
     ]
+
+    /// A worktree a root container wrote into, for the sheet's ownership section.
+    static let foreignWorktreeCheck = WorktreeCheck(
+        path: "/home/acme/dev/api/.worktrees/search-index", branch: "search-index", upstream: nil,
+        uncommittedChanges: 0, unpushedCommits: nil, unmergedCommits: 0, mainBranch: "main",
+        isLocked: false, lockReason: nil,
+        foreignFiles: ForeignFiles(
+            user: "acme",
+            paths: [
+                "/home/acme/dev/api/.worktrees/search-index/.data/postgres",
+                "/home/acme/dev/api/.worktrees/search-index/.data/postgres/base",
+                "/home/acme/dev/api/.worktrees/search-index/.data/postgres/pg_wal",
+            ],
+            count: 214))
 }
