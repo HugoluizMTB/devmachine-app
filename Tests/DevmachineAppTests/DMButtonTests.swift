@@ -35,6 +35,13 @@ final class DMButtonTests: XCTestCase {
         XCTAssertEqual(look(.ghost, hovered: true).fill, .dmSelection)
     }
 
+    func testGhostDangerIsQuietUntilHoveredThenRed() {
+        XCTAssertEqual(look(.ghostDanger).fill, .clear)
+        XCTAssertEqual(look(.ghostDanger).foreground, .dmMuted)
+        XCTAssertEqual(look(.ghostDanger, hovered: true).fill, DMButtonPalette.danger.opacity(0.14))
+        XCTAssertEqual(look(.ghostDanger, hovered: true).foreground, DMButtonPalette.dangerText)
+    }
+
     func testLinkIsBareAccentText() {
         XCTAssertTrue(look(.link).isBare)
         XCTAssertEqual(look(.link).foreground, .accentColor)

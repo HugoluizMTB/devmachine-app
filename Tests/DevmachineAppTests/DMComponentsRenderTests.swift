@@ -142,7 +142,7 @@ private struct DMButtonGallery: View {
                 }
             }
             HStack(spacing: 6) {
-                ForEach([DMButtonVariant.primary, .outline, .danger, .ghost], id: \.self) { variant in
+                ForEach([DMButtonVariant.primary, .outline, .danger, .ghost, .ghostDanger], id: \.self) { variant in
                     Button("Hover") {}.buttonStyle(DMButtonStyle(variant: variant, simulated: .hovered))
                 }
                 Button("Pressed") {}.buttonStyle(DMButtonStyle(simulated: .pressed))

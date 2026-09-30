@@ -2,9 +2,10 @@ import SwiftUI
 
 /// The app's own button. Primary is the one action a sheet or page is for;
 /// outline sits next to it; danger ends or removes something; ghost is for
-/// toolbars and quiet inline actions; link reads as text.
+/// toolbars and quiet inline actions, and ghostDanger is a quiet one that
+/// removes something, red only under the pointer; link reads as text.
 enum DMButtonVariant: CaseIterable {
-    case primary, outline, danger, dangerOutline, ghost, link
+    case primary, outline, danger, dangerOutline, ghost, ghostDanger, link
 }
 
 enum DMButtonSize: CaseIterable {
@@ -81,6 +82,9 @@ struct DMButtonAppearance {
             foreground = DMButtonPalette.dangerText
         case .ghost:
             fill = hovered ? .dmSelection : .clear
+        case .ghostDanger:
+            fill = hovered ? DMButtonPalette.danger.opacity(0.14) : .clear
+            foreground = hovered ? DMButtonPalette.dangerText : .dmMuted
         case .link:
             foreground = .accentColor
         }
