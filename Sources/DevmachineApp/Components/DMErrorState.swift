@@ -32,11 +32,16 @@ struct DMErrorState: Equatable {
 struct DMErrorStateView: View {
     let state: DMErrorState
     var retry: (() -> Void)?
+    var retryTitle: String
     @State private var expanded: Bool
 
-    init(state: DMErrorState, retry: (() -> Void)? = nil, startsExpanded: Bool = false) {
+    init(
+        state: DMErrorState, retry: (() -> Void)? = nil, retryTitle: String = "Try again",
+        startsExpanded: Bool = false
+    ) {
         self.state = state
         self.retry = retry
+        self.retryTitle = retryTitle
         _expanded = State(initialValue: startsExpanded)
     }
 
@@ -86,7 +91,7 @@ struct DMErrorStateView: View {
     @ViewBuilder
     private var actions: some View {
         if let retry {
-            DMButton("Try again", systemImage: "arrow.clockwise", variant: .outline, size: .small,
+            DMButton(retryTitle, systemImage: "arrow.clockwise", variant: .outline, size: .small,
                      action: retry)
         }
         DMButton(

@@ -173,6 +173,9 @@ struct ContextPanel: View {
                 )
             },
             trailing: {
+                if let session {
+                    TerminalTransportBadge(kind: .remote(alias: session.alias, session: session.name))
+                }
                 DMIconButton(systemImage: "sidebar.right", size: 13, weight: .semibold) {
                     withAnimation(.easeInOut(duration: 0.18)) { model.contextCollapsed = true }
                 }

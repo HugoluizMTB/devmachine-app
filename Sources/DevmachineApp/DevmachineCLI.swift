@@ -482,7 +482,7 @@ struct DevmachineCLI: Sendable {
     // shell's, so the CLI needs an explicit socket the same way a terminal
     // does: an override from Settings, else the 1Password agent if it is
     // actually there, else whatever this process inherited.
-    private func environment() -> [String: String] {
+    func environment() -> [String: String] {
         var environment = processEnvironment
         let socket = RemoteCommands.sshAuthSocket(
             customSocket: customSocket, fileExists: socketFileExists, environment: processEnvironment)

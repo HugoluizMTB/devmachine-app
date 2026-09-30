@@ -35,4 +35,11 @@ final class ProcessRunnerTests: XCTestCase {
             XCTAssertEqual(error as? ProcessRunnerError, .remoteCommandUnderTest("/usr/bin/ssh"))
         }
     }
+
+    func testRefusesToSpawnMoshClientUnderXCTest() {
+        let client = "/Applications/Devmachine.app/Contents/Helpers/mosh-client"
+        XCTAssertThrowsError(try runner.run(executable: client, args: ["203.0.113.10", "60001"], environment: nil)) {
+            XCTAssertEqual($0 as? ProcessRunnerError, .remoteCommandUnderTest(client))
+        }
+    }
 }

@@ -61,6 +61,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var keptTerminals: Int
     /// Writes what happens around a terminal pane to a file. Off by default.
     public var debugLogging: Bool
+    /// How a remote pane reaches its machine: mosh when it gets through,
+    /// ssh otherwise, unless one of them is forced.
+    public var remoteTerminalMode: RemoteTerminalMode
     /// Workspaces left out of the sidebar, by ssh alias. A list of what to
     /// hide, not of what to show: a workspace added to `~/.ssh/config` later
     /// appears on its own, which is what you want from a machine that gains
@@ -118,6 +121,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         uiFontScale: Double = Appearance.defaultUIFontScale,
         keptTerminals: Int = Appearance.defaultKeptTerminals,
         debugLogging: Bool = false,
+        remoteTerminalMode: RemoteTerminalMode = .automatic,
         hiddenWorkspaces: [String] = [],
         workspaceAliases: [String: String] = [:],
         enabledHarnesses: [HarnessID] = [.claude],
@@ -137,6 +141,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.uiFontScale = Appearance.clampUIFontScale(uiFontScale)
         self.keptTerminals = Appearance.clampKeptTerminals(keptTerminals)
         self.debugLogging = debugLogging
+        self.remoteTerminalMode = remoteTerminalMode
         self.hiddenWorkspaces = hiddenWorkspaces
         self.workspaceAliases = workspaceAliases
         self.enabledHarnesses = enabledHarnesses
@@ -156,7 +161,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, sshAgentSocket, wallpaper
-        case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging
+        case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging, remoteTerminalMode
         case hiddenWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram
     }
@@ -184,6 +189,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             try values.decodeIfPresent(Int.self, forKey: .keptTerminals)
                 ?? Appearance.defaultKeptTerminals)
         debugLogging = try values.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? false
+        remoteTerminalMode =
+            try values.decodeIfPresent(RemoteTerminalMode.self, forKey: .remoteTerminalMode) ?? .automatic
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
         // Settings written before this existed decode to "nothing detected yet".
@@ -235,6 +242,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(uiFontScale, forKey: .uiFontScale)
         try values.encode(keptTerminals, forKey: .keptTerminals)
         try values.encode(debugLogging, forKey: .debugLogging)
+        try values.encode(remoteTerminalMode, forKey: .remoteTerminalMode)
         try values.encode(hiddenWorkspaces, forKey: .hiddenWorkspaces)
         try values.encode(workspaceAliases, forKey: .workspaceAliases)
         try values.encode(enabledHarnesses, forKey: .enabledHarnesses)

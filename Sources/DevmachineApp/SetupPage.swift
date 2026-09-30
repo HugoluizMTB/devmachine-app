@@ -102,6 +102,7 @@ struct SetupPage: View {
     @State private var uiFontScale = Appearance.defaultUIFontScale
     @State private var keptTerminals = Appearance.defaultKeptTerminals
     @State private var debugLogging = false
+    @State private var remoteTerminalMode = RemoteTerminalMode.automatic
     @State private var hiddenWorkspaces: [String] = []
     @State private var enabledHarnesses = AppSettings.empty.enabledHarnesses
     @State private var localSessionProgram = SessionLaunchChoice.terminal
@@ -122,6 +123,7 @@ struct SetupPage: View {
             uiFontScale: uiFontScale,
             keptTerminals: keptTerminals,
             debugLogging: debugLogging,
+            remoteTerminalMode: remoteTerminalMode,
             hiddenWorkspaces: hiddenWorkspaces,
             enabledHarnesses: enabledHarnesses,
             localSessionProgram: localSessionProgram,
@@ -671,6 +673,32 @@ struct SetupPage: View {
                 + "disconnected; the session on the other side keeps running and "
                 + "reconnects when you return. Keep it above your number of "
                 + "workspaces.")
+            remoteTerminalPicker
+        }
+    }
+
+    private var remoteTerminalPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                Text(verbatim: "Remote terminals")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+                Spacer(minLength: 8)
+                Picker("", selection: $remoteTerminalMode) {
+                    ForEach(RemoteTerminalMode.allCases, id: \.self) { mode in
+                        Text(verbatim: mode.title).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .frame(width: 260)
+            }
+            note("mosh keeps a session through sleep, a new Wi-Fi and a slow link. "
+                + "It needs mosh-server on the machine and UDP 60000\u{2013}61000 open "
+                + "to this Mac. Automatic tries it and switches a pane to ssh within "
+                + "five seconds when nothing comes back, then uses ssh for that "
+                + "machine for 30 minutes. A change applies to panes opened after it.")
         }
     }
 
@@ -876,6 +904,7 @@ struct SetupPage: View {
             uiFontScale = current.uiFontScale
             keptTerminals = current.keptTerminals
             debugLogging = current.debugLogging
+            remoteTerminalMode = current.remoteTerminalMode
             hiddenWorkspaces = current.hiddenWorkspaces
             applyHarnessSettings(current)
         } else {

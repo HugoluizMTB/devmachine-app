@@ -16,8 +16,8 @@ Mac, usually `~/.config/devmachine`.
   `Host <user>-<alias>` per context user. The workspace list itself comes from
   the devmachine CLI's `workspaces list`; the ssh config supplies the alias
   each workspace connects through.
-- Optional: `mosh` (`brew install mosh`) — terminals use it when present and
-  fall back to `ssh`. Optional: the 1Password ssh agent for signing.
+- Optional: the 1Password ssh agent for signing. Nothing else: the app
+  carries its own `mosh-client` (see Remote terminals).
 
 ## Build and install
 
@@ -39,6 +39,31 @@ in the menu bar. With Claude Code and OpenAI Codex enabled, Home stacks both
 cards and the menu-bar Usage tab shows them side by side. Codex account limits
 and activity come from `codex app-server` account reads; they do not start a
 model turn or consume inference tokens.
+
+## Remote terminals
+
+A remote pane uses mosh when it gets through and ssh when it does not.
+Settings → Terminal → Remote terminals: Automatic (default), Always ssh, or
+Always mosh. A pane shows which one it runs: `mosh` or `ssh` in the stack
+header and the context panel.
+
+- The app carries `mosh-client` in `Contents/Helpers`, built from source by
+  `scripts/fetch_mosh.sh` (pinned mosh and protobuf, checksums checked,
+  protobuf linked in, universal). A local build without it uses Homebrew's
+  from `/opt/homebrew/bin` or `/usr/local/bin`.
+- The app starts the server itself over ssh (`mosh-server new -s -c 256 -l
+  LANG=C.UTF-8 -- tmux new-session -A -s <session>`), reads `MOSH CONNECT`,
+  and starts `mosh-client <ip> <port>` with the key in `MOSH_KEY`. The Perl
+  `mosh` wrapper is not used.
+- The address: `devmachine resolve --machine <m> --format json` when the
+  installed CLI has it, otherwise the host `ssh -G <alias>` reports, looked
+  up here.
+- Falling back, so a pane never hangs: no `mosh-server` on the machine →
+  ssh at once. No reply over UDP within 5 seconds (the `firewall` package
+  keeps 60000–61000 closed until `firewall.mosh_interface` is set) → the pane
+  switches to ssh, ends the unreachable server, and says so with a Details
+  popover. The machine then goes straight to ssh for 30 minutes, or until
+  "Try mosh again".
 
 ## Updates
 

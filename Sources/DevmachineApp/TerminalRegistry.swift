@@ -32,6 +32,27 @@ final class TerminalRegistry: NSObject {
     /// Panes that were put away and are now back on screen.
     private var reattached: Set<TerminalKind> = []
     private(set) var pendingFocusKind: TerminalKind?
+    /// The connection being set up for each remote pane. A late answer from
+    /// an attempt that is no longer this one is dropped.
+    private var remoteLaunches: [TerminalKind: RemoteLaunch] = [:]
+    nonisolated static let resolveSupport = ResolveSupport()
+
+    private struct RemoteLaunch {
+        enum Next {
+            case ssh(reason: MoshFallbackReason, detail: String)
+            case restart
+        }
+
+        let id: UUID
+        let alias: String
+        let session: String
+        var machine: String
+        /// mosh-client runs and has five seconds to hear from the server.
+        var probing = false
+        var strayServerPID: Int?
+        /// What to start once the process being stopped has exited.
+        var next: Next?
+    }
 
     private override init() {
         super.init()
@@ -346,6 +367,8 @@ final class TerminalRegistry: NSObject {
         awaitingSize.remove(kind)
         reattached.remove(kind)
         detachedAt[kind] = nil
+        remoteLaunches[kind] = nil
+        RemoteTransportStore.shared.forget(kind)
         if pendingFocusKind == kind { pendingFocusKind = nil }
         guard let term = terminals.removeValue(forKey: kind) else { return }
         term.terminate()
@@ -393,24 +416,7 @@ final class TerminalRegistry: NSObject {
         let customSocket = SettingsStore.shared.settings?.sshAgentSocket
         switch kind {
         case let .remote(alias, session):
-            // Interactive: mosh (survives roaming/drops). Tailscale only
-            // (UDP on tailscale0). Falls back to ssh if mosh isn't on the Mac.
-            let mosh = "/opt/homebrew/bin/mosh"
-            if FileManager.default.isExecutableFile(atPath: mosh) {
-                term.startProcess(
-                    executable: mosh,
-                    args: [alias, "--", "tmux", "new-session", "-A", "-s", session],
-                    environment: RemoteCommands.terminalEnvironment(
-                        term: RemoteCommands.remoteTerm, customSocket: customSocket)
-                )
-            } else {
-                term.startProcess(
-                    executable: "/usr/bin/ssh",
-                    args: [alias, "-t", RemoteCommands.newSession(name: session)],
-                    environment: RemoteCommands.terminalEnvironment(
-                        term: RemoteCommands.remoteTerm, customSocket: customSocket)
-                )
-            }
+            startRemote(kind, alias: alias, session: session, in: term, customSocket: customSocket)
         case let .local(session, path):
             // The multiplexer holds the shell, so the session survives the app.
             // Without it the pane is still usable, just not persistent.
@@ -438,6 +444,214 @@ final class TerminalRegistry: NSObject {
     }
 }
 
+// MARK: - Remote transport
+
+extension TerminalRegistry {
+    /// mosh when it gets through, ssh otherwise. The pane never waits on a
+    /// path that cannot work: a machine without mosh-server goes to ssh at
+    /// once, and a mosh-client that hears nothing for five seconds is
+    /// replaced by ssh in the same view.
+    private func startRemote(
+        _ kind: TerminalKind, alias: String, session: String,
+        in term: LocalProcessTerminalView, customSocket: String?
+    ) {
+        let settings = SettingsStore.shared.settings
+        let mode = settings?.remoteTerminalMode ?? .automatic
+        let client = MoshClientLocator.path(
+            bundled: LocalTools.moshClientPath(),
+            exists: { FileManager.default.isExecutableFile(atPath: $0) })
+        let id = UUID()
+        remoteLaunches[kind] = RemoteLaunch(id: id, alias: alias, session: session, machine: alias)
+
+        if mode == .alwaysSSH || client == nil {
+            let reason: MoshFallbackReason? = mode == .alwaysSSH ? nil : .noClient
+            startSSH(kind, in: term, reason: reason,
+                     detail: reason == nil ? "" : "No mosh-client in the app, /opt/homebrew/bin or /usr/local/bin.",
+                     fresh: false)
+            return
+        }
+
+        RemoteTransportStore.shared.connecting(kind, machine: alias)
+        term.feed(text: "\u{1b}[2mConnecting to \(alias)\u{2026}\u{1b}[0m\r\n")
+        let workspace = settings?.workspaceName(forAlias: alias) ?? alias
+        let sshEnvironment = RemoteCommands.sshEnvironment(customSocket: customSocket)
+        let cli = try? DevmachineCLI.resolve(customSocket: customSocket)
+        Task.detached {
+            let machine = cli.flatMap { cli in
+                MachineDirectory.shared.machine(forWorkspace: workspace) {
+                    (try? cli.listWorkspaces()).map { list in
+                        Dictionary(list.map { ($0.name, $0.machine) }, uniquingKeysWith: { first, _ in first })
+                    }
+                }
+            }
+            let key = machine ?? alias
+            let remembered = await MainActor.run { RemoteTransportStore.shared.remembered(for: key) }
+            let plan = RemoteTransportPolicy.plan(mode: mode, remembered: remembered, clientPath: client)
+            guard case let .mosh(clientPath, watchdog) = plan else {
+                if case let .ssh(reason) = plan {
+                    await TerminalRegistry.shared.finishRemote(
+                        kind, id: id, machine: key,
+                        result: .ssh(reason: reason ?? .noClient, detail: "", strayServerPID: nil),
+                        fresh: false, client: "", watchdog: false, customSocket: customSocket)
+                }
+                return
+            }
+            let connector = MoshConnector(
+                runner: ProcessRunner(), sshEnvironment: sshEnvironment,
+                cliExecutable: cli?.executable, cliEnvironment: cli?.environment(),
+                resolveSupport: TerminalRegistry.resolveSupport)
+            let result = connector.connect(alias: alias, session: session, machine: machine)
+            await TerminalRegistry.shared.finishRemote(
+                kind, id: id, machine: key, result: result, fresh: true,
+                client: clientPath, watchdog: watchdog, customSocket: customSocket)
+        }
+    }
+
+    private func finishRemote(
+        _ kind: TerminalKind, id: UUID, machine: String, result: MoshConnector.Result,
+        fresh: Bool, client: String, watchdog: Bool, customSocket: String?
+    ) {
+        guard var launch = remoteLaunches[kind], launch.id == id, let term = terminals[kind] else {
+            if case let .mosh(_, session) = result, case let .remote(alias, _) = kind {
+                Self.endStrayServer(alias: alias, pid: session.serverPID)
+            }
+            return
+        }
+        launch.machine = machine
+        switch result {
+        case let .mosh(ip, session):
+            launch.probing = watchdog
+            launch.strayServerPID = session.serverPID
+            remoteLaunches[kind] = launch
+            PaneLog.log("mosh pane=\(kind) ip=\(ip) port=\(session.port)")
+            term.startProcess(
+                executable: client,
+                args: MoshBootstrap.clientArguments(ip: ip, session: session),
+                environment: MoshBootstrap.clientEnvironment(
+                    session: session,
+                    base: RemoteCommands.terminalEnvironment(
+                        term: RemoteCommands.remoteTerm, customSocket: customSocket)))
+            RemoteTransportStore.shared.usingMosh(kind, machine: machine)
+            if watchdog {
+                DispatchQueue.main.asyncAfter(deadline: .now() + MoshClientProbe.timeout) { [weak self] in
+                    self?.checkMosh(kind, id: id, ip: ip, port: session.port)
+                }
+            }
+        case let .ssh(reason, detail, stray):
+            launch.strayServerPID = stray
+            remoteLaunches[kind] = launch
+            startSSH(kind, in: term, reason: reason, detail: detail, fresh: fresh)
+        }
+    }
+
+    /// mosh-client writes its "Nothing received from server" line on the top
+    /// row until the first packet arrives, so the screen says whether the
+    /// UDP path works.
+    private func checkMosh(_ kind: TerminalKind, id: UUID, ip: String, port: Int) {
+        guard var launch = remoteLaunches[kind], launch.id == id, launch.probing,
+              let term = terminals[kind]
+        else { return }
+        launch.probing = false
+        remoteLaunches[kind] = launch
+        guard term.searchMatchSummary(MoshClientProbe.connectingMarker).total > 0 else {
+            RemoteTransportStore.shared.moshConfirmed(machine: launch.machine)
+            return
+        }
+        PaneLog.log("mosh silent pane=\(kind), switching to ssh")
+        switchToSSH(kind, reason: .udpBlocked,
+                    detail: "mosh-client sent to \(ip) UDP port \(port) and got nothing back "
+                        + "in \(Int(MoshClientProbe.timeout)) seconds.")
+    }
+
+    /// Stops mosh-client at once: on SIGTERM it would first wait for the
+    /// server to acknowledge a shutdown that can never arrive. The ssh starts
+    /// from `processTerminated`, the one moment the view can run a new process.
+    private func switchToSSH(_ kind: TerminalKind, reason: MoshFallbackReason, detail: String) {
+        guard var launch = remoteLaunches[kind], let term = terminals[kind] else { return }
+        launch.next = .ssh(reason: reason, detail: detail)
+        remoteLaunches[kind] = launch
+        let pid = term.process.shellPid
+        if pid > 0 { kill(pid, SIGKILL) } else { term.terminate() }
+    }
+
+    /// A manual "Try mosh again": the pane's process stops and the whole
+    /// choice runs again.
+    func restart(_ kind: TerminalKind) {
+        guard let term = terminals[kind] else { return }
+        guard term.process.running, var launch = remoteLaunches[kind] else {
+            dead.remove(kind)
+            start(kind, in: term)
+            return
+        }
+        launch.probing = false
+        launch.next = .restart
+        remoteLaunches[kind] = launch
+        term.terminate()
+    }
+
+    private func startSSH(
+        _ kind: TerminalKind, in term: LocalProcessTerminalView, reason: MoshFallbackReason?,
+        detail: String, fresh: Bool
+    ) {
+        guard let launch = remoteLaunches[kind] else { return }
+        let customSocket = SettingsStore.shared.settings?.sshAgentSocket
+        term.startProcess(
+            executable: "/usr/bin/ssh",
+            args: [launch.alias, "-t",
+                   MoshBootstrap.sshFallbackCommand(session: launch.session, strayServerPID: launch.strayServerPID)],
+            environment: RemoteCommands.terminalEnvironment(
+                term: RemoteCommands.remoteTerm, customSocket: customSocket))
+        RemoteTransportStore.shared.usingSSH(
+            kind, machine: launch.machine, reason: reason, detail: detail, fresh: fresh)
+    }
+
+    /// Answers the exit of a remote pane's process when the app caused it
+    /// or was waiting on it. Returns false for an ordinary exit.
+    private func handleRemoteExit(_ kind: TerminalKind, source: TerminalView, exitCode: Int32?) -> Bool {
+        guard var launch = remoteLaunches[kind], let term = terminals[kind] else { return false }
+        let next: RemoteLaunch.Next
+        if let planned = launch.next {
+            next = planned
+        } else if launch.probing {
+            next = .ssh(reason: .clientExited,
+                        detail: "mosh-client exited with status \(exitCode.map(String.init) ?? "?") "
+                            + "before it heard from the server.")
+        } else {
+            return false
+        }
+        launch.next = nil
+        launch.probing = false
+        remoteLaunches[kind] = launch
+        switch next {
+        case let .ssh(reason, detail):
+            PaneLog.log("ssh after mosh pane=\(kind) reason=\(reason)")
+            term.feed(text: Self.leaveMoshScreen)
+            startSSH(kind, in: term, reason: reason, detail: detail, fresh: true)
+        case .restart:
+            term.feed(text: Self.leaveMoshScreen)
+            start(kind, in: term)
+        }
+        return true
+    }
+
+    /// A killed mosh-client leaves the terminal in its alternate screen with
+    /// the cursor hidden; this puts it back before the next program draws.
+    private static let leaveMoshScreen = "\u{1b}[?1049l\u{1b}[?1l\u{1b}>\u{1b}[?25h\u{1b}[2J\u{1b}[H"
+
+    /// A pane closed while mosh-server was starting leaves a server nobody
+    /// will reach, holding a tmux client until its own timeout.
+    nonisolated private static func endStrayServer(alias: String, pid: Int?) {
+        guard let pid else { return }
+        let environment = RemoteCommands.sshEnvironment()
+        Task.detached {
+            _ = try? ProcessRunner().run(
+                executable: "/usr/bin/ssh",
+                args: RemoteCommands.sshBaseArgs(alias: alias) + ["kill \(pid) 2>/dev/null"],
+                environment: environment)
+        }
+    }
+}
+
 extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
     /// The size the program itself is told. The pane's frame in points is not
     /// that number, and the difference is what a half-drawn screen is made of.
@@ -457,6 +671,7 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
         // than leave a dead screen or lose the pane.
         guard let kind = terminals.first(where: { $0.value === source })?.key else { return }
         PaneLog.log("process ended pane=\(kind) exit=\(exitCode.map(String.init) ?? "-")")
+        if handleRemoteExit(kind, source: source, exitCode: exitCode) { return }
         dead.insert(kind)
         detachedAt[kind] = nil
         if case let .local(session, _) = kind {
@@ -540,6 +755,10 @@ final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
 
 /// Tools the app carries in its own bundle rather than expecting on the Mac.
 enum LocalTools {
+    static func moshClientPath(bundle: Bundle = .main) -> String {
+        bundle.bundleURL.appendingPathComponent("Contents/Helpers/mosh-client").path
+    }
+
     static func zmxPath(
         bundle: Bundle = .main,
         exists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }

@@ -352,6 +352,7 @@ private struct MainPane: View {
                 TerminalPaneView(kind: kind, translucent: true)
                     .terminalFindBar(for: kind)
                     .terminalUploads(for: kind)
+                    .terminalTransport(for: kind)
             }
         }
         .id(key(item))

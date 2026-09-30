@@ -87,7 +87,7 @@ public struct ProcessRunner: CommandRunner {
         // `*-devmachine` alias to the real host, so a fixture alias such as
         // `acme-devmachine` would log in as the Mac user and get the Mac banned
         // by fail2ban. Tests inject a fake runner; this is the safety net.
-        if executable.hasSuffix("/ssh") || executable.hasSuffix("/mosh") || executable.hasSuffix("/scp"),
+        if ["/ssh", "/mosh", "/mosh-client", "/scp"].contains(where: { executable.hasSuffix($0) }),
            NSClassFromString("XCTestCase") != nil {
             throw ProcessRunnerError.remoteCommandUnderTest(executable)
         }

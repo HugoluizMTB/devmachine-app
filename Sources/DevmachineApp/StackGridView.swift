@@ -56,6 +56,7 @@ struct StackGridView: View {
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(1)
                     .truncationMode(.middle)
+                TerminalTransportBadge(kind: model.terminalKind(for: ref))
                 Spacer(minLength: 4)
                 controlStrip(ref)
             }
@@ -67,6 +68,7 @@ struct StackGridView: View {
             )
             .terminalFindBar(for: model.terminalKind(for: ref))
             .terminalUploads(for: model.terminalKind(for: ref))
+            .terminalTransport(for: model.terminalKind(for: ref))
         }
         .floatingCard()
     }

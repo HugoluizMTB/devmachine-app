@@ -187,7 +187,7 @@ Rules:
   log class/frame per view). A platform view wider than its container is the tell.
 
 ## Terminals (SwiftTerm)
-- `TerminalRegistry` owns ONE live `LocalProcessTerminalView` (mosh → `tmux new-session -A`)
+- `TerminalRegistry` owns ONE live `LocalProcessTerminalView` (mosh or ssh → `tmux new-session -A`)
   per session for the app's lifetime. `TerminalPaneView` only attaches/detaches it;
   single pane and stack-grid cells re-parent the same view. Never mount the same
   session in two places: two tmux clients at different sizes make `window-size latest`
@@ -297,6 +297,31 @@ Rules:
   socket is named after the session, so `LocalSession.handle` (the multiplexer
   name, and the registry key) never changes; `name` is what the sidebar shows.
 
+## Remote terminals (mosh, falling back to ssh)
+- **The app is the mosh wrapper.** It runs `mosh-server new` over ssh
+  (`MoshBootstrap`), reads `MOSH CONNECT <port> <key>` from output that may
+  carry login noise, and starts the embedded `mosh-client` (`Contents/Helpers`,
+  from `scripts/fetch_mosh.sh`) with the key in `MOSH_KEY`, never in argv.
+  Homebrew's `mosh-client` is only the fallback for a local build.
+- **`-s` binds the server to the address ssh reached**, so the client aims at
+  the same machine: `devmachine resolve` first (detected once per run with
+  `resolve --help`), then the `hostname` of `ssh -G <alias>`, looked up here.
+- **A pane never hangs on mosh.** Exit 127 (no mosh-server) → ssh at once. A
+  mosh-client still showing "Nothing received from server" after 5 s
+  (`MoshClientProbe`) is killed with SIGKILL — on SIGTERM it waits for a
+  shutdown ack that cannot come — and ssh starts in the same view from
+  `processTerminated`, the one moment SwiftTerm lets a view relaunch. That
+  ssh kills the unreachable mosh-server first (its pid comes from
+  `[mosh-server detached, pid = N]`): otherwise it holds a second tmux client
+  for 60 s and the screen flaps.
+- **What failed is remembered per machine for the app run**
+  (`RemoteTransportMemory`, 30 min, injectable clock). A remembered failure
+  is not recorded again (that would push the re-probe back forever) and not
+  announced again. An ssh that could not connect at all says nothing about
+  mosh and is not remembered.
+- Only a started mosh that could not get through shows the pane notice. A
+  machine without mosh-server is a choice; the badge's tooltip says why.
+
 ## Coding harnesses
 - Multiple harnesses may be enabled globally. Enabling one validates only its
   local CLI; a failed check does not change settings.
@@ -340,7 +365,7 @@ Rules:
 ## Tests never spawn ssh
 `~/.ssh/config` maps `*-devmachine` to the real host, so a fixture alias such as
 `acme-devmachine` logs into the VPS as the Mac user. `ProcessRunner` refuses
-ssh/mosh/scp under XCTest; tests inject a fake `CommandRunner`.
+ssh/mosh/mosh-client/scp under XCTest; tests inject a fake `CommandRunner`.
 
 ## Verifying UI
 - Screenshot flow: `./scripts/install.sh` (relaunches), `osascript` to front the app,
