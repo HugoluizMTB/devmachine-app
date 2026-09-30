@@ -5,11 +5,17 @@ public struct UsageHeaderView: View {
     public let systemImage: String
     public let refreshedAt: Date?
     public let onRefresh: () -> Void
+    /// Holds the "Refreshed at" line's place while the first snapshot loads.
+    public let reservesSubtitle: Bool
 
-    public init(title: String, systemImage: String, refreshedAt: Date?, onRefresh: @escaping () -> Void) {
+    public init(
+        title: String, systemImage: String, refreshedAt: Date?, reservesSubtitle: Bool = false,
+        onRefresh: @escaping () -> Void
+    ) {
         self.title = title
         self.systemImage = systemImage
         self.refreshedAt = refreshedAt
+        self.reservesSubtitle = reservesSubtitle
         self.onRefresh = onRefresh
     }
 
@@ -42,6 +48,9 @@ public struct UsageHeaderView: View {
                 Text(verbatim: "Refreshed at \(Self.timeFormatter.string(from: refreshedAt))")
                     .font(.caption)
                     .foregroundColor(UsagePalette.secondaryText)
+            } else if reservesSubtitle {
+                UsageSkeletonLine(font: .caption, share: 0.3)
+                    .accessibilityHidden(true)
             }
         }
     }

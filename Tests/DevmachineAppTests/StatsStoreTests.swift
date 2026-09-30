@@ -248,4 +248,58 @@ final class StatsStoreTests: XCTestCase {
         XCTAssertNil(store.snapshot)
         XCTAssertNil(store.refreshedAt)
     }
+    func testTheSkeletonShowsUntilTheFirstSnapshotArrives() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"self","self":true},{"name":"box"}]"#,
+            snapshotsByMachine: ["box": (goodSnapshot, "", 0)])
+        let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+        XCTAssertTrue(store.showsSkeleton)
+
+        store.loadMachines()
+        try await waitUntil { store.snapshot != nil }
+
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testAFailedFirstLoadShowsTheErrorNotTheSkeleton() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"self","self":true},{"name":"box"}]"#,
+            snapshotsByMachine: ["box": ("", "ssh: connect to host box port 22: Connection refused", 1)])
+        let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+
+        store.loadMachines()
+        try await waitUntil { store.errorText != nil }
+
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testARefreshAfterASnapshotNeverBringsTheSkeletonBack() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"self","self":true},{"name":"box"}]"#,
+            snapshotsByMachine: ["box": (goodSnapshot, "", 0)])
+        let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+        store.loadMachines()
+        try await waitUntil { store.snapshot != nil }
+
+        store.refresh()
+
+        XCTAssertTrue(store.isLoading)
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testNoMachineShowsTheEmptyStateNotTheSkeleton() async throws {
+        let runner = MultiMachineRunner(machinesJSON: #"[{"name":"self","self":true}]"#)
+        let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+
+        store.loadMachines()
+        try await waitUntil { store.hasLoadedMachines }
+
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testAnOverviewCardShowsItsSkeletonOnlyWhileItHasNothingToShow() {
+        XCTAssertTrue(MachineStatsState(isLoading: true).showsSkeleton)
+        XCTAssertFalse(MachineStatsState(isLoading: false).showsSkeleton)
+        XCTAssertFalse(MachineStatsState(isLoading: true, errorText: "timeout").showsSkeleton)
+    }
 }

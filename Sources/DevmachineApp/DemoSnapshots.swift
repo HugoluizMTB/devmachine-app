@@ -24,7 +24,22 @@ enum DemoSnapshots {
     static var setupInitialSection: SettingsSection = .connection
 
     private static let acmeAlias = "acme-devmachine"
-    private static let windowSize = NSSize(width: 1440, height: 900)
+    private static let defaultWindowSize = NSSize(width: 1440, height: 900)
+
+    /// `DEVMACHINE_DEMO_WINDOW=1100x700` captures at another size, to check
+    /// that a layout stretches with the window.
+    static var windowSize: NSSize {
+        guard let raw = ProcessInfo.processInfo.environment["DEVMACHINE_DEMO_WINDOW"] else {
+            return defaultWindowSize
+        }
+        return parseWindowSize(raw) ?? defaultWindowSize
+    }
+
+    static func parseWindowSize(_ raw: String) -> NSSize? {
+        let parts = raw.lowercased().split(separator: "x").compactMap { Double($0) }
+        guard parts.count == 2, parts[0] >= 600, parts[1] >= 400 else { return nil }
+        return NSSize(width: parts[0], height: parts[1])
+    }
 
     struct Environment {
         let model: AppModel
@@ -59,6 +74,19 @@ enum DemoSnapshots {
         Screen(id: "session-defaults", fileName: "08-session-defaults.png", settleNanoseconds: 500_000_000),
         Screen(id: "onboarding", fileName: "09-onboarding.png", settleNanoseconds: 500_000_000),
         Screen(id: "publish-port", fileName: "10-publish-port.png", settleNanoseconds: 400_000_000),
+    ]
+
+    /// The loading walk (`DEVMACHINE_DEMO_LOADING=1`): every store is held on
+    /// its first load, so each screen shows its skeleton. The sidebar comes
+    /// first, before the workspace list is seeded.
+    static let skeletonScreens: [Screen] = [
+        Screen(id: "skeleton-sidebar", fileName: "11-skeleton-home.png", settleNanoseconds: 700_000_000),
+        Screen(id: "skeleton-context", fileName: "12-skeleton-context.png", settleNanoseconds: 700_000_000),
+        Screen(id: "skeleton-stats", fileName: "13-skeleton-stats.png", settleNanoseconds: 700_000_000),
+        Screen(id: "skeleton-subdomains", fileName: "14-skeleton-subdomains.png", settleNanoseconds: 700_000_000),
+        Screen(id: "skeleton-dns", fileName: "15-skeleton-dns.png", settleNanoseconds: 700_000_000),
+        Screen(id: "skeleton-menubar-prs", fileName: "16-skeleton-menubar-prs.png", settleNanoseconds: 400_000_000),
+        Screen(id: "skeleton-menubar-usage", fileName: "17-skeleton-menubar-usage.png", settleNanoseconds: 400_000_000),
     ]
 
     /// The snapshot directory from the environment, or nil when this is a
@@ -99,14 +127,18 @@ enum DemoSnapshots {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        for screen in screens {
+        for screen in DemoMode.holdsLoading ? skeletonScreens : screens {
             await prepare(screen, environment: environment, mainWindow: window)
             try? await Task.sleep(nanoseconds: screen.settleNanoseconds)
             let view: NSView
             switch screen.id {
-            case "pull-requests":
+            case "pull-requests", "skeleton-menubar-prs":
                 view = standaloneView(
                     prPanel(environment), fittingSize: NSSize(width: 480, height: 640), fixedHeight: 640)
+            case "skeleton-menubar-usage":
+                view = standaloneView(
+                    prPanel(environment, tab: .usage),
+                    fittingSize: NSSize(width: 780, height: 640), fixedHeight: 640)
             case "onboarding":
                 view = standaloneView(onboardingPage(environment), fittingSize: windowSize)
                 // `OnboardingPage` reads `demoDetection` from its own `.task`,
@@ -166,6 +198,18 @@ enum DemoSnapshots {
         case "session-defaults":
             setupInitialSection = .harnesses
             model.showPage(.setup)
+        case "skeleton-context":
+            model.seedDemoWorkspacesAwaitingSessions(answered: "globex-devmachine")
+            model.clickSession(SessionRef(alias: "globex-devmachine", name: "claude"))
+            model.contextTab = .context
+        case "skeleton-stats":
+            model.showPage(.stats)
+        case "skeleton-subdomains":
+            subdomainsInitialTab = .sites
+            model.showPage(.subdomains)
+        case "skeleton-dns":
+            subdomainsInitialTab = .provider("cloudflare")
+            model.showPage(.subdomains)
         default:
             break
         }
@@ -173,8 +217,8 @@ enum DemoSnapshots {
 
     // MARK: - Standalone screens
 
-    private static func prPanel(_ environment: Environment) -> some View {
-        MenuBarPanel()
+    private static func prPanel(_ environment: Environment, tab: MenuBarTab = .pullRequests) -> some View {
+        MenuBarPanel(initialTab: tab)
             .environmentObject(environment.prStore)
             .environmentObject(environment.usageStore)
             .environmentObject(environment.model)

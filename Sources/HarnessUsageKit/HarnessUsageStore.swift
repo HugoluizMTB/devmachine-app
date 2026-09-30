@@ -21,6 +21,10 @@ public struct HarnessUsageState: Equatable, Sendable, Identifiable {
         self.isLoading = isLoading
         self.refreshedAt = refreshedAt
     }
+
+    /// Nothing to show yet: no snapshot and no error. A refresh keeps the
+    /// last snapshot, so the skeleton never comes back once one arrived.
+    public var showsSkeleton: Bool { snapshot == nil && errorText == nil }
 }
 
 @MainActor

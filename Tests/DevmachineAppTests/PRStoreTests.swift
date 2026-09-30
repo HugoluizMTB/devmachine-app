@@ -53,6 +53,25 @@ private extension Array {
     }
 }
 
+/// Answers `gh` with no open pull requests, or fails the search outright.
+private final class ScriptedSearchRunner: CommandRunner, @unchecked Sendable {
+    let failsSearch: Bool
+
+    init(failsSearch: Bool) {
+        self.failsSearch = failsSearch
+    }
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        if args.first == "-lic" || args.contains("command -v gh") { return "/usr/bin/gh" }
+        if args.first == "search" {
+            if failsSearch { throw NSError(domain: "gh", code: 1, userInfo: [NSLocalizedDescriptionKey: "gh: not logged in"]) }
+            return "[]"
+        }
+        if args.first == "api", args[safe: 1] == "user" { return "alice" }
+        return ""
+    }
+}
+
 @MainActor
 private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async throws {
     let deadline = Date().addingTimeInterval(timeout)
@@ -203,5 +222,40 @@ final class PRStoreTests: XCTestCase {
         }
 
         XCTAssertEqual(store.selectedOwner, "acme")
+    }
+    func testTheSkeletonShowsUntilTheFirstListArrives() async throws {
+        let store = PRStore(client: GHClient(runner: FakeGHRunner()))
+        XCTAssertTrue(store.showsSkeleton)
+
+        try await waitUntil { store.openCount == 2 }
+
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testAFailedFirstListShowsTheErrorNotTheSkeleton() async throws {
+        let store = PRStore(client: GHClient(runner: ScriptedSearchRunner(failsSearch: true)))
+
+        try await waitUntil { store.errorText != nil }
+
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testNoOpenPullRequestShowsTheEmptyStateNotTheSkeleton() async throws {
+        let store = PRStore(client: GHClient(runner: ScriptedSearchRunner(failsSearch: false)))
+
+        try await waitUntil { !store.isLoading }
+
+        XCTAssertTrue(store.forest.isEmpty)
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testARefreshAfterTheListArrivedNeverBringsTheSkeletonBack() async throws {
+        let store = PRStore(client: GHClient(runner: FakeGHRunner()))
+        try await waitUntil { store.openCount == 2 && !store.isLoading }
+
+        store.refresh()
+
+        XCTAssertTrue(store.isLoading)
+        XCTAssertFalse(store.showsSkeleton)
     }
 }

@@ -17,6 +17,12 @@ enum DemoMode {
         ProcessInfo.processInfo.environment["DEVMACHINE_DEMO"] == "1"
     }
 
+    /// `DEVMACHINE_DEMO_LOADING=1` on top of demo mode: every store stays on
+    /// its first load for ever, so the skeletons can be looked at.
+    static var holdsLoading: Bool {
+        isActive && ProcessInfo.processInfo.environment["DEVMACHINE_DEMO_LOADING"] == "1"
+    }
+
     /// Handed to any initializer that still requires a `CommandRunner` value
     /// while in demo mode (there is nothing real for it to run). Throws on
     /// every call, so a code path that reaches it fails loudly instead of

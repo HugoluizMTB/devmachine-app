@@ -42,6 +42,7 @@ struct ContextPanel: View {
             header
             tabBody
         }
+        .animation(.easeOut(duration: 0.2), value: store.showsSkeleton)
         .background(Color.dmSidebarBg)
         .quickPublishSheet(quickPublish, settings: settingsStore.settings, workspaces: model.visibleWorkspaces)
     }
@@ -103,6 +104,7 @@ struct ContextPanel: View {
             // An overlay, not a row above the list: a failed poll every 5s on a
             // flaky link would otherwise push the whole list down and back.
             .overlay(alignment: .bottom) { staleBanner }
+            .transition(.opacity)
         } else {
             contextStatus
         }
@@ -135,7 +137,8 @@ struct ContextPanel: View {
     private var contextStatus: some View {
         switch store.status {
         case .loading:
-            DMStatusView(kind: .loading("Reading context…"))
+            ContextSkeleton()
+                .transition(.opacity)
         case .failed(let reason):
             DMStatusView(kind: .failed(
                 title: "Couldn't read the context", message: reason, retry: { store.retry() }))
@@ -410,6 +413,82 @@ struct ContextPanel: View {
         .onTapGesture {
             if let u = URL(string: link.url) { NSWorkspace.shared.open(u) }
         }
+    }
+}
+
+/// The context list before its first answer: the same sections, with
+/// placeholder rows in the widths the panel has.
+private struct ContextSkeleton: View {
+    var body: some View {
+        ScrollView {
+            DMSkeleton {
+                VStack(alignment: .leading, spacing: 0) {
+                    section("MONITORS") { agentRows(1) }
+                    section("SHELLS") { agentRows(2) }
+                    section("SUB-AGENTS") { agentRows(1) }
+                    section("TODO", spacing: 9) {
+                        DMSkeletonBlock(height: 5, radius: 3)
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(0..<4, id: \.self) { index in
+                                HStack(spacing: 8) {
+                                    DMSkeletonBlock(width: .fixed(9), height: 9, radius: 4.5)
+                                    DMSkeletonText(size: 12, width: .varied(index))
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    section("PULL REQUESTS", divider: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(0..<2, id: \.self) { index in
+                                prRow(index)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .scrollDisabled(true)
+    }
+
+    private func section<Content: View>(
+        _ title: String, spacing: CGFloat = 7, divider: Bool = true,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        DMSection(
+            contentSpacing: spacing,
+            padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
+            showBottomDivider: divider,
+            label: { DMSectionLabel(text: title) },
+            trailing: { DMSkeletonText(size: 10, weight: .bold, width: .fixed(10)) },
+            content: content)
+    }
+
+    private func agentRows(_ count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(0..<count, id: \.self) { index in
+                HStack(spacing: 8) {
+                    DMSkeletonBlock(width: .fixed(14), height: 14, radius: 7)
+                        .frame(width: 16)
+                    DMSkeletonText(size: 12, width: .varied(index + count))
+                }
+                .padding(.vertical, 5)
+            }
+        }
+    }
+
+    private func prRow(_ index: Int) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            DMSkeletonBlock(width: .fixed(12), height: 12, radius: 6)
+                .frame(width: 14)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                DMSkeletonText(size: 12, width: .varied(index, shares: [0.55, 0.42]))
+                DMSkeletonText(size: 11, width: .varied(index, shares: [0.8, 0.66]))
+            }
+            DMSkeletonBlock(width: .fixed(18), height: 18, radius: 9)
+        }
+        .padding(.vertical, 5)
     }
 }
 

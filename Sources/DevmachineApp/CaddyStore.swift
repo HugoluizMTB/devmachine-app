@@ -1,9 +1,19 @@
 import Foundation
 import DevmachineCore
 
+/// What one DNS provider tab has to show.
+enum DNSRecordsPhase: Equatable {
+    case skeleton
+    case failed(String)
+    case loaded([DNSRecordRow])
+}
+
 @MainActor
 final class CaddyStore: ObservableObject {
+    static let noDomainMessage = "No domain is configured, so there is no zone to read records from."
+
     @Published var rows: [SubdomainRow] = []
+    @Published private(set) var hasLoadedSites = false
     @Published var domain: String = ""
     @Published var isLoading = false
     @Published var errorText: String?
@@ -42,8 +52,28 @@ final class CaddyStore: ObservableObject {
         for task in dnsRecordTasks.values { task.cancel() }
     }
 
+    /// True until the sites list has answered once. A later refresh keeps
+    /// the rows on screen, so the skeleton never comes back.
+    var showsSitesSkeleton: Bool { !hasLoadedSites && errorText == nil }
+
+    /// A provider tab waits for the domain the sites list reads; when that
+    /// read failed or found no domain, the tab says so instead of waiting.
+    func dnsPhase(for provider: String) -> DNSRecordsPhase {
+        if let error = dnsErrorByProvider[provider] { return .failed(error) }
+        if let records = dnsRecordsByProvider[provider] { return .loaded(records) }
+        if domain.isEmpty, let errorText { return .failed(errorText) }
+        if domain.isEmpty, hasLoadedSites { return .failed(Self.noDomainMessage) }
+        return .skeleton
+    }
+
     func refresh() {
+        if DemoMode.holdsLoading {
+            dnsProviders = DemoData.dnsProviders
+            isLoading = true
+            return
+        }
         if DemoMode.isActive {
+            hasLoadedSites = true
             rows = DemoData.subdomainRows
             domain = DemoData.domain
             dnsProviders = DemoData.dnsProviders
@@ -63,6 +93,7 @@ final class CaddyStore: ObservableObject {
                 self.rows = snapshot.rows
                 self.domain = snapshot.domain
                 self.errorText = nil
+                self.hasLoadedSites = true
             } catch {
                 guard !Task.isCancelled else { return }
                 self.errorText = PackageGateMessage.friendly(for: error)
@@ -101,6 +132,7 @@ final class CaddyStore: ObservableObject {
     /// call while the first is still running, or already loaded, is a no-op
     /// unless `force`.
     func loadRecords(provider: String, force: Bool = false) {
+        if DemoMode.holdsLoading { return }
         if DemoMode.isActive {
             dnsRecordsByProvider[provider] = DemoData.dnsRecordsByProvider[provider] ?? []
             dnsLoadingProviders.remove(provider)

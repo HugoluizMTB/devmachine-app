@@ -15,34 +15,49 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 0) {
             topBar
             ScrollView {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Array(model.sidebarWorkspaces.enumerated()), id: \.element.id) { index, ws in
-                        groupHeader(
-                            ws.name,
-                            alias: ws.alias,
-                            offline: !ws.isLocal && model.offlineAliases.contains(ws.alias),
-                            action: ws.isLocal ? pickLocalFolder : { model.newSession(alias: ws.alias) },
-                            filesButton: !ws.isLocal,
-                            extraTopSpacing: index > 0
-                        )
-                        if ws.isLocal {
-                            ForEach(model.localSessions) { s in
-                                localSessionRow(session: s)
-                            }
-                        } else {
-                            ForEach(model.sessionsByAlias[ws.alias] ?? []) { s in
-                                sessionRow(alias: ws.alias, session: s)
-                            }
-                        }
-                    }
+                if model.hasLoadedWorkspaces {
+                    workspaceList
+                        .transition(.opacity)
+                } else {
+                    SidebarSkeleton()
+                        .transition(.opacity)
                 }
-                .padding(.vertical, 6)
             }
             .scrollIndicators(.hidden)
+            .animation(.easeOut(duration: 0.2), value: model.hasLoadedWorkspaces)
+            .animation(.easeOut(duration: 0.2), value: model.answeredAliases)
             footerRow
         }
         .background(Color.dmSidebarBg)
         .quickPublishSheet(quickPublish, settings: settingsStore.settings, workspaces: model.visibleWorkspaces)
+    }
+
+    private var workspaceList: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(Array(model.sidebarWorkspaces.enumerated()), id: \.element.id) { index, ws in
+                groupHeader(
+                    ws.name,
+                    alias: ws.alias,
+                    offline: !ws.isLocal && model.offlineAliases.contains(ws.alias),
+                    action: ws.isLocal ? pickLocalFolder : { model.newSession(alias: ws.alias) },
+                    filesButton: !ws.isLocal,
+                    extraTopSpacing: index > 0
+                )
+                if ws.isLocal {
+                    ForEach(model.localSessions) { s in
+                        localSessionRow(session: s)
+                    }
+                } else if model.showsSessionSkeleton(alias: ws.alias) {
+                    SidebarSkeleton.sessionRows(count: 2, seed: index)
+                        .transition(.opacity)
+                } else {
+                    ForEach(model.sessionsByAlias[ws.alias] ?? []) { s in
+                        sessionRow(alias: ws.alias, session: s)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 6)
     }
 
     private var footerRow: some View {
@@ -316,5 +331,41 @@ struct SidebarView: View {
                 }
             )
         )
+    }
+}
+
+/// The workspace list before it is read: group headers and session rows in
+/// the sidebar's own sizes, stretching with its width.
+struct SidebarSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(0..<3, id: \.self) { group in
+                DMSkeleton {
+                    DMSection(
+                        padding: EdgeInsets(top: group > 0 ? 16 : 4, leading: 10, bottom: 4, trailing: 10),
+                        label: { DMSkeletonText(size: 11, weight: .semibold, width: .fixed([54, 40, 66][group])) },
+                        trailing: { Color.clear.frame(width: DMHitSize.header.width, height: DMHitSize.header.height) }
+                    )
+                }
+                Self.sessionRows(count: [3, 2, 2][group], seed: group)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    static func sessionRows(count: Int, seed: Int) -> some View {
+        DMSkeleton {
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(0..<count, id: \.self) { index in
+                    HStack(spacing: 8) {
+                        DMSkeletonText(size: 13, width: .varied(seed * 2 + index, shares: [0.5, 0.34, 0.62, 0.42, 0.56]))
+                        DMSkeletonText(size: 11, width: .fixed(7))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .padding(.horizontal, 6)
+                }
+            }
+        }
     }
 }

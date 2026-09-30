@@ -404,6 +404,9 @@ struct DemoUsageProvider: HarnessUsageProvider {
     let snapshot: HarnessUsageSnapshot
 
     func fetchSnapshot(previous: HarnessUsageSnapshot?) throws -> HarnessUsageSnapshot {
-        snapshot
+        if DemoMode.holdsLoading {
+            DispatchSemaphore(value: 0).wait()
+        }
+        return snapshot
     }
 }

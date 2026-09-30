@@ -38,6 +38,10 @@ final class ContextStore: ObservableObject {
 
     var isPolling: Bool { timer != nil }
 
+    /// Nothing read yet for this session. Once context has arrived, a later
+    /// poll or retry keeps it on screen instead.
+    var showsSkeleton: Bool { state == nil && status == .loading }
+
     func start(_ target: CommandTarget, harnesses: Set<HarnessID> = [.claude], settings: AppSettings = .empty) {
         guard facade.supports(harnesses) else { stop(); return }
         if current == target, self.harnesses == harnesses, self.settings == settings, timer != nil { return }
@@ -75,7 +79,7 @@ final class ContextStore: ObservableObject {
     }
 
     func poll() {
-        guard let target = current else { return }
+        guard let target = current, !DemoMode.holdsLoading else { return }
         // Skip the tick while the run for this same target is still going; a
         // switch to another session still polls right away.
         let key = target.key

@@ -121,6 +121,7 @@ public struct HarnessUsageCardContent: View {
                 title: presentation.headerTitle,
                 systemImage: systemImage,
                 refreshedAt: state.refreshedAt,
+                reservesSubtitle: state.showsSkeleton,
                 onRefresh: onRefresh)
 
             if let errorText = presentation.errorText {
@@ -136,11 +137,9 @@ public struct HarnessUsageCardContent: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 20)
-            } else if state.isLoading && state.snapshot == nil {
-                Text(verbatim: "Loading…")
-                    .foregroundColor(UsagePalette.secondaryText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
+            } else if state.showsSkeleton {
+                UsageCardSkeleton()
+                    .transition(.opacity)
             } else if let snapshot = state.snapshot {
                 if !snapshot.blocks.isEmpty {
                     UsageBarsView(blocks: snapshot.blocks, accent: accent)
@@ -171,5 +170,6 @@ public struct HarnessUsageCardContent: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeOut(duration: 0.2), value: state.showsSkeleton)
     }
 }

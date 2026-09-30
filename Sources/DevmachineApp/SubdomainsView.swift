@@ -45,6 +45,7 @@ struct SubdomainsView: View {
             Rectangle().fill(Color.dmDivider).frame(height: 1)
             body(for: selectedTab)
         }
+        .animation(.easeOut(duration: 0.2), value: showsSkeleton)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.dmContentBg)
         .onAppear {
@@ -95,7 +96,7 @@ struct SubdomainsView: View {
 
             Spacer()
 
-            if store.isLoading || store.isLoadingDNSProviders {
+            if (store.isLoading && !store.showsSitesSkeleton) || store.isLoadingDNSProviders {
                 ProgressView().controlSize(.small)
             }
             DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.refresh() }
@@ -120,6 +121,13 @@ struct SubdomainsView: View {
         )
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+    }
+
+    private var showsSkeleton: Bool {
+        switch selectedTab {
+        case .sites: return store.showsSitesSkeleton
+        case .provider(let name): return store.dnsPhase(for: name) == .skeleton
+        }
     }
 
     @ViewBuilder
@@ -148,8 +156,8 @@ struct SubdomainsView: View {
     private var sitesBody: some View {
         if let err = store.errorText {
             DMStatusView(kind: .failed(message: err, retry: { store.refresh() }))
-        } else if store.rows.isEmpty && store.isLoading {
-            DMStatusView(kind: .loading("Loading…"))
+        } else if store.showsSitesSkeleton {
+            skeletonTable(header: sitesTableHeader) { siteSkeletonRow($0) }
         } else if visibleRows.isEmpty {
             DMStatusView(kind: .empty(systemImage: "globe", text: "No subdomains found"))
         } else {
@@ -180,7 +188,73 @@ struct SubdomainsView: View {
                 .dmSurface(Color.clear, radius: DMRadius.tile)
                 .padding(10)
             }
+            .transition(.opacity)
         }
+    }
+
+    /// A table before its first rows: the real column header, as many
+    /// placeholder rows as the height holds, and the footer's place.
+    private func skeletonTable<Header: View, Row: View>(
+        header: Header, @ViewBuilder row: @escaping (Int) -> Row
+    ) -> some View {
+        VStack(spacing: 0) {
+            header
+            Rectangle().fill(Color.dmDivider).frame(height: 1)
+            DMSkeleton {
+                DMSkeletonRows(rowHeight: 33) { index in
+                    row(index)
+                    Rectangle().fill(Color.dmDivider).frame(height: 1)
+                }
+            }
+            DMSkeleton {
+                DMSkeletonText(size: 11, width: .fixed(96))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .dmSurface(Color.clear, radius: DMRadius.tile)
+        .padding(10)
+        .transition(.opacity)
+    }
+
+    private func siteSkeletonRow(_ index: Int) -> some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                DMSkeletonBlock(width: .fixed(11), height: 11, radius: 5.5)
+                DMSkeletonText(size: 12, width: .varied(index, shares: [0.55, 0.38, 0.7, 0.46, 0.62]))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            DMSkeletonText(size: 12, width: .varied(index + 2, shares: [0.7, 0.5, 0.85]))
+                .frame(width: SubdomainColumns.workspace, alignment: .leading)
+            DMSkeletonText(size: 12, width: .fixed(36))
+                .frame(width: SubdomainColumns.port, alignment: .leading)
+            DMSkeletonBlock(width: .fixed(72), height: 14, radius: 7)
+                .frame(width: SubdomainColumns.status, alignment: .leading)
+            HStack(spacing: 8) {
+                ForEach(0..<3, id: \.self) { _ in
+                    DMSkeletonBlock(width: .fixed(11), height: 11, radius: 3)
+                }
+            }
+            .frame(width: SubdomainColumns.actions, alignment: .trailing)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    private func dnsSkeletonRow(_ index: Int) -> some View {
+        HStack(spacing: 10) {
+            DMSkeletonText(size: 12, width: .varied(index, shares: [0.4, 0.62, 0.3, 0.52]))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            DMSkeletonBlock(width: .fixed(34), height: 14, radius: 7)
+                .frame(width: DNSColumns.type, alignment: .leading)
+            DMSkeletonText(size: 12, width: .varied(index + 1, shares: [0.8, 0.55, 0.7, 0.45]))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            DMSkeletonText(size: 11, width: .fixed(28))
+                .frame(width: DNSColumns.ttl, alignment: .trailing)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 
     private var sitesTableHeader: some View {
@@ -306,35 +380,48 @@ struct SubdomainsView: View {
 
     @ViewBuilder
     private func providerBody(_ provider: String) -> some View {
-        if store.dnsLoadingProviders.contains(provider) && store.dnsRecordsByProvider[provider] == nil {
-            DMStatusView(kind: .loading("Loading \(provider) records…"))
+        switch store.dnsPhase(for: provider) {
+        case .skeleton:
+            skeletonTable(header: dnsTableHeader) { dnsSkeletonRow($0) }
                 .onAppear { store.loadRecords(provider: provider) }
-        } else if let err = store.dnsErrorByProvider[provider] {
-            DMStatusView(kind: .failed(message: err, retry: { store.loadRecords(provider: provider, force: true) }))
-        } else if let records = store.dnsRecordsByProvider[provider] {
-            let searched = RowSearch.filter(records, query: searchText) { [$0.name, $0.type, $0.value] }
-            if records.isEmpty {
-                DMStatusView(kind: .empty(systemImage: "server.rack", text: "No records for this zone"))
-            } else {
-                VStack(spacing: 0) {
-                    dnsTableHeader
-                    Rectangle().fill(Color.dmDivider).frame(height: 1)
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(searched) { record in
-                                dnsRow(record)
-                                Rectangle().fill(Color.dmDivider).frame(height: 1)
-                            }
+                .onChange(of: store.domain) { store.loadRecords(provider: provider) }
+        case .failed(let err):
+            DMStatusView(kind: .failed(message: err, retry: { retryRecords(provider) }))
+        case .loaded(let records):
+            recordsTable(records)
+        }
+    }
+
+    private func retryRecords(_ provider: String) {
+        if store.dnsErrorByProvider[provider] != nil || !store.domain.isEmpty {
+            store.loadRecords(provider: provider, force: true)
+        } else {
+            store.refresh()
+        }
+    }
+
+    @ViewBuilder
+    private func recordsTable(_ records: [DNSRecordRow]) -> some View {
+        let searched = RowSearch.filter(records, query: searchText) { [$0.name, $0.type, $0.value] }
+        if records.isEmpty {
+            DMStatusView(kind: .empty(systemImage: "server.rack", text: "No records for this zone"))
+        } else {
+            VStack(spacing: 0) {
+                dnsTableHeader
+                Rectangle().fill(Color.dmDivider).frame(height: 1)
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(searched) { record in
+                            dnsRow(record)
+                            Rectangle().fill(Color.dmDivider).frame(height: 1)
                         }
                     }
-                    footer(showing: searched.count, of: records.count)
                 }
-                .dmSurface(Color.clear, radius: DMRadius.tile)
-                .padding(10)
+                footer(showing: searched.count, of: records.count)
             }
-        } else {
-            DMStatusView(kind: .loading("Loading \(provider) records…"))
-                .onAppear { store.loadRecords(provider: provider) }
+            .dmSurface(Color.clear, radius: DMRadius.tile)
+            .padding(10)
+            .transition(.opacity)
         }
     }
 

@@ -36,6 +36,7 @@ struct StatsView: View {
             }
             content
         }
+        .animation(.easeOut(duration: 0.2), value: store.showsSkeleton)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.dmContentBg)
         .onAppear {
@@ -62,7 +63,7 @@ struct StatsView: View {
                     .foregroundStyle(Color.dmMuted)
             }
 
-            if store.isLoading {
+            if store.isLoading && !store.showsSkeleton {
                 ProgressView().controlSize(.small)
             }
             DMIconButton(systemImage: "arrow.clockwise", tint: nil) { refresh() }
@@ -141,10 +142,12 @@ struct StatsView: View {
                 }
                 snapshotView(snapshot)
             }
+            .transition(.opacity)
         } else if let err = store.errorText {
             errorView(err)
-        } else if store.isLoading {
-            loadingView
+        } else if store.showsSkeleton {
+            StatsSkeleton()
+                .transition(.opacity)
         } else {
             emptyView
         }
@@ -158,10 +161,6 @@ struct StatsView: View {
 
     private func errorView(_ message: String) -> some View {
         DMStatusView(kind: .failed(message: message, retry: refresh))
-    }
-
-    private var loadingView: some View {
-        DMStatusView(kind: .loading("Loading…"))
     }
 
     private var emptyView: some View {
@@ -371,8 +370,18 @@ private struct MachineOverviewCard: View {
                 .font(.dm(10.5))
                 .foregroundStyle(.red.opacity(0.85))
                 .lineLimit(2)
-        } else if state?.isLoading == true {
-            ProgressView().controlSize(.small)
+        } else if state?.showsSkeleton == true {
+            DMSkeleton {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(0..<4, id: \.self) { index in
+                        HStack {
+                            DMSkeletonText(size: 10.5, width: .fixed([34, 52, 44, 60][index]))
+                            Spacer(minLength: 6)
+                            DMSkeletonText(size: 10.5, weight: .medium, width: .fixed(28))
+                        }
+                    }
+                }
+            }
         } else {
             Text("No data")
                 .font(.dm(11))
@@ -390,5 +399,90 @@ private struct MachineOverviewCard: View {
                 .font(.dm(10.5, weight: .medium))
                 .foregroundStyle(Color.dmRowText)
         }
+    }
+}
+
+/// The Stats page before its first snapshot: the same sections, tiles and
+/// rows as `snapshotView`, drawn as placeholders that stretch with the page.
+private struct StatsSkeleton: View {
+    var body: some View {
+        ScrollView {
+            DMSkeleton {
+                VStack(alignment: .leading, spacing: 16) {
+                    tiles
+                    barSection("MEMORY", captionShare: 0.28)
+                    barSection("DISK", captionShare: 0.36)
+                    rowsSection("CONTAINERS", count: 4)
+                    rowsSection("RAM BY USER", count: 3)
+                }
+                .padding(.bottom, 16)
+            }
+        }
+        .scrollDisabled(true)
+    }
+
+    private var tiles: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 150), spacing: 12, alignment: .top)],
+            spacing: 12
+        ) {
+            ForEach(0..<4, id: \.self) { index in
+                VStack(spacing: 3) {
+                    DMSkeletonText(
+                        size: 24, weight: .semibold, width: .fraction([0.5, 0.56, 0.3, 0.42][index]),
+                        alignment: .center)
+                    DMSkeletonText(size: 12, weight: .medium, width: .fraction(0.4), alignment: .center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .dmSurface(Color.dmHover, radius: DMRadius.bubble)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .font(.dm(11, weight: .semibold))
+            .foregroundStyle(Color.dmMuted)
+            .kerning(0.8)
+    }
+
+    private func barSection(_ title: String, captionShare: CGFloat) -> some View {
+        DMSection(
+            contentSpacing: 6,
+            padding: EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16),
+            label: { label(title) },
+            content: {
+                VStack(alignment: .leading, spacing: 4) {
+                    DMSkeletonBlock(height: 5, radius: 3)
+                    DMSkeletonText(size: 11, width: .fraction(captionShare))
+                }
+            }
+        )
+    }
+
+    private func rowsSection(_ title: String, count: Int) -> some View {
+        DMSection(
+            contentSpacing: 2,
+            padding: EdgeInsets(top: 12, leading: 10, bottom: 0, trailing: 10),
+            label: { label(title).padding(.leading, 6) },
+            content: {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(0..<count, id: \.self) { index in
+                        HStack(spacing: 8) {
+                            DMSkeletonBlock(width: .fixed(8), height: 8, radius: 2)
+                            DMSkeletonText(size: 13, width: .varied(index, shares: [0.34, 0.22, 0.4, 0.28]))
+                            DMSkeletonText(size: 11, width: .fixed(72))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .padding(.horizontal, 6)
+                    }
+                }
+            }
+        )
     }
 }

@@ -17,6 +17,9 @@ struct MachineStatsState: Equatable, Sendable {
     var isLoading = false
     var errorText: String?
     var refreshedAt: Date?
+
+    /// A machine with nothing to show yet: no snapshot and no error.
+    var showsSkeleton: Bool { snapshot == nil && errorText == nil && isLoading }
 }
 
 private enum MachineFetchResult: Sendable {
@@ -46,6 +49,7 @@ final class StatsStore: ObservableObject {
     @Published private(set) var machines: [StatsMachine] = []
     @Published private(set) var selectedMachine: String?
     @Published private(set) var states: [String: MachineStatsState] = [:]
+    @Published private(set) var hasLoadedMachines = false
 
     private let cli: @Sendable () throws -> DevmachineCLI
     private let selection: StatsMachineSelection
@@ -82,6 +86,15 @@ final class StatsStore: ObservableObject {
     var errorText: String? { state(for: selectedMachine)?.errorText }
     var refreshedAt: Date? { state(for: selectedMachine)?.refreshedAt }
 
+    /// True until the selected machine has a snapshot or an error to show. A
+    /// refresh after that keeps the last snapshot, so it never comes back.
+    var showsSkeleton: Bool {
+        guard hasLoadedMachines else { return true }
+        guard let machine = selectedMachine else { return false }
+        guard let state = states[machine] else { return true }
+        return state.snapshot == nil && state.errorText == nil
+    }
+
     func state(for machine: String?) -> MachineStatsState? {
         guard let machine else { return nil }
         return states[machine]
@@ -94,8 +107,11 @@ final class StatsStore: ObservableObject {
         if DemoMode.isActive {
             machines = DemoData.statsMachines
             selectedMachine = "main"
+            hasLoadedMachines = true
             states = DemoData.statsSnapshots.mapValues {
-                MachineStatsState(snapshot: $0, isLoading: false, errorText: nil, refreshedAt: Date())
+                DemoMode.holdsLoading
+                    ? MachineStatsState(isLoading: true)
+                    : MachineStatsState(snapshot: $0, isLoading: false, errorText: nil, refreshedAt: Date())
             }
             return
         }
@@ -109,6 +125,7 @@ final class StatsStore: ObservableObject {
             }.value
             guard !Task.isCancelled else { return }
             self.machines = list
+            self.hasLoadedMachines = true
             guard !list.isEmpty else {
                 self.selectedMachine = nil
                 return

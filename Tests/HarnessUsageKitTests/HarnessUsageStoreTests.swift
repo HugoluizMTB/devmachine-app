@@ -118,4 +118,38 @@ final class HarnessUsageStoreTests: XCTestCase {
 
         XCTAssertEqual(store.state(for: "same")?.snapshot?.planName, "New")
     }
+    func testTheCardSkeletonShowsUntilTheFirstSnapshotArrives() async {
+        let provider = FakeHarnessUsageProvider(id: "claude", result: .success(snapshot()), delay: 0.2)
+        let store = HarnessUsageStore(providers: [provider])
+        XCTAssertEqual(store.state(for: "claude")?.showsSkeleton, true)
+
+        store.refresh(force: true)
+        XCTAssertEqual(store.state(for: "claude")?.showsSkeleton, true)
+        await waitUntil { store.state(for: "claude")?.snapshot != nil }
+
+        XCTAssertEqual(store.state(for: "claude")?.showsSkeleton, false)
+    }
+
+    func testAFailedFirstFetchShowsTheErrorNotTheSkeleton() async {
+        let provider = FakeHarnessUsageProvider(id: "claude", result: .failure(FakeUsageError.failed))
+        let store = HarnessUsageStore(providers: [provider])
+
+        store.refresh(force: true)
+        await waitUntil { store.state(for: "claude")?.errorText != nil }
+
+        XCTAssertEqual(store.state(for: "claude")?.showsSkeleton, false)
+    }
+
+    func testARefreshAfterASnapshotNeverBringsTheSkeletonBack() async {
+        let provider = FakeHarnessUsageProvider(id: "claude", result: .success(snapshot()))
+        let store = HarnessUsageStore(providers: [provider])
+        store.refresh(force: true)
+        await waitUntil { store.state(for: "claude")?.snapshot != nil }
+
+        provider.delay = 0.2
+        store.refresh(force: true)
+
+        XCTAssertEqual(store.state(for: "claude")?.isLoading, true)
+        XCTAssertEqual(store.state(for: "claude")?.showsSkeleton, false)
+    }
 }

@@ -10,6 +10,7 @@ struct PRsView: View {
             Rectangle().fill(Color.dmDivider).frame(height: 1)
             content
         }
+        .animation(.easeOut(duration: 0.2), value: store.showsSkeleton)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.dmContentBg)
     }
@@ -40,7 +41,7 @@ struct PRsView: View {
 
             Spacer()
 
-            if store.isLoading {
+            if store.isLoading && !store.showsSkeleton {
                 ProgressView().controlSize(.small)
             }
             DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.refresh() }
@@ -59,6 +60,10 @@ struct PRsView: View {
         if let err = store.errorText {
             DMStatusView(
                 kind: .failed(message: err, retry: { store.refresh() }), fillsHeight: false)
+        } else if store.showsSkeleton {
+            PRListSkeleton()
+                .padding(.vertical, 6)
+                .transition(.opacity)
         } else if store.forest.isEmpty {
             DMStatusView(
                 kind: .empty(
@@ -75,6 +80,28 @@ struct PRsView: View {
                 .padding(.vertical, 6)
             }
             .frame(maxHeight: .infinity)
+            .transition(.opacity)
+        }
+    }
+}
+
+/// The pull request list before its first answer: rows in `PRRowView`'s
+/// sizes, as many as the panel holds.
+private struct PRListSkeleton: View {
+    var body: some View {
+        DMSkeleton {
+            DMSkeletonRows(rowHeight: 40) { index in
+                HStack(spacing: 8) {
+                    DMSkeletonBlock(width: .fixed(8), height: 8, radius: 4)
+                    DMSkeletonText(size: 13, width: .varied(index, shares: [0.7, 0.5, 0.82, 0.6, 0.44, 0.76]))
+                    DMSkeletonText(size: 11, width: .fixed([96, 120, 84][index % 3]))
+                    DMSkeletonBlock(width: .fixed(24), height: 24, radius: 12)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .padding(.horizontal, 6)
+                .padding(.bottom, 2)
+            }
         }
     }
 }

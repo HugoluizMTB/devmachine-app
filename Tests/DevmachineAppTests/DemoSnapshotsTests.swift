@@ -7,6 +7,7 @@ final class DemoSnapshotsTests: XCTestCase {
     override func tearDown() async throws {
         unsetenv("DEVMACHINE_DEMO")
         unsetenv("DEVMACHINE_DEMO_SNAPSHOTS")
+        unsetenv("DEVMACHINE_DEMO_LOADING")
         DemoSnapshots.subdomainsInitialTab = .sites
         DemoSnapshots.setupInitialSection = .connection
         try await super.tearDown()
@@ -84,5 +85,27 @@ final class DemoSnapshotsTests: XCTestCase {
 
     func testSetupInitialSectionDefaultsToConnection() {
         XCTAssertEqual(DemoSnapshots.setupInitialSection, .connection)
+    }
+    func testTheLoadingWalkFollowsTheMainWalksNumbering() {
+        let names = DemoSnapshots.skeletonScreens.map(\.fileName)
+        XCTAssertEqual(Set(names).count, names.count)
+        XCTAssertTrue(Set(names).isDisjoint(with: DemoSnapshots.screens.map(\.fileName)))
+        let numbers = names.map { String($0.prefix(while: \.isNumber)) }
+        XCTAssertEqual(numbers, numbers.sorted())
+        XCTAssertEqual(numbers.first, "11")
+    }
+
+    func testLoadingIsHeldOnlyInsideDemoMode() {
+        setenv("DEVMACHINE_DEMO_LOADING", "1", 1)
+        unsetenv("DEVMACHINE_DEMO")
+        XCTAssertFalse(DemoMode.holdsLoading)
+        setenv("DEVMACHINE_DEMO", "1", 1)
+        XCTAssertTrue(DemoMode.holdsLoading)
+    }
+
+    func testAWindowSizeIsReadAsWidthByHeight() {
+        XCTAssertEqual(DemoSnapshots.parseWindowSize("1100x700"), NSSize(width: 1100, height: 700))
+        XCTAssertNil(DemoSnapshots.parseWindowSize("1100"))
+        XCTAssertNil(DemoSnapshots.parseWindowSize("100x100"))
     }
 }

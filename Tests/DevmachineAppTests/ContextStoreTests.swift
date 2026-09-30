@@ -136,6 +136,48 @@ final class ContextStoreTests: XCTestCase {
         XCTAssertEqual(store.state, state)
     }
 
+    func testTheSkeletonShowsOnlyUntilTheFirstReadAnswers() async throws {
+        let source = FixtureContextSource(state: state, blocked: true)
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop(); source.gate?.signal() }
+        XCTAssertFalse(store.showsSkeleton)
+        store.start(remote)
+        XCTAssertTrue(store.showsSkeleton)
+        source.gate?.signal()
+        try await waitUntil { store.status == .loaded }
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testAFailedFirstReadShowsTheErrorNotTheSkeleton() async throws {
+        let source = FixtureContextSource(failure: DevmachineCLIError.commandFailed("timeout"))
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.status != .loading }
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testAnEmptyAnswerShowsTheEmptyStateNotTheSkeleton() async throws {
+        let source = FixtureContextSource(state: nil)
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.status == .empty }
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
+    func testARefreshAfterContextArrivedNeverBringsTheSkeletonBack() async throws {
+        let source = FixtureContextSource(state: state)
+        let store = ContextStore(services: fixtureServices(context: source))
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.status == .loaded }
+        store.poll()
+        XCTAssertFalse(store.showsSkeleton)
+        store.retry()
+        XCTAssertFalse(store.showsSkeleton)
+    }
+
     func testAnEngineWithNothingToSayIsEmptyNotLoading() async throws {
         let source = FixtureContextSource(state: nil)
         let store = ContextStore(services: fixtureServices(context: source))

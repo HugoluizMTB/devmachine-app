@@ -302,6 +302,24 @@ final class AppModel: ObservableObject {
     }
     @Published var sessionsByAlias: [String: [TmuxSession]] = [:]
     @Published var offlineAliases: Set<String> = []
+    /// True once the workspace list has been read at launch.
+    @Published private(set) var hasLoadedWorkspaces = false
+    /// Workspaces whose session read has come back at least once, with a list
+    /// or with a failure.
+    @Published private(set) var answeredAliases: Set<String> = []
+
+    /// The sidebar holds a workspace's place with placeholder rows until its
+    /// first read answers. A paused sweep will not read it soon, so a
+    /// workspace waiting on the pause shows as it is instead.
+    func showsSessionSkeleton(alias: String) -> Bool {
+        !answeredAliases.contains(alias) && !isPollingPaused
+    }
+
+    private func markAnswered(_ alias: String) {
+        if !answeredAliases.contains(alias) {
+            answeredAliases.insert(alias)
+        }
+    }
 
     /// The sweep and an image transfer are jobs like any other: they are cards
     /// in the corner, not a strip above the sidebar. That strip had no fixed
@@ -1234,14 +1252,27 @@ final class AppModel: ObservableObject {
     private func seedDemoState() {
         cliMissing = false
         settings = .empty
-        workspaces = DemoData.workspaces
-        sessionsByAlias = DemoData.sessionsByAlias
-        // `localSessions` (below) reads `DemoData.localSessions` directly in
-        // demo mode; `addedLocalSessions` is left untouched so nothing here
-        // is ever written to `UserDefaults`.
         packageGate = .ok
         hasCaddyMachine = true
         activePage = nil
+        guard !DemoMode.holdsLoading else { return }
+        workspaces = DemoData.workspaces
+        sessionsByAlias = DemoData.sessionsByAlias
+        hasLoadedWorkspaces = true
+        answeredAliases = Set(DemoData.workspaces.map(\.alias))
+        // `localSessions` (below) reads `DemoData.localSessions` directly in
+        // demo mode; `addedLocalSessions` is left untouched so nothing here
+        // is ever written to `UserDefaults`.
+    }
+
+    /// The loading demo's second stage: the workspace list is in, and only
+    /// `answered` has its sessions; every other workspace is still waiting.
+    func seedDemoWorkspacesAwaitingSessions(answered alias: String) {
+        guard DemoMode.holdsLoading else { return }
+        workspaces = DemoData.workspaces
+        sessionsByAlias = DemoData.sessionsByAlias.filter { $0.key == alias }
+        answeredAliases = [alias]
+        hasLoadedWorkspaces = true
     }
 
     func loadWorkspaces() {
@@ -1253,6 +1284,7 @@ final class AppModel: ObservableObject {
         self.settings = settingsWithAliases
         workspaces = (try? services.workspaceSource.workspaces(
             resolveAlias: { settingsWithAliases.hostAlias(forWorkspace: $0) })) ?? []
+        hasLoadedWorkspaces = true
         refreshAll()
         checkPackageGate()
         // A slow sweep of every workspace so an offline one comes back on its
@@ -1324,6 +1356,7 @@ final class AppModel: ObservableObject {
                         self.offlineAliases.insert(ws.alias)
                     }
                 }
+                for ws in unreached { self.markAnswered(ws.alias) }
                 for ws in targets { self.refreshingAliases.remove(ws.alias) }
                 self.sweepInFlight = false
                 self.sweepTaskID = nil
@@ -1356,6 +1389,7 @@ final class AppModel: ObservableObject {
     // Returns the failure that must pause polling: the host or the ssh agent is
     // down. Nil means the sweep goes on.
     private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) -> SSHFailure? {
+        markAnswered(alias)
         switch outcome {
         case .success(let result):
             // Assign only on a real change: every write to a @Published

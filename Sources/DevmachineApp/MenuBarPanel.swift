@@ -49,7 +49,11 @@ struct MenuBarPanel: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @Environment(\.openWindow) private var openWindow
-    @State private var tab: MenuBarTab = .pullRequests
+    @State private var tab: MenuBarTab
+
+    init(initialTab: MenuBarTab = .pullRequests) {
+        _tab = State(initialValue: initialTab)
+    }
 
     private var panelWidth: CGFloat {
         let mouse = NSEvent.mouseLocation

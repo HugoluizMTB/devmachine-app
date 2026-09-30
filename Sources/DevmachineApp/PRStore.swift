@@ -9,7 +9,12 @@ final class PRStore: ObservableObject {
     @Published var openCount: Int = 0
     @Published var errorText: String?
     @Published var isLoading = false
+    @Published private(set) var hasLoadedOnce = false
     @Published var favorites: [String] = UserDefaults.standard.stringArray(forKey: "favoriteOwners") ?? []
+
+    /// True until the first list has answered. A later refresh keeps the
+    /// list on screen, so the skeleton never comes back.
+    var showsSkeleton: Bool { forest.isEmpty && errorText == nil && !hasLoadedOnce }
 
     // Owners as shown in the dropdown: "All" first, then favorites, then the rest.
     var orderedOwners: [String] { orderOwners(owners, favorites: favorites) }
@@ -43,6 +48,10 @@ final class PRStore: ObservableObject {
 
     init(client: GHClient = GHClient()) {
         self.client = client
+        if DemoMode.holdsLoading {
+            isLoading = true
+            return
+        }
         if DemoMode.isActive {
             seedDemo()
             return
@@ -60,6 +69,7 @@ final class PRStore: ObservableObject {
         openCount = prs.count
         errorText = nil
         isLoading = false
+        hasLoadedOnce = true
     }
 
     // A cycle slower than the 60s tick would otherwise overlap with the next
@@ -115,6 +125,7 @@ final class PRStore: ObservableObject {
                 self.forest = buildStackForest(details)
                 self.openCount = details.count
                 self.errorText = nil
+                self.hasLoadedOnce = true
             } catch {
                 guard coordinator.mayApply(gen) else { return }
                 // Keep the cached list on screen; only surface the error if we

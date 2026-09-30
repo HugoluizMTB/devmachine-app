@@ -1023,6 +1023,71 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testTheSidebarSkeletonShowsUntilTheWorkspacesAreRead() async throws {
+        let workspace = Workspace(name: "acme", alias: "acme-devmachine")
+        let model = AppModel(services: fixtureServices(
+            workspaces: [workspace], sessions: [TmuxSession(name: "dash", windows: 1, harnesses: [])]))
+        model.settings = .empty
+        XCTAssertFalse(model.hasLoadedWorkspaces)
+
+        model.loadWorkspaces()
+
+        XCTAssertTrue(model.hasLoadedWorkspaces)
+        XCTAssertTrue(model.showsSessionSkeleton(alias: workspace.alias))
+        try await waitUntil { model.sessionsByAlias[workspace.alias] != nil }
+        XCTAssertFalse(model.showsSessionSkeleton(alias: workspace.alias))
+    }
+
+    @MainActor
+    func testARefreshAfterSessionsArrivedNeverBringsTheSkeletonBack() async throws {
+        let workspace = Workspace(name: "acme", alias: "acme-devmachine")
+        let model = AppModel(services: fixtureServices(
+            workspaces: [workspace], sessions: [TmuxSession(name: "dash", windows: 1, harnesses: [])]))
+        model.settings = .empty
+        model.loadWorkspaces()
+        try await waitUntil { model.sessionsByAlias[workspace.alias] != nil }
+
+        model.refreshAll()
+
+        XCTAssertFalse(model.showsSessionSkeleton(alias: workspace.alias))
+    }
+
+    @MainActor
+    func testAWorkspaceThatCannotBeReachedDropsItsSkeleton() {
+        let model = AppModel(store: SessionStore(runner: UnreachableRunner()))
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "beta", alias: "beta-devmachine"),
+        ]
+        XCTAssertTrue(model.showsSessionSkeleton(alias: "beta-devmachine"))
+        model.refreshAll()
+
+        let sweep = expectation(description: "sweep")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { sweep.fulfill() }
+        wait(for: [sweep], timeout: 2)
+
+        XCTAssertFalse(model.showsSessionSkeleton(alias: "acme-devmachine"))
+        XCTAssertFalse(model.showsSessionSkeleton(alias: "beta-devmachine"))
+    }
+
+    @MainActor
+    func testALockedAgentDropsTheSkeletonOfEveryWorkspaceTheSweepSkipped() {
+        let model = AppModel(store: SessionStore(runner: AuthDeniedRunner()))
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "beta", alias: "beta-devmachine"),
+        ]
+        model.refreshAll()
+
+        let sweep = expectation(description: "sweep")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { sweep.fulfill() }
+        wait(for: [sweep], timeout: 2)
+
+        XCTAssertFalse(model.showsSessionSkeleton(alias: "acme-devmachine"))
+        XCTAssertFalse(model.showsSessionSkeleton(alias: "beta-devmachine"))
+    }
+
+    @MainActor
     func testAnUnreachableHostTurnsEveryWorkspaceOnItOffline() {
         let model = AppModel(store: SessionStore(runner: UnreachableRunner()))
         model.workspaces = [
