@@ -305,7 +305,7 @@ final class StatsStore: ObservableObject {
 
     private func seedDemo() {
         machines = DemoData.statsMachines
-        selectedMachine = "main"
+        selectedMachine = DemoData.statsMachine(from: ProcessInfo.processInfo.environment)
         hasLoadedMachines = true
         hasLoadedMachineList = true
         let date = now()

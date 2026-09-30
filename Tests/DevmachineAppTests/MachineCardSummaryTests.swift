@@ -3,14 +3,14 @@ import DevmachineCore
 @testable import DevmachineApp
 
 final class MachineCardSummaryTests: XCTestCase {
-    private func snapshot(total: Int64, used: Int64) -> StatsSnapshot {
+    private func snapshot(total: Int64, used: Int64, docker: Bool = true) -> StatsSnapshot {
         StatsSnapshot(
             collectedAt: "2026-09-29T16:23:11+00:00",
             memory: .init(totalBytes: total, usedBytes: used, availableBytes: total - used),
             swap: .init(totalBytes: 0, usedBytes: 0),
             disk: .init(path: "/", usedBytes: 0, availableBytes: 116_000_000_000, usedPercent: 42),
             load: .init(load1: 1.234, load5: 0, load15: 0),
-            docker: .init(available: true, containers: []),
+            docker: .init(available: docker, containers: []),
             users: [], ports: [], errors: [])
     }
 
@@ -26,5 +26,14 @@ final class MachineCardSummaryTests: XCTestCase {
     func testAMachineWithNoMemoryTotalShowsADash() {
         XCTAssertEqual(MachineCardSummary(snapshot: snapshot(total: 0, used: 0), containerCount: 0).ram, "--")
     }
-}
 
+    func testAMachineWithoutDockerShowsADashForContainers() {
+        let summary = MachineCardSummary(snapshot: snapshot(total: 16_000, used: 9_600, docker: false), containerCount: 0)
+
+        XCTAssertEqual(summary.containers, "—")
+    }
+
+    func testAMachineWithDockerAndNothingRunningShowsZero() {
+        XCTAssertEqual(MachineCardSummary(snapshot: snapshot(total: 16_000, used: 9_600), containerCount: 0).containers, "0")
+    }
+}

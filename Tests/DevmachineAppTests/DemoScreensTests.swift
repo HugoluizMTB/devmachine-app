@@ -109,6 +109,20 @@ final class DemoScreensTests: XCTestCase {
             ["codex", "claude"])
     }
 
+    func testTheDemoBackupMachineHasNoDocker() throws {
+        let backup = try XCTUnwrap(DemoData.statsSnapshots["backup"])
+        let main = try XCTUnwrap(DemoData.statsSnapshots["main"])
+
+        XCTAssertFalse(backup.docker.available)
+        XCTAssertTrue(main.docker.available)
+    }
+
+    func testTheDemoStatsMachineIsMainUnlessAnotherDemoMachineIsAsked() {
+        XCTAssertEqual(DemoData.statsMachine(from: [:]), "main")
+        XCTAssertEqual(DemoData.statsMachine(from: ["DEVMACHINE_DEMO_STATS_MACHINE": "backup"]), "backup")
+        XCTAssertEqual(DemoData.statsMachine(from: ["DEVMACHINE_DEMO_STATS_MACHINE": "nowhere"]), "main")
+    }
+
     func testDemoShortcutsAreInventedAndIgnoreSavedOnes() throws {
         let suiteName = "\(#function)-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

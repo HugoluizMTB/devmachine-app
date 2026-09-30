@@ -272,14 +272,16 @@ enum DemoData {
 
     // MARK: Stats
 
-    private static func snapshot(loadFactor: Double, users: [UserRAM], containers: [ContainerStat]) -> StatsSnapshot {
+    private static func snapshot(
+        loadFactor: Double, users: [UserRAM], containers: [ContainerStat], dockerAvailable: Bool = true
+    ) -> StatsSnapshot {
         StatsSnapshot(
             collectedAt: ISO8601DateFormatter().string(from: Date()),
             memory: .init(totalBytes: 16 * 1_000_000_000, usedBytes: Int64(Double(9_600_000_000) * loadFactor), availableBytes: 6_400_000_000),
             swap: .init(totalBytes: 2 * 1_000_000_000, usedBytes: 128_000_000),
             disk: .init(path: "/", usedBytes: 84_000_000_000, availableBytes: 116_000_000_000, usedPercent: 42),
             load: .init(load1: 1.2 * loadFactor, load5: 0.9 * loadFactor, load15: 0.7 * loadFactor),
-            docker: .init(available: true, containers: containers),
+            docker: .init(available: dockerAvailable, containers: containers),
             users: users,
             ports: [PortOwner(port: 3000, owner: "acme"), PortOwner(port: 8080, owner: "acme"),
                     PortOwner(port: 4000, owner: "globex")],
@@ -303,9 +305,8 @@ enum DemoData {
         "backup": snapshot(
             loadFactor: 0.3,
             users: [UserRAM(user: "acme", rssBytes: 300_000_000)],
-            containers: [
-                ContainerStat(name: "restic", memUsedBytes: 64_000_000, memLimitBytes: 256_000_000, cpuPercent: 1.1, owner: nil),
-            ]),
+            containers: [],
+            dockerAvailable: false),
         "staging": snapshot(
             loadFactor: 0.5,
             users: [UserRAM(user: "globex", rssBytes: 480_000_000)],
@@ -319,6 +320,14 @@ enum DemoData {
         StatsMachine(name: "backup", firstAddress: "203.0.113.11"),
         StatsMachine(name: "staging", firstAddress: "203.0.113.12"),
     ]
+
+    /// `DEVMACHINE_DEMO_STATS_MACHINE=backup` opens Stats on that demo
+    /// machine, to look at a machine without Docker. Main by default, so the
+    /// website's screenshots stay as they are.
+    static func statsMachine(from environment: [String: String]) -> String {
+        let asked = environment["DEVMACHINE_DEMO_STATS_MACHINE"] ?? ""
+        return statsMachines.contains { $0.name == asked } ? asked : "main"
+    }
 
     /// How old each demo snapshot reads, so Home shows a fresh card, an
     /// older one, and a stale one.

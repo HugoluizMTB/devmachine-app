@@ -16,7 +16,7 @@ struct MachineCardSummary: Equatable {
             : "--"
         diskFree = String(format: "%.1f GB", Double(snapshot.disk.availableBytes) / 1_073_741_824)
         load1 = String(format: "%.2f", snapshot.load.load1)
-        containers = String(containerCount)
+        containers = snapshot.docker.available ? String(containerCount) : ContainersState.noDocker.cardValue
     }
 }
 

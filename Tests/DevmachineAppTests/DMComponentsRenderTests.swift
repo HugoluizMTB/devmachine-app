@@ -63,6 +63,7 @@ private struct DMComponentsGallery: View {
                 DMPill(text: "CI passing", color: .green)
             }
             DMRow(systemImage: "circle.fill", title: "acme / dash", selected: true)
+            DMCommandBlock(["devmachine packages add docker --machine main", "devmachine sync --machine main"])
             DMTabStrip(
                 tabs: ["Sites", "cloudflare"], selection: $tab, title: { $0 },
                 fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)

@@ -104,7 +104,7 @@ struct OnboardingPage: View {
                 + "Paste it into any terminal, then come back here.")
                 .font(.dm(11.5))
                 .foregroundStyle(.white.opacity(0.65))
-            commandRow(OnboardingPlan.homebrewInstallLine)
+            DMCommandBlock(OnboardingPlan.homebrewInstallLine)
             DMButton("brew.sh", variant: .link) {
                 NSWorkspace.shared.open(URL(string: "https://brew.sh")!)
             }
@@ -286,38 +286,5 @@ struct OnboardingPage: View {
         }
         let next = await Task.detached { OnboardingDetector.detect() }.value
         detection = next
-    }
-
-    // MARK: - Small pieces
-
-    private func commandRow(_ command: String) -> some View {
-        HStack {
-            Text(verbatim: command)
-                .font(.dm(11.5, design: .monospaced))
-                .foregroundStyle(Color.dmRowText)
-                .textSelection(.enabled)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 12)
-            CopyButton(text: command)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .dmSurface(Color.dmSelection, radius: DMRadius.control)
-    }
-}
-
-private struct CopyButton: View {
-    let text: String
-    @State private var copied = false
-
-    var body: some View {
-        DMButton(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc",
-                 variant: .ghost, size: .small) {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            copied = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
-        }
     }
 }

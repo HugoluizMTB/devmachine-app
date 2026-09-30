@@ -113,6 +113,8 @@ What is there:
   select and copy. `DMStatusView(.failed)` draws it, so a page gets it for free.
   Never dump an error string straight into a card. Usage cards get it through
   `.harnessUsageErrorView { … }`, since `HarnessUsageKit` cannot import it.
+- Commands (`DMCommandBlock.swift`): `DMCommandBlock` for shell commands to
+  select or copy (one or more lines, one Copy button); `DMCopyButton` alone.
 - Fields (`DMFields.swift`): `DMSearchField` (magnifier + borderless field +
   trailing slot, optional focus binding); `.dmField()` for a text input on a
   dark surface.
@@ -269,6 +271,10 @@ Rules:
   (`Ownership`). What cannot be attributed — a hand-made container, the apex
   site, anything outside a home folder — stays on screen: hiding what has no
   owner would hide the machine itself.
+- **A missing tool is not a zero.** A machine without Docker reports
+  `docker.available: false`; Stats and Home show "No Docker" / "—" and the
+  install commands (`ContainersState`), never "0 Containers". The note the
+  stats package puts in `errors` for it is not a failure and is not shown.
 - **Hiding a workspace is a list of what to hide, not of what to show**
   (`AppSettings.hiddenWorkspaces`, filtered by `WorkspaceVisibility`). A new
   workspace from the CLI shows up without anyone opening Settings. Everything

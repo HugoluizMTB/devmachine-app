@@ -166,7 +166,8 @@ struct StatsView: View {
         ) {
             DMStatBubble(value: "\(gb(snapshot.memory.usedBytes)) GB", label: "RAM used")
             DMStatBubble(value: "\(gb(snapshot.disk.availableBytes)) GB", label: "Disk free")
-            DMStatBubble(value: "\(containers(snapshot).count)", label: "Containers")
+            let containers = containersState(snapshot)
+            DMStatBubble(value: containers.tileValue, label: containers.tileLabel)
             DMStatBubble(value: String(format: "%.2f", snapshot.load.load1), label: "Load 1m")
         }
         .padding(16)
@@ -243,24 +244,63 @@ struct StatsView: View {
                     .kerning(0.8)
                     .padding(.leading, 6)
             },
-            content: {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(containers(snapshot), id: \.name) { container in
-                        DMRow(
-                            systemImage: "shippingbox",
-                            iconColor: .dmMuted,
-                            title: container.name,
-                            trailing: AnyView(
-                                Text(verbatim: "\(memSize(container.memUsedBytes)) · \(String(format: "%.1f", container.cpuPercent))%")
-                                    .font(.dm(11))
-                                    .foregroundStyle(Color.dmMuted)
-                                    .fixedSize()
-                            )
+            content: { containersContent(snapshot) }
+        )
+    }
+
+    @ViewBuilder
+    private func containersContent(_ snapshot: StatsSnapshot) -> some View {
+        switch containersState(snapshot) {
+        case .noDocker:
+            noDockerHint
+        case .empty:
+            calmLine(ContainersState.emptyText)
+        case .running(let containers):
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(containers, id: \.name) { container in
+                    DMRow(
+                        systemImage: "shippingbox",
+                        iconColor: .dmMuted,
+                        title: container.name,
+                        trailing: AnyView(
+                            Text(verbatim: "\(memSize(container.memUsedBytes)) · \(String(format: "%.1f", container.cpuPercent))%")
+                                .font(.dm(11))
+                                .foregroundStyle(Color.dmMuted)
+                                .fixedSize()
                         )
-                    }
+                    )
                 }
             }
-        )
+        }
+    }
+
+    @ViewBuilder
+    private var noDockerHint: some View {
+        let machine = store.selectedMachine ?? "this machine"
+        VStack(alignment: .leading, spacing: 8) {
+            Text(verbatim: DockerInstallHint.message(machine: machine))
+                .font(.dm(12))
+                .foregroundStyle(Color.dmRowText)
+            Text("To add it, run:")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+            DMCommandBlock(DockerInstallHint.commands(machine: machine))
+                .frame(maxWidth: 520, alignment: .leading)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+    }
+
+    private func calmLine(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(.dm(12))
+            .foregroundStyle(Color.dmMuted)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+    }
+
+    private func containersState(_ snapshot: StatsSnapshot) -> ContainersState {
+        ContainersState(docker: snapshot.docker, visible: containers(snapshot))
     }
 
     /// A workspace turned off in Settings is not on screen anywhere else, so
@@ -284,24 +324,31 @@ struct StatsView: View {
                     .kerning(0.8)
                     .padding(.leading, 6)
             },
-            content: {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(users(snapshot), id: \.user) { user in
-                        DMRow(
-                            systemImage: "person",
-                            iconColor: .dmMuted,
-                            title: user.user,
-                            trailing: AnyView(
-                                Text(verbatim: "\(gb(user.rssBytes)) GB")
-                                    .font(.dm(11))
-                                    .foregroundStyle(Color.dmMuted)
-                                    .fixedSize()
-                            )
+            content: { usersContent(users(snapshot)) }
+        )
+    }
+
+    @ViewBuilder
+    private func usersContent(_ users: [UserRAM]) -> some View {
+        if users.isEmpty {
+            calmLine("No memory by user reported.")
+        } else {
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(users, id: \.user) { user in
+                    DMRow(
+                        systemImage: "person",
+                        iconColor: .dmMuted,
+                        title: user.user,
+                        trailing: AnyView(
+                            Text(verbatim: "\(gb(user.rssBytes)) GB")
+                                .font(.dm(11))
+                                .foregroundStyle(Color.dmMuted)
+                                .fixedSize()
                         )
-                    }
+                    )
                 }
             }
-        )
+        }
     }
 }
 
