@@ -136,6 +136,18 @@ enum CommandRegistry {
                 systemImage: "book", keywords: ["help", "manual", "documentation", "website"],
                 action: .openURL(docsURL))),
             Entry(command: PaletteCommand(
+                id: "action.check-updates", title: "Check for Updates…", subtitle: "Devmachine",
+                category: .action, systemImage: "arrow.down.circle",
+                keywords: ["update", "upgrade", "version", "release", "new"], action: .checkForUpdates)),
+            Entry(
+                command: PaletteCommand(
+                    id: "action.update-cli", title: "Update the devmachine CLI",
+                    subtitle: context.cliUpdate.map { "\($0.installed) installed" } ?? "",
+                    category: .action, systemImage: "terminal",
+                    keywords: ["upgrade", "version", "brew", "cli", "release"],
+                    badgeText: context.cliUpdate?.latest.description, action: .openSettings(.about)),
+                isAvailable: { $0.cliUpdate != nil }),
+            Entry(command: PaletteCommand(
                 id: "action.quit", title: "Quit Devmachine", subtitle: "", category: .action,
                 systemImage: "power", shortcut: "⌘Q", keywords: ["exit", "close"], action: .quit)),
         ]

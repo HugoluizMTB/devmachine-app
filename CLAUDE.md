@@ -365,6 +365,23 @@ ssh/mosh/scp under XCTest; tests inject a fake `CommandRunner`.
 - **NEVER add any Claude/AI attribution, trailer, or `Co-Authored-By` — anywhere.**
 - Branch prefix `da-` when not committing straight to `main` locally.
 
+## Updates
+- The updater replaces this app only. It never runs, changes or upgrades the
+  CLI, its configuration, packages, machines or `sync`. For the CLI it shows
+  the command (`CLIUpdateAdvice`) in a `DMCommandBlock` and stops there: never
+  run it, never type it into a session.
+- Pure logic lives in `DevmachineCore/Updates` (versions, release JSON, ETag
+  feed, schedule, install method, digest, bundle checks, swap); the app's
+  `Updates/` folder holds `UpdateController` and the real system calls. Tests
+  inject fakes; nothing in `swift test` reaches the network, except the
+  opt-in `DEVMACHINE_UPDATE_E2E=1` test, which installs into a temp folder.
+- Never test an install against `/Applications/Devmachine.app` or by running
+  `brew upgrade`: both replace the owner's app. Use a temp folder.
+- A disk image install trusts only a bundle signed by the running app's Team
+  ID. A local ad-hoc build has none, so it links to the release page instead.
+- `scripts/package_app.sh` takes the version from the newest `v*` tag when
+  `DEVMACHINE_APP_VERSION` is unset, so a local build compares correctly.
+
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action
 in the app, behind a confirm, and never from tests. The app delegates publishing

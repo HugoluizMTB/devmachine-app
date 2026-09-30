@@ -10,6 +10,7 @@ struct CommandPaletteView: View {
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var filesStore: FilesStore
     @EnvironmentObject private var recents: PaletteRecentsStore
+    @EnvironmentObject private var updates: UpdateController
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @Environment(\.openWindow) private var openWindow
     @State private var query = ""
@@ -31,6 +32,7 @@ struct CommandPaletteView: View {
         context.endableSession = model.endableSession
         context.currentWorkspaceAlias = model.currentWorkspaceAlias
         context.activePage = model.activePage
+        context.cliUpdate = updates.cliNotice
         return context
     }
 
@@ -44,7 +46,7 @@ struct CommandPaletteView: View {
     private var dispatcher: PaletteDispatcher {
         PaletteDispatcher(
             model: model, stats: stats, sites: caddy, health: health, savedCommands: savedCommands,
-            recents: recents,
+            updates: updates, recents: recents,
             system: AppPaletteSystem(openFiles: { alias in
                 filesStore.open(.host(alias: alias))
                 openWindow(id: "files")
@@ -116,6 +118,9 @@ struct CommandPaletteView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 8)
+            if let badge = command.badgeText {
+                DMPill(text: badge, color: .accentColor)
+            }
             if let shortcut = command.shortcut {
                 DMKeyCap(key: shortcut)
             }

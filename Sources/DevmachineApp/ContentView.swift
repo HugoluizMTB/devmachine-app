@@ -9,6 +9,7 @@ struct ContentView: View {
     @EnvironmentObject var viewerStore: FileViewerStore
     @EnvironmentObject private var recentCommands: RecentCommandStore
     @EnvironmentObject private var stats: StatsStore
+    @EnvironmentObject private var updates: UpdateController
     @State private var dragStartWidth: CGFloat? = nil
     @State private var contextDragStartWidth: CGFloat?
     @State private var viewerDragStartWidth: CGFloat? = nil
@@ -64,6 +65,10 @@ struct ContentView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             VStack(alignment: .trailing, spacing: 8) {
+                if updates.showsBanner {
+                    UpdateBanner()
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
                 ForEach(model.activeTasks) { task in
                     DMToastCard(task: task)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -71,6 +76,7 @@ struct ContentView: View {
             }
             .padding(18)
             .animation(.easeInOut(duration: 0.2), value: model.activeTasks)
+            .animation(.easeInOut(duration: 0.2), value: updates.showsBanner)
         }
         .onAppear {
             model.settings = settingsStore.settings
@@ -83,6 +89,9 @@ struct ContentView: View {
             quickPublish.start(workspace: workspace)
         }
         .quickPublishSheet(quickPublish, settings: settingsStore.settings, workspaces: model.visibleWorkspaces)
+        .sheet(isPresented: $updates.showsDialog) {
+            UpdateDialog().environmentObject(updates)
+        }
         .sheet(isPresented: $model.showShortcuts) {
             ShortcutsSheet().environmentObject(model)
         }

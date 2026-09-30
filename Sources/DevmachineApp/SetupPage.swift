@@ -5,7 +5,7 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case connection, workspaces, harnesses, appearance, terminal, advanced
+    case connection, workspaces, harnesses, appearance, terminal, advanced, about
 
     var title: String {
         switch self {
@@ -15,6 +15,7 @@ enum SettingsSection: String, CaseIterable {
         case .appearance: return "Appearance"
         case .terminal: return "Terminal"
         case .advanced: return "Advanced"
+        case .about: return "About"
         }
     }
 
@@ -26,6 +27,7 @@ enum SettingsSection: String, CaseIterable {
         case .appearance: return "The wallpaper behind the panes, and the size of the interface."
         case .terminal: return "How a terminal looks, and how many stay connected."
         case .advanced: return "Things to turn on only while chasing a problem."
+        case .about: return "This app's version and updates, and the devmachine CLI's."
         }
     }
 
@@ -37,6 +39,7 @@ enum SettingsSection: String, CaseIterable {
         case .appearance: return "photo"
         case .terminal: return "terminal"
         case .advanced: return "wrench.and.screwdriver"
+        case .about: return "info.circle"
         }
     }
 
@@ -261,6 +264,7 @@ struct SetupPage: View {
                 case .appearance: wallpaperBlock
                 case .terminal: terminalBlock
                 case .advanced: advancedBlock
+                case .about: UpdatesSettingsView()
                 }
             }
             .padding(24)

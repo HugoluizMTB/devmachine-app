@@ -21,6 +21,7 @@ struct DevmachineApp: App {
     @StateObject private var fileTreeStore = FileTreeStore()
     @StateObject private var fileSearchStore = FileSearchStore()
     @StateObject private var paletteRecents = PaletteRecentsStore()
+    @StateObject private var updates = UpdateController.live()
 
     init() {
         DemoSnapshots.applyScrollBarDefaultsIfNeeded()
@@ -77,6 +78,8 @@ struct DevmachineApp: App {
                 .environmentObject(fileTreeStore)
                 .environmentObject(fileSearchStore)
                 .environmentObject(paletteRecents)
+                .environmentObject(updates)
+                .onAppear { updates.start() }
                 .frame(minWidth: 900, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
         }
         .windowStyle(.hiddenTitleBar)
@@ -109,6 +112,13 @@ struct DevmachineApp: App {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { model.activePage = model.activePage == .setup ? nil : .setup }
                     .keyboardShortcut(",", modifiers: .command)
+            }
+            CommandGroup(after: .appSettings) {
+                Button("Check for Updates…") {
+                    updates.checkNow()
+                    model.openSettings(.about)
+                }
+                .disabled(updates.currentVersion == nil)
             }
             CommandGroup(replacing: .help) {
                 Button("Keyboard Shortcuts") { model.showShortcuts = true }

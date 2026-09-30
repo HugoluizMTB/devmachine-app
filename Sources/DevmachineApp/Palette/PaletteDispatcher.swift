@@ -24,6 +24,13 @@ protocol PaletteSavedCommandRecording: AnyObject {
     func record(_ raw: String, for alias: String) -> String?
 }
 
+@MainActor
+protocol PaletteUpdateChecking: AnyObject {
+    func checkNow()
+}
+
+extension UpdateController: PaletteUpdateChecking {}
+
 /// What reaches outside the app's own state: windows, Finder, the browser.
 @MainActor
 protocol PaletteSystem {
@@ -48,6 +55,7 @@ struct PaletteDispatcher {
     let sites: any PaletteSitesControlling
     let health: any PaletteHealthChecking
     let savedCommands: any PaletteSavedCommandRecording
+    let updates: any PaletteUpdateChecking
     let recents: PaletteRecentsStore
     let system: any PaletteSystem
 
@@ -99,6 +107,9 @@ struct PaletteDispatcher {
         case .nextSession: model.moveToNextSession()
         case .maximizePane: model.toggleMaximize()
         case let .openURL(url): system.open(url)
+        case .checkForUpdates:
+            updates.checkNow()
+            model.openSettings(.about)
         case .quit: system.quit()
         }
     }

@@ -46,6 +46,20 @@ private final class CLIRecordingRunner: CommandRunner, @unchecked Sendable {
 }
 
 final class DevmachineCLITests: XCTestCase {
+    func testVersionRunsTheVersionCommandAndReturnsItsOutput() throws {
+        let runner = CLIRecordingRunner(result: ("0.7.1\n", "", 0))
+        let cli = DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner)
+
+        XCTAssertEqual(try cli.version(), "0.7.1\n")
+        XCTAssertEqual(runner.calls, [.init(executable: "/opt/homebrew/bin/devmachine", args: ["version"])])
+    }
+
+    func testVersionFailingThrows() {
+        let runner = CLIRecordingRunner(result: ("", "boom", 1))
+        let cli = DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner)
+        XCTAssertThrowsError(try cli.version())
+    }
+
     func testExposeUsesArgumentArrayAndExplicitPublishConsent() throws {
         let runner = CLIRecordingRunner()
         let cli = DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner)

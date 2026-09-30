@@ -1,0 +1,303 @@
+import AppKit
+import DevmachineCore
+import Foundation
+
+enum UpdateProgress: Equatable, Sendable {
+    case downloading(Double)
+    case verifying
+    case installing
+}
+
+enum ManualInstallOutcome: Equatable, Sendable {
+    case replaced(URL)
+    case needsManualMove(URL)
+}
+
+protocol AppUpdateInstalling: Sendable {
+    func install(
+        release: GitHubRelease, progress: @escaping @Sendable (UpdateProgress) -> Void
+    ) async throws -> ManualInstallOutcome
+}
+
+protocol HomebrewUpgrading: Sendable {
+    func upgrade(brew: String, output: @escaping @Sendable (String) -> Void) async throws
+}
+
+struct CLIVersionReading: Equatable, Sendable {
+    let output: String
+    let method: CLIInstallMethod
+}
+
+enum UpdatePhase: Equatable {
+    case idle
+    case downloading(Double)
+    case verifying
+    case installing
+    case upgradingWithHomebrew
+    case relaunching
+    case manualMove(URL)
+    case failed(DMErrorState)
+
+    var isBusy: Bool {
+        switch self {
+        case .downloading, .verifying, .installing, .upgradingWithHomebrew, .relaunching: return true
+        case .idle, .manualMove, .failed: return false
+        }
+    }
+}
+
+struct UpdateDependencies {
+    var currentVersion: SemanticVersion?
+    var appFeed: ReleaseFeed
+    var cliFeed: ReleaseFeed
+    var preferences: UpdatePreferences
+    var schedule = UpdateSchedule()
+    var now: @Sendable () -> Date = { Date() }
+    var sleep: @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
+    var detectInstallMethod: @Sendable () -> AppInstallMethod
+    var runningTeamID: String?
+    var cliVersion: @Sendable () async -> CLIVersionReading?
+    var installer: any AppUpdateInstalling
+    var homebrew: any HomebrewUpgrading
+    var currentAppURL: URL
+    var relaunch: @MainActor (URL) -> Void
+}
+
+/// Looks for a newer Devmachine.app and a newer devmachine CLI, and replaces
+/// the app when the person asks. It never touches the CLI, its configuration,
+/// packages or machines: for the CLI it only shows the command to run.
+@MainActor
+final class UpdateController: ObservableObject {
+    @Published private(set) var availability: UpdateAvailability?
+    @Published private(set) var checkError: DMErrorState?
+    @Published private(set) var isChecking = false
+    @Published private(set) var lastCheckedAt: Date?
+    @Published private(set) var phase: UpdatePhase = .idle
+    @Published private(set) var homebrewOutput: [String] = []
+    @Published private(set) var installMethod: AppInstallMethod?
+    @Published private(set) var cliNotice: CLIUpdateNotice?
+    @Published private var dismissedVersion: SemanticVersion?
+    @Published var showsDialog = false
+
+    private let dependencies: UpdateDependencies
+    private var launchedAt: Date
+    private var scheduleTask: Task<Void, Never>?
+
+    init(dependencies: UpdateDependencies) {
+        self.dependencies = dependencies
+        launchedAt = dependencies.now()
+    }
+
+    var currentVersion: SemanticVersion? { dependencies.currentVersion }
+
+    var automaticChecks: Bool {
+        get { dependencies.preferences.automaticChecks }
+        set {
+            objectWillChange.send()
+            dependencies.preferences.automaticChecks = newValue
+        }
+    }
+
+    var availableRelease: GitHubRelease? {
+        switch availability {
+        case .available(let release), .skipped(let release): return release
+        case .upToDate, nil: return nil
+        }
+    }
+
+    var isSkipped: Bool {
+        if case .skipped = availability { return true }
+        return false
+    }
+
+    var showsBanner: Bool {
+        if phase != .idle { return availableRelease != nil }
+        guard case .available(let release) = availability else { return false }
+        return release.version != dismissedVersion
+    }
+
+    var releaseNotes: String { availableRelease?.notes ?? "" }
+
+    /// A copy signed ad hoc (a local build) has no team to compare an update
+    /// against, so it can only be updated through Homebrew or by hand.
+    var canInstallInPlace: Bool {
+        if case .homebrew = installMethod { return true }
+        return dependencies.runningTeamID != nil
+    }
+
+    func start() {
+        guard scheduleTask == nil, dependencies.currentVersion != nil else { return }
+        launchedAt = dependencies.now()
+        scheduleTask = Task { [weak self] in await self?.runSchedule() }
+    }
+
+    func runSchedule() async {
+        while !Task.isCancelled {
+            let delay = dependencies.schedule.delay(
+                now: dependencies.now(), launchedAt: launchedAt, lastCheckedAt: lastCheckedAt)
+            do {
+                try await dependencies.sleep(delay)
+            } catch {
+                return
+            }
+            if automaticChecks {
+                await check(userInitiated: false)
+            } else {
+                lastCheckedAt = dependencies.now()
+            }
+        }
+    }
+
+    func checkNow() {
+        Task { await check(userInitiated: true) }
+    }
+
+    func check(userInitiated: Bool) async {
+        guard let current = dependencies.currentVersion, !isChecking, !phase.isBusy else { return }
+        isChecking = true
+        defer {
+            isChecking = false
+            lastCheckedAt = dependencies.now()
+        }
+        async let cli = readCLINotice()
+        if installMethod == nil {
+            let detect = dependencies.detectInstallMethod
+            installMethod = await Task.detached { detect() }.value
+        }
+        do {
+            let release = try await latest(from: dependencies.appFeed)
+            availability = UpdatePolicy.evaluate(
+                current: current, release: release, skippedVersion: dependencies.preferences.skippedVersion)
+            checkError = nil
+            if case .failed = phase { phase = .idle }
+        } catch {
+            if userInitiated || availability == nil {
+                checkError = DMErrorState(title: "Could not check for updates", message: error.localizedDescription)
+            }
+        }
+        cliNotice = await cli
+    }
+
+    func skipThisVersion() {
+        guard let release = availableRelease, let version = release.version else { return }
+        dependencies.preferences.skippedVersion = version.description
+        availability = .skipped(release)
+    }
+
+    func later() {
+        dismissedVersion = availableRelease?.version
+    }
+
+    func install() async {
+        guard let release = availableRelease, !phase.isBusy else { return }
+        homebrewOutput = []
+        switch installMethod ?? .manual {
+        case .homebrew(let brew):
+            await installWithHomebrew(brew: brew)
+        case .manual:
+            await installFromDiskImage(release)
+        }
+    }
+
+    func requestUpdate() {
+        guard availableRelease != nil else { return }
+        showsDialog = true
+    }
+
+    var dialogContent: UpdateDialogContent? {
+        availableRelease.map {
+            UpdateDialogContent(
+                release: $0, current: currentVersion,
+                method: installMethod ?? .manual)
+        }
+    }
+
+    func dismissFailure() {
+        if case .failed = phase { phase = .idle }
+    }
+
+    private func installWithHomebrew(brew: String) async {
+        phase = .upgradingWithHomebrew
+        let sink = HomebrewOutputSink { [weak self] lines in
+            if (self?.homebrewOutput.count ?? 0) < lines.count { self?.homebrewOutput = lines }
+        }
+        do {
+            try await dependencies.homebrew.upgrade(brew: brew, output: sink.receive)
+            homebrewOutput = sink.snapshot
+            relaunch(dependencies.currentAppURL)
+        } catch {
+            homebrewOutput = sink.snapshot
+            let output = homebrewOutput.suffix(40).joined(separator: "\n")
+            phase = .failed(DMErrorState(
+                title: "Homebrew could not update Devmachine",
+                cause: error.localizedDescription,
+                details: output.isEmpty ? error.localizedDescription : output))
+        }
+    }
+
+    private func installFromDiskImage(_ release: GitHubRelease) async {
+        phase = .downloading(0)
+        do {
+            let outcome = try await dependencies.installer.install(release: release) { progress in
+                Task { @MainActor [weak self] in self?.show(progress) }
+            }
+            switch outcome {
+            case .replaced(let app): relaunch(app)
+            case .needsManualMove(let app): phase = .manualMove(app)
+            }
+        } catch {
+            phase = .failed(DMErrorState(title: "The update was not installed", message: error.localizedDescription))
+        }
+    }
+
+    private func show(_ progress: UpdateProgress) {
+        guard phase.isBusy, phase != .relaunching else { return }
+        switch progress {
+        case .downloading(let fraction): phase = .downloading(fraction)
+        case .verifying: phase = .verifying
+        case .installing: phase = .installing
+        }
+    }
+
+    private func relaunch(_ app: URL) {
+        phase = .relaunching
+        dependencies.relaunch(app)
+    }
+
+    private func latest(from feed: ReleaseFeed) async throws -> GitHubRelease {
+        let preferences = dependencies.preferences
+        let result = try await feed.latest(cached: preferences.cache(for: feed.url))
+        preferences.setCache(result.cache, for: feed.url)
+        return result.release
+    }
+
+    private func readCLINotice() async -> CLIUpdateNotice? {
+        guard let reading = await dependencies.cliVersion(),
+              let latest = try? await latest(from: dependencies.cliFeed)
+        else { return nil }
+        return CLIUpdateAdvice.notice(versionOutput: reading.output, latest: latest, method: reading.method)
+    }
+}
+
+/// Lines from brew arrive on its reading thread. Each one updates the view
+/// with the whole list so far, so the order never depends on which main-actor
+/// hop lands first.
+private final class HomebrewOutputSink: @unchecked Sendable {
+    private let deliver: @MainActor ([String]) -> Void
+    private let lock = NSLock()
+    private var lines: [String] = []
+
+    init(deliver: @escaping @MainActor ([String]) -> Void) {
+        self.deliver = deliver
+    }
+
+    var snapshot: [String] { lock.withLock { lines } }
+
+    func receive(_ line: String) {
+        let all = lock.withLock {
+            lines.append(line)
+            return lines
+        }
+        Task { @MainActor [deliver] in deliver(all) }
+    }
+}

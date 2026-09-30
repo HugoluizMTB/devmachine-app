@@ -54,6 +54,7 @@ enum PaletteAction: Equatable {
     case nextSession
     case maximizePane
     case openURL(URL)
+    case checkForUpdates
     case quit
 }
 
@@ -66,6 +67,7 @@ struct PaletteCommand: Identifiable {
     var shortcut: String? = nil
     var keywords: [String] = []
     var badges: [HarnessBadgePresentation] = []
+    var badgeText: String? = nil
     let action: PaletteAction
 }
 
@@ -84,6 +86,7 @@ struct PaletteContext {
     var endableSession: SidebarItem?
     var currentWorkspaceAlias: String?
     var activePage: AppPage?
+    var cliUpdate: CLIUpdateNotice?
 
     var currentWorkspace: Workspace? {
         guard let alias = currentWorkspaceAlias else { return nil }

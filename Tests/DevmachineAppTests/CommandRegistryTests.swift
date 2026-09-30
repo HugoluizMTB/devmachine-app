@@ -176,4 +176,23 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(top("ram"), "go.stats")
         XCTAssertEqual(top("prefs"), "go.settings")
     }
+
+    func testCheckForUpdatesIsAlwaysThere() {
+        let command = commands(context()).first { $0.id == "action.check-updates" }
+        XCTAssertEqual(command?.title, "Check for Updates…")
+        XCTAssertEqual(command?.action, .checkForUpdates)
+    }
+
+    func testTheCLIUpdateCommandShowsOnlyWhenThereIsOne() {
+        XCTAssertNil(commands(context()).first { $0.id == "action.update-cli" })
+
+        var withNotice = context()
+        withNotice.cliUpdate = CLIUpdateNotice(
+            installed: SemanticVersion("0.7.1")!, latest: SemanticVersion("0.8.0")!,
+            command: "brew upgrade devmachine", releaseURL: nil)
+        let command = commands(withNotice).first { $0.id == "action.update-cli" }
+        XCTAssertEqual(command?.title, "Update the devmachine CLI")
+        XCTAssertEqual(command?.badgeText, "0.8.0")
+        XCTAssertEqual(command?.action, .openSettings(.about))
+    }
 }

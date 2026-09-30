@@ -48,6 +48,12 @@ private final class FakeSystem: PaletteSystem {
 }
 
 @MainActor
+private final class FakeUpdates: PaletteUpdateChecking {
+    var checks = 0
+    func checkNow() { checks += 1 }
+}
+
+@MainActor
 final class PaletteDispatcherTests: XCTestCase {
     private var model: AppModel!
     private var stats: FakeStats!
@@ -55,6 +61,7 @@ final class PaletteDispatcherTests: XCTestCase {
     private var health: FakeHealth!
     private var saved: FakeSavedCommands!
     private var system: FakeSystem!
+    private var updates: FakeUpdates!
     private var recents: PaletteRecentsStore!
     private var dispatcher: PaletteDispatcher!
 
@@ -67,11 +74,12 @@ final class PaletteDispatcherTests: XCTestCase {
         health = FakeHealth()
         saved = FakeSavedCommands()
         system = FakeSystem()
+        updates = FakeUpdates()
         recents = PaletteRecentsStore(
             defaults: UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!)
         dispatcher = PaletteDispatcher(
             model: model, stats: stats, sites: sites, health: health,
-            savedCommands: saved, recents: recents, system: system)
+            savedCommands: saved, updates: updates, recents: recents, system: system)
     }
 
     private func run(_ action: PaletteAction, id: String = "test") {
@@ -195,5 +203,11 @@ final class PaletteDispatcherTests: XCTestCase {
     func testFindFileOpensTheFileFinder() {
         run(.findFile)
         XCTAssertTrue(model.showFileSearch)
+    }
+
+    func testCheckForUpdatesChecksAndShowsTheAboutPane() {
+        run(.checkForUpdates)
+        XCTAssertEqual(updates.checks, 1)
+        XCTAssertEqual(model.requestedSettingsSection, .about)
     }
 }

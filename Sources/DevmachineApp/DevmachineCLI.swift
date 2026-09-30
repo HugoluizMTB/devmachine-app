@@ -314,6 +314,12 @@ struct DevmachineCLI: Sendable {
         return try JSONDecoder().decode(CLIConfigPath.self, from: Data(result.stdout.utf8))
     }
 
+    func version() throws -> String {
+        let result = try runner.runCapturing(executable: executable, args: ["version"], environment: environment())
+        try requireSuccess(result)
+        return result.stdout
+    }
+
     /// Every machine and workspace the CLI knows about, plus the base domain
     /// new subdomains are created under.
     func configShow() throws -> CLIConfigShow {
