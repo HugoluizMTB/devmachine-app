@@ -2,21 +2,23 @@ import XCTest
 @testable import DevmachineApp
 
 final class HomeLayoutTests: XCTestCase {
-    func testA1440WindowPutsTheClockLeftOfOneColumnOfMachinesAndUsage() {
+    func testA1440WindowPutsMachinesAndUsageInALeftColumnBesideTheClock() {
         let plan = HomeLayout.plan(width: 1174, harnessCount: 2)
 
         XCTAssertFalse(plan.stacked)
+        XCTAssertEqual(plan.cardsEdge, .leading)
         XCTAssertEqual(plan.usageColumns, 1)
-        XCTAssertEqual(plan.rightWidth, HomeUsageLayout.cardWidth)
+        XCTAssertEqual(plan.cardsWidth, HomeUsageLayout.cardWidth)
         XCTAssertEqual(plan.clockSize, 150)
     }
 
-    func testA1100WindowShrinksTheClockSoItNeverReachesTheRightColumn() {
+    func testA1100WindowShrinksTheClockSoItNeverReachesTheCardColumn() {
         let plan = HomeLayout.plan(width: 834, harnessCount: 2)
 
         XCTAssertFalse(plan.stacked)
+        XCTAssertEqual(plan.cardsEdge, .leading)
         XCTAssertEqual(plan.usageColumns, 1)
-        let clockWidth = 834 - HomeLayout.padding * 2 - plan.rightWidth - HomeLayout.gap
+        let clockWidth = 834 - HomeLayout.padding * 2 - plan.cardsWidth - HomeLayout.gap
         XCTAssertLessThanOrEqual(plan.clockSize * HomeLayout.clockWidthPerPoint, clockWidth)
         XCTAssertLessThan(plan.clockSize, 150)
     }
@@ -26,13 +28,14 @@ final class HomeLayoutTests: XCTestCase {
 
         XCTAssertFalse(plan.stacked)
         XCTAssertEqual(plan.usageColumns, 2)
-        XCTAssertEqual(plan.rightWidth, HomeUsageLayout.width(for: 2))
+        XCTAssertEqual(plan.cardsWidth, HomeUsageLayout.width(for: 2))
     }
 
-    func testANarrowWindowStacksMachinesClockAndUsage() {
+    func testANarrowWindowStacksMachinesClockAndUsageFromTheLeft() {
         let plan = HomeLayout.plan(width: 640, harnessCount: 2)
 
         XCTAssertTrue(plan.stacked)
+        XCTAssertEqual(plan.cardsEdge, .leading)
         XCTAssertEqual(plan.usageColumns, 1)
         XCTAssertLessThanOrEqual(plan.clockSize * HomeLayout.clockWidthPerPoint, 640 - HomeLayout.padding * 2)
     }
@@ -41,10 +44,10 @@ final class HomeLayoutTests: XCTestCase {
         XCTAssertEqual(HomeLayout.plan(width: 2400, harnessCount: 1).usageColumns, 1)
     }
 
-    func testWithoutHarnessesTheRightColumnStillFitsTwoMachineCards() {
+    func testWithoutHarnessesTheCardColumnStillFitsTwoMachineCards() {
         let plan = HomeLayout.plan(width: 1174, harnessCount: 0)
 
         XCTAssertEqual(plan.usageColumns, 0)
-        XCTAssertGreaterThanOrEqual(plan.rightWidth, MachineStatsCard.width * 2 + HomeLayout.cardSpacing)
+        XCTAssertGreaterThanOrEqual(plan.cardsWidth, MachineStatsCard.width * 2 + HomeLayout.cardSpacing)
     }
 }

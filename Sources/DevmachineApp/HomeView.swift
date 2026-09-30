@@ -33,8 +33,10 @@ enum HomeLayout {
     struct Plan: Equatable {
         let stacked: Bool
         let usageColumns: Int
-        let rightWidth: CGFloat
+        let cardsWidth: CGFloat
         let clockSize: CGFloat
+        /// The machine cards open the page, top left, with usage under them.
+        var cardsEdge: HorizontalEdge { .leading }
     }
 
     static var twoMachineCardsWidth: CGFloat { MachineStatsCard.width * 2 + cardSpacing }
@@ -42,19 +44,19 @@ enum HomeLayout {
     static func plan(width: CGFloat, harnessCount: Int) -> Plan {
         let inner = max(0, width - padding * 2)
         let oneColumn = min(harnessCount, 1)
-        let rightWidth: (Int) -> CGFloat = { columns in
+        let cardsWidth: (Int) -> CGFloat = { columns in
             max(columns > 0 ? HomeUsageLayout.width(for: columns) : 0, twoMachineCardsWidth)
         }
         var columns = oneColumn
-        if harnessCount >= 2, inner - rightWidth(2) - gap >= roomyClockWidth {
+        if harnessCount >= 2, inner - cardsWidth(2) - gap >= roomyClockWidth {
             columns = 2
         }
-        let right = rightWidth(columns)
-        let clockWidth = inner - right - gap
+        let cards = cardsWidth(columns)
+        let clockWidth = inner - cards - gap
         if clockWidth < minClockWidth {
-            return Plan(stacked: true, usageColumns: oneColumn, rightWidth: right, clockSize: clockSize(for: inner))
+            return Plan(stacked: true, usageColumns: oneColumn, cardsWidth: cards, clockSize: clockSize(for: inner))
         }
-        return Plan(stacked: false, usageColumns: columns, rightWidth: right, clockSize: clockSize(for: clockWidth))
+        return Plan(stacked: false, usageColumns: columns, cardsWidth: cards, clockSize: clockSize(for: clockWidth))
     }
 
     private static func clockSize(for width: CGFloat) -> CGFloat {
@@ -110,17 +112,17 @@ struct HomeView: View {
 
     private func sideBySideLayout(_ plan: HomeLayout.Plan) -> some View {
         HStack(alignment: .top, spacing: HomeLayout.gap) {
-            clock(size: plan.clockSize)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             ScrollView(.vertical) {
-                VStack(alignment: .trailing, spacing: 14) {
+                VStack(alignment: .leading, spacing: 14) {
                     machinesSection
                     usageGrid(columns: plan.usageColumns)
                 }
-                .frame(width: plan.rightWidth, alignment: .trailing)
+                .frame(width: plan.cardsWidth, alignment: .leading)
             }
             .scrollIndicators(.hidden)
-            .frame(width: plan.rightWidth)
+            .frame(width: plan.cardsWidth)
+            clock(size: plan.clockSize)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -128,7 +130,7 @@ struct HomeView: View {
         ScrollView(.vertical) {
             VStack(spacing: 20) {
                 machinesSection
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 clock(size: plan.clockSize)
                     .padding(.vertical, 12)
                 usageGrid(columns: plan.usageColumns)
@@ -165,7 +167,7 @@ struct HomeView: View {
                     repeating: GridItem(
                         .fixed(HomeUsageLayout.cardWidth), spacing: HomeUsageLayout.spacing, alignment: .top),
                     count: columns),
-                alignment: .trailing,
+                alignment: .leading,
                 spacing: 14
             ) {
                 ForEach(usage.states) { state in
