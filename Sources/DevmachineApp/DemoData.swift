@@ -246,6 +246,9 @@ enum DemoData {
             reviewDecision: "CHANGES_REQUESTED", headRefName: "rotate-webhook-key", baseRefName: "main", ci: .failure),
     ]
 
+    /// Shown under the Home clock instead of this Mac's own name.
+    static let macName = "acme-mbp"
+
     // MARK: Stats
 
     private static func snapshot(loadFactor: Double, users: [UserRAM], containers: [ContainerStat]) -> StatsSnapshot {

@@ -17,6 +17,51 @@ enum HomeUsageLayout {
     }
 }
 
+/// Where Home puts the clock, the machine cards and the usage cards for a
+/// given width, so none of them ever draws over another.
+enum HomeLayout {
+    static let padding: CGFloat = 24
+    static let gap: CGFloat = 24
+    static let cardSpacing: CGFloat = 12
+    static let maxClockSize: CGFloat = 150
+    static let minClockSize: CGFloat = 64
+    /// "00:00" in the thin rounded face is about 2.8 times its point size wide.
+    static let clockWidthPerPoint: CGFloat = 2.8
+    static let minClockWidth: CGFloat = 300
+    static let roomyClockWidth: CGFloat = 520
+
+    struct Plan: Equatable {
+        let stacked: Bool
+        let usageColumns: Int
+        let rightWidth: CGFloat
+        let clockSize: CGFloat
+    }
+
+    static var twoMachineCardsWidth: CGFloat { MachineStatsCard.width * 2 + cardSpacing }
+
+    static func plan(width: CGFloat, harnessCount: Int) -> Plan {
+        let inner = max(0, width - padding * 2)
+        let oneColumn = min(harnessCount, 1)
+        let rightWidth: (Int) -> CGFloat = { columns in
+            max(columns > 0 ? HomeUsageLayout.width(for: columns) : 0, twoMachineCardsWidth)
+        }
+        var columns = oneColumn
+        if harnessCount >= 2, inner - rightWidth(2) - gap >= roomyClockWidth {
+            columns = 2
+        }
+        let right = rightWidth(columns)
+        let clockWidth = inner - right - gap
+        if clockWidth < minClockWidth {
+            return Plan(stacked: true, usageColumns: oneColumn, rightWidth: right, clockSize: clockSize(for: inner))
+        }
+        return Plan(stacked: false, usageColumns: columns, rightWidth: right, clockSize: clockSize(for: clockWidth))
+    }
+
+    private static func clockSize(for width: CGFloat) -> CGFloat {
+        min(maxClockSize, max(minClockSize, (width / clockWidthPerPoint).rounded(.down)))
+    }
+}
+
 struct HomeView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var usage: HarnessUsageStore
@@ -31,59 +76,26 @@ struct HomeView: View {
     }
     private var workspaceCount: Int { model.visibleWorkspaces.count }
 
-    private var systemName: String {
-        Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+    static func macName(demo: Bool = DemoMode.isActive) -> String {
+        demo ? DemoData.macName : (Host.current().localizedName ?? ProcessInfo.processInfo.hostName)
     }
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 6) {
-                Spacer()
-
-                TimelineView(.everyMinute) { ctx in
-                    VStack(spacing: 6) {
-                        Text(ctx.date, format: .dateTime.hour().minute())
-                            .font(.dm(150, weight: .thin, design: .rounded))
-                            .foregroundStyle(.white)
-                            .shadow(radius: 18, y: 2)
-                        Text(ctx.date, format: .dateTime.weekday(.wide).day().month(.wide))
-                            .font(.dm(13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.75))
-                        Text(systemName)
-                            .font(.dm(13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
+        GeometryReader { proxy in
+            let plan = HomeLayout.plan(width: proxy.size.width, harnessCount: usage.states.count)
+            VStack(spacing: 16) {
+                if plan.stacked {
+                    stackedLayout(plan)
+                } else {
+                    sideBySideLayout(plan)
                 }
-
-                Spacer()
-            }
-
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 14) {
+                HStack {
                     Spacer()
-                    ScrollView(.vertical) {
-                        LazyVGrid(columns: usageColumns, alignment: .trailing, spacing: 14) {
-                            ForEach(usage.states) { state in
-                                if let descriptor = harnessSettingsFacade.descriptor(
-                                    for: HarnessID(rawValue: state.harnessID)) {
-                                    usageCard(state: state, descriptor: descriptor)
-                                }
-                            }
-                        }
-                    }
-                    .scrollIndicators(.hidden)
-                    .frame(width: HomeUsageLayout.width(for: usage.states.count))
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
-
-                HStack(alignment: .bottom, spacing: 16) {
-                    machinesSection
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     compactStatCluster
                         .fixedSize()
                 }
             }
-            .padding(24)
+            .padding(HomeLayout.padding)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WallpaperBackground())
@@ -96,13 +108,74 @@ struct HomeView: View {
         .onDisappear { usage.endObserving() }
     }
 
-    private var usageColumns: [GridItem] {
-        Array(
-            repeating: GridItem(
-                .fixed(HomeUsageLayout.cardWidth),
-                spacing: HomeUsageLayout.spacing,
-                alignment: .top),
-            count: HomeUsageLayout.columnCount(for: usage.states.count))
+    private func sideBySideLayout(_ plan: HomeLayout.Plan) -> some View {
+        HStack(alignment: .top, spacing: HomeLayout.gap) {
+            clock(size: plan.clockSize)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ScrollView(.vertical) {
+                VStack(alignment: .trailing, spacing: 14) {
+                    machinesSection
+                    usageGrid(columns: plan.usageColumns)
+                }
+                .frame(width: plan.rightWidth, alignment: .trailing)
+            }
+            .scrollIndicators(.hidden)
+            .frame(width: plan.rightWidth)
+        }
+    }
+
+    private func stackedLayout(_ plan: HomeLayout.Plan) -> some View {
+        ScrollView(.vertical) {
+            VStack(spacing: 20) {
+                machinesSection
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                clock(size: plan.clockSize)
+                    .padding(.vertical, 12)
+                usageGrid(columns: plan.usageColumns)
+            }
+        }
+        .scrollIndicators(.hidden)
+        .frame(maxHeight: .infinity)
+    }
+
+    private func clock(size: CGFloat) -> some View {
+        TimelineView(.everyMinute) { ctx in
+            VStack(spacing: 6) {
+                Text(ctx.date, format: .dateTime.hour().minute())
+                    .font(.dm(size, weight: .thin, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .shadow(radius: 18, y: 2)
+                Text(ctx.date, format: .dateTime.weekday(.wide).day().month(.wide))
+                    .font(.dm(13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                Text(verbatim: Self.macName())
+                    .font(.dm(13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func usageGrid(columns: Int) -> some View {
+        if columns > 0 {
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(
+                        .fixed(HomeUsageLayout.cardWidth), spacing: HomeUsageLayout.spacing, alignment: .top),
+                    count: columns),
+                alignment: .trailing,
+                spacing: 14
+            ) {
+                ForEach(usage.states) { state in
+                    if let descriptor = harnessSettingsFacade.descriptor(
+                        for: HarnessID(rawValue: state.harnessID)) {
+                        usageCard(state: state, descriptor: descriptor)
+                    }
+                }
+            }
+        }
     }
 
     private func usageCard(
@@ -129,7 +202,7 @@ struct HomeView: View {
                     .kerning(0.8)
                     .foregroundStyle(.white.opacity(0.7))
                     .shadow(color: .black.opacity(0.4), radius: 4)
-                FlowLayout(spacing: 12, rowSpacing: 12) {
+                FlowLayout(spacing: HomeLayout.cardSpacing, rowSpacing: HomeLayout.cardSpacing) {
                     ForEach(stats.machines) { machine in
                         MachineStatsCard(
                             machine: machine,
