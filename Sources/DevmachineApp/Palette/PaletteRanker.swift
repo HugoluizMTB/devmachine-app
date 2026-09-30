@@ -31,8 +31,8 @@ enum PaletteRanker {
         let rest = commands.filter { !recentIDs.contains($0.id) }
         return [
             PaletteSection(category: .recent, commands: Array(recent)),
-            PaletteSection(category: .session, commands: rest.filter { $0.category == .session }),
             PaletteSection(category: .goTo, commands: rest.filter { $0.category == .goTo }),
+            PaletteSection(category: .session, commands: rest.filter { $0.category == .session }),
         ].filter { !$0.commands.isEmpty }
     }
 

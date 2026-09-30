@@ -27,16 +27,17 @@ final class PaletteRankerTests: XCTestCase {
         sections.flatMap(\.commands).map(\.id)
     }
 
-    func testAnEmptyQueryShowsRecentsThenSessionsThenGoTo() {
+    func testAnEmptyQueryShowsRecentsThenGoToThenSessions() {
         let sections = PaletteRanker.sections(all, query: "", mru: CommandMRU(ids: ["settings.appearance"]))
-        XCTAssertEqual(sections.map(\.category), [.recent, .session, .goTo])
+        XCTAssertEqual(sections.map(\.category), [.recent, .goTo, .session])
         XCTAssertEqual(sections[0].commands.map(\.id), ["settings.appearance"])
-        XCTAssertEqual(sections[1].commands.map(\.id), ["session.a", "session.b"])
+        XCTAssertEqual(sections[1].commands.map(\.id), ["go.home", "go.stats", "go.subdomains"])
+        XCTAssertEqual(sections[2].commands.map(\.id), ["session.a", "session.b"])
     }
 
-    func testAnEmptyQueryWithoutRecentsStartsWithSessions() {
+    func testAnEmptyQueryWithoutRecentsStartsWithGoTo() {
         let sections = PaletteRanker.sections(all, query: "", mru: CommandMRU(ids: []))
-        XCTAssertEqual(sections.first?.category, .session)
+        XCTAssertEqual(sections.first?.category, .goTo)
     }
 
     func testARecentCommandIsNotRepeatedInItsOwnGroup() {
