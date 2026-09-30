@@ -11,6 +11,7 @@ struct SessionEndRequest: Equatable {
 
 enum CloseCommandRoute: Equatable {
     case askToEndSession
+    case closePreview(UUID)
     case closeWindow
 }
 
@@ -23,7 +24,10 @@ extension AppModel {
         return selection
     }
 
-    func handleCloseCommand(inMainWindow: Bool) -> CloseCommandRoute {
+    /// A preview with the keyboard is what ⌘W closes, the way a browser
+    /// closes its tab; the session beside it stays.
+    func handleCloseCommand(inMainWindow: Bool, focusedPreview: UUID? = nil) -> CloseCommandRoute {
+        if inMainWindow, let focusedPreview { return .closePreview(focusedPreview) }
         guard inMainWindow, requestEndSession() else { return .closeWindow }
         return .askToEndSession
     }
@@ -71,8 +75,10 @@ enum CloseCommand {
     static func perform(model: AppModel) {
         let window = NSApp.keyWindow
         let inMainWindow = window?.title == "Devmachine" && window?.sheetParent == nil
-        if model.handleCloseCommand(inMainWindow: inMainWindow) == .closeWindow {
-            window?.performClose(nil)
+        switch model.handleCloseCommand(inMainWindow: inMainWindow, focusedPreview: FocusedPreview.tabID()) {
+        case .closeWindow: window?.performClose(nil)
+        case let .closePreview(id): PreviewStore.shared.close(id)
+        case .askToEndSession: break
         }
     }
 }

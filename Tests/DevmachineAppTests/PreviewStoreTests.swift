@@ -192,4 +192,34 @@ final class PreviewStoreTests: XCTestCase {
 
         XCTAssertNil(previews.selectedTabID)
     }
+
+    func testATunnelSharedByTwoTabsStopsOnlyWithTheLastOne() async {
+        let previews = store()
+        previews.open(PreviewRequest(place: .workspace("acme"), input: .port(3000, path: "")))
+        previews.open(PreviewRequest(place: .workspace("acme"), input: .port(3000, path: "/admin")))
+        await settle(previews)
+        XCTAssertEqual(launcher.launches.count, 1)
+        let first = previews.tabs[0].id
+        let second = previews.tabs[1].id
+
+        previews.close(second)
+        XCTAssertEqual(previews.selectedTabID, first)
+        XCTAssertFalse(launcher.processes[0].wasTerminated)
+
+        previews.close(first)
+        XCTAssertNil(previews.selectedTabID)
+        XCTAssertTrue(launcher.processes[0].wasTerminated)
+    }
+
+    func testClosingATabThatIsNotSelectedKeepsTheSelection() {
+        let previews = store()
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+        previews.open(PreviewRequest(place: .thisMac, input: .port(5173, path: "")))
+        let selected = previews.selectedTabID
+
+        previews.close(previews.tabs[0].id)
+
+        XCTAssertEqual(previews.selectedTabID, selected)
+        XCTAssertEqual(previews.tabs.map(\.title), ["localhost:5173"])
+    }
 }

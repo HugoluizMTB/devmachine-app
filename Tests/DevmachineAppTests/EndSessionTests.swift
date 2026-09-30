@@ -61,6 +61,26 @@ final class EndSessionTests: XCTestCase {
         XCTAssertEqual(model.pendingEndSession?.place, "This Mac")
     }
 
+    func testAFocusedPreviewTabClosesInsteadOfEndingTheSession() {
+        model.clickSession(SessionRef(alias: acme.alias, name: "dash"))
+        let tab = UUID()
+
+        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true, focusedPreview: tab), .closePreview(tab))
+        XCTAssertNil(model.pendingEndSession)
+    }
+
+    func testAFocusedPreviewInAnotherWindowKeepsTheDefaultClose() {
+        XCTAssertEqual(model.handleCloseCommand(inMainWindow: false, focusedPreview: UUID()), .closeWindow)
+    }
+
+    func testAPreviewTagNamesItsTab() {
+        let tab = UUID()
+
+        XCTAssertEqual(FocusedPreview.id(fromTag: FocusedPreview.tag(for: tab)), tab)
+        XCTAssertNil(FocusedPreview.id(fromTag: FocusedTerminal.tag(for: .remote(alias: acme.alias, session: "dash"))))
+        XCTAssertNil(FocusedPreview.id(fromTag: "preview:not-a-uuid"))
+    }
+
     func testAGridOfSessionsKeepsTheDefaultClose() {
         let dash = SessionRef(alias: acme.alias, name: "dash")
         let api = SessionRef(alias: acme.alias, name: "api")

@@ -136,6 +136,7 @@ final class PreviewWebViews {
     func page(for id: UUID) -> PreviewPage {
         if let page = pages[id] { return page }
         let page = PreviewPage(dataStore: dataStore)
+        page.webView.identifier = NSUserInterfaceItemIdentifier(FocusedPreview.tag(for: id))
         pages[id] = page
         return page
     }
@@ -144,6 +145,30 @@ final class PreviewWebViews {
         guard let page = pages.removeValue(forKey: id) else { return }
         page.webView.stopLoading()
         page.webView.removeFromSuperview()
+    }
+}
+
+/// The preview tab whose page has the keyboard, found the way
+/// `FocusedTerminal` finds a pane: up from the first responder to the tagged
+/// web view.
+enum FocusedPreview {
+    static let prefix = "preview:"
+
+    static func tag(for id: UUID) -> String { prefix + id.uuidString }
+
+    static func id(fromTag tag: String) -> UUID? {
+        guard tag.hasPrefix(prefix) else { return nil }
+        return UUID(uuidString: String(tag.dropFirst(prefix.count)))
+    }
+
+    @MainActor
+    static func tabID() -> UUID? {
+        var view = NSApp.keyWindow?.firstResponder as? NSView
+        while let current = view {
+            if let tag = current.identifier?.rawValue, let id = id(fromTag: tag) { return id }
+            view = current.superview
+        }
+        return nil
     }
 }
 

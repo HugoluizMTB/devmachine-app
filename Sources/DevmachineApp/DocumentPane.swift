@@ -67,7 +67,10 @@ struct DocumentPane: View {
     }
 }
 
-private struct DocumentTabChip: View {
+/// The close mark sits beside the part that selects, never inside it: a tap
+/// gesture on the whole chip took the click before the mark's button ever
+/// saw it, so a tab could not be closed.
+struct DocumentTabChip: View {
     let systemImage: String
     let title: String
     let selected: Bool
@@ -77,22 +80,69 @@ private struct DocumentTabChip: View {
     @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.dm(10))
-                .foregroundStyle(Color(hex: 0x5AA9E6))
-            Text(verbatim: title)
-                .font(.dm(11.5))
-                .foregroundStyle(.white.opacity(selected ? 0.9 : 0.55))
-                .lineLimit(1)
-            DMIconButton(systemImage: "xmark", size: 9, weight: .semibold, tint: .white.opacity(0.45), action: close)
+        HStack(spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.dm(10))
+                    .foregroundStyle(Color(hex: 0x5AA9E6))
+                Text(verbatim: title)
+                    .font(.dm(11.5))
+                    .foregroundStyle(.white.opacity(selected ? 0.9 : 0.55))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 200, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.leading, 10)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: select)
+            .contextMenu {
+                Button(closeHelp, action: close)
+            }
+            DMIconButton(
+                systemImage: "xmark", size: 9, weight: .semibold, tint: .white.opacity(0.45),
+                hitSize: DMHitSize.compact, action: close)
                 .help(closeHelp)
+                .padding(.trailing, 4)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
         .background(selected ? Color.dmContentBg : (hovering ? Color.dmHover : Color.clear))
-        .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture(perform: select)
+        .onMiddleClick(while: hovering, perform: close)
+    }
+}
+
+private extension View {
+    /// A middle click closes a tab, as in a browser. A local event monitor
+    /// that acts only while the pointer is over the chip, so nothing is laid
+    /// over the close mark to take its clicks.
+    func onMiddleClick(while active: Bool, perform action: @escaping () -> Void) -> some View {
+        modifier(MiddleClickModifier(active: active, action: action))
+    }
+}
+
+private struct MiddleClickModifier: ViewModifier {
+    let active: Bool
+    let action: () -> Void
+    @State private var monitor: Any?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: active) { _, isActive in isActive ? install() : remove() }
+            .onDisappear(perform: remove)
+    }
+
+    private func install() {
+        remove()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseUp) { event in
+            guard event.buttonNumber == 2 else { return event }
+            action()
+            return nil
+        }
+    }
+
+    private func remove() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
     }
 }
