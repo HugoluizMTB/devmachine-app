@@ -21,6 +21,22 @@ final class DemoScreensTests: XCTestCase {
         }
     }
 
+    func testDemoWallpaperIsTheGeneratedLandscape() {
+        XCTAssertEqual(DemoData.settings.wallpaper, .gradient(name: "peaks"))
+    }
+
+    func testDemoClaudeUsageListsThreeModelsAndTheMostUsedOne() throws {
+        let claude = try XCTUnwrap(DemoData.usageProviders.first { $0.harnessID == "claude" } as? DemoUsageProvider)
+        let stats = try XCTUnwrap(claude.snapshot.stats)
+        XCTAssertEqual(stats.modelTotals.map(\.model), ["claude-sonnet", "claude-opus", "claude-haiku"])
+        XCTAssertEqual(stats.mostUsedModel, "claude-sonnet")
+    }
+
+    func testTheCertificateWarningSaysWhenTheNextRunIs() {
+        let details = DemoData.machineHealth.flatMap(\.checks).map(\.detail)
+        XCTAssertTrue(details.contains("renews in 6 days, next run in 4h"))
+    }
+
     func testDemoSettingsRaiseNoIssueAlthoughTheFolderIsInvented() {
         XCTAssertEqual(SetupPage.issues(for: DemoData.settings, demo: true), [])
     }

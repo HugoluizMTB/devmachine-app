@@ -777,8 +777,17 @@ struct SetupPage: View {
         .onAppear { wallpapers.ensureThumbnail(photo) }
     }
 
+    @ViewBuilder
+    private func gradientSwatch(_ gradient: WallpaperGradient) -> some View {
+        if gradient.isLandscape, let image = gradient.bitmap(width: 240, height: 150) {
+            Image(nsImage: image).resizable().scaledToFill()
+        } else {
+            gradient.swatch
+        }
+    }
+
     private func gradientCell(_ gradient: WallpaperGradient) -> some View {
-        gradient.swatch
+        gradientSwatch(gradient)
             .frame(height: 62)
             .clipShape(RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
             .overlay(alignment: .bottomLeading) {

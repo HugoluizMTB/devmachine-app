@@ -337,7 +337,7 @@ enum DemoData {
                 DoctorCheck(name: "disk space", status: .pass, detail: "42% used"),
                 DoctorCheck(name: "docker", status: .pass, detail: "running"),
                 DoctorCheck(name: "ssh aliases", status: .pass, detail: "up to date"),
-                DoctorCheck(name: "certificate renewal", status: .warn, detail: "renews in 6 days, next run in 4"),
+                DoctorCheck(name: "certificate renewal", status: .warn, detail: "renews in 6 days, next run in 4h"),
                 DoctorCheck(name: "caddy", status: .pass, detail: "reachable"),
             ]),
         MachineHealth(
@@ -359,14 +359,14 @@ enum DemoData {
 
     // MARK: Settings
 
-    /// A generated gradient, never the bundled or a downloaded photo: those
+    /// A landscape drawn in code, never the bundled or a downloaded photo: those
     /// show real people and places that the website has no rights to reuse.
     static let settings = AppSettings(
         opsRepoPath: operatorPath,
         hostAlias: "devmachine",
         publicIP: machineAddress,
         baseDomain: "example.com",
-        wallpaper: .gradient(name: "midnight"),
+        wallpaper: .gradient(name: "peaks"),
         enabledHarnesses: [.claude, .codex],
         localSessionProgram: .harness(.claude),
         remoteSessionProgram: .harness(.claude),
@@ -398,10 +398,11 @@ enum DemoData {
                         DayTokens(date: "2026-09-29", tokens: 640_000),
                     ],
                     modelTotals: [
-                        ModelTokens(model: "claude-sonnet-5", tokens: 1_900_000),
-                        ModelTokens(model: "claude-opus-4", tokens: 700_000),
+                        ModelTokens(model: "claude-sonnet", tokens: 3_420_000),
+                        ModelTokens(model: "claude-opus", tokens: 1_150_000),
+                        ModelTokens(model: "claude-haiku", tokens: 550_000),
                     ],
-                    todayTokens: 640_000, mostUsedModel: "claude-sonnet-5"),
+                    todayTokens: 640_000, mostUsedModel: "claude-sonnet"),
                 summaryMetrics: [UsageSummaryMetric(id: "today", label: "Today", value: "640K tokens")])),
         DemoUsageProvider(
             harnessID: "codex",

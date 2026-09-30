@@ -28,7 +28,9 @@ enum DemoSnapshots {
     static var paletteInitialQuery = ""
 
     private static let acmeAlias = "acme-devmachine"
-    private static let defaultWindowSize = NSSize(width: 1440, height: 900)
+    /// A big-display window, the proportions a Mac screenshot has on the
+    /// website: at a laptop size the cards and text read oversized.
+    private static let defaultWindowSize = NSSize(width: 2000, height: 1120)
 
     /// `DEVMACHINE_DEMO_WINDOW=1100x700` captures at another size, to check
     /// that a layout stretches with the window.
@@ -37,6 +39,34 @@ enum DemoSnapshots {
             return defaultWindowSize
         }
         return parseWindowSize(raw) ?? defaultWindowSize
+    }
+
+    /// The capturing Mac may be set to always show scroll bars; the website
+    /// shows the macOS default, where a bar appears only while scrolling.
+    static let scrollBarDefaults: [String: Any] = ["AppleShowScrollBars": "WhenScrolling"]
+
+    /// Applied before any window exists, since AppKit reads the scroller
+    /// style once when it first lays out a scroll view.
+    static func applyScrollBarDefaultsIfNeeded() {
+        guard targetDirectory != nil else { return }
+        let defaults = UserDefaults.standard
+        var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
+        arguments.merge(scrollBarDefaults) { _, new in new }
+        defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+    }
+
+    /// The menubar's Usage pane is 640pt tall and scrolls; a little taller
+    /// here, the screenshot shows the model rows to the end instead of
+    /// cutting one in half.
+    static let usagePaneHeight: CGFloat = 700
+
+    static func chrome(for screenID: String) -> SnapshotChrome.Kind {
+        switch screenID {
+        case "pull-requests", "publish-port", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage":
+            return .panel
+        default:
+            return .window
+        }
     }
 
     static func parseWindowSize(_ raw: String) -> NSSize? {
@@ -153,8 +183,8 @@ enum DemoSnapshots {
                     prPanel(environment), fittingSize: NSSize(width: 480, height: 640), fixedHeight: 640)
             case "menubar-usage", "skeleton-menubar-usage":
                 view = standaloneView(
-                    prPanel(environment, tab: .usage),
-                    fittingSize: NSSize(width: 780, height: 640), fixedHeight: 640)
+                    prPanel(environment, tab: .usage, height: usagePaneHeight),
+                    fittingSize: NSSize(width: 780, height: usagePaneHeight), fixedHeight: usagePaneHeight)
             case "onboarding":
                 view = standaloneView(onboardingPage(environment), fittingSize: windowSize)
                 // `OnboardingPage` reads `demoDetection` from its own `.task`,
@@ -168,7 +198,7 @@ enum DemoSnapshots {
                 window.displayIfNeeded()
                 view = window.contentView ?? NSView()
             }
-            capture(view, to: directory.appendingPathComponent(screen.fileName))
+            capture(view, kind: chrome(for: screen.id), to: directory.appendingPathComponent(screen.fileName))
         }
 
         environment.model.showCommandPalette = false
@@ -241,8 +271,10 @@ enum DemoSnapshots {
 
     // MARK: - Standalone screens
 
-    private static func prPanel(_ environment: Environment, tab: MenuBarTab = .pullRequests) -> some View {
-        MenuBarPanel(initialTab: tab)
+    private static func prPanel(
+        _ environment: Environment, tab: MenuBarTab = .pullRequests, height: CGFloat? = nil
+    ) -> some View {
+        MenuBarPanel(initialTab: tab, height: height)
             .environmentObject(environment.prStore)
             .environmentObject(environment.usageStore)
             .environmentObject(environment.model)
@@ -317,13 +349,14 @@ enum DemoSnapshots {
         return hosting
     }
 
-    private static func capture(_ view: NSView, to url: URL) {
+    private static func capture(_ view: NSView, kind: SnapshotChrome.Kind, to url: URL) {
         guard view.bounds.width > 0, view.bounds.height > 0,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
         else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
-        let flattened = flattenTransparency(rep)
-        guard let data = flattened.representation(using: .png, properties: [:]) else { return }
+        let scale = CGFloat(rep.pixelsWide) / view.bounds.width
+        let framed = SnapshotChrome.framed(flattenTransparency(rep), scale: scale, kind: kind)
+        guard let data = framed.representation(using: .png, properties: [:]) else { return }
         try? data.write(to: url)
     }
 

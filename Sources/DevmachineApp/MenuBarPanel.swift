@@ -50,9 +50,11 @@ struct MenuBarPanel: View {
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @Environment(\.openWindow) private var openWindow
     @State private var tab: MenuBarTab
+    private let height: CGFloat?
 
-    init(initialTab: MenuBarTab = .pullRequests) {
+    init(initialTab: MenuBarTab = .pullRequests, height: CGFloat? = nil) {
         _tab = State(initialValue: initialTab)
+        self.height = height
     }
 
     private var panelWidth: CGFloat {
@@ -72,7 +74,7 @@ struct MenuBarPanel: View {
                 .background(Color.dmBand)
         }
         .frame(width: panelWidth)
-        .frame(height: MenuBarSizing.height(for: tab))
+        .frame(height: height ?? MenuBarSizing.height(for: tab))
         .background(Color.dmContentBg)
         .animation(.easeInOut(duration: 0.15), value: tab)
     }

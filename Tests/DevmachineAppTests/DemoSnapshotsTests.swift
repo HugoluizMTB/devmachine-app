@@ -130,4 +130,27 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertNil(DemoSnapshots.parseWindowSize("1100"))
         XCTAssertNil(DemoSnapshots.parseWindowSize("100x100"))
     }
+
+    func testTheWalkIsCapturedAtABigScreenWindowSize() {
+        unsetenv("DEVMACHINE_DEMO_WINDOW")
+        XCTAssertEqual(DemoSnapshots.windowSize, NSSize(width: 2000, height: 1120))
+    }
+
+    func testMenubarPanesAndTheSheetAreFramedAsPanels() {
+        let panels = DemoSnapshots.screens.filter { DemoSnapshots.chrome(for: $0.id) == .panel }.map(\.id)
+        XCTAssertEqual(panels, ["pull-requests", "publish-port", "menubar-usage"])
+    }
+
+    func testEveryOtherScreenIsFramedAsAWindow() {
+        XCTAssertEqual(DemoSnapshots.chrome(for: "home"), .window)
+        XCTAssertEqual(DemoSnapshots.chrome(for: "onboarding"), .window)
+    }
+
+    func testTheWalkHidesScrollBarsThatAreNotInUse() {
+        XCTAssertEqual(DemoSnapshots.scrollBarDefaults["AppleShowScrollBars"] as? String, "WhenScrolling")
+    }
+
+    func testTheUsagePaneIsTallEnoughForEveryModelRow() {
+        XCTAssertEqual(DemoSnapshots.usagePaneHeight, 700)
+    }
 }

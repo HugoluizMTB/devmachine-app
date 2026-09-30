@@ -264,8 +264,26 @@ final class WallpaperStoreTests: XCTestCase {
 }
 
 final class WallpaperGradientTests: XCTestCase {
-    func testFourGradientsWithStableNames() {
-        XCTAssertEqual(WallpaperGradient.all.map(\.name), ["midnight", "ember", "forest", "graphite"])
+    func testGradientsWithStableNames() {
+        XCTAssertEqual(WallpaperGradient.all.map(\.name), ["midnight", "ember", "forest", "graphite", "peaks"])
+    }
+
+    func testOnlyPeaksIsALandscape() {
+        XCTAssertEqual(WallpaperGradient.all.filter { $0.isLandscape }.map(\.name), ["peaks"])
+    }
+
+    @MainActor
+    func testPeaksDrawsDarkRidgesUnderALighterSky() throws {
+        let image = try XCTUnwrap(WallpaperGradient.named("peaks").bitmap(width: 320, height: 200))
+        let rep = try XCTUnwrap(image.representations.first as? NSBitmapImageRep ?? NSBitmapImageRep(data: image.tiffRepresentation!))
+        let sky = try XCTUnwrap(rep.colorAt(x: 160, y: rep.pixelsHigh / 4)).brightnessComponent
+        let ground = try XCTUnwrap(rep.colorAt(x: 160, y: rep.pixelsHigh - 2)).brightnessComponent
+        XCTAssertGreaterThan(sky, ground)
+        let row = rep.pixelsHigh * 11 / 20
+        let across = Set((0..<16).map { i in
+            Int(((rep.colorAt(x: i * rep.pixelsWide / 16, y: row)?.brightnessComponent ?? 0) * 50).rounded())
+        })
+        XCTAssertGreaterThan(across.count, 1, "a ridge line, not a flat vertical gradient")
     }
 
     func testLookupByName() {

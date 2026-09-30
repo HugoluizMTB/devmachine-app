@@ -23,6 +23,7 @@ struct DevmachineApp: App {
     @StateObject private var paletteRecents = PaletteRecentsStore()
 
     init() {
+        DemoSnapshots.applyScrollBarDefaultsIfNeeded()
         let facade = HarnessSettingsFacade()
         harnessSettingsFacade = facade
         // `DEVMACHINE_DEMO=1`: every store seeds itself from `DemoData` (see

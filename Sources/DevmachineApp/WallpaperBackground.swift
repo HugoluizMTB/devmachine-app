@@ -77,7 +77,9 @@ struct WallpaperBackground: View {
             return WallpaperBaker.image(key: "unsplash:" + id, style: style) { image }
         case .gradient(let name):
             let gradient = WallpaperGradient.named(name)
-            return WallpaperBaker.image(key: "gradient:" + gradient.name, style: style) { gradient.bitmap() }
+            return WallpaperBaker.image(key: "gradient:" + gradient.name, style: style) {
+                gradient.isLandscape ? gradient.bitmap(width: 1920, height: 1200) : gradient.bitmap()
+            }
         }
     }
 
@@ -98,6 +100,9 @@ struct WallpaperGradient: Identifiable, Equatable {
     let title: String
     let top: Color
     let bottom: Color
+    /// Drawn as layered mountain ridges under the sky gradient: a landscape
+    /// made in code, so it carries no photo rights and shows no one.
+    var isLandscape = false
 
     var id: String { name }
 
@@ -105,7 +110,9 @@ struct WallpaperGradient: Identifiable, Equatable {
         WallpaperGradient(name: "midnight", title: "Midnight", top: Color(hex: 0x16294A), bottom: Color(hex: 0x04060A)),
         WallpaperGradient(name: "ember", title: "Ember", top: Color(hex: 0x451316), bottom: Color(hex: 0x0A0405)),
         WallpaperGradient(name: "forest", title: "Forest", top: Color(hex: 0x123524), bottom: Color(hex: 0x040806)),
-        WallpaperGradient(name: "graphite", title: "Graphite", top: Color(hex: 0x2E333A), bottom: Color(hex: 0x090A0C))
+        WallpaperGradient(name: "graphite", title: "Graphite", top: Color(hex: 0x2E333A), bottom: Color(hex: 0x090A0C)),
+        WallpaperGradient(
+            name: "peaks", title: "Peaks", top: Color(hex: 0x1C2840), bottom: Color(hex: 0x7A4A52), isLandscape: true)
     ]
 
     static func named(_ name: String) -> WallpaperGradient {
@@ -120,12 +127,104 @@ struct WallpaperGradient: Identifiable, Equatable {
     @MainActor
     func bitmap(width: CGFloat = 1024, height: CGFloat = 640) -> NSImage? {
         let size = NSSize(width: width, height: height)
+        if isLandscape { return PeaksPainter.image(size: size, sky: NSColor(top), horizon: NSColor(bottom)) }
         guard let gradient = NSGradient(starting: NSColor(top), ending: NSColor(bottom)) else { return nil }
         let image = NSImage(size: size)
         image.lockFocus()
         gradient.draw(in: NSRect(origin: .zero, size: size), angle: 285)
         image.unlockFocus()
         return image
+    }
+}
+
+/// Paints the "Peaks" landscape: a dusk sky and four mountain ridges, far to
+/// near, each darker and lower. The ridges come from a seeded midpoint
+/// displacement, so every launch draws the same picture.
+enum PeaksPainter {
+    private struct Ridge {
+        let base: CGFloat
+        let height: CGFloat
+        let roughness: CGFloat
+        let color: NSColor
+        let seed: UInt64
+    }
+
+    private static let ridges: [Ridge] = [
+        Ridge(base: 0.50, height: 0.22, roughness: 0.55, color: NSColor(srgbRed: 0.34, green: 0.25, blue: 0.32, alpha: 1), seed: 11),
+        Ridge(base: 0.38, height: 0.20, roughness: 0.52, color: NSColor(srgbRed: 0.24, green: 0.17, blue: 0.23, alpha: 1), seed: 23),
+        Ridge(base: 0.24, height: 0.16, roughness: 0.50, color: NSColor(srgbRed: 0.10, green: 0.09, blue: 0.13, alpha: 1), seed: 37),
+        Ridge(base: 0.10, height: 0.12, roughness: 0.45, color: NSColor(srgbRed: 0.05, green: 0.05, blue: 0.07, alpha: 1), seed: 53)
+    ]
+
+    @MainActor
+    static func image(size: NSSize, sky: NSColor, horizon: NSColor) -> NSImage? {
+        guard let skyGradient = NSGradient(colors: [horizon, sky, sky.blended(withFraction: 0.4, of: .black) ?? sky]) else {
+            return nil
+        }
+        let image = NSImage(size: size)
+        image.lockFocus()
+        let bounds = NSRect(origin: .zero, size: size)
+        skyGradient.draw(in: bounds, angle: 90)
+        for (index, ridge) in ridges.enumerated() {
+            ridge.color.setFill()
+            path(for: ridge, in: size).fill()
+            if index < ridges.count - 1 { haze(below: ridge, in: size) }
+        }
+        image.unlockFocus()
+        return image
+    }
+
+    private static func path(for ridge: Ridge, in size: NSSize) -> NSBezierPath {
+        let heights = profile(points: 129, roughness: ridge.roughness, seed: ridge.seed)
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: 0, y: 0))
+        for (index, value) in heights.enumerated() {
+            let x = size.width * CGFloat(index) / CGFloat(heights.count - 1)
+            path.line(to: NSPoint(x: x, y: size.height * (ridge.base + ridge.height * value)))
+        }
+        path.line(to: NSPoint(x: size.width, y: 0))
+        path.close()
+        return path
+    }
+
+    private static func haze(below ridge: Ridge, in size: NSSize) {
+        let band = NSRect(x: 0, y: 0, width: size.width, height: size.height * ridge.base)
+        NSGradient(colors: [NSColor.white.withAlphaComponent(0), NSColor.white.withAlphaComponent(0.035)])?
+            .draw(in: band, angle: 90)
+    }
+
+    /// Heights in 0...1 from midpoint displacement, `points` = 2^n + 1.
+    private static func profile(points: Int, roughness: CGFloat, seed: UInt64) -> [CGFloat] {
+        var random = SeededRandom(seed: seed)
+        var values = [CGFloat](repeating: 0, count: points)
+        values[0] = random.unit()
+        values[points - 1] = random.unit()
+        var step = points - 1
+        var spread: CGFloat = 1
+        while step > 1 {
+            let half = step / 2
+            for start in stride(from: 0, to: points - 1, by: step) {
+                let middle = (values[start] + values[start + step]) / 2
+                values[start + half] = middle + (random.unit() - 0.5) * spread
+            }
+            spread *= roughness
+            step = half
+        }
+        let low = values.min() ?? 0
+        let high = values.max() ?? 1
+        return values.map { high > low ? ($0 - low) / (high - low) : 0 }
+    }
+
+    private struct SeededRandom {
+        var state: UInt64
+        init(seed: UInt64) { state = seed &* 0x9E37_79B9_7F4A_7C15 | 1 }
+
+        mutating func unit() -> CGFloat {
+            state ^= state << 13
+            state ^= state >> 7
+            state ^= state << 17
+            return CGFloat(state % 10_000) / 10_000
+        }
     }
 }
 
