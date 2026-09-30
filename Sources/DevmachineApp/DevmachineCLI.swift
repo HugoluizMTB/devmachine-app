@@ -401,6 +401,15 @@ struct DevmachineCLI: Sendable {
         return result.stdout
     }
 
+    /// `devmachine tunnel`, as a command line to spawn and keep: it holds its
+    /// ssh open until it is stopped, so it cannot go through `runner`.
+    func tunnelCommand(workspace: String, remotePort: Int, localPort: Int)
+        -> (executable: String, args: [String], environment: [String: String]) {
+        (executable,
+         ["tunnel", workspace, String(remotePort), "--local", String(localPort)],
+         environment())
+    }
+
     /// What `doctor` produced: a parsed report, or — when the CLI printed a
     /// text table this app's parser does not recognize — its raw stdout, so
     /// nothing is thrown away just because it could not be parsed.
