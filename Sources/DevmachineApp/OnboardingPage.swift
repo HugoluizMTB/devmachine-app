@@ -105,12 +105,9 @@ struct OnboardingPage: View {
                 .font(.dm(11.5))
                 .foregroundStyle(.white.opacity(0.65))
             commandRow(OnboardingPlan.homebrewInstallLine)
-            Button {
+            DMButton("brew.sh", variant: .link) {
                 NSWorkspace.shared.open(URL(string: "https://brew.sh")!)
-            } label: {
-                Text("brew.sh").font(.dm(11.5))
             }
-            .buttonStyle(.link)
         }
         .padding(16)
         .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
@@ -130,8 +127,7 @@ struct OnboardingPage: View {
                     .font(.dm(11.5))
                     .foregroundStyle(.white.opacity(0.65))
                 Spacer(minLength: 4)
-                Button("Start") { startTerminalPath() }
-                    .buttonStyle(.borderedProminent)
+                DMButton("Start", systemImage: "play.fill") { startTerminalPath() }
                     .disabled(!detection.homebrewFound)
             }
             .padding(16)
@@ -159,11 +155,10 @@ struct OnboardingPage: View {
 
     private func agentButton(_ kind: AgentKind) -> some View {
         let installed = detection.agents.contains { $0.kind == kind }
-        return Button(kind.displayName) {
+        return DMButton(kind.displayName, systemImage: "sparkles", variant: .outline) {
             path = .agent(kind)
             runner.startAgent(kind)
         }
-        .buttonStyle(.bordered)
         .disabled(!installed)
         .help(installed ? "" : "\(kind.displayName) is not installed")
     }
@@ -231,10 +226,9 @@ struct OnboardingPage: View {
                 Text(message)
                     .font(.dm(10.5))
                     .foregroundStyle(.red.opacity(0.85))
-                Button("Retry step") {
+                DMButton("Retry step", systemImage: "arrow.clockwise", variant: .outline, size: .small) {
                     runner.retry(step: step.id, remaining: currentSteps)
                 }
-                .buttonStyle(.dmChip)
             }
         }
     }
@@ -267,8 +261,7 @@ struct OnboardingPage: View {
             Text("The CLI, your server, and the devmachine-app package are all set. Restart to load everything.")
                 .font(.dm(12.5))
                 .foregroundStyle(.white.opacity(0.7))
-            Button("Restart Devmachine", action: relaunch)
-                .buttonStyle(.borderedProminent)
+            DMButton("Restart Devmachine", action: relaunch)
                 .keyboardShortcut(.defaultAction)
         }
         .padding(20)
@@ -319,12 +312,12 @@ private struct CopyButton: View {
     @State private var copied = false
 
     var body: some View {
-        Button(copied ? "Copied" : "Copy") {
+        DMButton(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc",
+                 variant: .ghost, size: .small) {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
             copied = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
         }
-        .buttonStyle(.dmChip)
     }
 }

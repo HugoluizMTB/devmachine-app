@@ -111,13 +111,9 @@ struct ContextPanel: View {
     }
 
     private func publishRow(_ workspaceName: String) -> some View {
-        Button {
+        DMButton("Publish a port…", systemImage: "globe", variant: .outline, size: .small) {
             quickPublish.start(workspace: workspaceName)
-        } label: {
-            Label("Publish a port…", systemImage: "globe")
-                .font(.dm(12))
         }
-        .buttonStyle(.dmChip)
         .padding(.horizontal, 14)
         .padding(.top, 8)
     }

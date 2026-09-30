@@ -83,61 +83,30 @@ struct DMIconButton: View {
     }
 }
 
-/// A small labelled button. Ghost shows its background only under the
-/// pointer (the shortcut chips); prominent always does (a row's inline action).
+/// A small labelled chip whose background shows only under the pointer:
+/// the shortcut chips, the suggested ports.
 struct DMChipButtonStyle: ButtonStyle {
-    enum Kind { case ghost, prominent }
-
-    var kind: Kind = .ghost
-
     func makeBody(configuration: Configuration) -> some View {
-        DMChipButtonBody(kind: kind, configuration: configuration)
+        DMChipButtonBody(configuration: configuration)
     }
 }
 
 private struct DMChipButtonBody: View {
-    let kind: DMChipButtonStyle.Kind
     let configuration: ButtonStyleConfiguration
     @State private var hovering = false
 
     var body: some View {
         configuration.label
-            .foregroundStyle(kind == .prominent ? Color.white.opacity(0.9) : Color.dmRowText)
-            .padding(.horizontal, kind == .prominent ? 7 : 8)
-            .padding(.vertical, kind == .prominent ? 3 : 4)
-            .background(fill, in: RoundedRectangle(cornerRadius: DMRadius.keyCap))
+            .foregroundStyle(Color.dmRowText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(hovering ? Color.dmHover : Color.clear, in: RoundedRectangle(cornerRadius: DMRadius.keyCap))
             .contentShape(Rectangle())
             .opacity(configuration.isPressed ? 0.7 : 1)
             .onHover { hovering = $0 }
-    }
-
-    private var fill: Color {
-        switch kind {
-        case .prominent: return Color.white.opacity(0.14)
-        case .ghost: return hovering ? Color.dmHover : Color.clear
-        }
     }
 }
 
 extension ButtonStyle where Self == DMChipButtonStyle {
     static var dmChip: DMChipButtonStyle { DMChipButtonStyle() }
-    static var dmChipProminent: DMChipButtonStyle { DMChipButtonStyle(kind: .prominent) }
-}
-
-/// Plain text that acts as a secondary action, e.g. "Use remote fallback".
-struct DMTextButtonStyle: ButtonStyle {
-    var tint: Color = .dmMuted
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(tint)
-            .contentShape(Rectangle())
-            .opacity(configuration.isPressed ? 0.6 : 1)
-    }
-}
-
-extension ButtonStyle where Self == DMTextButtonStyle {
-    static func dmText(tint: Color = .dmMuted) -> DMTextButtonStyle {
-        DMTextButtonStyle(tint: tint)
-    }
 }

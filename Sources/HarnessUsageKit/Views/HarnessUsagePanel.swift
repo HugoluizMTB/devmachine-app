@@ -19,8 +19,20 @@ public struct HarnessUsagePresentation: Equatable, Sendable {
         return "\(title) (\(plan))"
     }
 
-    public var errorTitle: String { "\(title) is unavailable" }
-    public var errorText: String? { state.errorText }
+    public var error: HarnessUsageErrorPresentation? {
+        guard let details = state.errorText else { return nil }
+        let kind = state.errorKind ?? HarnessUsageErrorKind(text: details)
+        return HarnessUsageErrorPresentation(
+            title: "\(toolName) usage isn't available",
+            cause: kind.cause(tool: toolName),
+            details: details,
+            kind: kind)
+    }
+
+    private var toolName: String {
+        title.hasSuffix(" Usage") ? String(title.dropLast(" Usage".count)) : title
+    }
+
     public var summaryMetrics: [UsageSummaryMetric] { state.snapshot?.summaryMetrics ?? [] }
     public var showsModelBreakdown: Bool { !(state.snapshot?.stats?.modelTotals.isEmpty ?? true) }
 }
@@ -76,6 +88,7 @@ public struct HarnessUsagePanel: View {
 }
 
 public struct HarnessUsageCardContent: View {
+    @Environment(\.harnessUsageErrorView) private var errorView
     public let state: HarnessUsageState
     public let title: String
     public let systemImage: String
@@ -124,19 +137,12 @@ public struct HarnessUsageCardContent: View {
                 reservesSubtitle: state.showsSkeleton,
                 onRefresh: onRefresh)
 
-            if let errorText = presentation.errorText {
-                VStack(spacing: 8) {
-                    Text(verbatim: presentation.errorTitle)
-                        .font(.headline)
-                        .foregroundColor(UsagePalette.primaryText)
-                    Text(verbatim: errorText)
-                        .font(.caption)
-                        .foregroundColor(UsagePalette.secondaryText)
-                        .multilineTextAlignment(.center)
-                    Button("Retry", action: onRefresh)
+            if let error = presentation.error {
+                if let errorView {
+                    errorView.build(error, onRefresh)
+                } else {
+                    HarnessUsageErrorFallback(error: error, onRetry: onRefresh)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
             } else if state.showsSkeleton {
                 UsageCardSkeleton()
                     .transition(.opacity)

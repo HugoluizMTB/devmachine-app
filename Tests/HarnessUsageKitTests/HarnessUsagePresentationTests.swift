@@ -27,8 +27,8 @@ final class HarnessUsagePresentationTests: XCTestCase {
         let state = HarnessUsageState(harnessID: "tool", errorText: "offline")
         let presentation = HarnessUsagePresentation(title: "Tool Usage", state: state)
 
-        XCTAssertEqual(presentation.errorTitle, "Tool Usage is unavailable")
-        XCTAssertEqual(presentation.errorText, "offline")
+        XCTAssertEqual(presentation.error?.title, "Tool usage isn't available")
+        XCTAssertEqual(presentation.error?.details, "offline")
     }
 
     func testSizingMetadataIsStable() {

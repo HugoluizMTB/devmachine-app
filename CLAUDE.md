@@ -96,9 +96,23 @@ What is there:
 - Tokens (`DMTokens.swift`): `DMRadius.*` for every corner radius, `DMHitSize.*`
   for icon click areas, `Color.dm*` (incl. `dmSelection`, `dmStroke`, `dmActive`).
   No number literals for radii in views.
-- Buttons (`DMButtons.swift`): `DMIconButton` / `.buttonStyle(DMIconButtonStyle(...))` for
-  every bare SF Symbol button; `.dmChip` / `.dmChipProminent` for small labelled
-  buttons; `.dmText(tint:)` for a text-only secondary action.
+- Buttons (`DMButton.swift`): `DMButton` / `.buttonStyle(.dm(_:size:))` for every
+  labelled button. Variants: `.primary` (the one action of a sheet or page),
+  `.outline` (the action beside it, Cancel), `.danger` / `.dangerOutline` (ends or
+  removes something), `.ghost` (toolbars, quiet inline actions), `.link` (reads as
+  text). Sizes `.small`, `.regular`, `.large`; `isLoading:` shows a spinner and
+  disables it. An icon-only button is `DMButton(icon:label:)`: the label is
+  required and is what VoiceOver reads. Native buttons stay only in menus,
+  context menus and `.confirmationDialog`.
+- `DMButtons.swift`: `DMIconButton` / `DMIconButtonStyle` for a bare SF Symbol in
+  dense chrome (sidebar, table rows, panel headers); `.dmChip` for suggestion and
+  shortcut chips.
+- Error state (`DMErrorState.swift`): `DMErrorStateView` for a failed read: a
+  title, one plain likely cause (`FailureCause` in Core, `HarnessUsageErrorKind`
+  for usage), Try again, and a collapsed "Show details" with the exact error to
+  select and copy. `DMStatusView(.failed)` draws it, so a page gets it for free.
+  Never dump an error string straight into a card. Usage cards get it through
+  `.harnessUsageErrorView { … }`, since `HarnessUsageKit` cannot import it.
 - Fields (`DMFields.swift`): `DMSearchField` (magnifier + borderless field +
   trailing slot, optional focus binding); `.dmField()` for a text input on a
   dark surface.

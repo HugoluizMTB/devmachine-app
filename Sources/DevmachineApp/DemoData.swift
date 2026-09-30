@@ -377,7 +377,27 @@ enum DemoData {
 
     // MARK: Harness usage
 
-    static let usageProviders: [any HarnessUsageProvider] = [
+    static var usageProviders: [any HarnessUsageProvider] {
+        usageProviders(failing: failingUsageHarnesses(from: ProcessInfo.processInfo.environment))
+    }
+
+    /// `DEVMACHINE_DEMO_USAGE_ERROR=codex` makes that harness's usage fail as
+    /// if it were signed out, to look at the error state. Off by default, so
+    /// the website's screenshots keep their numbers.
+    static func failingUsageHarnesses(from environment: [String: String]) -> Set<String> {
+        let raw = environment["DEVMACHINE_DEMO_USAGE_ERROR"] ?? ""
+        return Set(raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+    }
+
+    static func usageProviders(failing: Set<String>) -> [any HarnessUsageProvider] {
+        usageSamples.map { sample in
+            DemoUsageProvider(
+                harnessID: sample.harnessID, snapshot: sample.snapshot,
+                failure: failing.contains(sample.harnessID) ? DemoUsageError.notSignedIn : nil)
+        }
+    }
+
+    private static let usageSamples: [DemoUsageProvider] = [
         DemoUsageProvider(
             harnessID: "claude",
             snapshot: HarnessUsageSnapshot(
@@ -505,11 +525,26 @@ enum DemoData {
 struct DemoUsageProvider: HarnessUsageProvider {
     let harnessID: String
     let snapshot: HarnessUsageSnapshot
+    var failure: DemoUsageError?
 
     func fetchSnapshot(previous: HarnessUsageSnapshot?) throws -> HarnessUsageSnapshot {
         if DemoMode.holdsLoading {
             DispatchSemaphore(value: 0).wait()
         }
+        if let failure { throw failure }
         return snapshot
+    }
+}
+
+enum DemoUsageError: Error, LocalizedError {
+    case notSignedIn
+
+    var errorDescription: String? {
+        switch self {
+        case .notSignedIn:
+            return """
+            account/rateLimits/read failed: {"code":-32600,"message":"Not logged in. Run `codex login` to sign in."}
+            """
+        }
     }
 }

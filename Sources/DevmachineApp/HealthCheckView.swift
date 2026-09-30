@@ -50,9 +50,8 @@ struct HealthCheckView: View {
             if store.isRunning {
                 ProgressView().controlSize(.small)
             }
-            Button(store.isRunning ? "Running…" : "Run again") { store.run() }
-                .buttonStyle(.dmChip)
-                .disabled(store.isRunning)
+            DMButton("Run again", systemImage: "arrow.clockwise", variant: .outline, size: .small,
+                     isLoading: store.isRunning) { store.run() }
         }
     }
 
@@ -130,8 +129,9 @@ struct HealthCheckView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .dmSurface(Color.dmSelection, radius: DMRadius.control)
-                    Button(copiedCheck == check.id ? "Copied" : "Copy") { copy(command, for: check.id) }
-                        .buttonStyle(.dmChip)
+                    DMButton(copiedCheck == check.id ? "Copied" : "Copy",
+                             systemImage: copiedCheck == check.id ? "checkmark" : "doc.on.doc",
+                             variant: .ghost, size: .small) { copy(command, for: check.id) }
                 }
             }
         } else {

@@ -159,8 +159,8 @@ struct AddSubdomainSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Create") { confirming = true }
+                DMButton("Cancel", variant: .outline) { dismiss() }
+                DMButton("Create") { confirming = true }
                     .disabled(request == nil)
                     .keyboardShortcut(.defaultAction)
             }

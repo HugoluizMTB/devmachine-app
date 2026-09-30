@@ -190,6 +190,10 @@ struct HomeView: View {
             accent: descriptor.color,
             onRefresh: { usage.refresh(force: true) },
             scrollsContent: false)
+        .harnessUsageErrorView { error, retry in
+            DMErrorStateView(state: DMErrorState(error), retry: retry)
+                .padding(.vertical, 8)
+        }
         .frame(width: HomeUsageLayout.cardWidth)
         .clipShape(RoundedRectangle(cornerRadius: DMRadius.card))
         .dmGlass(radius: DMRadius.card, stroke: .white.opacity(0.15))

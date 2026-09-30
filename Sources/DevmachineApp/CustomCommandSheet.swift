@@ -41,9 +41,9 @@ struct CustomCommandSheet: View {
             }
             HStack {
                 Spacer()
-                Button("Cancel", action: onCancel)
+                DMButton("Cancel", variant: .outline, action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Run") { onRun(command) }
+                DMButton("Run", systemImage: "play.fill") { onRun(command) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canRun)
             }

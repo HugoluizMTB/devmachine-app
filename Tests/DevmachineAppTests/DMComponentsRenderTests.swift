@@ -8,7 +8,7 @@ final class DMComponentsRenderTests: XCTestCase {
     /// component can be looked at side by side.
     func testTheGalleryRenders() throws {
         let view = DMComponentsGallery()
-            .frame(width: 520)
+            .frame(width: 640)
             .background(Color.dmContentBg)
             .environment(\.colorScheme, .dark)
 
@@ -48,10 +48,9 @@ private struct DMComponentsGallery: View {
                 DMIconButton(systemImage: "plus", tint: nil) {}
                 DMIconButton(systemImage: "star.fill", tint: .yellow) {}
                 DMIconButton(systemImage: "xmark", size: 10) {}.disabled(true)
-                Button("Open") {}.buttonStyle(.dmChipProminent).font(.dm(10, weight: .medium))
                 Button("Commit") {}.buttonStyle(.dmChip).font(.dm(11))
-                Button("Use remote fallback") {}.buttonStyle(.dmText()).font(.dm(10))
             }
+            DMButtonGallery()
             DMSearchField(prompt: "Find a file", text: $query) {
                 Text(verbatim: "42").font(.dm(10)).foregroundStyle(Color.dmMuted)
             }
@@ -94,6 +93,11 @@ private struct DMComponentsGallery: View {
                     DMSkeletonBlock(height: 5, radius: 3)
                 }
             }
+            DMErrorStateView(
+                state: DMErrorState(
+                    title: "Codex usage isn't available", cause: "Codex doesn't seem to be signed in.",
+                    details: "error: not signed in, run `codex login`"),
+                retry: {}, startsExpanded: true)
             HStack(alignment: .top, spacing: 0) {
                 DMStatusView(kind: .loading("Reading context…"), fillsHeight: false)
                 DMStatusView(
@@ -107,5 +111,38 @@ private struct DMComponentsGallery: View {
             }
         }
         .padding(16)
+    }
+}
+
+private struct DMButtonGallery: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(DMButtonSize.allCases, id: \.self) { size in
+                HStack(spacing: 6) {
+                    DMButton("Save", size: size) {}
+                    DMButton("Cancel", variant: .outline, size: size) {}
+                    DMButton("Delete", systemImage: "trash", variant: .danger, size: size) {}
+                    DMButton("Remove", variant: .dangerOutline, size: size) {}
+                    DMButton("Details", systemImage: "chevron.down", variant: .ghost, size: size) {}
+                    DMButton("Use remote fallback", variant: .link, size: size) {}
+                    DMButton(icon: "arrow.clockwise", label: "Refresh", size: size) {}
+                }
+            }
+            HStack(spacing: 6) {
+                ForEach([DMButtonVariant.primary, .outline, .danger, .ghost], id: \.self) { variant in
+                    Button("Hover") {}.buttonStyle(DMButtonStyle(variant: variant, simulated: .hovered))
+                }
+                Button("Pressed") {}.buttonStyle(DMButtonStyle(simulated: .pressed))
+                Button("Focused") {}.buttonStyle(DMButtonStyle(variant: .outline, simulated: .focused))
+            }
+            HStack(spacing: 6) {
+                DMButton("Save", size: .small) {}.disabled(true)
+                DMButton("Cancel", variant: .outline, size: .small) {}.disabled(true)
+                DMButton("Run again", systemImage: "arrow.clockwise", variant: .outline, size: .small,
+                         isLoading: true) {}
+                DMButton("Save", isLoading: true) {}
+                DMButton(icon: "arrow.clockwise", label: "Refresh", isLoading: true) {}
+            }
+        }
     }
 }

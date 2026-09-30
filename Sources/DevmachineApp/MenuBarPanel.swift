@@ -119,6 +119,10 @@ struct MenuBarPanel: View {
                                 title: "\(descriptor.shortTitle) Usage",
                                 systemImage: descriptor.systemImage,
                                 accent: descriptor.color)
+                            .harnessUsageErrorView { error, retry in
+                                DMErrorStateView(state: DMErrorState(error), retry: retry)
+                                    .padding(.vertical, 12)
+                            }
                             .frame(width: MenuBarSizing.columnWidth(
                                 panelWidth: panelWidth, usageColumns: usageStore.states.count))
                         }
@@ -151,10 +155,9 @@ struct MenuBarPanel: View {
     }
 
     private func footerButton(_ systemImage: String, help: String, action: @escaping () -> Void) -> some View {
-        DMIconButton(systemImage: systemImage, size: 12) {
+        DMButton(icon: systemImage, label: help, size: .small) {
             NSApp.activate(ignoringOtherApps: true)
             action()
         }
-        .help(help)
     }
 }

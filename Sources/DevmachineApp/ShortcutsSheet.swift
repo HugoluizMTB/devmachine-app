@@ -54,7 +54,7 @@ struct ShortcutsSheet: View {
                     .font(.dm(14, weight: .semibold))
                     .foregroundStyle(Color.dmRowText)
                 Spacer()
-                Button("Close") { model.showShortcuts = false }
+                DMButton("Close", variant: .outline, size: .small) { model.showShortcuts = false }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(16)

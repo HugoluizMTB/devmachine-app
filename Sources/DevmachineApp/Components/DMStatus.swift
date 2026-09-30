@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// What a panel shows in place of its content: still loading, nothing to
-/// show, or a read that failed (with Retry).
+/// show, or a read that failed (with Try again and the exact error).
 struct DMStatusView: View {
     enum Kind {
         case loading(String)
@@ -36,27 +36,9 @@ struct DMStatusView: View {
                 caption(text)
             }
         case .failed(let title, let message, let retry):
-            VStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.title)
-                    .foregroundStyle(.orange)
-                if let title {
-                    Text(title)
-                        .font(.dm(12, weight: .semibold))
-                        .foregroundStyle(Color.dmRowText)
-                }
-                // A CLI's stderr can run to a traceback; the cap keeps Retry
-                // inside a narrow panel, and the tooltip holds the rest.
-                caption(message)
-                    .lineLimit(6)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-                    .help(message)
-                if let retry {
-                    Button("Retry", action: retry)
-                }
-            }
-            .multilineTextAlignment(.center)
+            DMErrorStateView(
+                state: DMErrorState(title: title ?? "Couldn't load this", message: message),
+                retry: retry)
         }
     }
 

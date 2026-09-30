@@ -96,7 +96,7 @@ private struct SkillsEditorView: View {
                 TextField("Label", text: $newLabel)
                 TextField("Command", text: $newCommand)
                 TextField("SF Symbol", text: $newSystemImage)
-                Button("Add") {
+                DMButton("Add", systemImage: "plus", size: .small) {
                     skillsStore.add(
                         label: newLabel.trimmingCharacters(in: .whitespaces),
                         command: newCommand.trimmingCharacters(in: .whitespaces),

@@ -370,8 +370,8 @@ private struct RenameSheet: View {
             TextField("new name", text: $name).frame(width: 240)
             HStack {
                 Spacer()
-                Button("Cancel") { model.pendingRename = nil }
-                Button("Rename") { model.renameSession(alias: alias, old: oldName, new: name) }
+                DMButton("Cancel", variant: .outline) { model.pendingRename = nil }
+                DMButton("Rename") { model.renameSession(alias: alias, old: oldName, new: name) }
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -400,8 +400,8 @@ private struct LocalRenameSheet: View {
                 .foregroundStyle(Color.dmMuted)
             HStack {
                 Spacer()
-                Button("Cancel") { model.pendingLocalRename = nil }
-                Button("Rename") { model.renameLocalSession(handle: handle, to: name) }
+                DMButton("Cancel", variant: .outline) { model.pendingLocalRename = nil }
+                DMButton("Rename") { model.renameLocalSession(handle: handle, to: name) }
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -430,16 +430,14 @@ private struct NewSessionSheet: View {
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                     if !suggestion.isEmpty {
-                        Button("Use \(suggestion)") { name = suggestion }
-                            .buttonStyle(.link)
-                            .font(.dm(11))
+                        DMButton("Use \(suggestion)", variant: .link, size: .small) { name = suggestion }
                     }
                 }
             }
             HStack {
                 Spacer()
-                Button("Cancel") { model.pendingNewSessionAlias = nil }
-                Button("Create") {
+                DMButton("Cancel", variant: .outline) { model.pendingNewSessionAlias = nil }
+                DMButton("Create") {
                     model.confirmNewSession(
                         alias: alias, name: name, directory: model.newSessionDirectory)
                 }
@@ -473,7 +471,7 @@ private struct QuickSessionSheet: View {
             HStack(spacing: 8) {
                 TextField(isLocal ? "folder" : "remote folder", text: $directory)
                 if isLocal {
-                    Button("Choose…", action: chooseLocalFolder)
+                    DMButton("Choose…", variant: .outline, size: .small, action: chooseLocalFolder)
                 }
             }
 
@@ -483,8 +481,8 @@ private struct QuickSessionSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { model.showNewSessionChooser = false }
-                Button("Create") {
+                DMButton("Cancel", variant: .outline) { model.showNewSessionChooser = false }
+                DMButton("Create") {
                     model.createQuickSession(
                         destinationAlias: destinationAlias, directory: directory)
                 }

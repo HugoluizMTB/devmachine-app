@@ -107,9 +107,7 @@ struct FileSearchPaletteView: View {
             Spacer(minLength: 4)
             // The row says both things it can do, so neither is a secret.
             if i == index {
-                Button("Open") { index = i; openSelected() }
-                    .buttonStyle(.dmChipProminent)
-                    .font(.dm(10, weight: .medium))
+                DMButton("Open", size: .small) { index = i; openSelected() }
                     .help("Open the file (⇧⏎)")
             }
         }

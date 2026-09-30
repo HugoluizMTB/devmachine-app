@@ -5,6 +5,7 @@ public struct HarnessUsageState: Equatable, Sendable, Identifiable {
     public let harnessID: String
     public var snapshot: HarnessUsageSnapshot?
     public var errorText: String?
+    public var errorKind: HarnessUsageErrorKind?
     public var isLoading: Bool
     public var refreshedAt: Date?
 
@@ -12,12 +13,14 @@ public struct HarnessUsageState: Equatable, Sendable, Identifiable {
         harnessID: String,
         snapshot: HarnessUsageSnapshot? = nil,
         errorText: String? = nil,
+        errorKind: HarnessUsageErrorKind? = nil,
         isLoading: Bool = false,
         refreshedAt: Date? = nil
     ) {
         self.harnessID = harnessID
         self.snapshot = snapshot
         self.errorText = errorText
+        self.errorKind = errorKind ?? errorText.map(HarnessUsageErrorKind.init(text:))
         self.isLoading = isLoading
         self.refreshedAt = refreshedAt
     }
@@ -110,6 +113,7 @@ public final class HarnessUsageStore: ObservableObject {
         updateState(at: index) {
             $0.isLoading = true
             $0.errorText = nil
+            $0.errorKind = nil
         }
         let previous = states[index].snapshot
         let requestedGeneration = generation
@@ -127,9 +131,10 @@ public final class HarnessUsageStore: ObservableObject {
                     case let .success(snapshot):
                         if state.snapshot != snapshot { state.snapshot = snapshot }
                         state.errorText = nil
+                        state.errorKind = nil
                     case let .failure(error):
-                        state.errorText = (error as? LocalizedError)?.errorDescription
-                            ?? error.localizedDescription
+                        state.errorText = HarnessUsageErrorKind.text(of: error)
+                        state.errorKind = HarnessUsageErrorKind(error: error)
                     }
                 }
             }

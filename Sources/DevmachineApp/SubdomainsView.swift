@@ -115,13 +115,9 @@ struct SubdomainsView: View {
             }
             DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.refresh() }
                 .help("Refresh")
-            Button {
+            DMButton("Add subdomain", systemImage: "plus", size: .small) {
                 showAdd = true
-            } label: {
-                Label("Add subdomain", systemImage: "plus")
-                    .font(.dm(12, weight: .semibold))
             }
-            .buttonStyle(.dmChipProminent)
             .disabled(settingsStore.settings == nil)
         }
         .padding(.horizontal, 14)
@@ -208,7 +204,8 @@ struct SubdomainsView: View {
     @ViewBuilder
     private var sitesBody: some View {
         if let err = store.machinesError {
-            DMStatusView(kind: .failed(message: err, retry: { store.refresh() }))
+            DMStatusView(kind: .failed(
+                title: "Couldn't read the machines", message: err, retry: { store.refresh() }))
         } else if let err = store.selectedState?.errorText {
             DMStatusView(kind: .failed(
                 title: store.selectedMachine.map { "\($0) could not be read" },
@@ -460,7 +457,8 @@ struct SubdomainsView: View {
                 .onAppear { store.loadRecords(provider: provider) }
                 .onChange(of: store.domain) { store.loadRecords(provider: provider) }
         case .failed(let err):
-            DMStatusView(kind: .failed(message: err, retry: { retryRecords(provider) }))
+            DMStatusView(kind: .failed(
+                title: "Couldn't read the DNS records", message: err, retry: { retryRecords(provider) }))
         case .loaded(let records):
             recordsTable(records)
         }
@@ -549,13 +547,15 @@ private struct LogsSheet: View {
                     .font(.dm(13, weight: .semibold))
                     .foregroundStyle(Color.dmRowText)
                 Spacer()
-                Button("Close") { dismiss() }
+                DMButton("Close", variant: .outline, size: .small) { dismiss() }
             }
             Group {
                 if loading {
                     DMStatusView(kind: .loading("Reading logs…"), fillsHeight: false)
                 } else if let error {
-                    DMStatusView(kind: .failed(message: error, retry: load), fillsHeight: false)
+                    DMStatusView(
+                        kind: .failed(title: "Couldn't read the logs", message: error, retry: load),
+                        fillsHeight: false)
                 } else {
                     ScrollView {
                         Text(text)

@@ -137,7 +137,9 @@ struct StatsView: View {
     }
 
     private func errorView(_ message: String) -> some View {
-        DMStatusView(kind: .failed(message: message, retry: refresh))
+        DMStatusView(kind: .failed(
+            title: store.selectedMachine.map { "Couldn't read \($0)" } ?? "Couldn't read the stats",
+            message: message, retry: refresh))
     }
 
     private var emptyView: some View {

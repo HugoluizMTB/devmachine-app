@@ -77,7 +77,7 @@ struct MachineStatsCard: View {
                 statLine("Containers", summary.containers)
             }
         } else if let error = state?.errorText {
-            Text(verbatim: error)
+            Text(verbatim: FailureCause(message: error)?.summary ?? "Couldn't read this machine.")
                 .font(.dm(10.5))
                 .foregroundStyle(.white.opacity(0.7))
                 .lineLimit(3)

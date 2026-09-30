@@ -58,7 +58,9 @@ struct PRsView: View {
     private var content: some View {
         if let err = store.errorText {
             DMStatusView(
-                kind: .failed(message: err, retry: { store.refresh() }), fillsHeight: false)
+                kind: .failed(
+                    title: "Couldn't load pull requests", message: err, retry: { store.refresh() }),
+                fillsHeight: false)
         } else if store.showsSkeleton {
             PRListSkeleton()
                 .padding(.vertical, 6)

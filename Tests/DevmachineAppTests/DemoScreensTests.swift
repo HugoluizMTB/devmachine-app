@@ -91,6 +91,24 @@ final class DemoScreensTests: XCTestCase {
         }
     }
 
+    func testTheDemoUsageErrorFailsOnlyTheNamedHarness() throws {
+        let providers = DemoData.usageProviders(failing: ["codex"])
+        let codex = try XCTUnwrap(providers.first { $0.harnessID == "codex" })
+        let claude = try XCTUnwrap(providers.first { $0.harnessID == "claude" })
+
+        XCTAssertThrowsError(try codex.fetchSnapshot(previous: nil)) { error in
+            XCTAssertEqual(HarnessUsageErrorKind(error: error), .notSignedIn)
+        }
+        XCTAssertNoThrow(try claude.fetchSnapshot(previous: nil))
+    }
+
+    func testTheDemoUsageErrorIsOffUnlessAsked() {
+        XCTAssertEqual(DemoData.failingUsageHarnesses(from: [:]), [])
+        XCTAssertEqual(
+            DemoData.failingUsageHarnesses(from: ["DEVMACHINE_DEMO_USAGE_ERROR": "codex, claude"]),
+            ["codex", "claude"])
+    }
+
     func testDemoShortcutsAreInventedAndIgnoreSavedOnes() throws {
         let suiteName = "\(#function)-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

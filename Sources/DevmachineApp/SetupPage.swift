@@ -283,11 +283,10 @@ struct SetupPage: View {
             }
             Spacer()
             if !isFirstRun {
-                Button("Cancel") { model.activePage = nil }
+                DMButton("Cancel", variant: .outline) { model.activePage = nil }
                     .keyboardShortcut(.cancelAction)
             }
-            Button(isFirstRun ? "Start devmachine" : "Save") { save() }
-                .buttonStyle(.borderedProminent)
+            DMButton(isFirstRun ? "Start devmachine" : "Save") { save() }
                 .disabled(!issues.isEmpty)
                 .keyboardShortcut(.defaultAction)
         }
@@ -306,8 +305,7 @@ struct SetupPage: View {
                 HStack(spacing: 8) {
                     TextField("/Users/you/.config/devmachine", text: $opsRepoPath)
                         .dmField()
-                    Button("Choose…") { chooseFolder() }
-                        .buttonStyle(.bordered)
+                    DMButton("Choose…", variant: .outline) { chooseFolder() }
                 }
             }
 
@@ -488,11 +486,9 @@ struct SetupPage: View {
                             selection: workspaceChoiceBinding(workspace.alias)
                         )
                         if workspaceSessionPrograms[workspace.alias] != nil {
-                            Button("Use remote fallback") {
+                            DMButton("Use remote fallback", variant: .link, size: .small) {
                                 workspaceSessionPrograms.removeValue(forKey: workspace.alias)
                             }
-                            .buttonStyle(.dmText(tint: .white.opacity(0.55)))
-                            .font(.dm(10, weight: .medium))
                         }
                     }
                 }
