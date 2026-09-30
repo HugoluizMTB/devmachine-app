@@ -155,7 +155,7 @@ final class RemoteCommandsTests: XCTestCase {
     func testSendKeysSingleQuotesSessionAndText() {
         XCTAssertEqual(
             RemoteCommands.sendKeys(session: "a b", text: "/eoq"),
-            "tmux send-keys -t 'a b' -- '/eoq' Enter"
+            "tmux send-keys -t 'a b' -l -- '/eoq' \\; send-keys -t 'a b' Enter"
         )
     }
 
@@ -166,14 +166,14 @@ final class RemoteCommandsTests: XCTestCase {
     func testSendKeysEscapesSingleQuoteInSessionAndText() {
         XCTAssertEqual(
             RemoteCommands.sendKeys(session: "x'y", text: "echo 'hi'"),
-            "tmux send-keys -t 'x'\\''y' -- 'echo '\\''hi'\\''' Enter"
+            "tmux send-keys -t 'x'\\''y' -l -- 'echo '\\''hi'\\''' \\; send-keys -t 'x'\\''y' Enter"
         )
     }
 
     func testSendKeysIsInjectionSafeWithDollarAndSemicolonAndBacktick() {
         XCTAssertEqual(
             RemoteCommands.sendKeys(session: "dash", text: "$(rm -rf /); `whoami`"),
-            "tmux send-keys -t 'dash' -- '$(rm -rf /); `whoami`' Enter"
+            "tmux send-keys -t 'dash' -l -- '$(rm -rf /); `whoami`' \\; send-keys -t 'dash' Enter"
         )
     }
 

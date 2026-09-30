@@ -172,8 +172,11 @@ public enum RemoteCommands {
         "tmux send-keys -t \(shellSingleQuoted(session)) -- \(shellSingleQuoted(text))"
     }
 
+    /// `-l` keeps tmux from reading typed text such as `Up` or `C-c` as a key
+    /// name; Return goes in a second, non-literal `send-keys`.
     public static func sendKeys(session: String, text: String) -> String {
-        "tmux send-keys -t \(shellSingleQuoted(session)) -- \(shellSingleQuoted(text)) Enter"
+        let target = shellSingleQuoted(session)
+        return "tmux send-keys -t \(target) -l -- \(shellSingleQuoted(text)) \\; send-keys -t \(target) Enter"
     }
 
     public static func shellSingleQuoted(_ value: String) -> String {
