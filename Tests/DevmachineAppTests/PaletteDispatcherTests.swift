@@ -87,6 +87,12 @@ final class PaletteDispatcherTests: XCTestCase {
         XCTAssertEqual(recents.mru.ids, ["go.shortcuts"])
     }
 
+    func testEndSessionAsksAboutTheSessionOnScreen() {
+        model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
+        run(.endSession)
+        XCTAssertEqual(model.pendingEndSession?.item, .session(alias: "acme-devmachine", name: "dash"))
+    }
+
     func testGoHomeClearsThePageAndTheSelection() {
         model.activePage = .stats
         run(.goHome)

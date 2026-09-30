@@ -132,6 +132,16 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(command("action.send-file", in: context(currentTerminal: kind))?.action, .sendFile(kind))
     }
 
+    func testEndingASessionNeedsASingleSessionOnScreen() {
+        XCTAssertNil(command("action.end-session", in: context()))
+        var single = context()
+        single.endableSession = .session(alias: "acme-devmachine", name: "dash")
+        let end = command("action.end-session", in: single)
+        XCTAssertEqual(end?.title, "End session…")
+        XCTAssertEqual(end?.shortcut, "⌘W")
+        XCTAssertEqual(end?.action, .endSession)
+    }
+
     func testPublishAPortPicksTheCurrentRemoteWorkspace() {
         XCTAssertNil(command("action.publish-port", in: context()))
         let current = context(currentWorkspaceAlias: "beta-devmachine")

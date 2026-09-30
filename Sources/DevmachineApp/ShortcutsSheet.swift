@@ -25,6 +25,7 @@ struct ShortcutsSheet: View {
         Group(title: "Sessions", items: [
             Shortcut(keys: ["⌘", "0"], action: "Home"),
             Shortcut(keys: ["⌘", "N"], action: "New session in the current folder"),
+            Shortcut(keys: ["⌘", "W"], action: "End the session on screen (asks first; a grid or no session closes the window)"),
             Shortcut(keys: ["⌘", "⇧", "↑"], action: "Previous session"),
             Shortcut(keys: ["⌘", "⇧", "↓"], action: "Next session"),
             Shortcut(keys: ["⌘", "⇧", "←"], action: "Back"),

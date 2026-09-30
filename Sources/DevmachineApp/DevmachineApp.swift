@@ -82,11 +82,19 @@ struct DevmachineApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) { }
+            // Replaces File > Close so ⌘W can ask to end the one session on
+            // screen; every other case still closes the key window.
+            CommandGroup(replacing: .saveItem) {
+                Button("Close") { CloseCommand.perform(model: model) }
+                    .keyboardShortcut("w", modifiers: .command)
+            }
             CommandMenu("Session") {
                 Button("Home") { model.goHome() }
                     .keyboardShortcut("0", modifiers: .command)
                 Button("New Session") { model.requestQuickSession() }
                     .keyboardShortcut("n", modifiers: .command)
+                Button("End Session…") { model.requestEndSession() }
+                    .disabled(model.endableSession == nil)
                 Divider()
                 Button("Previous Session") { model.moveToPreviousSession() }
                     .keyboardShortcut(.upArrow, modifiers: [.command, .shift])

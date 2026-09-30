@@ -396,6 +396,8 @@ final class AppModel: ObservableObject {
     @Published var pendingLocalDelete: (handle: String, name: String)? = nil
     @Published var pendingDelete: (alias: String, name: String)? = nil
     @Published var pendingBulkDelete: [SessionRef]? = nil
+    /// The session ⌘W asked to end, waiting for a confirm.
+    @Published var pendingEndSession: SessionEndRequest? = nil
     @Published var selectedSessions: Set<SessionRef> = []
     @Published var activeTasks: [BGTask] = []
     @Published var showCommandPalette = false

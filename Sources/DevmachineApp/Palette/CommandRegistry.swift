@@ -72,6 +72,13 @@ enum CommandRegistry {
                 isAvailable: { $0.currentTerminal != nil }),
             Entry(
                 command: PaletteCommand(
+                    id: "action.end-session", title: "End session…", subtitle: "",
+                    category: .action, systemImage: "xmark.rectangle", shortcut: "⌘W",
+                    keywords: ["kill", "close", "stop", "delete", "remove", "quit"],
+                    action: .endSession),
+                isAvailable: { $0.endableSession != nil }),
+            Entry(
+                command: PaletteCommand(
                     id: "action.find-file", title: "Find file…", subtitle: "", category: .action,
                     systemImage: "doc.text.magnifyingglass", shortcut: "⌘P",
                     keywords: ["search", "open", "files"], action: .findFile),

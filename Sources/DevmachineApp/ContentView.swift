@@ -157,6 +157,17 @@ struct ContentView: View {
             }
             Button("Cancel", role: .cancel) { model.pendingLocalDelete = nil }
         }
+        .sheet(isPresented: Binding(
+            get: { model.pendingEndSession != nil },
+            set: { if !$0 { model.cancelEndSession() } }
+        )) {
+            if let request = model.pendingEndSession {
+                EndSessionSheet(
+                    request: request,
+                    onEnd: { model.confirmEndSession() },
+                    onCancel: { model.cancelEndSession() })
+            }
+        }
         .confirmationDialog(
             "Delete \(model.pendingBulkDelete?.count ?? 0) sessions? This kills their tmux sessions.",
             isPresented: Binding(

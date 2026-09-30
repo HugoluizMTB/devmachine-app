@@ -28,6 +28,7 @@ struct CommandPaletteView: View {
         context.hasCaddyMachine = model.hasCaddyMachine
         context.subdomainsMachine = caddy.dnsMachine ?? stats.machines.first?.name
         context.currentTerminal = model.currentTerminalKind
+        context.endableSession = model.endableSession
         context.currentWorkspaceAlias = model.currentWorkspaceAlias
         context.activePage = model.activePage
         return context

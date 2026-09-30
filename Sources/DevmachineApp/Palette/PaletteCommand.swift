@@ -42,6 +42,7 @@ enum PaletteAction: Equatable {
     case subdomains(machine: String)
     case addSubdomain(machine: String?)
     case sendFile(TerminalKind)
+    case endSession
     case findFile
     case refresh
     case toggleSidebar
@@ -80,6 +81,7 @@ struct PaletteContext {
     var hasCaddyMachine = false
     var subdomainsMachine: String?
     var currentTerminal: TerminalKind?
+    var endableSession: SidebarItem?
     var currentWorkspaceAlias: String?
     var activePage: AppPage?
 

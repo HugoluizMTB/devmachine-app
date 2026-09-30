@@ -87,6 +87,7 @@ struct PaletteDispatcher {
             if let machine { sites.prefer(machine: machine) }
             model.requestAddSubdomain()
         case let .sendFile(kind): system.chooseFileAndSend(to: kind)
+        case .endSession: model.requestEndSession()
         case .findFile: model.showFileSearch = true
         case .refresh: refreshCurrentScreen()
         case .toggleSidebar: model.sidebarCollapsed.toggle()
