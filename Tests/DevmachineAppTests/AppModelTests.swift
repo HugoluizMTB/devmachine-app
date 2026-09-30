@@ -1356,10 +1356,8 @@ final class AppModelTests: XCTestCase {
             opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
             baseDomain: "example.com")
         model.addLocalSession(path: "/Users/alice/dev/base")
-        let command = CustomCommand(
-            name: "Claude (work)", command: "CLAUDE_CONFIG_DIR=~/.claude-work claude")
 
-        model.runCustomCommand(command, forWorkspaceAlias: Workspace.local.alias)
+        model.openSession(in: Workspace.local.alias, startup: .command("CLAUDE_CONFIG_DIR=~/.claude-work claude"))
 
         try await waitUntil { sender.sent.count == 1 }
         XCTAssertEqual(sender.sent.first?.command, "CLAUDE_CONFIG_DIR=~/.claude-work claude")
@@ -1381,9 +1379,8 @@ final class AppModelTests: XCTestCase {
         model.settings = AppSettings(
             opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
             baseDomain: "example.com")
-        let command = CustomCommand(name: "npm dev", command: "npm run dev")
 
-        model.runCustomCommand(command, forWorkspaceAlias: "acme-devmachine")
+        model.openSession(in: "acme-devmachine", startup: .command("npm run dev"))
 
         try await waitUntil { sender.sent.count == 1 }
         XCTAssertEqual(sender.sent.first?.command, "npm run dev")
@@ -1394,29 +1391,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(alias, "acme-devmachine")
     }
 
-    func testCurrentWorkspaceAliasFollowsTheSelectionForKeyboardShortcuts() {
-        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+    func testPickingAHarnessRunsItsOwnStartupInsteadOfTheConfiguredOne() async throws {
+        let runner = HarnessProcessRunner()
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(store: SessionStore(runner: runner), sessionCommandSender: sender)
+        var settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com")
+        settings.enabledHarnesses = [.claude, .codex]
+        settings.remoteSessionProgram = .harness(.claude)
+        model.settings = settings
 
-        model.selection = .session(alias: "acme-devmachine", name: "web")
-        XCTAssertEqual(model.currentWorkspaceAlias, "acme-devmachine")
+        model.openSession(in: "acme-devmachine", startup: .program(.harness(.codex)))
 
-        model.selection = .localSession(name: "base", path: "/Users/alice/dev/base")
-        XCTAssertEqual(model.currentWorkspaceAlias, Workspace.local.alias)
-
-        model.selection = nil
-        XCTAssertNil(model.currentWorkspaceAlias)
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "codex")
     }
 
-    func testCurrentWorkspaceAliasPrefersAVisibleStackOverAStaleSelection() {
-        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
-        // A workspace stack (opened from the grid icon) covers the terminal
-        // without clearing the old selection: the target has to be read off
-        // the visible page, not the leftover selection.
-        model.selection = .session(alias: "acme-devmachine", name: "web")
+    func testPickingTerminalOpensAPlainShellEvenWhenAHarnessIsConfigured() async throws {
+        let runner = HarnessProcessRunner()
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(store: SessionStore(runner: runner), sessionCommandSender: sender)
+        var settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com")
+        settings.enabledHarnesses = [.claude, .codex]
+        settings.remoteSessionProgram = .harness(.claude)
+        model.settings = settings
 
-        model.stackSessions([SessionRef(alias: "beta-devmachine", name: "dash")])
+        model.openSession(in: "acme-devmachine", startup: .program(.terminal))
 
-        XCTAssertEqual(model.currentWorkspaceAlias, "beta-devmachine")
+        try await waitUntil { runner.callCount(for: "/usr/bin/ssh") == 1 }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(sender.sent.isEmpty)
+    }
+
+    func testABlankCustomCommandOpensNothing() async throws {
+        let runner = HarnessProcessRunner()
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(store: SessionStore(runner: runner), sessionCommandSender: sender)
+        model.settings = .empty
+
+        model.openSession(in: "acme-devmachine", startup: .command("   "))
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(runner.callCount(for: "/usr/bin/ssh"), 0)
+        XCTAssertTrue(sender.sent.isEmpty)
     }
 
 }

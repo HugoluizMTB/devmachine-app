@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject private var fileSearch: FileSearchStore
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var viewerStore: FileViewerStore
+    @EnvironmentObject private var recentCommands: RecentCommandStore
     @State private var dragStartWidth: CGFloat? = nil
     @State private var contextDragStartWidth: CGFloat?
     @State private var viewerDragStartWidth: CGFloat? = nil
@@ -85,6 +86,18 @@ struct ContentView: View {
         )) {
             NewSessionSheet(alias: model.pendingNewSessionAlias ?? "")
                 .environmentObject(model)
+        }
+        .sheet(isPresented: Binding(
+            get: { model.pendingCustomCommandAlias != nil },
+            set: { if !$0 { model.pendingCustomCommandAlias = nil } }
+        )) {
+            if let alias = model.pendingCustomCommandAlias {
+                CustomCommandSheet(
+                    workspaceName: workspaceName(alias),
+                    recents: recentCommands.recents(for: alias),
+                    onRun: { runCustomCommand($0, in: alias) },
+                    onCancel: { model.pendingCustomCommandAlias = nil })
+            }
         }
         .sheet(isPresented: Binding(
             get: { model.pendingRename != nil },
@@ -263,7 +276,6 @@ private struct PageHost: View {
         // `DemoSnapshots.subdomainsInitialTab` only ever differs from `.sites`
         // while the website's screenshot walk owns the window.
         case .subdomains: SubdomainsView(initialTab: DemoSnapshots.subdomainsInitialTab)
-        case .customCommands: CustomCommandsPage()
         case .stack(let refs): StackGridView(refs: refs).ignoresSafeArea(edges: .top)
         }
     }
@@ -488,5 +500,18 @@ private struct QuickSessionSheet: View {
         }
         guard panel.runModal() == .OK, let url = panel.url else { return }
         directory = url.path
+    }
+}
+
+extension ContentView {
+    fileprivate func workspaceName(_ alias: String) -> String {
+        guard let workspace = model.sidebarWorkspaces.first(where: { $0.alias == alias }) else { return alias }
+        return workspace.isLocal ? "This Mac" : workspace.name
+    }
+
+    fileprivate func runCustomCommand(_ raw: String, in alias: String) {
+        guard let command = recentCommands.record(raw, for: alias) else { return }
+        model.pendingCustomCommandAlias = nil
+        model.openSession(in: alias, startup: .command(command))
     }
 }

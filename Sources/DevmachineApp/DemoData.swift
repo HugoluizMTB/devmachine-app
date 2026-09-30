@@ -287,11 +287,11 @@ enum DemoData {
             ]),
     ]
 
-    // MARK: Custom commands
+    // MARK: Recent custom commands
 
-    static let customCommands: [CustomCommand] = [
-        CustomCommand(name: "Claude (work)", command: "claude", icon: .sparkles, scope: .all, shortcutSlot: 1),
-        CustomCommand(name: "Codex", command: "codex", icon: .terminal, scope: .all, shortcutSlot: 2),
+    static let recentCommands: [String: [String]] = [
+        "acme-devmachine": ["npm run dev", "htop", "claude --model opus"],
+        "globex-devmachine": ["bin/rails server", "tail -f log/development.log"],
     ]
 
     // MARK: Harness usage

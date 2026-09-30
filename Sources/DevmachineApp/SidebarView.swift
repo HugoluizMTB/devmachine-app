@@ -5,10 +5,10 @@ import DevmachineCore
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
-    @EnvironmentObject var customCommandsStore: CustomCommandStore
     @EnvironmentObject var settingsStore: SettingsStore
     @StateObject private var quickPublish = QuickPublishState()
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -52,8 +52,6 @@ struct SidebarView: View {
                 footerButton("globe") { model.showPage(.subdomains) }
                     .help("Subdomains")
             }
-            footerButton("command") { model.showPage(.customCommands) }
-                .help("Custom commands")
             footerButton("gearshape") { model.showPage(.setup) }
                 .help("Settings (⌘,)")
             footerButton("sidebar.left") {
@@ -158,36 +156,34 @@ struct SidebarView: View {
         }
     }
 
-    /// A plain "+" with no custom command applicable here, else a menu
-    /// offering "New session" plus every custom command in scope for this
-    /// workspace (or this Mac).
-    @ViewBuilder
+    /// Picks what the new session runs: a plain shell, one of the enabled
+    /// harnesses, or a command typed by hand. "New session…" keeps the named,
+    /// folder-first flow that runs the workspace's configured program.
     private func newSessionButton(alias: String, action: @escaping () -> Void) -> some View {
-        let isLocal = alias == Workspace.local.alias
-        let applicable = customCommandsStore.applicable(toLocal: isLocal, alias: alias)
-        if applicable.isEmpty {
-            DMIconButton(systemImage: "plus", size: 11, hitSize: DMHitSize.header, action: action)
-        } else {
-            Menu {
-                Button("New session", action: action)
-                Divider()
-                ForEach(applicable) { command in
-                    Button {
-                        model.runCustomCommand(command, forWorkspaceAlias: alias)
-                    } label: {
-                        Label(command.name, systemImage: command.icon.systemImage)
-                    }
+        Menu {
+            ForEach(harnessSettingsFacade.launchOptions(for: settingsStore.settings ?? .empty)) { option in
+                Button {
+                    model.openSession(in: alias, startup: .program(option.choice))
+                } label: {
+                    Label(option.title, systemImage: option.systemImage)
                 }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.dm(11))
-                    .foregroundStyle(Color.dmMuted)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .frame(width: DMHitSize.header.width, height: DMHitSize.header.height)
-            .help("New session…")
+            Button {
+                model.pendingCustomCommandAlias = alias
+            } label: {
+                Label("Custom command…", systemImage: "chevron.forward.square")
+            }
+            Divider()
+            Button(alias == Workspace.local.alias ? "New session in folder…" : "New named session…", action: action)
+        } label: {
+            Image(systemName: "plus")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: DMHitSize.header.width, height: DMHitSize.header.height)
+        .help("New session…")
     }
 
     private func openFiles(alias: String) {

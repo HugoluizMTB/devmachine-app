@@ -24,6 +24,14 @@ struct PaletteItem: Identifiable {
     let badges: [HarnessBadgePresentation]
 }
 
+/// What a new session runs first: the workspace's configured program, one
+/// picked for this session only, or a command typed by hand.
+enum SessionStartup: Equatable {
+    case configured
+    case program(SessionLaunchChoice)
+    case command(String)
+}
+
 protocol SessionCommandSending: Sendable {
     func send(_ command: String, into target: CommandTarget) throws
 }
@@ -211,26 +219,8 @@ final class AppModel: ObservableObject {
     /// Types the startup line once the session exists. A local session is born
     /// when its pane mounts, not when the row is added, so the line waits for
     /// the multiplexer to list it.
-    ///
-    /// `startupOverride` types that line instead of the harness's own, for a
-    /// custom command — the same wait-for-the-multiplexer dance, a different
-    /// line.
-    func startProgram(in target: CommandTarget, startupOverride: String? = nil) {
-        let line: String?
-        if let startupOverride {
-            line = startupOverride
-        } else {
-            guard let settings else { return }
-            let choice: SessionLaunchChoice
-            switch target {
-            case .local:
-                choice = settings.localSessionProgram
-            case let .remote(alias, _):
-                choice = settings.sessionProgram(for: alias)
-            }
-            line = harnessSettingsFacade.startupCommand(for: choice)
-        }
-        guard let line else { return }
+    func startProgram(in target: CommandTarget, startup: SessionStartup = .configured) {
+        guard let line = startupLine(startup, for: target) else { return }
         let sender = sessionCommandSender
         let runner = localRunner
         let zmxPath = zmxPath
@@ -383,6 +373,8 @@ final class AppModel: ObservableObject {
     }
     @Published var pendingNewSessionAlias: String? = nil
     @Published var showNewSessionChooser = false
+    /// The workspace whose "Custom command…" sheet is open.
+    @Published var pendingCustomCommandAlias: String? = nil
     @Published var pendingRename: (alias: String, old: String)? = nil
     @Published var pendingLocalRename: (handle: String, current: String)? = nil
     /// The local session waiting for an answer. Removing one ends the shell it
@@ -602,51 +594,24 @@ final class AppModel: ObservableObject {
         pendingNewSessionAlias = alias
     }
 
-    /// The workspace a keyboard shortcut or menu command targets: the same
-    /// rule `requestQuickSession` uses to find where a duplicated session
-    /// belongs — a visible page's front cell first, the plain selection only
-    /// when no page covers it. `selection` alone can be stale: opening a
-    /// workspace's stack sets `activePage` without clearing it.
-    var currentWorkspaceAlias: String? {
-        let item: SidebarItem?
-        if activePage == nil {
-            item = selection
-        } else if case let .stack(refs) = activePage,
-                  let ref = FocusedTerminal.ref().flatMap({ refs.contains($0) ? $0 : nil }) ?? refs.first {
-            item = sidebarItem(for: ref)
-        } else {
-            item = nil
-        }
-        switch item {
-        case let .session(alias, _):
-            return alias
-        case .localSession:
-            return Workspace.local.alias
-        case nil:
-            return nil
-        }
-    }
-
-    /// Runs a custom command in a brand new session for the currently
-    /// selected workspace — the keyboard-shortcut and command-menu path.
-    func runCustomCommand(_ command: CustomCommand) {
-        guard let alias = currentWorkspaceAlias else { return }
-        runCustomCommand(command, forWorkspaceAlias: alias)
-    }
-
-    /// Runs a custom command in a brand new session for one workspace — the
-    /// sidebar "+" menu path, where the target is already known.
-    func runCustomCommand(_ command: CustomCommand, forWorkspaceAlias alias: String) {
+    /// Opens a brand new session in one workspace from the sidebar's "+"
+    /// menu, running the program or command picked there instead of the
+    /// configured default.
+    func openSession(in alias: String, startup: SessionStartup) {
+        if case let .command(raw) = startup, CustomSessionCommand.normalized(raw) == nil { return }
         if alias == Workspace.local.alias {
-            runCustomCommandLocally(command)
+            openLocalSession(startup: startup)
         } else {
-            runCustomCommandRemotely(command, alias: alias)
+            let directory = "~"
+            let name = automaticSessionName(
+                directory: directory, existing: Set(sessionsByAlias[alias]?.map(\.name) ?? []))
+            createRemoteSession(alias: alias, name: name, directory: directory, startup: startup)
         }
     }
 
     /// Starts in the current local session's own folder when there is one
     /// (mirroring a duplicated session), else the home directory.
-    private func runCustomCommandLocally(_ command: CustomCommand) {
+    private func openLocalSession(startup: SessionStartup) {
         let path: String
         if case let .localSession(name, _) = selection,
            let existing = localSessions.first(where: { $0.handle == name }) {
@@ -657,16 +622,25 @@ final class AppModel: ObservableObject {
         let handle = LocalSessionNaming.name(for: path, existing: localSessions.map(\.handle))
         addedLocalSessions.append(LocalSession(name: handle, path: path))
         selection = .localSession(name: handle, path: path)
-        startProgram(in: .local(session: handle, path: path), startupOverride: command.command)
+        startProgram(in: .local(session: handle, path: path), startup: startup)
     }
 
-    /// Starts in the workspace's home folder, the way a fresh session does
-    /// when no other directory is known.
-    private func runCustomCommandRemotely(_ command: CustomCommand, alias: String) {
-        let directory = "~"
-        let name = automaticSessionName(
-            directory: directory, existing: Set(sessionsByAlias[alias]?.map(\.name) ?? []))
-        createRemoteSession(alias: alias, name: name, directory: directory, startupOverride: command.command)
+    /// The first line typed into a new session, or nil for a plain shell.
+    private func startupLine(_ startup: SessionStartup, for target: CommandTarget) -> String? {
+        switch startup {
+        case .configured:
+            guard let settings else { return nil }
+            switch target {
+            case .local:
+                return harnessSettingsFacade.startupCommand(for: settings.localSessionProgram)
+            case let .remote(alias, _):
+                return harnessSettingsFacade.startupCommand(for: settings.sessionProgram(for: alias))
+            }
+        case let .program(choice):
+            return harnessSettingsFacade.startupCommand(for: choice)
+        case let .command(raw):
+            return CustomSessionCommand.normalized(raw)
+        }
     }
 
     /// ⌘N behaves like a terminal tab: duplicate the current location without
@@ -1205,15 +1179,13 @@ final class AppModel: ObservableObject {
     }
 
     private func createRemoteSession(
-        alias: String, name: String, directory: String, taskID: UUID? = nil, startupOverride: String? = nil
+        alias: String, name: String, directory: String, taskID: UUID? = nil, startup: SessionStartup = .configured
     ) {
         // Created here rather than left to the terminal's own `new-session -A`,
         // because only a session created up front can be told which directory to
         // start in, and harnesses resolve project files from that location.
         let store = self.store
-        let startup = startupOverride ?? settings.flatMap {
-            harnessSettingsFacade.startupCommand(for: $0.sessionProgram(for: alias))
-        }
+        let startup = startupLine(startup, for: .remote(alias: alias, session: name))
         let sender = sessionCommandSender
         Task.detached {
             _ = try? store.run(

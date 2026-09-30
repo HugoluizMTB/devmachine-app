@@ -11,7 +11,7 @@ struct DevmachineApp: App {
     @StateObject private var filesStore = FilesStore()
     @StateObject private var caddyStore = CaddyStore()
     @StateObject private var skillsStore = SkillsStore()
-    @StateObject private var customCommandsStore = CustomCommandStore()
+    @StateObject private var recentCommandStore = RecentCommandStore()
     @StateObject private var statsStore = StatsStore()
     @StateObject private var healthCheckStore = HealthCheckStore()
     @StateObject private var usageStore: HarnessUsageStore
@@ -46,7 +46,7 @@ struct DevmachineApp: App {
                 .environmentObject(model)
                 .environmentObject(filesStore)
                 .environmentObject(skillsStore)
-                .environmentObject(customCommandsStore)
+                .environmentObject(recentCommandStore)
                 .environmentObject(caddyStore)
                 .environmentObject(statsStore)
                 .environmentObject(healthCheckStore)
@@ -94,19 +94,6 @@ struct DevmachineApp: App {
                     .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
                 Button("Forward") { model.goForward() }
                     .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
-            }
-            CommandMenu("Custom Commands") {
-                if customCommandsStore.commands.isEmpty {
-                    Text("No custom commands yet")
-                } else if applicableCustomCommands.isEmpty {
-                    Text("No custom command for the current workspace")
-                } else {
-                    ForEach(applicableCustomCommands) { command in
-                        customCommandButton(command)
-                    }
-                }
-                Divider()
-                Button("Custom Commands…") { model.showPage(.customCommands) }
             }
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { model.activePage = model.activePage == .setup ? nil : .setup }
@@ -159,26 +146,6 @@ struct DevmachineApp: App {
             MenuBarLabel(prStore: prStore)
         }
         .menuBarExtraStyle(.window)
-    }
-
-    /// Every command in scope for the workspace a shortcut or menu click
-    /// would target — the same scope the sidebar's "+" menu already enforces,
-    /// so a workspace-only or This-Mac-only command never fires elsewhere.
-    private var applicableCustomCommands: [CustomCommand] {
-        guard let alias = model.currentWorkspaceAlias else { return [] }
-        return customCommandsStore.applicable(toLocal: alias == Workspace.local.alias, alias: alias)
-    }
-
-    /// A shortcut slot maps to ⌘⌥1…⌘⌥9, in order; a command with no slot gets
-    /// a menu entry but no key equivalent.
-    @ViewBuilder
-    private func customCommandButton(_ command: CustomCommand) -> some View {
-        if let slot = command.shortcutSlot, (CustomCommand.shortcutSlotRange).contains(slot) {
-            Button(command.name) { model.runCustomCommand(command) }
-                .keyboardShortcut(KeyEquivalent(Character("\(slot)")), modifiers: [.command, .option])
-        } else {
-            Button(command.name) { model.runCustomCommand(command) }
-        }
     }
 }
 

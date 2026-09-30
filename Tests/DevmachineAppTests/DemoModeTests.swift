@@ -109,9 +109,18 @@ final class DemoModeTests: XCTestCase {
         XCTAssertEqual(store.snapshot, DemoData.statsSnapshots["main"])
     }
 
-    func testCustomCommandStoreSeedsDemoCommands() {
-        let store = CustomCommandStore(defaults: UserDefaults(suiteName: #function)!)
-        XCTAssertEqual(store.commands, DemoData.customCommands)
+    func testRecentCommandStoreSeedsDemoCommandsWithoutPersistingThem() {
+        let suiteName = "\(#function)-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let store = RecentCommandStore(defaults: defaults)
+
+        store.record("make test", for: "acme-devmachine")
+
+        XCTAssertEqual(
+            store.recents(for: "globex-devmachine"),
+            DemoData.recentCommands["globex-devmachine"])
+        XCTAssertEqual(store.recents(for: "acme-devmachine").first, "make test")
+        XCTAssertNil(defaults.persistentDomain(forName: suiteName))
     }
 }
 

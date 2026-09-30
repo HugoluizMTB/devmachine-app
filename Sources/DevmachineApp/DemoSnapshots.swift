@@ -56,7 +56,7 @@ enum DemoSnapshots {
         Screen(id: "subdomains-dns-cloudflare", fileName: "05-subdomains-dns-cloudflare.png", settleNanoseconds: 700_000_000),
         Screen(id: "stats", fileName: "06-stats.png", settleNanoseconds: 700_000_000),
         Screen(id: "settings-health", fileName: "07-settings-health.png", settleNanoseconds: 500_000_000),
-        Screen(id: "custom-commands", fileName: "08-custom-commands.png", settleNanoseconds: 400_000_000),
+        Screen(id: "custom-command", fileName: "08-custom-command.png", settleNanoseconds: 400_000_000),
         Screen(id: "onboarding", fileName: "09-onboarding.png", settleNanoseconds: 500_000_000),
         Screen(id: "publish-port", fileName: "10-publish-port.png", settleNanoseconds: 400_000_000),
     ]
@@ -116,6 +116,8 @@ enum DemoSnapshots {
                 try? await Task.sleep(nanoseconds: 300_000_000)
             case "publish-port":
                 view = standaloneView(publishSheet(environment), fittingSize: NSSize(width: 480, height: 620))
+            case "custom-command":
+                view = standaloneView(customCommandSheet(), fittingSize: NSSize(width: 420, height: 320))
             default:
                 window.displayIfNeeded()
                 view = window.contentView ?? NSView()
@@ -127,9 +129,9 @@ enum DemoSnapshots {
     }
 
     /// Drives the real window/model to the state each screen needs. The
-    /// three screens with no natural place in the main window (the menubar's
-    /// pull-request popover, first-run onboarding, and the quick-publish
-    /// sheet) are rendered in their own offscreen window instead, right
+    /// four screens with no natural place in the main window (the menubar's
+    /// pull-request popover, first-run onboarding, the custom command sheet
+    /// and the quick-publish sheet) are rendered in their own offscreen window instead, right
     /// where they are captured (see `run`).
     private static func prepare(_ screen: Screen, environment: Environment, mainWindow: NSWindow) async {
         let model = environment.model
@@ -163,8 +165,6 @@ enum DemoSnapshots {
         case "settings-health":
             setupInitialSection = .advanced
             model.showPage(.setup)
-        case "custom-commands":
-            model.showPage(.customCommands)
         default:
             break
         }
@@ -191,6 +191,14 @@ enum DemoSnapshots {
                 DetectedAgent(kind: .codex, executablePath: "/opt/homebrew/bin/codex"),
             ]))
             .environmentObject(environment.wallpaperStore)
+    }
+
+    private static func customCommandSheet() -> some View {
+        CustomCommandSheet(
+            workspaceName: "acme",
+            recents: DemoData.recentCommands[acmeAlias] ?? [],
+            onRun: { _ in },
+            onCancel: {})
     }
 
     private static func publishSheet(_ environment: Environment) -> some View {
