@@ -37,7 +37,9 @@ enum DMButtonSize: CaseIterable {
 enum DMButtonPalette {
     static let danger = Color(hex: 0xD2463E)
     static let dangerText = Color(hex: 0xFF7B72)
-    static let outlineStroke = Color.white.opacity(0.18)
+    static let outlineStroke = Color.white.opacity(0.28)
+    static let outlineFill = Color.white.opacity(0.08)
+    static let outlineHoverFill = Color.white.opacity(0.14)
     static let pressedOpacity = 0.75
     static let disabledOpacity = 0.4
 }
@@ -70,8 +72,9 @@ struct DMButtonAppearance {
             foreground = .white
             highlight = hovered ? Color.white.opacity(0.1) : .clear
         case .outline:
-            fill = hovered ? .dmHover : .clear
+            fill = hovered ? DMButtonPalette.outlineHoverFill : DMButtonPalette.outlineFill
             stroke = DMButtonPalette.outlineStroke
+            foreground = .white
         case .dangerOutline:
             fill = hovered ? DMButtonPalette.danger.opacity(0.12) : .clear
             stroke = DMButtonPalette.danger.opacity(0.7)

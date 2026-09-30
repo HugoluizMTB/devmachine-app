@@ -15,10 +15,11 @@ final class DMButtonTests: XCTestCase {
         XCTAssertNil(look(.primary).stroke)
     }
 
-    func testOutlineHasAnEdgeAndFillsOnlyUnderThePointer() {
-        XCTAssertEqual(look(.outline).fill, .clear)
-        XCTAssertNotNil(look(.outline).stroke)
-        XCTAssertEqual(look(.outline, hovered: true).fill, .dmHover)
+    func testOutlineIsASolidSecondaryButtonThatReadsAsClickable() {
+        XCTAssertEqual(look(.outline).fill, DMButtonPalette.outlineFill)
+        XCTAssertEqual(look(.outline).stroke, DMButtonPalette.outlineStroke)
+        XCTAssertEqual(look(.outline).foreground, .white)
+        XCTAssertEqual(look(.outline, hovered: true).fill, DMButtonPalette.outlineHoverFill)
     }
 
     func testDangerIsRedFilledAndDangerOutlineIsRedEdged() {
