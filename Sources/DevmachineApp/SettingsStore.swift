@@ -65,9 +65,15 @@ final class SettingsStore: ObservableObject {
     }
 
     private let defaults: UserDefaults
+    private let persists: Bool
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        persists = !DemoMode.isActive
+        guard persists else {
+            settings = DemoData.settings
+            return
+        }
         guard let data = defaults.data(forKey: Self.key) else { return }
         settings = try? JSONDecoder().decode(AppSettings.self, from: data)
         syncSSHAgentSocketPreference()
@@ -92,6 +98,7 @@ final class SettingsStore: ObservableObject {
     }
 
     private func save() {
+        guard persists else { return }
         guard let settings, let data = try? JSONEncoder().encode(settings) else {
             defaults.removeObject(forKey: Self.key)
             return

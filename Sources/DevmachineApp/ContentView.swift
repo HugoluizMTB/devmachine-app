@@ -96,6 +96,7 @@ struct ContentView: View {
                     workspaceName: workspaceName(alias),
                     recents: recentCommands.recents(for: alias),
                     onRun: { runCustomCommand($0, in: alias) },
+                    onRemove: { recentCommands.remove($0, for: alias) },
                     onCancel: { model.pendingCustomCommandAlias = nil })
             }
         }

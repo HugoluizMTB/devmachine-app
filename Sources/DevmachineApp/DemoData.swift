@@ -291,8 +291,23 @@ enum DemoData {
 
     static let recentCommands: [String: [String]] = [
         "acme-devmachine": ["npm run dev", "htop", "claude --model opus"],
-        "globex-devmachine": ["bin/rails server", "tail -f log/development.log"],
+        "globex-devmachine": ["npm run dev", "bin/rails server", "tail -f log/development.log"],
     ]
+
+    // MARK: Settings
+
+    static let settings = AppSettings(
+        opsRepoPath: "/Users/alice/dev/ops",
+        hostAlias: "devmachine",
+        publicIP: machineAddress,
+        baseDomain: "example.com",
+        enabledHarnesses: [.claude, .codex],
+        localSessionProgram: .harness(.claude),
+        remoteSessionProgram: .harness(.claude),
+        workspaceSessionPrograms: [
+            "globex-devmachine": .custom("npm run dev"),
+            "initech-devmachine": .harness(.codex),
+        ])
 
     // MARK: Harness usage
 

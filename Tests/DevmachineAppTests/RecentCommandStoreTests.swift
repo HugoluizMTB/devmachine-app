@@ -48,6 +48,50 @@ final class RecentCommandStoreTests: XCTestCase {
         XCTAssertEqual(store.recents(for: "acme-devmachine"), ["htop"])
     }
 
+    func testRememberAddsANewCommandWithoutReorderingTheOthers() {
+        let store = RecentCommandStore(defaults: makeDefaults())
+        store.record("htop", for: "acme-devmachine")
+        store.record("npm run dev", for: "acme-devmachine")
+
+        store.remember("htop", for: "acme-devmachine")
+        store.remember(" make test ", for: "acme-devmachine")
+        store.remember("  ", for: "acme-devmachine")
+
+        XCTAssertEqual(store.recents(for: "acme-devmachine"), ["make test", "npm run dev", "htop"])
+    }
+
+    func testRemoveDropsTheCommandFromThatWorkspaceOnly() {
+        let store = RecentCommandStore(defaults: makeDefaults())
+        store.record("htop", for: "acme-devmachine")
+        store.record("npm run dev", for: "acme-devmachine")
+        store.record("htop", for: "globex-devmachine")
+
+        store.remove("htop", for: "acme-devmachine")
+
+        XCTAssertEqual(store.recents(for: "acme-devmachine"), ["npm run dev"])
+        XCTAssertEqual(store.recents(for: "globex-devmachine"), ["htop"])
+    }
+
+    func testRemoveAlsoDropsACommandTheOldPageOfferedEverywhere() throws {
+        let defaults = makeDefaults()
+        defaults.set(Data(Self.legacyJSON.utf8), forKey: RecentCommandStore.legacyKey)
+        let store = RecentCommandStore(defaults: defaults)
+        let everywhere = try XCTUnwrap(store.recents(for: "beta-devmachine").first)
+
+        store.remove(everywhere, for: "beta-devmachine")
+
+        XCTAssertFalse(store.recents(for: "beta-devmachine").contains(everywhere))
+    }
+
+    func testTheRemoteFallbackKeepsItsOwnList() {
+        let store = RecentCommandStore(defaults: makeDefaults())
+
+        store.record("npm run dev", for: RecentCommandStore.remoteFallback)
+
+        XCTAssertEqual(store.recents(for: RecentCommandStore.remoteFallback), ["npm run dev"])
+        XCTAssertEqual(store.recents(for: "acme-devmachine"), [])
+    }
+
     func testRecentsSurviveARelaunch() {
         let defaults = makeDefaults()
         RecentCommandStore(defaults: defaults).record("npm run dev", for: "acme-devmachine")

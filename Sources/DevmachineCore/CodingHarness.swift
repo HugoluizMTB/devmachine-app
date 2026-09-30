@@ -15,4 +15,7 @@ public struct HarnessID: RawRepresentable, Codable, Hashable, Sendable {
 public enum SessionLaunchChoice: Codable, Equatable, Sendable {
     case terminal
     case harness(HarnessID)
+    /// A command typed by hand, run as the session's first line the same way
+    /// a harness starts.
+    case custom(String)
 }

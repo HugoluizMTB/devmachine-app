@@ -28,6 +28,8 @@ struct HarnessLaunchOption: Identifiable, Sendable {
             "terminal"
         case let .harness(harness):
             harness.rawValue
+        case let .custom(command):
+            "custom:" + command
         }
     }
 
@@ -80,8 +82,14 @@ struct HarnessSettingsFacade: Sendable {
     }
 
     func startupCommand(for choice: SessionLaunchChoice) -> String? {
-        guard case let .harness(id) = choice else { return nil }
-        return registry.adapter(for: id)?.startupCommand
+        switch choice {
+        case .terminal:
+            return nil
+        case let .harness(id):
+            return registry.adapter(for: id)?.startupCommand
+        case let .custom(command):
+            return CustomSessionCommand.normalized(command)
+        }
     }
 
     func usageRegistrations(for settings: AppSettings) -> [HarnessUsageRegistration] {

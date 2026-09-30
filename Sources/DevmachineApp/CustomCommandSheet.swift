@@ -7,6 +7,7 @@ struct CustomCommandSheet: View {
     let workspaceName: String
     let recents: [String]
     let onRun: (String) -> Void
+    var onRemove: (String) -> Void = { _ in }
     let onCancel: () -> Void
     @State private var command = ""
     @FocusState private var fieldFocused: Bool
@@ -30,6 +31,9 @@ struct CustomCommandSheet: View {
                             iconSize: 11,
                             title: recent,
                             outerHorizontalPadding: 0,
+                            trailingHover: AnyView(
+                                DMIconButton(systemImage: "xmark", size: 9) { onRemove(recent) }
+                                    .help("Remove from saved commands")),
                             tap: { onRun(recent) })
                             .help(recent)
                     }

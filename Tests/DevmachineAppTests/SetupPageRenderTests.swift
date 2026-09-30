@@ -32,6 +32,8 @@ final class SetupPageRenderTests: XCTestCase {
                 HarnessSettingsFacade(registry: .builtIn, locator: RenderLocator())
             )
             .environmentObject(WallpaperStore())
+            .environmentObject(RecentCommandStore(
+                defaults: UserDefaults(suiteName: "SetupPageRenderTests-\(UUID().uuidString)")!))
             .frame(width: 940, height: 640)
 
         let renderer = ImageRenderer(content: view)

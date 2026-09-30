@@ -244,10 +244,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     private func normalized(_ choice: SessionLaunchChoice) -> SessionLaunchChoice {
-        guard case let .harness(harness) = choice, !enabledHarnesses.contains(harness) else {
-            return choice
+        switch choice {
+        case .terminal:
+            return .terminal
+        case let .harness(harness):
+            return enabledHarnesses.contains(harness) ? choice : .terminal
+        case let .custom(raw):
+            return CustomSessionCommand.normalized(raw).map(SessionLaunchChoice.custom) ?? .terminal
         }
-        return .terminal
     }
 
     private mutating func normalizeSessionPrograms() {

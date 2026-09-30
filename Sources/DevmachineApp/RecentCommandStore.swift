@@ -1,8 +1,9 @@
 import Foundation
 import DevmachineCore
 
-/// The custom commands typed into the new-session menu, kept per workspace so
-/// running one again is a single click.
+/// The custom commands typed into the new-session menu or chosen as a session
+/// default in Settings, kept per workspace so running one again is a single
+/// click.
 @MainActor
 final class RecentCommandStore: ObservableObject {
     @Published private(set) var byWorkspace: [String: [String]]
@@ -13,6 +14,8 @@ final class RecentCommandStore: ObservableObject {
     private static let legacyMigratedKey = "recentCustomCommands.legacyMigrated"
     /// Commands the old page offered in every workspace.
     nonisolated private static let everywhere = "*"
+    /// The list behind Settings' "Remote fallback" row. Not an ssh alias.
+    static let remoteFallback = "@remote-fallback"
 
     private let defaults: UserDefaults
     private let persists: Bool
@@ -40,6 +43,23 @@ final class RecentCommandStore: ObservableObject {
         byWorkspace[bucket] = RecentCommands.recording(command, in: byWorkspace[bucket] ?? [])
         persist()
         return command
+    }
+
+    /// Adds a command at the top unless the list already has it, which keeps
+    /// the order a Settings save would otherwise shuffle.
+    func remember(_ raw: String, for alias: String) {
+        guard let command = CustomSessionCommand.normalized(raw),
+              !recents(for: alias).contains(command) else { return }
+        record(command, for: alias)
+    }
+
+    /// A command offered everywhere lives in one shared list, so removing it
+    /// here removes it from every workspace.
+    func remove(_ command: String, for alias: String) {
+        for bucket in [Self.bucket(alias), Self.everywhere] {
+            byWorkspace[bucket]?.removeAll { $0 == command }
+        }
+        persist()
     }
 
     /// Aliases are matched case-insensitively, the way the old page scoped

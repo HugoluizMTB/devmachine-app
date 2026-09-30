@@ -109,6 +109,24 @@ final class DemoModeTests: XCTestCase {
         XCTAssertEqual(store.snapshot, DemoData.statsSnapshots["main"])
     }
 
+    func testSettingsStoreSeedsDemoSettingsWithoutPersistingThem() {
+        let suiteName = "\(#function)-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let store = SettingsStore(defaults: defaults)
+
+        store.settings?.terminalOpacity = 1
+
+        XCTAssertEqual(store.settings?.baseDomain, DemoData.settings.baseDomain)
+        XCTAssertNil(defaults.persistentDomain(forName: suiteName))
+    }
+
+    func testDemoSettingsShowACustomSessionDefaultThatIsAlsoASavedCommand() {
+        guard case let .custom(command) = DemoData.settings.sessionProgram(for: "globex-devmachine") else {
+            return XCTFail("globex should start with a custom command in the demo")
+        }
+        XCTAssertEqual(DemoData.recentCommands["globex-devmachine"]?.contains(command), true)
+    }
+
     func testRecentCommandStoreSeedsDemoCommandsWithoutPersistingThem() {
         let suiteName = "\(#function)-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

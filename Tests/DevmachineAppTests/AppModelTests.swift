@@ -1426,6 +1426,70 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(sender.sent.isEmpty)
     }
 
+    func testNewRemoteSessionTypesTheWorkspaceCustomDefaultVerbatim() async throws {
+        let runner = HarnessProcessRunner()
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(store: SessionStore(runner: runner), sessionCommandSender: sender)
+        let typed = #"FOO="a b" npm run dev -- --port $PORT; `whoami`"#
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", remoteSessionProgram: .harness(.claude),
+            workspaceSessionPrograms: ["acme-devmachine": .custom(typed)])
+
+        model.confirmNewSession(alias: "acme-devmachine", name: "dev", directory: "~")
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, typed)
+    }
+
+    func testNewRemoteSessionInheritsTheFallbackCustomDefault() async throws {
+        let runner = HarnessProcessRunner()
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(store: SessionStore(runner: runner), sessionCommandSender: sender)
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", remoteSessionProgram: .custom("htop"))
+
+        model.confirmNewSession(alias: "beta-devmachine", name: "top", directory: "~")
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "htop")
+    }
+
+    func testStartingALocalSessionTypesTheCustomDefault() async throws {
+        let runner = HarnessProcessRunner(
+            zmxListing: "name=acme\tpid=100\tclients=1\tcwd=/Users/alice/dev/acme")
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: HarnessProcessRunner()),
+            localRunner: runner,
+            sessionCommandSender: sender,
+            zmxPath: "/fixtures/zmx")
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", localSessionProgram: .custom("npm run dev"))
+
+        model.startProgram(in: .local(session: "acme", path: "/Users/alice/dev/acme"))
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.first?.command, "npm run dev")
+    }
+
+    func testAnEmptyCustomDefaultOpensAPlainShell() async throws {
+        let runner = HarnessProcessRunner()
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(store: SessionStore(runner: runner), sessionCommandSender: sender)
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", remoteSessionProgram: .custom("  "))
+
+        model.confirmNewSession(alias: "acme-devmachine", name: "shell", directory: "~")
+
+        try await waitUntil { runner.callCount(for: "/usr/bin/ssh") == 1 }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(sender.sent.isEmpty)
+    }
+
     func testABlankCustomCommandOpensNothing() async throws {
         let runner = HarnessProcessRunner()
         let sender = RecordingSessionCommandSender()

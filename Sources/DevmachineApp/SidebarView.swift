@@ -6,6 +6,7 @@ struct SidebarView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var savedCommands: RecentCommandStore
     @StateObject private var quickPublish = QuickPublishState()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
@@ -157,8 +158,9 @@ struct SidebarView: View {
     }
 
     /// Picks what the new session runs: a plain shell, one of the enabled
-    /// harnesses, or a command typed by hand. "New session…" keeps the named,
-    /// folder-first flow that runs the workspace's configured program.
+    /// harnesses, a saved command, or a command typed by hand. "New session…"
+    /// keeps the named, folder-first flow that runs the workspace's
+    /// configured program.
     private func newSessionButton(alias: String, action: @escaping () -> Void) -> some View {
         Menu {
             ForEach(harnessSettingsFacade.launchOptions(for: settingsStore.settings ?? .empty)) { option in
@@ -168,10 +170,23 @@ struct SidebarView: View {
                     Label(option.title, systemImage: option.systemImage)
                 }
             }
+            let commands = savedCommands.recents(for: alias)
+            if !commands.isEmpty {
+                Divider()
+                ForEach(commands, id: \.self) { command in
+                    Button {
+                        savedCommands.record(command, for: alias)
+                        model.openSession(in: alias, startup: .command(command))
+                    } label: {
+                        Label(command, systemImage: "chevron.forward.square")
+                    }
+                }
+            }
+            Divider()
             Button {
                 model.pendingCustomCommandAlias = alias
             } label: {
-                Label("Custom command…", systemImage: "chevron.forward.square")
+                Label("Custom command…", systemImage: "square.and.pencil")
             }
             Divider()
             Button(alias == Workspace.local.alias ? "New session in folder…" : "New named session…", action: action)

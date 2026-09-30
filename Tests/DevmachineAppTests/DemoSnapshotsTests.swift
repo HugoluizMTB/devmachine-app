@@ -74,6 +74,10 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(DemoSnapshots.screens.count, 10)
     }
 
+    func testTheEighthScreenShowsTheSessionDefaults() {
+        XCTAssertEqual(DemoSnapshots.screens[7].fileName, "08-session-defaults.png")
+    }
+
     func testSubdomainsInitialTabDefaultsToSites() {
         XCTAssertEqual(DemoSnapshots.subdomainsInitialTab, .sites)
     }

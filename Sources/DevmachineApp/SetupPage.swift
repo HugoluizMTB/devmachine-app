@@ -48,6 +48,8 @@ enum SettingsSection: String, CaseIterable {
 private enum LaunchChoiceTag: Hashable {
     case terminal
     case harness(HarnessID)
+    case custom(String)
+    case typing
 
     init(_ choice: SessionLaunchChoice) {
         switch choice {
@@ -55,15 +57,22 @@ private enum LaunchChoiceTag: Hashable {
             self = .terminal
         case let .harness(id):
             self = .harness(id)
+        case let .custom(raw):
+            self = CustomSessionCommand.normalized(raw).map(LaunchChoiceTag.custom) ?? .typing
         }
     }
 
-    var choice: SessionLaunchChoice {
+    func choice(replacing current: SessionLaunchChoice) -> SessionLaunchChoice {
         switch self {
         case .terminal:
             return .terminal
         case let .harness(id):
             return .harness(id)
+        case let .custom(command):
+            return .custom(command)
+        case .typing:
+            if case .custom = current { return current }
+            return .custom("")
         }
     }
 }
@@ -72,6 +81,7 @@ struct SetupPage: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var wallpapers: WallpaperStore
+    @EnvironmentObject var savedCommands: RecentCommandStore
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
 
     /// Not a theme id in the library — the chip that shows the built-in gradients.
@@ -442,11 +452,13 @@ struct SetupPage: View {
                 launchChoicePicker(
                     title: "This Mac",
                     detail: "New local sessions",
+                    savedFor: Workspace.local.alias,
                     selection: $localSessionProgram
                 )
                 launchChoicePicker(
                     title: "Remote fallback",
                     detail: "New workspaces inherit this choice",
+                    savedFor: RecentCommandStore.remoteFallback,
                     selection: $remoteSessionProgram
                 )
 
@@ -457,6 +469,8 @@ struct SetupPage: View {
                         launchChoicePicker(
                             title: workspace.name,
                             detail: workspace.alias,
+                            savedFor: workspace.alias,
+                            showsCommandField: workspaceSessionPrograms[workspace.alias] != nil,
                             selection: workspaceChoiceBinding(workspace.alias)
                         )
                         if workspaceSessionPrograms[workspace.alias] != nil {
@@ -469,8 +483,10 @@ struct SetupPage: View {
                     }
                 }
 
-                note("A harness is typed into the new shell. Leaving it keeps the "
-                    + "session open, and sessions that already exist are never touched.")
+                note("A harness or a custom command is typed into the new shell, "
+                    + "exactly as written. Leaving it keeps the session open, and "
+                    + "sessions that already exist are never touched. An empty "
+                    + "custom command opens a plain terminal.")
             }
         }
     }
@@ -484,31 +500,82 @@ struct SetupPage: View {
     private func launchChoicePicker(
         title: String,
         detail: String,
+        savedFor alias: String,
+        showsCommandField: Bool = true,
         selection: Binding<SessionLaunchChoice>
     ) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(verbatim: title)
-                    .font(.dm(12))
-                    .foregroundStyle(.white.opacity(0.85))
-                Text(verbatim: detail)
-                    .font(.dm(10))
-                    .foregroundStyle(.white.opacity(0.4))
-            }
-            Spacer(minLength: 8)
-            Picker("", selection: Binding(
-                get: { LaunchChoiceTag(selection.wrappedValue) },
-                set: { selection.wrappedValue = $0.choice }
-            )) {
-                ForEach(launchOptions) { option in
-                    Text(verbatim: option.title)
-                        .tag(LaunchChoiceTag(option.choice))
+        VStack(alignment: .trailing, spacing: 6) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: title)
+                        .font(.dm(12))
+                        .foregroundStyle(.white.opacity(0.85))
+                    Text(verbatim: detail)
+                        .font(.dm(10))
+                        .foregroundStyle(.white.opacity(0.4))
                 }
+                Spacer(minLength: 8)
+                Picker("", selection: Binding(
+                    get: { LaunchChoiceTag(selection.wrappedValue) },
+                    set: { selection.wrappedValue = $0.choice(replacing: selection.wrappedValue) }
+                )) {
+                    ForEach(launchOptions) { option in
+                        Text(verbatim: option.title)
+                            .tag(LaunchChoiceTag(option.choice))
+                    }
+                    let commands = commandChoices(savedFor: alias, current: selection.wrappedValue)
+                    if !commands.isEmpty {
+                        Divider()
+                        ForEach(commands, id: \.self) { command in
+                            Text(verbatim: command)
+                                .tag(LaunchChoiceTag.custom(command))
+                        }
+                    }
+                    Divider()
+                    Text(verbatim: "Custom command…")
+                        .tag(LaunchChoiceTag.typing)
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .frame(width: 170)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .controlSize(.small)
-            .frame(width: 170)
+            if showsCommandField, case let .custom(command) = selection.wrappedValue {
+                TextField("command to run, e.g. npm run dev", text: Binding(
+                    get: { command },
+                    set: { selection.wrappedValue = .custom($0) }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .font(.dm(12, design: .monospaced))
+                .controlSize(.small)
+                .frame(maxWidth: 360)
+            }
+        }
+    }
+
+    /// The saved commands for a row, plus the one it runs now when that is
+    /// being typed or came from a list it does not own (an inherited fallback).
+    private func commandChoices(savedFor alias: String, current: SessionLaunchChoice) -> [String] {
+        let saved = savedCommands.recents(for: alias)
+        guard case let .custom(raw) = current,
+              let command = CustomSessionCommand.normalized(raw),
+              !saved.contains(command) else { return saved }
+        return saved + [command]
+    }
+
+    /// A custom default saved here becomes one click away in the same
+    /// workspace's "+" menu.
+    private func rememberCustomDefaults(_ settings: AppSettings) {
+        if case let .custom(command) = settings.localSessionProgram {
+            savedCommands.remember(command, for: Workspace.local.alias)
+        }
+        if case let .custom(command) = settings.remoteSessionProgram {
+            savedCommands.remember(command, for: RecentCommandStore.remoteFallback)
+        }
+        for (alias, choice) in settings.workspaceSessionPrograms {
+            if case let .custom(command) = choice {
+                savedCommands.remember(command, for: alias)
+            }
         }
     }
 
@@ -849,6 +916,7 @@ struct SetupPage: View {
         let value = settingsDraft.committedValue
         if value.debugLogging { PaneLog.prepare() }
         settingsStore.commit(settingsDraft)
+        rememberCustomDefaults(value)
         model.settings = value
         model.activePage = nil
         // Before reloading: the panes of a workspace you just hid have to go

@@ -55,4 +55,17 @@ final class HarnessSettingsFacadeTests: XCTestCase {
         XCTAssertEqual(options.map(\.title), ["Terminal", "OpenAI Codex"])
         XCTAssertEqual(options.last?.descriptor?.id, .codex)
     }
+
+    func testCustomDefaultStartsWithItsCommandVerbatim() {
+        let facade = HarnessSettingsFacade(registry: registry, locator: FakeLocator(available: []))
+        let typed = #"claude --model opus -p "fix it" && echo '$HOME'; `date`"#
+
+        XCTAssertEqual(facade.startupCommand(for: .custom(typed)), typed)
+    }
+
+    func testEmptyCustomDefaultStartsAPlainShell() {
+        let facade = HarnessSettingsFacade(registry: registry, locator: FakeLocator(available: []))
+
+        XCTAssertNil(facade.startupCommand(for: .custom("   ")))
+    }
 }
