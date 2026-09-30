@@ -1,5 +1,6 @@
 import XCTest
 import DevmachineCore
+import HarnessUsageKit
 @testable import DevmachineApp
 
 private struct FakeLocator: ExecutableLocating {
@@ -54,6 +55,30 @@ final class HarnessSettingsFacadeTests: XCTestCase {
         XCTAssertEqual(options.map(\.choice), [.terminal, .harness(.codex)])
         XCTAssertEqual(options.map(\.title), ["Terminal", "OpenAI Codex"])
         XCTAssertEqual(options.last?.descriptor?.id, .codex)
+    }
+
+    func testEnabledHarnessWhoseCLIIsMissingStillShowsUsage() {
+        let facade = HarnessSettingsFacade(registry: registry, locator: FakeLocator(available: []))
+
+        let registrations = facade.usageRegistrations(for: makeSettings(enabledHarnesses: [.claude, .codex]))
+
+        XCTAssertEqual(registrations.map(\.id), [.claude, .codex])
+    }
+
+    func testMissingCodexCLIReportsCLINotFoundInsteadOfVanishing() throws {
+        let facade = HarnessSettingsFacade(registry: registry, locator: FakeLocator(available: []))
+        let codex = try XCTUnwrap(
+            facade.usageRegistrations(for: makeSettings(enabledHarnesses: [.codex])).first)
+
+        XCTAssertThrowsError(try codex.provider.fetchSnapshot(previous: nil)) { error in
+            XCTAssertEqual(HarnessUsageErrorKind(error: error), .cliNotFound)
+        }
+    }
+
+    func testDisabledHarnessHasNoUsage() {
+        let facade = HarnessSettingsFacade(registry: registry, locator: FakeLocator(available: ["codex"]))
+
+        XCTAssertEqual(facade.usageRegistrations(for: makeSettings(enabledHarnesses: [.claude])).map(\.id), [.claude])
     }
 
     func testCustomDefaultStartsWithItsCommandVerbatim() {

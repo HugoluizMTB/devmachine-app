@@ -31,15 +31,20 @@ protocol ExecutableLocating: Sendable {
 }
 
 struct SystemExecutableLocator: ExecutableLocating {
+    typealias LoginShellLookup = @Sendable (String) -> String?
+
     private let path: String
     private let knownDirectories: [URL]
+    private let loginShellLookup: LoginShellLookup?
 
     init(
         path: String = ProcessInfo.processInfo.environment["PATH"] ?? "",
-        knownDirectories: [URL] = SystemExecutableLocator.defaultKnownDirectories
+        knownDirectories: [URL] = SystemExecutableLocator.defaultKnownDirectories,
+        loginShellLookup: LoginShellLookup? = SystemExecutableLocator.loginShellCommandPath
     ) {
         self.path = path
         self.knownDirectories = knownDirectories
+        self.loginShellLookup = loginShellLookup
     }
 
     var searchDirectories: [URL] {
@@ -56,18 +61,47 @@ struct SystemExecutableLocator: ExecutableLocating {
         guard !name.isEmpty, !name.contains("/") else { return nil }
 
         for directory in searchDirectories {
-            let candidate = directory.appendingPathComponent(name).resolvingSymlinksInPath()
-            var isDirectory = ObjCBool(false)
-            guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
-                  !isDirectory.boolValue,
-                  FileManager.default.isExecutableFile(atPath: candidate.path),
-                  let values = try? candidate.resourceValues(forKeys: [.isRegularFileKey]),
-                  values.isRegularFile == true else {
-                continue
+            if let resolved = Self.runnableTarget(of: directory.appendingPathComponent(name)) {
+                return resolved
             }
-            return candidate
         }
-        return nil
+        return fromLoginShell(named: name)
+    }
+
+    /// An app opened from Finder does not see the PATH a version manager
+    /// such as mise, asdf or nvm sets up in the login shell. The shell's own
+    /// path is kept unresolved: its directory also holds the runtime (`node`)
+    /// an npm-installed CLI needs.
+    private func fromLoginShell(named name: String) -> URL? {
+        guard let loginShellLookup,
+              let path = loginShellLookup(name).flatMap(Self.commandPath(fromShellOutput:)) else { return nil }
+        let candidate = URL(fileURLWithPath: path)
+        return Self.runnableTarget(of: candidate) == nil ? nil : candidate
+    }
+
+    static func commandPath(fromShellOutput output: String) -> String? {
+        output.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .last { $0.hasPrefix("/") && !$0.contains(" ") }
+    }
+
+    static let loginShellCommandPath: LoginShellLookup = { name in
+        let shell = ProcessInfo.processInfo.environment["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
+        return try? ProcessRunner().run(
+            executable: shell, args: ["-lic", "command -v \(name)"], environment: nil)
+    }
+
+    private static func runnableTarget(of candidate: URL) -> URL? {
+        let resolved = candidate.resolvingSymlinksInPath()
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: resolved.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue,
+              FileManager.default.isExecutableFile(atPath: resolved.path),
+              let values = try? resolved.resourceValues(forKeys: [.isRegularFileKey]),
+              values.isRegularFile == true else {
+            return nil
+        }
+        return resolved
     }
 
     private static var defaultKnownDirectories: [URL] {
@@ -95,8 +129,7 @@ struct ClaudeHarnessAdapter: CodingHarnessAdapter {
     let imageStoragePolicy = ImageStoragePolicy(directory: ".claude/image-cache/devmachine-app")
 
     func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)? {
-        guard let executable = locator.executable(named: executableName) else { return nil }
-        let config = ClaudeUsageConfig(claudePathOverride: executable.path)
+        let config = ClaudeUsageConfig(claudePathOverride: locator.executable(named: executableName)?.path)
         return ClaudeUsageProvider(
             provider: DefaultUsageProvider(config: config),
             statsPollSeconds: config.statsPollSeconds)
@@ -119,7 +152,8 @@ struct CodexHarnessAdapter: CodingHarnessAdapter {
     let imageStoragePolicy = ImageStoragePolicy.appManaged
 
     func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)? {
-        guard let executable = locator.executable(named: executableName) else { return nil }
-        return CodexUsageProvider(transport: CodexAppServerTransport(executableURL: executable))
+        let executableName = executableName
+        return CodexUsageProvider(transport: CodexAppServerTransport(
+            resolveExecutable: { locator.executable(named: executableName) }))
     }
 }

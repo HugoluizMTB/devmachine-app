@@ -137,4 +137,28 @@ while true; do sleep 1; done
         XCTAssertEqual(chmod(url.path, 0o755), 0)
         return url
     }
+
+    func testChildPATHStartsWithTheCLIDirectorySoAnEnvShebangFindsItsRuntime() {
+        let environment = ProcessRPCSession.environment(
+            for: URL(fileURLWithPath: "/Users/alice/.local/share/mise/installs/node/lts/bin/codex"),
+            inherited: ["PATH": "/usr/bin:/bin", "HOME": "/Users/alice"])
+
+        XCTAssertEqual(environment["PATH"], "/Users/alice/.local/share/mise/installs/node/lts/bin:/usr/bin:/bin")
+        XCTAssertEqual(environment["HOME"], "/Users/alice")
+    }
+
+    func testChildPATHIsTheCLIDirectoryWhenNothingIsInherited() {
+        let environment = ProcessRPCSession.environment(
+            for: URL(fileURLWithPath: "/opt/tools/bin/codex"), inherited: [:])
+
+        XCTAssertEqual(environment["PATH"], "/opt/tools/bin")
+    }
+
+    func testMissingExecutableFromTheResolverIsReportedAsUnavailable() {
+        let transport = CodexAppServerTransport(resolveExecutable: { nil })
+
+        XCTAssertThrowsError(try transport.accountSnapshot()) { error in
+            XCTAssertEqual(error as? CodexTransportError, .executableUnavailable)
+        }
+    }
 }

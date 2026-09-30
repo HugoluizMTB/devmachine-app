@@ -293,7 +293,12 @@ Rules:
 - Session badges, launch commands, process matching, image storage, context
   support, and usage capabilities come from adapters/facades. Views do not
   switch on Claude, Codex, executable names, or provider colors.
-- Home stacks one usage card per enabled, locally available harness. The
+- Home stacks one usage card per enabled harness. A harness whose CLI is not
+  found still gets its card, showing "CLI not found", so Home never disagrees
+  with Settings. The CLI is looked up on every read: inherited PATH, known
+  directories, then the login shell's `command -v` (mise/asdf/nvm installs an
+  app opened from Finder cannot see); Codex runs with its own directory first
+  on PATH so an npm `#!/usr/bin/env node` script finds `node`. The
   menu-bar Usage tab uses one column for one harness and two columns for two;
   the Pull Requests tab remains 420 points wide.
 - Codex usage reads `account/rateLimits/read` and `account/usage/read` through

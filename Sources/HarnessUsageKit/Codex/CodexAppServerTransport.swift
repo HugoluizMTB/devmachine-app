@@ -39,8 +39,19 @@ public struct CodexAppServerTransport: CodexRPCTransport, @unchecked Sendable {
     private let makeSession: SessionFactory
 
     public init(executableURL: URL, timeout: TimeInterval = 15) {
+        self.init(resolveExecutable: { executableURL }, timeout: timeout)
+    }
+
+    /// Looks the CLI up on every read, so a Codex installed, moved or
+    /// removed after launch is picked up without restarting the app.
+    public init(resolveExecutable: @escaping @Sendable () -> URL?, timeout: TimeInterval = 15) {
         self.timeout = timeout
-        makeSession = { try ProcessRPCSession(executableURL: executableURL) }
+        makeSession = {
+            guard let executableURL = resolveExecutable() else {
+                throw CodexTransportError.executableUnavailable
+            }
+            return try ProcessRPCSession(executableURL: executableURL)
+        }
     }
 
     init(timeout: TimeInterval, sessionFactory: @escaping SessionFactory) {
@@ -139,7 +150,7 @@ public struct CodexAppServerTransport: CodexRPCTransport, @unchecked Sendable {
     }
 }
 
-private final class ProcessRPCSession: CodexRPCSession, @unchecked Sendable {
+final class ProcessRPCSession: CodexRPCSession, @unchecked Sendable {
     private let process = Process()
     private let input = Pipe()
     private let condition = NSCondition()
@@ -156,6 +167,8 @@ private final class ProcessRPCSession: CodexRPCSession, @unchecked Sendable {
         let output = Pipe()
         let errors = Pipe()
         process.executableURL = executableURL
+        process.environment = Self.environment(
+            for: executableURL, inherited: ProcessInfo.processInfo.environment)
         process.arguments = ["app-server", "--listen", "stdio://"]
         process.standardInput = input
         process.standardOutput = output
@@ -164,6 +177,17 @@ private final class ProcessRPCSession: CodexRPCSession, @unchecked Sendable {
         try process.run()
         drain(output.fileHandleForReading, isError: false)
         drain(errors.fileHandleForReading, isError: true)
+    }
+
+    /// An app opened from Finder gets launchd's short PATH, and an npm
+    /// install of Codex is a `#!/usr/bin/env node` script whose `node` sits
+    /// next to it, so the CLI's own directory goes first.
+    static func environment(for executableURL: URL, inherited: [String: String]) -> [String: String] {
+        var environment = inherited
+        let directory = executableURL.deletingLastPathComponent().path
+        let path = inherited["PATH"].flatMap { $0.isEmpty ? nil : $0 }
+        environment["PATH"] = path.map { "\(directory):\($0)" } ?? directory
+        return environment
     }
 
     func send(_ line: String) throws {
