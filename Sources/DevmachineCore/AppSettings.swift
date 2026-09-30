@@ -64,6 +64,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// How a remote pane reaches its machine: mosh when it gets through,
     /// ssh otherwise, unless one of them is forced.
     public var remoteTerminalMode: RemoteTerminalMode
+    /// A mouse selection in a terminal goes to the clipboard as soon as the
+    /// button is released, as iTerm's "copy on select" does.
+    public var copyOnSelect: Bool
     /// Workspaces left out of the sidebar, by ssh alias. A list of what to
     /// hide, not of what to show: a workspace added to `~/.ssh/config` later
     /// appears on its own, which is what you want from a machine that gains
@@ -122,6 +125,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keptTerminals: Int = Appearance.defaultKeptTerminals,
         debugLogging: Bool = false,
         remoteTerminalMode: RemoteTerminalMode = .automatic,
+        copyOnSelect: Bool = true,
         hiddenWorkspaces: [String] = [],
         workspaceAliases: [String: String] = [:],
         enabledHarnesses: [HarnessID] = [.claude],
@@ -142,6 +146,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.keptTerminals = Appearance.clampKeptTerminals(keptTerminals)
         self.debugLogging = debugLogging
         self.remoteTerminalMode = remoteTerminalMode
+        self.copyOnSelect = copyOnSelect
         self.hiddenWorkspaces = hiddenWorkspaces
         self.workspaceAliases = workspaceAliases
         self.enabledHarnesses = enabledHarnesses
@@ -162,6 +167,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, sshAgentSocket, wallpaper
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging, remoteTerminalMode
+        case copyOnSelect
         case hiddenWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram
     }
@@ -191,6 +197,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         debugLogging = try values.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? false
         remoteTerminalMode =
             try values.decodeIfPresent(RemoteTerminalMode.self, forKey: .remoteTerminalMode) ?? .automatic
+        copyOnSelect = try values.decodeIfPresent(Bool.self, forKey: .copyOnSelect) ?? true
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
         // Settings written before this existed decode to "nothing detected yet".
@@ -243,6 +250,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(keptTerminals, forKey: .keptTerminals)
         try values.encode(debugLogging, forKey: .debugLogging)
         try values.encode(remoteTerminalMode, forKey: .remoteTerminalMode)
+        try values.encode(copyOnSelect, forKey: .copyOnSelect)
         try values.encode(hiddenWorkspaces, forKey: .hiddenWorkspaces)
         try values.encode(workspaceAliases, forKey: .workspaceAliases)
         try values.encode(enabledHarnesses, forKey: .enabledHarnesses)

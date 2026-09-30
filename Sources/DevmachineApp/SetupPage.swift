@@ -103,6 +103,7 @@ struct SetupPage: View {
     @State private var keptTerminals = Appearance.defaultKeptTerminals
     @State private var debugLogging = false
     @State private var remoteTerminalMode = RemoteTerminalMode.automatic
+    @State private var copyOnSelect = true
     @State private var hiddenWorkspaces: [String] = []
     @State private var enabledHarnesses = AppSettings.empty.enabledHarnesses
     @State private var localSessionProgram = SessionLaunchChoice.terminal
@@ -124,6 +125,7 @@ struct SetupPage: View {
             keptTerminals: keptTerminals,
             debugLogging: debugLogging,
             remoteTerminalMode: remoteTerminalMode,
+            copyOnSelect: copyOnSelect,
             hiddenWorkspaces: hiddenWorkspaces,
             enabledHarnesses: enabledHarnesses,
             localSessionProgram: localSessionProgram,
@@ -673,7 +675,23 @@ struct SetupPage: View {
                 + "disconnected; the session on the other side keeps running and "
                 + "reconnects when you return. Keep it above your number of "
                 + "workspaces.")
+            copyOnSelectToggle
             remoteTerminalPicker
+        }
+    }
+
+    private var copyOnSelectToggle: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $copyOnSelect) {
+                Text(verbatim: "Copy on select")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            note("Text you select with the mouse goes to the clipboard when you let "
+                + "go, in every session. \u{2318}C copies it too. A click clears the "
+                + "selection, a double-click selects a word and a triple-click a line.")
         }
     }
 
@@ -905,6 +923,7 @@ struct SetupPage: View {
             keptTerminals = current.keptTerminals
             debugLogging = current.debugLogging
             remoteTerminalMode = current.remoteTerminalMode
+            copyOnSelect = current.copyOnSelect
             hiddenWorkspaces = current.hiddenWorkspaces
             applyHarnessSettings(current)
         } else {

@@ -262,10 +262,27 @@ Rules:
   (`UploadStoragePolicy`), never overwriting (`-2`, `-3`, …). The remote name
   travels as base64 and is decoded on the host, so no character of it reaches a
   shell. Paths are typed quoted, without Enter. A folder is refused, not guessed.
-- **A copy made on a host arrives as OSC 52**, and the terminal here is what puts
-  it on the Mac's clipboard. The chain has four links (the multiplexer's mouse
-  mode, its copy binding, `set-clipboard`, and this app); a test covers the link
-  that lives here (`ClipboardBridgeTests`).
+- **The pane owns selection, in every session** (`SelectingTerminalView`,
+  `TerminalPointer`). tmux turns mouse reporting on in every remote session,
+  and SwiftTerm then hands every press, drag and release to it: a drag became
+  tmux's yellow copy-mode selection, a click could not clear a selection
+  SwiftTerm had made earlier, and the copy depended on the host's config. So
+  press, drag and release always go to SwiftTerm's selection (mouse reporting
+  off for that call), a plain single click is replayed afterwards for a
+  program that reads the mouse, and the wheel keeps SwiftTerm's rule, so tmux
+  still scrolls its history. A drag shorter than `TerminalPointer.dragThreshold`
+  is a click. Copy on select (Settings → Terminal, on by default) copies a drag,
+  a word or a line on release; ⌘C with nothing selected leaves the clipboard
+  alone. No key is intercepted for selection: SwiftTerm clears it on any key,
+  and Esc, ⌃C and the rest reach the program unchanged.
+- **A copy made by a program on a host arrives as OSC 52** (tmux's keyboard
+  copy mode, an editor's yank). `TerminalDelegateGate` stands in as SwiftTerm's
+  delegate, because `LocalProcessTerminalView` answers the clipboard itself and
+  does not let a subclass change it: a write is taken only from the focused
+  pane and up to `TerminalClipboard.maxWriteBytes`, and a query is never
+  answered, so a host cannot read the Mac's clipboard. On the host, the zsh
+  package's `~/.tmux.conf` sends `\E]52;c%p1%s;%p2%s\007`: tmux 3.4 sends
+  nothing when `%p1` is left out, and mosh forwards only the `c` clipboard.
 - **A panel reads through `CommandTarget`, never through an alias.** `HostRunner`
   runs the same command over ssh (in the tmux pane's folder) or here on the Mac
   (in the folder `zmx ls` reports), so Context, Files and Git work for a local

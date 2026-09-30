@@ -207,6 +207,7 @@ final class TerminalRegistry: NSObject {
         term.processDelegate = self
         term.optionAsMetaKey = false
         term.kind = kind
+        term.copiesOnSelect = { SettingsStore.shared.settings?.copyOnSelect ?? true }
         // ⌘ and a click, the way every other Mac terminal opens a link. A plain
         // click stays what it is, so clicking a web address inside a program
         // that reads the mouse still reaches the program.
@@ -711,11 +712,11 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
 // and tmux forwards it to any client whose XTVERSION reply says "XTerm(...)".
 // SwiftTerm's kitty encoding still breaks Enter and dead keys, so the view
 // drops both replies: programs keep the legacy encoding this app always ran.
-final class LegacyKeyboardTerminalView: LocalProcessTerminalView {
+final class LegacyKeyboardTerminalView: SelectingTerminalView {
     /// The session this view shows, so a link can be resolved in its folder.
     var kind: TerminalKind?
 
-    override func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
+    override func openRequestedLink(_ link: String, params: [String: String]) {
         TerminalRegistry.shared.openLink(link, from: kind, flags: NSEvent.modifierFlags)
     }
 

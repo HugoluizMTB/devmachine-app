@@ -410,3 +410,22 @@ extension AppSettingsTests {
         XCTAssertEqual(decoded.workspaceAliases, [:])
     }
 }
+
+final class CopyOnSelectSettingTests: XCTestCase {
+    func testCopyOnSelectIsOnByDefault() {
+        XCTAssertTrue(goodSettings.copyOnSelect)
+    }
+
+    func testSettingsSavedBeforeItExistedCopyOnSelect() throws {
+        let saved = #"{"opsRepoPath":"/Users/alice/.config/devmachine","hostAlias":"devmachine","publicIP":"203.0.113.7","baseDomain":"example.com"}"#
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(saved.utf8))
+        XCTAssertTrue(decoded.copyOnSelect)
+    }
+
+    func testTurningItOffSurvivesASave() throws {
+        var settings = goodSettings
+        settings.copyOnSelect = false
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertFalse(decoded.copyOnSelect)
+    }
+}
