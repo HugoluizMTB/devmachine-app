@@ -112,7 +112,25 @@ enum DemoSnapshots {
         Screen(id: "home", fileName: "19-home.png", settleNanoseconds: 700_000_000),
         Screen(id: "menubar-usage", fileName: "20-menubar-usage.png", settleNanoseconds: 400_000_000),
         Screen(id: "command-palette", fileName: "21-command-palette.png", settleNanoseconds: 600_000_000),
+        Screen(id: "drop-files", fileName: "22-drop-files.png", settleNanoseconds: 900_000_000),
     ]
+
+    /// The drop screen: a second file dragged over acme's Claude session, whose
+    /// prompt already holds the path of the first one, typed by that upload.
+    static let dropKind = TerminalKind.remote(
+        alias: acmeAlias, session: "claude \u{2014} payments refactor")
+
+    static var droppedPath: String {
+        let name = UploadName.make(
+            original: "mockup.png",
+            date: ISO8601DateFormatter().date(from: "2026-09-30T14:30:12Z") ?? Date(),
+            timeZone: TimeZone(identifier: "UTC") ?? .current)
+        return "/home/acme/\(ClaudeHarnessAdapter().uploadStoragePolicy.directory)/\(name.fileName)"
+    }
+
+    static var dropPrompt: String {
+        "look at " + FileUpload.typedText(for: [droppedPath]) + "and match the header"
+    }
 
     static let operatorSelection = SidebarItem.localSession(
         name: Workspace.operatorSession, path: DemoData.operatorPath)
@@ -202,6 +220,8 @@ enum DemoSnapshots {
         }
 
         environment.model.showCommandPalette = false
+        PaneUploadStore.shared.dropTarget = nil
+        DemoData.typedAtPrompt = [:]
         environment.model.goHome()
     }
 
@@ -219,6 +239,8 @@ enum DemoSnapshots {
         // arguments) has any effect. Skipping the beat leaves the *previous*
         // instance on screen, still on its own tab.
         model.showCommandPalette = false
+        PaneUploadStore.shared.dropTarget = nil
+        DemoData.typedAtPrompt = [:]
         model.goHome()
         try? await Task.sleep(nanoseconds: 150_000_000)
         switch screen.id {
@@ -252,6 +274,12 @@ enum DemoSnapshots {
         case "command-palette":
             paletteInitialQuery = "sub"
             model.showCommandPalette = true
+        case "drop-files":
+            guard case let .remote(alias, session) = dropKind else { break }
+            model.clickSession(SessionRef(alias: alias, name: session))
+            model.contextTab = .context
+            DemoData.typedAtPrompt = [dropKind: dropPrompt]
+            PaneUploadStore.shared.dropTarget = dropKind
         case "skeleton-context":
             model.seedDemoWorkspacesAwaitingSessions(answered: "globex-devmachine")
             model.clickSession(SessionRef(alias: "globex-devmachine", name: "claude"))

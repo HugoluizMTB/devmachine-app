@@ -11,6 +11,7 @@ final class DemoSnapshotsTests: XCTestCase {
         DemoSnapshots.subdomainsInitialTab = .sites
         DemoSnapshots.setupInitialSection = .connection
         DemoSnapshots.paletteInitialQuery = ""
+        DemoData.typedAtPrompt = [:]
         try await super.tearDown()
     }
 
@@ -58,7 +59,7 @@ final class DemoSnapshotsTests: XCTestCase {
         }
         XCTAssertEqual(numbers, numbers.sorted())
         XCTAssertEqual(numbers.first, "01")
-        XCTAssertEqual(numbers.last, "21")
+        XCTAssertEqual(numbers.last, "22")
     }
 
     func testEveryScreenHasAUniqueID() {
@@ -78,13 +79,37 @@ final class DemoSnapshotsTests: XCTestCase {
             "04-subdomains-sites.png", "05-subdomains-dns-cloudflare.png", "06-stats.png",
             "07-settings-health.png", "08-session-defaults.png", "09-onboarding.png",
             "10-publish-port.png", "18-operator.png", "19-home.png",
-            "20-menubar-usage.png", "21-command-palette.png",
+            "20-menubar-usage.png", "21-command-palette.png", "22-drop-files.png",
         ])
     }
 
-    func testTheLastScreenShowsTheCommandPalette() {
-        XCTAssertEqual(DemoSnapshots.screens.last?.id, "command-palette")
-        XCTAssertEqual(DemoSnapshots.screens.last?.fileName, "21-command-palette.png")
+    func testTheLastScreenShowsFilesDroppedOnASession() {
+        XCTAssertEqual(DemoSnapshots.screens.last?.id, "drop-files")
+        XCTAssertEqual(DemoSnapshots.screens.last?.fileName, "22-drop-files.png")
+    }
+
+    func testTheDropScreenTargetsAcmesClaudeSession() {
+        XCTAssertEqual(
+            DemoSnapshots.dropKind,
+            .remote(alias: "acme-devmachine", session: "claude \u{2014} payments refactor"))
+        let sessions = DemoData.sessionsByAlias["acme-devmachine"]?.map(\.name) ?? []
+        guard case let .remote(_, session) = DemoSnapshots.dropKind else {
+            return XCTFail("the drop screen must show a remote session")
+        }
+        XCTAssertTrue(sessions.contains(session))
+    }
+
+    func testTheDroppedPathIsWhatAClaudeUploadTypes() {
+        XCTAssertEqual(
+            DemoSnapshots.droppedPath,
+            "/home/acme/.claude/image-cache/devmachine-app/mockup-20260930-143012.png")
+    }
+
+    func testTheDropScreenTypesTheSentenceAroundThePath() {
+        XCTAssertEqual(
+            DemoSnapshots.dropPrompt,
+            "look at /home/acme/.claude/image-cache/devmachine-app/mockup-20260930-143012.png"
+            + " and match the header")
     }
 
     func testThePaletteOpensEmptyOutsideTheScreenshotWalk() {

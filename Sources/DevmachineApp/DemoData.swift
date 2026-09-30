@@ -159,7 +159,7 @@ enum DemoData {
     /// One static transcript per demo session, chosen by what the session's
     /// name and kind suggest — this is cosmetic only, so a name that does not
     /// match anything falls back to a plain shell.
-    static func terminalTranscript(for kind: TerminalKind) -> String {
+    @MainActor static func terminalTranscript(for kind: TerminalKind) -> String {
         // A live pane's text always arrives through a PTY, which turns a
         // program's bare "\n" into "\r\n" — a carriage return as well as a
         // line feed. `feed(text:)` skips the PTY, so a Swift multi-line
@@ -171,8 +171,15 @@ enum DemoData {
         // shell sends on start too, so the pane opens at the top-left the
         // same way a live session does. Clearing the scrollback as well keeps
         // a replayed transcript from stacking the previous copy above it.
-        "\u{1B}[H\u{1B}[2J\u{1B}[3J" + rawTranscript(for: kind).replacingOccurrences(of: "\n", with: "\r\n")
+        let typed = typedAtPrompt[kind].map { " " + $0 } ?? ""
+        return "\u{1B}[H\u{1B}[2J\u{1B}[3J"
+            + rawTranscript(for: kind).replacingOccurrences(of: "\n", with: "\r\n") + typed
     }
+
+    /// Text sitting at a session's prompt, not yet sent, the way an upload
+    /// leaves its path for the person to finish the sentence. Set only by the
+    /// screenshot walk, for one screen.
+    @MainActor static var typedAtPrompt: [TerminalKind: String] = [:]
 
     private static func rawTranscript(for kind: TerminalKind) -> String {
         switch kind {

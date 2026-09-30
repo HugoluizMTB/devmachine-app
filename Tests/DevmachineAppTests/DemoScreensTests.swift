@@ -162,4 +162,22 @@ final class DemoScreensTests: XCTestCase {
         let screen = String(decoding: term.getBufferAsData(), as: UTF8.self)
         XCTAssertTrue(screen.contains("Claude Code"), screen)
     }
+
+    func testATypedPromptFollowsTheSessionsTranscript() {
+        let kind = TerminalKind.remote(alias: "acme-devmachine", session: "claude")
+        let plain = DemoData.terminalTranscript(for: kind)
+        DemoData.typedAtPrompt = [kind: "look at /tmp/a.png"]
+        defer { DemoData.typedAtPrompt = [:] }
+        let typed = DemoData.terminalTranscript(for: kind)
+        XCTAssertTrue(typed.hasPrefix(plain))
+        XCTAssertTrue(typed.hasSuffix(" look at /tmp/a.png"))
+    }
+
+    func testOtherSessionsKeepTheirTranscriptWhileOneHasATypedPrompt() {
+        let other = TerminalKind.remote(alias: "globex-devmachine", session: "claude")
+        let plain = DemoData.terminalTranscript(for: other)
+        DemoData.typedAtPrompt = [.remote(alias: "acme-devmachine", session: "claude"): "x"]
+        defer { DemoData.typedAtPrompt = [:] }
+        XCTAssertEqual(DemoData.terminalTranscript(for: other), plain)
+    }
 }
