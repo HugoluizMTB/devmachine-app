@@ -64,6 +64,7 @@ enum DemoSnapshots {
     /// screen waits, after its state change, for layout and the terminal
     /// feed to catch up before the pixels are read.
     static let screens: [Screen] = [
+        Screen(id: "home", fileName: "00-home.png", settleNanoseconds: 700_000_000),
         Screen(id: "sessions", fileName: "01-sessions.png", settleNanoseconds: 900_000_000),
         Screen(id: "session-claude", fileName: "02-session-claude.png", settleNanoseconds: 700_000_000),
         Screen(id: "pull-requests", fileName: "03-pull-requests.png", settleNanoseconds: 400_000_000),

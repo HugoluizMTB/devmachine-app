@@ -20,6 +20,7 @@ enum HomeUsageLayout {
 struct HomeView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var usage: HarnessUsageStore
+    @EnvironmentObject var stats: StatsStore
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
 
     private var totalSessions: Int {
@@ -57,7 +58,7 @@ struct HomeView: View {
                 Spacer()
             }
 
-            VStack {
+            VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 14) {
                     Spacer()
                     ScrollView(.vertical) {
@@ -73,18 +74,16 @@ struct HomeView: View {
                     .scrollIndicators(.hidden)
                     .frame(width: HomeUsageLayout.width(for: usage.states.count))
                 }
-                Spacer()
-            }
-            .padding(24)
+                .frame(maxHeight: .infinity, alignment: .top)
 
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
+                HStack(alignment: .bottom, spacing: 16) {
+                    machinesSection
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     compactStatCluster
+                        .fixedSize()
                 }
             }
-            .padding(20)
+            .padding(24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WallpaperBackground())
@@ -92,6 +91,7 @@ struct HomeView: View {
         .onAppear {
             usage.beginObserving()
             usage.refresh()
+            stats.start()
         }
         .onDisappear { usage.endObserving() }
     }
@@ -118,6 +118,33 @@ struct HomeView: View {
         .frame(width: HomeUsageLayout.cardWidth)
         .clipShape(RoundedRectangle(cornerRadius: DMRadius.card))
         .dmGlass(radius: DMRadius.card, stroke: .white.opacity(0.15))
+    }
+
+    @ViewBuilder
+    private var machinesSection: some View {
+        if !stats.machines.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("MACHINES")
+                    .font(.dm(11, weight: .semibold))
+                    .kerning(0.8)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .shadow(color: .black.opacity(0.4), radius: 4)
+                FlowLayout(spacing: 12, rowSpacing: 12) {
+                    ForEach(stats.machines) { machine in
+                        MachineStatsCard(
+                            machine: machine,
+                            state: stats.state(for: machine.name),
+                            containerCount: { model.visibleContainers(in: $0).count },
+                            action: { openStats(for: machine.name) })
+                    }
+                }
+            }
+        }
+    }
+
+    private func openStats(for machine: String) {
+        stats.select(machine)
+        model.showPage(.stats)
     }
 
     private var compactStatCluster: some View {

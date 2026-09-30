@@ -106,8 +106,8 @@ final class DemoModeTests: XCTestCase {
     }
 
     func testStatsStoreLoadMachinesSeedsDemoData() {
-        let store = StatsStore()
-        store.loadMachines()
+        let store = StatsStore(cache: nil, tickInterval: nil)
+        store.start()
         XCTAssertEqual(store.machines, DemoData.statsMachines)
         XCTAssertEqual(store.selectedMachine, "main")
         XCTAssertEqual(store.snapshot, DemoData.statsSnapshots["main"])

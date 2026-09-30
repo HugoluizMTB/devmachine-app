@@ -286,6 +286,12 @@ Rules:
   pauses (5 min on `Permission denied`, 1 min unreachable): parallel auths against a
   locked agent got this Mac banned by fail2ban. Keep it that way.
 
+- Machine stats are the one app-wide poll, because Home shows them: `StatsStore`
+  reads every non-self machine every 90s, staggered, one run per machine, backing
+  off 90s → 3m → 5m on errors, paused while the Mac sleeps. The last good snapshot
+  per machine lives in `Application Support/Devmachine/stats-cache.json`, so Home
+  and Stats draw from it at launch; the skeleton shows only when there is no cache.
+
 ## Tests never spawn ssh
 `~/.ssh/config` maps `*-devmachine` to the real host, so a fixture alias such as
 `acme-devmachine` logs into the VPS as the Mac user. `ProcessRunner` refuses

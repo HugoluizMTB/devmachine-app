@@ -11,6 +11,9 @@ private final class MultiMachineRunner: CommandRunner, @unchecked Sendable {
     private var storedCalls: [[String]] = []
     var machinesJSON: String
     var snapshotsByMachine: [String: (stdout: String, stderr: String, exitCode: Int32)]
+    var machinesListFails = false
+    private let gate = DispatchSemaphore(value: 0)
+    private var holdsFetches = false
 
     init(
         machinesJSON: String,
@@ -30,10 +33,14 @@ private final class MultiMachineRunner: CommandRunner, @unchecked Sendable {
         storedCalls.append(args)
         lock.unlock()
         if args.contains("machines") {
-            return (machinesJSON, "", 0)
+            return machinesListFails ? ("", "config unreadable", 1) : (machinesJSON, "", 0)
         }
         if let machineIndex = args.firstIndex(of: "--machine"), args.count > machineIndex + 1 {
             let machine = args[machineIndex + 1]
+            lock.lock()
+            let holds = holdsFetches
+            lock.unlock()
+            if holds { gate.wait() }
             lock.lock()
             let result = snapshotsByMachine[machine]
             lock.unlock()
@@ -46,6 +53,32 @@ private final class MultiMachineRunner: CommandRunner, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return storedCalls
+    }
+
+    func statsCalls(for machine: String) -> Int {
+        calls.filter { $0.contains("stats") && $0.contains(machine) }.count
+    }
+
+    func holdFetches() {
+        lock.lock()
+        holdsFetches = true
+        lock.unlock()
+    }
+
+    func releaseFetches(count: Int) {
+        lock.lock()
+        holdsFetches = false
+        lock.unlock()
+        for _ in 0..<count { gate.signal() }
+    }
+}
+
+@MainActor
+private final class TestClock {
+    var now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    func advance(_ seconds: TimeInterval) {
+        now = now.addingTimeInterval(seconds)
     }
 }
 
@@ -79,25 +112,50 @@ private func snapshotJSON(load1: Double) -> String {
 
 private let goodSnapshot = snapshotJSON(load1: 0.1)
 
+private func cachedEntry(_ machine: String, load1: Double, collectedAt: Date, address: String? = nil) -> CachedMachineStats {
+    CachedMachineStats(
+        machine: machine, firstAddress: address, collectedAt: collectedAt,
+        snapshot: StatsParser.parse(snapshotJSON(load1: load1))!)
+}
+
 @MainActor
 final class StatsStoreTests: XCTestCase {
     /// Every test gets its own `UserDefaults` suite: `StatsMachineSelection`'s
     /// default is `.standard`, which persists on disk between test runs and
     /// would leak one test's selection into the next.
     private var isolatedSelection: StatsMachineSelection!
+    private var cache: StatsCache!
+    private var cacheDirectory: URL!
+    private var clock: TestClock!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         let defaults = UserDefaults(suiteName: "StatsStoreTests.\(UUID().uuidString)")!
         isolatedSelection = StatsMachineSelection(defaults: defaults)
+        cacheDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StatsStoreTests-\(UUID().uuidString)", isDirectory: true)
+        cache = StatsCache(fileURL: cacheDirectory.appendingPathComponent("stats-cache.json"))
+        clock = TestClock()
+    }
+
+    override func tearDown() async throws {
+        try? FileManager.default.removeItem(at: cacheDirectory)
+        try await super.tearDown()
     }
 
     private func makeStore(
         cli: @escaping @Sendable () throws -> DevmachineCLI,
-        overviewConcurrencyLimit: Int = 3
+        selection: StatsMachineSelection? = nil
     ) -> StatsStore {
-        StatsStore(
-            cli: cli, selection: isolatedSelection, overviewConcurrencyLimit: overviewConcurrencyLimit)
+        let clock = self.clock!
+        return StatsStore(
+            cli: cli, selection: selection ?? isolatedSelection, cache: cache,
+            policy: StatsPollPolicy(interval: 90, backoff: [90, 180, 300], stagger: 0),
+            tickInterval: nil, now: { clock.now })
+    }
+
+    private func makeStore(_ runner: MultiMachineRunner) -> StatsStore {
+        makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
     }
 
     func testASingleNonSelfMachineShowsNoSwitcher() async throws {
@@ -106,7 +164,7 @@ final class StatsStoreTests: XCTestCase {
             snapshotsByMachine: ["box": (goodSnapshot, "", 0)])
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        store.loadMachines()
+        store.start()
         try await waitUntil { store.snapshot != nil }
 
         XCTAssertFalse(store.showsSwitcher)
@@ -119,7 +177,7 @@ final class StatsStoreTests: XCTestCase {
             snapshotsByMachine: ["acme": (goodSnapshot, "", 0), "beta": (goodSnapshot, "", 0)])
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        store.loadMachines()
+        store.start()
         try await waitUntil { store.machines.count == 2 }
 
         XCTAssertTrue(store.showsSwitcher)
@@ -135,7 +193,7 @@ final class StatsStoreTests: XCTestCase {
             ])
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        store.loadMachines()
+        store.start()
         try await waitUntil {
             store.state(for: "acme")?.snapshot != nil && store.state(for: "beta")?.errorText != nil
         }
@@ -157,7 +215,7 @@ final class StatsStoreTests: XCTestCase {
             ])
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        store.loadMachines()
+        store.start()
         try await waitUntil { store.state(for: "acme")?.snapshot != nil }
         XCTAssertEqual(store.snapshot?.load.load1, 1.1)
 
@@ -167,7 +225,7 @@ final class StatsStoreTests: XCTestCase {
         XCTAssertEqual(store.selectedMachine, "beta")
     }
 
-    func testOverviewFetchesEveryMachineConcurrently() async throws {
+    func testThePollerFetchesEveryMachineNamingItWithMachine() async throws {
         let runner = MultiMachineRunner(
             machinesJSON: #"[{"name":"self","self":true},{"name":"acme"},{"name":"beta"},{"name":"gamma"}]"#,
             snapshotsByMachine: [
@@ -175,9 +233,9 @@ final class StatsStoreTests: XCTestCase {
                 "beta": (goodSnapshot, "", 0),
                 "gamma": (goodSnapshot, "", 0),
             ])
-        let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }, overviewConcurrencyLimit: 2)
+        let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        store.loadMachines()
+        store.start()
         try await waitUntil {
             store.state(for: "acme")?.snapshot != nil
                 && store.state(for: "beta")?.snapshot != nil
@@ -201,17 +259,17 @@ final class StatsStoreTests: XCTestCase {
         let runner = MultiMachineRunner(
             machinesJSON: #"[{"name":"self","self":true},{"name":"acme"},{"name":"beta"}]"#,
             snapshotsByMachine: ["acme": (goodSnapshot, "", 0), "beta": (goodSnapshot, "", 0)])
-        let firstLaunch = StatsStore(
+        let firstLaunch = makeStore(
             cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }, selection: selection)
 
-        firstLaunch.loadMachines()
+        firstLaunch.start()
         try await waitUntil { firstLaunch.machines.count == 2 }
         firstLaunch.select("beta")
         try await waitUntil { firstLaunch.state(for: "beta")?.snapshot != nil }
 
-        let secondLaunch = StatsStore(
+        let secondLaunch = makeStore(
             cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }, selection: selection)
-        secondLaunch.loadMachines()
+        secondLaunch.start()
         try await waitUntil { secondLaunch.selectedMachine != nil }
 
         XCTAssertEqual(secondLaunch.selectedMachine, "beta")
@@ -223,7 +281,7 @@ final class StatsStoreTests: XCTestCase {
             snapshotsByMachine: ["box": (goodSnapshot, "", 0)])
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        store.loadMachines()
+        store.start()
         try await waitUntil { store.snapshot != nil }
         let refreshedAtAfterSuccess = store.refreshedAt
 
@@ -242,7 +300,7 @@ final class StatsStoreTests: XCTestCase {
             snapshotsByMachine: ["box": ("", "", 0)])
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        store.loadMachines()
+        store.start()
         try await waitUntil { store.errorText != nil }
 
         XCTAssertNil(store.snapshot)
@@ -255,7 +313,7 @@ final class StatsStoreTests: XCTestCase {
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
         XCTAssertTrue(store.showsSkeleton)
 
-        store.loadMachines()
+        store.start()
         try await waitUntil { store.snapshot != nil }
 
         XCTAssertFalse(store.showsSkeleton)
@@ -267,7 +325,7 @@ final class StatsStoreTests: XCTestCase {
             snapshotsByMachine: ["box": ("", "ssh: connect to host box port 22: Connection refused", 1)])
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        store.loadMachines()
+        store.start()
         try await waitUntil { store.errorText != nil }
 
         XCTAssertFalse(store.showsSkeleton)
@@ -278,7 +336,7 @@ final class StatsStoreTests: XCTestCase {
             machinesJSON: #"[{"name":"self","self":true},{"name":"box"}]"#,
             snapshotsByMachine: ["box": (goodSnapshot, "", 0)])
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
-        store.loadMachines()
+        store.start()
         try await waitUntil { store.snapshot != nil }
 
         store.refresh()
@@ -291,7 +349,7 @@ final class StatsStoreTests: XCTestCase {
         let runner = MultiMachineRunner(machinesJSON: #"[{"name":"self","self":true}]"#)
         let store = makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
 
-        store.loadMachines()
+        store.start()
         try await waitUntil { store.hasLoadedMachines }
 
         XCTAssertFalse(store.showsSkeleton)
@@ -301,5 +359,238 @@ final class StatsStoreTests: XCTestCase {
         XCTAssertTrue(MachineStatsState(isLoading: true).showsSkeleton)
         XCTAssertFalse(MachineStatsState(isLoading: false).showsSkeleton)
         XCTAssertFalse(MachineStatsState(isLoading: true, errorText: "timeout").showsSkeleton)
+    }
+
+    func testTheLastGoodSnapshotIsWrittenToTheCache() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"self","self":true},{"name":"acme","hosts":["203.0.113.10"]}]"#,
+            snapshotsByMachine: ["acme": (snapshotJSON(load1: 3.3), "", 0)])
+        let store = makeStore(runner)
+
+        store.start()
+        try await waitUntil { store.snapshot != nil }
+
+        let cached = cache.load()
+        XCTAssertEqual(cached.map(\.machine), ["acme"])
+        XCTAssertEqual(cached.first?.firstAddress, "203.0.113.10")
+        XCTAssertEqual(cached.first?.snapshot.load.load1, 3.3)
+        XCTAssertEqual(cached.first?.collectedAt, clock.now)
+    }
+
+    func testAFailureNeverOverwritesTheCache() async throws {
+        try cache.save([cachedEntry("acme", load1: 1.5, collectedAt: clock.now.addingTimeInterval(-600))])
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"self","self":true},{"name":"acme"}]"#,
+            snapshotsByMachine: ["acme": ("", "ssh: connect to host acme port 22: Connection refused", 1)])
+        let store = makeStore(runner)
+
+        store.start()
+        try await waitUntil { store.errorText != nil }
+
+        XCTAssertEqual(store.snapshot?.load.load1, 1.5)
+        XCTAssertEqual(cache.load().first?.snapshot.load.load1, 1.5)
+    }
+
+    func testTheCacheDrawsMachinesAndSnapshotsBeforeAnyMachineAnswers() throws {
+        let collectedAt = clock.now.addingTimeInterval(-120)
+        try cache.save([
+            cachedEntry("acme", load1: 1.1, collectedAt: collectedAt, address: "203.0.113.10"),
+            cachedEntry("beta", load1: 2.2, collectedAt: collectedAt),
+        ])
+        let runner = MultiMachineRunner(machinesJSON: #"[{"name":"acme"},{"name":"beta"}]"#)
+        runner.holdFetches()
+        let store = makeStore(runner)
+
+        store.start()
+
+        XCTAssertEqual(store.machines.map(\.name), ["acme", "beta"])
+        XCTAssertEqual(store.machines.first?.firstAddress, "203.0.113.10")
+        XCTAssertEqual(store.selectedMachine, "acme")
+        XCTAssertEqual(store.snapshot?.load.load1, 1.1)
+        XCTAssertEqual(store.refreshedAt, collectedAt)
+        XCTAssertEqual(store.state(for: "beta")?.snapshot?.load.load1, 2.2)
+        XCTAssertFalse(store.showsSkeleton)
+        runner.releaseFetches(count: 2)
+    }
+
+    func testTheSkeletonShowsOnlyWithoutACache() throws {
+        let runner = MultiMachineRunner(machinesJSON: #"[{"name":"acme"}]"#)
+        runner.holdFetches()
+        let empty = makeStore(runner)
+        empty.start()
+        XCTAssertTrue(empty.showsSkeleton)
+
+        try cache.save([cachedEntry("acme", load1: 1, collectedAt: clock.now)])
+        let cached = makeStore(runner)
+        cached.start()
+        XCTAssertFalse(cached.showsSkeleton)
+        runner.releaseFetches(count: 2)
+    }
+
+    func testAFreshCacheIsNotFetchedAgainUntilTheIntervalPasses() async throws {
+        try cache.save([cachedEntry("acme", load1: 1, collectedAt: clock.now.addingTimeInterval(-30))])
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"acme"}]"#, snapshotsByMachine: ["acme": (goodSnapshot, "", 0)])
+        let store = makeStore(runner)
+
+        store.start()
+        try await waitUntil { store.hasLoadedMachineList }
+        store.refreshIfStale("acme")
+        store.tick()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(runner.statsCalls(for: "acme"), 0)
+
+        clock.advance(60)
+        store.tick()
+        try await waitUntil { runner.statsCalls(for: "acme") == 1 }
+    }
+
+    func testOpeningStatsOnAnOldCacheRefreshesInTheBackgroundWithoutASkeleton() async throws {
+        try cache.save([cachedEntry("acme", load1: 1, collectedAt: clock.now.addingTimeInterval(-600))])
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"acme"}]"#, snapshotsByMachine: ["acme": (snapshotJSON(load1: 4.4), "", 0)])
+        let store = makeStore(runner)
+
+        store.start()
+        XCTAssertFalse(store.showsSkeleton)
+        try await waitUntil { store.snapshot?.load.load1 == 4.4 }
+        XCTAssertEqual(store.refreshedAt, clock.now)
+    }
+
+    func testThePollerRefreshesEveryIntervalAfterASuccess() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"acme"}]"#, snapshotsByMachine: ["acme": (goodSnapshot, "", 0)])
+        let store = makeStore(runner)
+        store.start()
+        try await waitUntil { store.snapshot != nil && !store.isLoading }
+
+        clock.advance(89)
+        store.tick()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(runner.statsCalls(for: "acme"), 1)
+
+        clock.advance(1)
+        store.tick()
+        try await waitUntil { runner.statsCalls(for: "acme") == 2 }
+    }
+
+    func testThePollerBacksOffAfterFailures() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"acme"}]"#,
+            snapshotsByMachine: ["acme": ("", "ssh: connect to host acme port 22: Connection refused", 1)])
+        let store = makeStore(runner)
+        store.start()
+        try await waitUntil { store.errorText != nil && !store.isLoading }
+
+        clock.advance(90)
+        store.tick()
+        try await waitUntil { runner.statsCalls(for: "acme") == 2 && !store.isLoading }
+
+        clock.advance(179)
+        store.tick()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(runner.statsCalls(for: "acme"), 2)
+
+        clock.advance(1)
+        store.tick()
+        try await waitUntil { runner.statsCalls(for: "acme") == 3 }
+    }
+
+    func testOnlyOneFetchPerMachineIsInFlight() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"acme"}]"#, snapshotsByMachine: ["acme": (goodSnapshot, "", 0)])
+        runner.holdFetches()
+        let store = makeStore(runner)
+        store.start()
+        try await waitUntil { runner.statsCalls(for: "acme") == 1 }
+
+        store.refresh()
+        clock.advance(1_000)
+        store.tick()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(runner.statsCalls(for: "acme"), 1)
+        runner.releaseFetches(count: 1)
+        try await waitUntil { store.snapshot != nil }
+    }
+
+    func testAManualRefreshRunsAtOnceEvenDuringBackoff() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"acme"}]"#,
+            snapshotsByMachine: ["acme": ("", "ssh: connect to host acme port 22: Connection refused", 1)])
+        let store = makeStore(runner)
+        store.start()
+        try await waitUntil { store.errorText != nil && !store.isLoading }
+
+        runner.snapshotsByMachine["acme"] = (goodSnapshot, "", 0)
+        store.refresh()
+
+        try await waitUntil { store.snapshot != nil }
+        XCTAssertNil(store.errorText)
+    }
+
+    func testSleepPausesThePollerAndWakeRefreshesEveryMachine() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"acme"}]"#, snapshotsByMachine: ["acme": (goodSnapshot, "", 0)])
+        let store = makeStore(runner)
+        store.start()
+        try await waitUntil { store.snapshot != nil && !store.isLoading }
+
+        store.handleSleep()
+        clock.advance(600)
+        store.tick()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(runner.statsCalls(for: "acme"), 1)
+
+        store.handleWake()
+        try await waitUntil { runner.statsCalls(for: "acme") == 2 }
+    }
+
+    func testAMachineGoneFromTheConfigLeavesTheCache() async throws {
+        try cache.save([
+            cachedEntry("acme", load1: 1, collectedAt: clock.now),
+            cachedEntry("gone", load1: 1, collectedAt: clock.now),
+        ])
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"acme"}]"#, snapshotsByMachine: ["acme": (goodSnapshot, "", 0)])
+        let store = makeStore(runner)
+
+        store.start()
+        try await waitUntil { store.hasLoadedMachineList }
+
+        XCTAssertEqual(store.machines.map(\.name), ["acme"])
+        XCTAssertNil(store.state(for: "gone"))
+        XCTAssertEqual(cache.load().map(\.machine), ["acme"])
+    }
+
+    func testAMachineListThatFailsKeepsTheCachedMachines() async throws {
+        try cache.save([cachedEntry("acme", load1: 1, collectedAt: clock.now)])
+        let runner = MultiMachineRunner(machinesJSON: "")
+        runner.machinesListFails = true
+        let store = makeStore(runner)
+
+        store.start()
+        try await waitUntil { store.hasLoadedMachineList }
+
+        XCTAssertEqual(store.machines.map(\.name), ["acme"])
+        XCTAssertNotNil(store.snapshot)
+    }
+
+    func testOpeningAMachineFromHomeSelectsItsTab() throws {
+        try cache.save([
+            cachedEntry("acme", load1: 1, collectedAt: clock.now),
+            cachedEntry("beta", load1: 2, collectedAt: clock.now),
+        ])
+        let runner = MultiMachineRunner(machinesJSON: #"[{"name":"acme"},{"name":"beta"}]"#)
+        runner.holdFetches()
+        let store = makeStore(runner)
+        store.start()
+
+        store.select("beta")
+
+        XCTAssertEqual(store.selectedMachine, "beta")
+        XCTAssertEqual(store.snapshot?.load.load1, 2)
+        XCTAssertFalse(store.showsSkeleton)
+        runner.releaseFetches(count: 2)
     }
 }

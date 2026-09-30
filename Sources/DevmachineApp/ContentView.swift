@@ -8,6 +8,7 @@ struct ContentView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var viewerStore: FileViewerStore
     @EnvironmentObject private var recentCommands: RecentCommandStore
+    @EnvironmentObject private var stats: StatsStore
     @State private var dragStartWidth: CGFloat? = nil
     @State private var contextDragStartWidth: CGFloat?
     @State private var viewerDragStartWidth: CGFloat? = nil
@@ -31,6 +32,7 @@ struct ContentView: View {
                 SetupPage(initialSection: DemoSnapshots.setupInitialSection)
             } else {
                 mainRow
+                    .onAppear { stats.start() }
                 if model.sidebarCollapsed { collapsedSidebarButton }
             }
         }

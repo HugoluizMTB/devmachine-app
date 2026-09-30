@@ -272,6 +272,9 @@ enum DemoData {
                 ContainerStat(name: "redis", memUsedBytes: 96_000_000, memLimitBytes: 256_000_000, cpuPercent: 0.8, owner: "acme"),
                 ContainerStat(name: "web", memUsedBytes: 210_000_000, memLimitBytes: 512_000_000, cpuPercent: 2.3, owner: "acme"),
                 ContainerStat(name: "worker", memUsedBytes: 340_000_000, memLimitBytes: 512_000_000, cpuPercent: 6.7, owner: "globex"),
+                ContainerStat(
+                    name: "supabase_analytics_acme_dashboard_realtime_replica_worker", memUsedBytes: 1_300_000_000,
+                    memLimitBytes: 2_000_000_000, cpuPercent: 12.4, owner: "acme"),
             ]),
         "backup": snapshot(
             loadFactor: 0.3,
@@ -288,8 +291,17 @@ enum DemoData {
     ]
 
     static let statsMachines: [StatsMachine] = [
+        StatsMachine(name: "main", firstAddress: "203.0.113.10"),
         StatsMachine(name: "backup", firstAddress: "203.0.113.11"),
         StatsMachine(name: "staging", firstAddress: "203.0.113.12"),
+    ]
+
+    /// How old each demo snapshot reads, so Home shows a fresh card, an
+    /// older one, and a stale one.
+    static let statsAges: [String: TimeInterval] = ["main": 40, "backup": 180, "staging": 720]
+
+    static let statsErrors: [String: String] = [
+        "staging": "ssh: connect to host 203.0.113.12 port 22: Operation timed out",
     ]
 
     // MARK: Health

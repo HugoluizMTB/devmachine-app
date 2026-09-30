@@ -56,7 +56,7 @@ final class DemoSnapshotsTests: XCTestCase {
             String(screen.fileName.prefix(while: \.isNumber))
         }
         XCTAssertEqual(numbers, numbers.sorted())
-        XCTAssertEqual(numbers.first, "01")
+        XCTAssertEqual(numbers.first, "00")
         XCTAssertEqual(numbers.last, "10")
     }
 
@@ -71,12 +71,17 @@ final class DemoSnapshotsTests: XCTestCase {
         }
     }
 
-    func testThereAreExactlyTenScreens() {
-        XCTAssertEqual(DemoSnapshots.screens.count, 10)
+    func testThereAreExactlyElevenScreens() {
+        XCTAssertEqual(DemoSnapshots.screens.count, 11)
     }
 
-    func testTheEighthScreenShowsTheSessionDefaults() {
-        XCTAssertEqual(DemoSnapshots.screens[7].fileName, "08-session-defaults.png")
+    func testTheFirstScreenIsHomeWithTheMachineCards() {
+        XCTAssertEqual(DemoSnapshots.screens[0].id, "home")
+        XCTAssertEqual(DemoSnapshots.screens[0].fileName, "00-home.png")
+    }
+
+    func testTheNinthScreenShowsTheSessionDefaults() {
+        XCTAssertEqual(DemoSnapshots.screens[8].fileName, "08-session-defaults.png")
     }
 
     func testSubdomainsInitialTabDefaultsToSites() {
