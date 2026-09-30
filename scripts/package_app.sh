@@ -8,6 +8,11 @@ rm -rf build && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 swift build -c release
 cp .build/release/DevmachineApp "$APP/Contents/MacOS/DevmachineApp"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# A local build reports the newest release tag, so the updater compares it
+# with the next release instead of the placeholder in Resources/Info.plist.
+if [ -z "${DEVMACHINE_APP_VERSION:-}" ]; then
+  DEVMACHINE_APP_VERSION="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)"
+fi
 if [ -n "${DEVMACHINE_APP_VERSION:-}" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $DEVMACHINE_APP_VERSION" \
     "$APP/Contents/Info.plist"
