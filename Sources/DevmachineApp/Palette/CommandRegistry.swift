@@ -67,7 +67,7 @@ enum CommandRegistry {
                 command: PaletteCommand(
                     id: "action.send-file", title: "Send file to current session…", subtitle: "",
                     category: .action, systemImage: "arrow.up.doc",
-                    keywords: ["upload", "attach", "image", "scp", "paste"],
+                    keywords: ["upload", "attach", "image", "scp", "paste", "drop", "drag"],
                     action: .sendFile(context.currentTerminal ?? .local(session: "", path: ""))),
                 isAvailable: { $0.currentTerminal != nil }),
             Entry(

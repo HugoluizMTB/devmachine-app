@@ -254,6 +254,12 @@ Rules:
   sees it. A remote pane gets the bytes sent explicitly
   (`TerminalKeyboard.pageKeyBytes`); a local pane keeps the terminal's own
   scrolling, which is what it should do.
+- **A file sent to a session lands on the machine that runs it** (drop on a
+  pane, ⌘V of an image, ⌘K Send file), always through `PaneUploadStore`: the
+  original name plus the time before the extension, in the harness folder
+  (`UploadStoragePolicy`), never overwriting (`-2`, `-3`, …). The remote name
+  travels as base64 and is decoded on the host, so no character of it reaches a
+  shell. Paths are typed quoted, without Enter. A folder is refused, not guessed.
 - **A copy made on a host arrives as OSC 52**, and the terminal here is what puts
   it on the Mac's clipboard. The chain has four links (the multiplexer's mouse
   mode, its copy binding, `set-clipboard`, and this app); a test covers the link
@@ -296,7 +302,7 @@ Rules:
   remote fallback and may override it individually.
 - Remote choices are declarative. Never probe or modify a VPS to validate a
   harness; its shell reports a missing command when the session starts.
-- Session badges, launch commands, process matching, image storage, context
+- Session badges, launch commands, process matching, upload storage, context
   support, and usage capabilities come from adapters/facades. Views do not
   switch on Claude, Codex, executable names, or provider colors.
 - Home stacks one usage card per enabled harness. A harness whose CLI is not

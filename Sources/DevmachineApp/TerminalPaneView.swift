@@ -147,6 +147,60 @@ struct TerminalPaneView: NSViewRepresentable {
         var kind: TerminalKind?
         weak var content: NSView?
 
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            registerForDraggedTypes([.fileURL])
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            registerForDraggedTypes([.fileURL])
+        }
+
+        static func fileURLs(on pasteboard: NSPasteboard) -> [URL] {
+            pasteboard.readObjects(
+                forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        }
+
+        override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+            guard let kind, !PaneUploadStore.shared.isBusy(kind),
+                  !Self.fileURLs(on: sender.draggingPasteboard).isEmpty
+            else { return [] }
+            PaneUploadStore.shared.dropTarget = kind
+            NSAccessibility.post(
+                element: self, notification: .announcementRequested,
+                userInfo: [
+                    .announcement: TerminalRegistry.dropHint(for: kind),
+                    .priority: NSAccessibilityPriorityLevel.high.rawValue,
+                ])
+            return .copy
+        }
+
+        override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+            PaneUploadStore.shared.dropTarget == kind ? .copy : []
+        }
+
+        override func draggingExited(_ sender: NSDraggingInfo?) {
+            clearDropTarget()
+        }
+
+        override func draggingEnded(_ sender: NSDraggingInfo) {
+            clearDropTarget()
+        }
+
+        override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+            clearDropTarget()
+            let urls = Self.fileURLs(on: sender.draggingPasteboard)
+            guard let kind, !urls.isEmpty else { return false }
+            PaneUploadStore.shared.receive(urls: urls, on: kind)
+            TerminalRegistry.shared.requestFocus(kind)
+            return true
+        }
+
+        private func clearDropTarget() {
+            if PaneUploadStore.shared.dropTarget == kind { PaneUploadStore.shared.dropTarget = nil }
+        }
+
         var contentFrame: NSRect {
             NSRect(
                 x: contentInsets.left,

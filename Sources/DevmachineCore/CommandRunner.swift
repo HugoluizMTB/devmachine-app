@@ -12,6 +12,10 @@ public protocol CommandRunner: Sendable {
     ) throws -> String
     func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32)
+    func runCapturing(
+        executable: String, args: [String], environment: [String: String]?, input: Data?,
+        onBytesWritten: (@Sendable (Int) -> Void)?
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32)
 }
 
 public extension CommandRunner {
@@ -29,6 +33,19 @@ public extension CommandRunner {
     func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32) {
         let stdout = try run(executable: executable, args: args, environment: environment)
+        return (stdout, "", 0)
+    }
+
+    func runCapturing(
+        executable: String, args: [String], environment: [String: String]?, input: Data?,
+        onBytesWritten: (@Sendable (Int) -> Void)?
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        guard let input else {
+            return try runCapturing(executable: executable, args: args, environment: environment)
+        }
+        let stdout = try run(
+            executable: executable, args: args, environment: environment, input: input,
+            onBytesWritten: onBytesWritten)
         return (stdout, "", 0)
     }
 }

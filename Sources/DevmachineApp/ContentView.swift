@@ -326,10 +326,12 @@ private struct MainPane: View {
                 let kind = TerminalKind.local(session: name, path: path)
                 TerminalPaneView(kind: kind, translucent: true)
                     .terminalFindBar(for: kind)
+                    .terminalUploads(for: kind)
             case let .session(alias, name):
                 let kind = TerminalKind.remote(alias: alias, session: name)
                 TerminalPaneView(kind: kind, translucent: true)
                     .terminalFindBar(for: kind)
+                    .terminalUploads(for: kind)
             }
         }
         .id(key(item))

@@ -132,13 +132,10 @@ struct AppPaletteSystem: PaletteSystem {
             let panel = NSOpenPanel()
             panel.canChooseFiles = true
             panel.canChooseDirectories = false
-            panel.allowsMultipleSelection = false
+            panel.allowsMultipleSelection = true
             panel.prompt = "Send"
-            guard panel.runModal() == .OK, let url = panel.url,
-                  let data = try? Data(contentsOf: url) else { return }
-            TerminalRegistry.shared.sendFile(
-                (data, url.pathExtension.isEmpty ? "bin" : url.pathExtension.lowercased()),
-                into: kind, noun: "file")
+            guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+            PaneUploadStore.shared.receive(urls: panel.urls, on: kind)
             TerminalRegistry.shared.requestFocus(kind)
         }
     }

@@ -141,7 +141,7 @@ final class AppModel: ObservableObject {
         return sessionHarnessFacade.badges(for: localSessionHarnesses[name] ?? [])
     }
 
-    func imageStoragePolicy(for kind: TerminalKind) -> ImageStoragePolicy {
+    func uploadStoragePolicy(for kind: TerminalKind) -> UploadStoragePolicy {
         let harnesses: Set<HarnessID>
         switch kind {
         case let .remote(alias, session):
@@ -150,7 +150,7 @@ final class AppModel: ObservableObject {
             let name = Zmx.sessionName(from: session, socketDirectory: Zmx.socketDirectory())
             harnesses = localSessionHarnesses[name] ?? []
         }
-        return sessionHarnessFacade.imageStoragePolicy(for: harnesses)
+        return sessionHarnessFacade.uploadStoragePolicy(for: harnesses)
     }
 
     var sessionCount: Int {
@@ -325,20 +325,16 @@ final class AppModel: ObservableObject {
     /// in the corner, not a strip above the sidebar. That strip had no fixed
     /// height, so every sweep pushed the whole list down and back.
     private var sweepTaskID: UUID?
-    private var transferTaskID: UUID?
 
-    func beginTransfer(label: String, total: Int) {
-        transferTaskID = beginTask(label: label, total: total, showsCount: false)
+    func beginTransfer(label: String, total: Int) -> UUID {
+        beginTask(label: label, total: total, showsCount: false)
     }
 
-    func advanceTransfer(done: Int) {
-        guard let id = transferTaskID else { return }
+    func advanceTransfer(_ id: UUID, done: Int) {
         setTask(id, completed: done)
     }
 
-    func endTransfer() {
-        guard let id = transferTaskID else { return }
-        transferTaskID = nil
+    func endTransfer(_ id: UUID) {
         finishTask(id)
     }
     @Published var selection: SidebarItem? = nil {

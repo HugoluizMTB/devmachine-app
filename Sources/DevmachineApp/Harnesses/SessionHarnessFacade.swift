@@ -57,8 +57,8 @@ struct SessionHarnessFacade: Sendable {
         }
     }
 
-    func imageStoragePolicy(for harnesses: Set<HarnessID>) -> ImageStoragePolicy {
-        registry.adapters.first { harnesses.contains($0.id) }?.imageStoragePolicy ?? .appManaged
+    func uploadStoragePolicy(for harnesses: Set<HarnessID>) -> UploadStoragePolicy {
+        registry.adapters.first { harnesses.contains($0.id) }?.uploadStoragePolicy ?? .appManaged
     }
 }
 

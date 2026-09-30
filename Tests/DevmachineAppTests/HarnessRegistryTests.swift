@@ -23,7 +23,7 @@ final class HarnessRegistryTests: XCTestCase {
         XCTAssertEqual(claude.executableName, "claude")
         XCTAssertEqual(claude.processNames, ["claude"])
         XCTAssertEqual(claude.startupCommand, "claude")
-        XCTAssertEqual(claude.imageStoragePolicy.directory, ".claude/image-cache/devmachine-app")
+        XCTAssertEqual(claude.uploadStoragePolicy.directory, ".claude/image-cache/devmachine-app")
 
         XCTAssertEqual(codex.descriptor.id, .codex)
         XCTAssertEqual(codex.descriptor.title, "OpenAI Codex")
@@ -33,16 +33,18 @@ final class HarnessRegistryTests: XCTestCase {
         XCTAssertEqual(codex.executableName, "codex")
         XCTAssertEqual(codex.processNames, ["codex"])
         XCTAssertEqual(codex.startupCommand, "codex")
-        XCTAssertEqual(codex.imageStoragePolicy, .appManaged)
+        XCTAssertEqual(codex.uploadStoragePolicy, .appManaged)
     }
 
-    func testImagePolicyUsesRegistryOrderAndFallsBackToAppStorage() {
+    func testUploadPolicyUsesRegistryOrderAndFallsBackToAppStorage() {
         let facade = SessionHarnessFacade(registry: .builtIn)
 
-        XCTAssertEqual(facade.imageStoragePolicy(for: [.codex]), .appManaged)
+        XCTAssertEqual(facade.uploadStoragePolicy(for: [.codex]), .appManaged)
         XCTAssertEqual(
-            facade.imageStoragePolicy(for: [.claude, .codex]).directory,
+            facade.uploadStoragePolicy(for: [.claude, .codex]).directory,
             ".claude/image-cache/devmachine-app")
-        XCTAssertEqual(facade.imageStoragePolicy(for: []), .appManaged)
+        XCTAssertEqual(facade.uploadStoragePolicy(for: []), .appManaged)
+        XCTAssertEqual(
+            facade.uploadStoragePolicy(for: [.codex]).directory, ".cache/devmachine-app/uploads")
     }
 }

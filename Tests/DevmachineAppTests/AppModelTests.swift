@@ -965,17 +965,17 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testATransferShowsABarAndThenClearsIt() async throws {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
-        model.beginTransfer(label: "Sending image\u{2026}", total: 1000)
+        let id = model.beginTransfer(label: "Sending image\u{2026}", total: 1000)
         XCTAssertEqual(model.activeTasks.first?.completed, 0)
         XCTAssertEqual(model.activeTasks.first?.total, 1000)
         // Bytes as "400 of 1000" says nothing, so the card shows the bar alone.
         XCTAssertEqual(model.activeTasks.first?.showsCount, false)
 
-        model.advanceTransfer(done: 400)
+        model.advanceTransfer(id, done: 400)
         XCTAssertEqual(model.activeTasks.first?.completed, 400)
         XCTAssertEqual(model.activeTasks.first?.label, "Sending image\u{2026}")
 
-        model.endTransfer()
+        model.endTransfer(id)
         XCTAssertEqual(model.activeTasks.first?.completed, 1000)
         try await waitUntil { model.activeTasks.isEmpty }
     }
@@ -983,7 +983,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testProgressWithoutATransferIsIgnored() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
-        model.advanceTransfer(done: 10)
+        model.advanceTransfer(UUID(), done: 10)
         XCTAssertTrue(model.activeTasks.isEmpty)
     }
 

@@ -18,7 +18,7 @@ protocol CodingHarnessAdapter: Sendable {
     var executableName: String { get }
     var processNames: Set<String> { get }
     var startupCommand: String { get }
-    var imageStoragePolicy: ImageStoragePolicy { get }
+    var uploadStoragePolicy: UploadStoragePolicy { get }
     func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)?
 }
 
@@ -126,7 +126,7 @@ struct ClaudeHarnessAdapter: CodingHarnessAdapter {
     let executableName = "claude"
     let processNames: Set<String> = ["claude"]
     let startupCommand = "claude"
-    let imageStoragePolicy = ImageStoragePolicy(directory: ".claude/image-cache/devmachine-app")
+    let uploadStoragePolicy = UploadStoragePolicy(directory: ".claude/image-cache/devmachine-app")
 
     func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)? {
         let config = ClaudeUsageConfig(claudePathOverride: locator.executable(named: executableName)?.path)
@@ -149,7 +149,7 @@ struct CodexHarnessAdapter: CodingHarnessAdapter {
     let executableName = "codex"
     let processNames: Set<String> = ["codex"]
     let startupCommand = "codex"
-    let imageStoragePolicy = ImageStoragePolicy.appManaged
+    let uploadStoragePolicy = UploadStoragePolicy.appManaged
 
     func usageProvider(locator: any ExecutableLocating) -> (any HarnessUsageProvider)? {
         let executableName = executableName

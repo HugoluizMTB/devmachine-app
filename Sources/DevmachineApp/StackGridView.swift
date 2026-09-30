@@ -66,6 +66,7 @@ struct StackGridView: View {
                 translucent: true
             )
             .terminalFindBar(for: model.terminalKind(for: ref))
+            .terminalUploads(for: model.terminalKind(for: ref))
         }
         .floatingCard()
     }

@@ -84,8 +84,8 @@ final class TerminalRegistry: NSObject {
                 }
                 if TerminalKeyboard.pastesClipboard(keyCode: keyCode, flags: flags),
                    let (kind, _) = registry.focusedEntry(),
-                   let image = ImagePasteService.image(from: .general) {
-                    registry.sendFile(image, into: kind)
+                   let image = FileUploadService.pastedImage(from: .general) {
+                    PaneUploadStore.shared.receive(image, on: kind)
                     return true
                 }
                 guard TerminalKeyboard.optionActsAsMeta(for: flags) else { return false }
@@ -155,35 +155,24 @@ final class TerminalRegistry: NSObject {
         return nil
     }
 
-    /// Stores the file where the session's agent can read it, then types the
-    /// path without a newline: the sentence around it is yours to write.
-    func sendFile(
-        _ image: (data: Data, fileExtension: String), into kind: TerminalKind, noun: String = "image"
-    ) {
-        let model = AppModel.shared
-        let service = ImagePasteService(
-            runner: ProcessRunner(),
-            storagePolicy: model?.imageStoragePolicy(for: kind) ?? .appManaged)
-        model?.beginTransfer(label: Self.sendingLabel(for: kind, noun: noun), total: image.data.count)
-        Task.detached {
-            let path = try? service.store(
-                image.data, fileExtension: image.fileExtension, on: kind,
-                onBytesWritten: { written in
-                    Task { @MainActor in AppModel.shared?.advanceTransfer(done: written) }
-                }
-            )
-            await MainActor.run {
-                AppModel.shared?.endTransfer()
-                guard let path, let view = TerminalRegistry.shared.terminals[kind] else { return }
-                view.send(txt: path + " ")
-            }
+    /// Types uploaded paths without a newline: the sentence around them is
+    /// yours to write.
+    func type(_ text: String, into kind: TerminalKind) {
+        terminals[kind]?.send(txt: text)
+    }
+
+    static func sendingLabel(for kind: TerminalKind, names: [String]) -> String {
+        let what = names.count == 1 ? names[0] : "\(names.count) files"
+        switch kind {
+        case let .remote(alias, _): return "Sending \(what) to \(alias)\u{2026}"
+        case .local: return "Saving \(what)\u{2026}"
         }
     }
 
-    static func sendingLabel(for kind: TerminalKind, noun: String = "image") -> String {
+    static func dropHint(for kind: TerminalKind) -> String {
         switch kind {
-        case let .remote(alias, _): return "Sending \(noun) to \(alias)…"
-        case .local: return "Saving \(noun)…"
+        case let .remote(alias, session): return "Drop files to upload to \(alias) / \(session)"
+        case let .local(session, _): return "Drop files to upload to this Mac / \(session)"
         }
     }
 
@@ -205,6 +194,7 @@ final class TerminalRegistry: NSObject {
         // the hyperlink when it repaints its screen, and the text is all that
         // is left to match.
         term.linkReporting = .implicit
+        term.setAccessibilityHelp(Self.dropHint(for: kind))
         awaitingSize.insert(kind)
         terminals[kind] = term
         return term
