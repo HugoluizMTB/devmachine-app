@@ -70,22 +70,33 @@ final class DevmachineCLITests: XCTestCase {
         }
     }
 
-    func testListDecodesTheCLIJSONContract() throws {
+    func testListDecodesTheCLIJSONContractForTheNamedMachine() throws {
         let body = #"[{"host":"app.example.com","port":8080,"workspace":"alice","status":"published"}]"#
         let runner = CLIRecordingRunner(result: (body, "", 0))
 
-        let sites = try DevmachineCLI(executable: "/x", runner: runner).listExposures()
+        let listing = try DevmachineCLI(executable: "/x", runner: runner).listExposures(machine: "box")
 
-        XCTAssertEqual(sites, [.init(host: "app.example.com", port: 8080, workspace: "alice", status: .published)])
-        XCTAssertEqual(runner.calls.first?.args, ["--format", "json", "expose", "list"])
+        XCTAssertEqual(listing.sites, [.init(host: "app.example.com", port: 8080, workspace: "alice", status: .published)])
+        XCTAssertNil(listing.warning)
+        XCTAssertEqual(runner.calls.first?.args, ["--machine", "box", "--format", "json", "expose", "list"])
     }
 
-    func testUnexposeCallsExposeRmWithYes() throws {
+    func testListReadsNullAsNoSitesAndKeepsTheCLIsWarning() throws {
+        let runner = CLIRecordingRunner(result: ("null\n", "box cannot be asked: caddy is not on box\n", 0))
+
+        let listing = try DevmachineCLI(executable: "/x", runner: runner).listExposures(machine: "box")
+
+        XCTAssertEqual(listing.sites, [])
+        XCTAssertEqual(listing.warning, "box cannot be asked: caddy is not on box")
+        XCTAssertTrue(listing.caddyIsMissing)
+    }
+
+    func testUnexposeNamesTheMachineAndSkipsTheCLIsOwnPrompt() throws {
         let runner = CLIRecordingRunner()
 
-        try DevmachineCLI(executable: "/x", runner: runner).unexpose(host: "old.example.com")
+        try DevmachineCLI(executable: "/x", runner: runner).unexpose(host: "old.example.com", machine: "box")
 
-        XCTAssertEqual(runner.calls.first?.args, ["expose", "rm", "old.example.com", "--yes"])
+        XCTAssertEqual(runner.calls.first?.args, ["--machine", "box", "expose", "rm", "old.example.com", "--yes"])
     }
 
     func testDNSProvidersDecodesTheCLIJSONContract() throws {
@@ -200,41 +211,6 @@ final class DevmachineCLITests: XCTestCase {
             XCTAssertTrue(message.contains("/opt/homebrew/bin/devmachine"))
             XCTAssertTrue(message.contains("/usr/local/bin/devmachine"))
             XCTAssertTrue(message.contains("brew install"))
-        }
-    }
-}
-
-final class AdminMachineCacheTests: XCTestCase {
-    func testPicksTheFirstNonSelfMachine() throws {
-        let cache = AdminMachineCache()
-        let runner = CLIRecordingRunner(result: (#"[{"name":"laptop","self":true},{"name":"box"}]"#, "", 0))
-        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
-        XCTAssertEqual(try cache.name { cli }, "box")
-    }
-
-    func testAnAnswerIsKeptForTheRestOfTheRun() throws {
-        let cache = AdminMachineCache()
-        let runner = CLIRecordingRunner(result: (#"[{"name":"laptop","self":true},{"name":"box"}]"#, "", 0))
-        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
-        XCTAssertEqual(try cache.name { cli }, "box")
-        XCTAssertEqual(try cache.name { cli }, "box")
-        XCTAssertEqual(runner.calls.count, 1)
-    }
-
-    func testAFailedLookupIsReportedAndTriedAgain() throws {
-        let cache = AdminMachineCache()
-        XCTAssertThrowsError(try cache.name { throw DevmachineCLIError.executableNotFound(["/opt/devmachine"]) })
-        let runner = CLIRecordingRunner(result: (#"[{"name":"box"}]"#, "", 0))
-        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
-        XCTAssertEqual(try cache.name { cli }, "box")
-    }
-
-    func testNoNonSelfMachineReportsAClearError() {
-        let cache = AdminMachineCache()
-        let runner = CLIRecordingRunner(result: (#"[{"name":"laptop","self":true}]"#, "", 0))
-        let cli = DevmachineCLI(executable: "/opt/devmachine", runner: runner)
-        XCTAssertThrowsError(try cache.name { cli }) { error in
-            XCTAssertEqual(error.localizedDescription, "No machine is configured. Run `devmachine machines add` first.")
         }
     }
 }

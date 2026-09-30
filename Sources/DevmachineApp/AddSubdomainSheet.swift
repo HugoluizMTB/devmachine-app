@@ -24,11 +24,15 @@ struct AddSubdomainForm {
     /// quick-publish flow started from a workspace row.
     var suggestedPorts: [PortSuggestion] = []
 
+    /// `onMachine` narrows the list to the workspaces on the machine the
+    /// Subdomains page shows; nil offers every remote workspace.
     init(
-        workspaces: [Workspace], preselectedWorkspace: String? = nil,
+        workspaces: [Workspace], onMachine: [String]? = nil, preselectedWorkspace: String? = nil,
         suggestedPorts: [PortSuggestion] = [], suggestedLabel: String = ""
     ) {
-        workspaceNames = workspaces.filter { !$0.isLocal }.map(\.name)
+        workspaceNames = workspaces
+            .filter { !$0.isLocal && (onMachine?.contains($0.name) ?? true) }
+            .map(\.name)
         if let preselectedWorkspace, workspaceNames.contains(preselectedWorkspace) {
             selectedWorkspace = preselectedWorkspace
         } else {
@@ -64,12 +68,13 @@ struct AddSubdomainSheet: View {
     @State private var confirming = false
 
     init(
-        settings: AppSettings, workspaces: [Workspace], preselectedWorkspace: String? = nil,
+        settings: AppSettings, workspaces: [Workspace], onMachine: [String]? = nil,
+        preselectedWorkspace: String? = nil,
         suggestedPorts: [PortSuggestion] = [], suggestedLabel: String = ""
     ) {
         self.settings = settings
         _form = State(initialValue: AddSubdomainForm(
-            workspaces: workspaces, preselectedWorkspace: preselectedWorkspace,
+            workspaces: workspaces, onMachine: onMachine, preselectedWorkspace: preselectedWorkspace,
             suggestedPorts: suggestedPorts, suggestedLabel: suggestedLabel))
     }
 

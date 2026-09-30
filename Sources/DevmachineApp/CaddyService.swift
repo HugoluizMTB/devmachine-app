@@ -1,70 +1,111 @@
 import Foundation
 import DevmachineCore
 
-/// Everything the Subdomains page's "Sites" tab needs, read in one pass: the
-/// expose list, plus the stats package's ports and containers so a site with
-/// no `workspace` (adopted, or the config disagrees with the machine) can
-/// still say who owns it.
-struct SubdomainsSnapshot: Sendable, Equatable {
-    var rows: [SubdomainRow]
-    var domain: String
-}
+/// What the Subdomains page reads once per refresh, for every machine: the
+/// domain new subdomains go under, which machine each workspace lives on,
+/// and which packages each machine has. `installedPackages` is nil when the
+/// CLI could not say, and then nothing is ruled out ahead of asking.
+struct SitesContext: Sendable, Equatable {
+    var domain: String = ""
+    var workspaces: [CLIWorkspace] = []
+    var installedPackages: [CLIPackage]?
 
-struct CaddyService: Sendable {
-    let cli: DevmachineCLI?
-    private let adminMachine: AdminMachineCache
-
-    init(cli: DevmachineCLI? = nil, adminMachine: AdminMachineCache = .shared) {
-        self.cli = cli
-        self.adminMachine = adminMachine
+    func workspaces(on machine: String) -> [String] {
+        workspaces.filter { $0.machine == machine }.map(\.name)
     }
 
-    func snapshot() throws -> SubdomainsSnapshot {
+    func hasCaddy(onMachine machine: String) -> Bool? {
+        guard let installedPackages else { return nil }
+        let names = Set(installedPackages.filter { $0.isInstalled(onMachine: machine) }.map(\.name))
+        return CaddyDetection.hasCaddy(installedPackageNames: names)
+    }
+}
+
+/// One machine's answer to "what is published here".
+enum MachineSitesResult: Sendable, Equatable {
+    case sites([SubdomainRow])
+    case notSetUp(String)
+}
+
+/// Every CLI call the Subdomains page makes. Each one that acts on a server
+/// names its machine: with several configured, the CLI refuses to guess.
+struct CaddyService: Sendable {
+    let cli: DevmachineCLI?
+
+    init(cli: DevmachineCLI? = nil) {
+        self.cli = cli
+    }
+
+    func machines() throws -> [CLIMachine] {
+        try resolvedCLI().listMachines()
+    }
+
+    func context() -> SitesContext {
+        guard let cli = try? resolvedCLI() else { return SitesContext() }
+        return SitesContext(
+            domain: (try? cli.configShow().domain) ?? "",
+            workspaces: (try? cli.listWorkspaces()) ?? [],
+            installedPackages: try? cli.packages())
+    }
+
+    /// This Mac, and a server without caddy, have nothing to publish from;
+    /// both answer without a connection. The stats read only adds owners to
+    /// rows that carry no workspace, so its failure never fails the list.
+    func sites(on machine: CLIMachine, context: SitesContext) throws -> MachineSitesResult {
+        if machine.isSelf {
+            return .notSetUp(Self.selfMessage(machine.name))
+        }
+        if context.hasCaddy(onMachine: machine.name) == false {
+            return .notSetUp(Self.noCaddyMessage(machine.name))
+        }
         let cli = try resolvedCLI()
-        let sites = try cli.listExposures()
-        let workspaceUsers = try cli.listWorkspaces().map { WorkspaceUser(workspace: $0.name, user: $0.user) }
-        let domain = (try? cli.configShow().domain) ?? ""
+        let listing = try cli.listExposures(machine: machine.name)
+        if listing.sites.isEmpty && listing.caddyIsMissing {
+            return .notSetUp(Self.noCaddyMessage(machine.name))
+        }
 
         var ports: [PortOwner] = []
         var containers: [ContainerStat] = []
-        if let machine = try? adminMachine.name(cli: { cli }),
-           let output = try? cli.run(machine: machine, package: "devmachine-app", args: ["stats"]),
+        if let output = try? cli.run(machine: machine.name, package: "devmachine-app", args: ["stats"]),
            let parsed = StatsParser.parse(output) {
             ports = parsed.ports
             containers = parsed.containers
         }
-
-        let rows = SubdomainRowBuilder.rows(sites: sites, ports: ports, workspaceUsers: workspaceUsers, containers: containers)
-        return SubdomainsSnapshot(rows: rows, domain: domain)
+        let workspaceUsers = context.workspaces
+            .filter { $0.machine == machine.name }
+            .map { WorkspaceUser(workspace: $0.name, user: $0.user) }
+        return .sites(SubdomainRowBuilder.rows(
+            sites: listing.sites, ports: ports, workspaceUsers: workspaceUsers, containers: containers))
     }
 
-    /// Every installed DNS provider's name — the tab strip's own list.
-    func dnsProviderNames() throws -> [String] {
-        let cli = try resolvedCLI()
-        let machine = try adminMachine.name(cli: { cli })
-        return try cli.dnsProviders(machine: machine).map(\.name)
+    static func selfMessage(_ machine: String) -> String {
+        "\(machine) is this Mac. Sites are published from a server with Caddy, so there is nothing to list here."
     }
 
-    func dnsRecords(provider: String, zone: String) throws -> [DNSRecordRow] {
-        let cli = try resolvedCLI()
-        let machine = try adminMachine.name(cli: { cli })
-        return try cli.dnsList(machine: machine, provider: provider, zone: zone)
+    static func noCaddyMessage(_ machine: String) -> String {
+        "\(machine) is not set up for sites yet. Add Caddy with `devmachine packages add caddy --machine \(machine)`, "
+            + "then run `devmachine sync --machine \(machine)`."
     }
 
-    func remove(host: String) throws {
-        try resolvedCLI().unexpose(host: host)
+    /// DNS providers are packages, installed per machine: the tab strip
+    /// lists the ones on `machine`.
+    func dnsProviderNames(machine: String) throws -> [String] {
+        try resolvedCLI().dnsProviders(machine: machine).map(\.name)
     }
 
-    /// `machine` is nil for the existing single-machine caller, which still
-    /// gets the cached first non-self machine; a caller that knows there are
-    /// several (the Stats machine switcher) names the one it wants logs from.
+    func dnsRecords(machine: String, provider: String, zone: String) throws -> [DNSRecordRow] {
+        try resolvedCLI().dnsList(machine: machine, provider: provider, zone: zone)
+    }
+
+    func remove(host: String, machine: String) throws {
+        try resolvedCLI().unexpose(host: host, machine: machine)
+    }
+
     /// `matching` filters the tail to lines mentioning that host — the
-    /// per-row "Logs" action, in place of the old whole-machine log pane.
-    func logs(machine: String? = nil, matching host: String? = nil, lines: Int = 200) throws -> String {
-        let cli = try resolvedCLI()
-        let resolvedMachine = try machine ?? adminMachine.name { cli }
-        let text = try cli.run(
-            machine: resolvedMachine, package: "devmachine-app",
+    /// per-row "Logs" action.
+    func logs(machine: String, matching host: String? = nil, lines: Int = 200) throws -> String {
+        let text = try resolvedCLI().run(
+            machine: machine, package: "devmachine-app",
             args: ["caddy-logs", "--lines", String(lines)])
         guard let host else { return text }
         let matching = text.split(separator: "\n", omittingEmptySubsequences: false)

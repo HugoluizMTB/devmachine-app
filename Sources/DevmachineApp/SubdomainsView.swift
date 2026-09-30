@@ -41,6 +41,10 @@ struct SubdomainsView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Rectangle().fill(Color.dmDivider).frame(height: 1)
+            if store.showsMachinePicker {
+                machinePicker
+                Rectangle().fill(Color.dmDivider).frame(height: 1)
+            }
             tabsBar
             Rectangle().fill(Color.dmDivider).frame(height: 1)
             body(for: selectedTab)
@@ -49,7 +53,12 @@ struct SubdomainsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.dmContentBg)
         .onAppear {
-            if store.rows.isEmpty { store.refresh() }
+            if store.machines.isEmpty { store.refresh() }
+        }
+        .onChange(of: store.dnsProviders) {
+            if case .provider(let name) = selectedTab, !store.dnsProviders.contains(name) {
+                selectedTab = .sites
+            }
         }
         .overlay(alignment: .bottomTrailing) {
             if let task = store.task {
@@ -59,7 +68,9 @@ struct SubdomainsView: View {
         }
         .sheet(isPresented: $showAdd) {
             if let settings = settingsStore.settings {
-                AddSubdomainSheet(settings: settings, workspaces: model.visibleWorkspaces)
+                AddSubdomainSheet(
+                    settings: settings, workspaces: model.visibleWorkspaces,
+                    onMachine: store.workspacesOnSelectedMachine)
                     .environmentObject(store)
             }
         }
@@ -113,6 +124,36 @@ struct SubdomainsView: View {
         .padding(10)
     }
 
+    /// One tab per configured machine; each loads, fails and counts on its
+    /// own, so the tab says which one needs a look.
+    private var machinePicker: some View {
+        HStack(spacing: 10) {
+            columnLabel("MACHINE")
+            DMTabStrip(
+                tabs: store.machines.map(\.name),
+                selection: Binding(
+                    get: { store.selectedMachine ?? "" },
+                    set: { store.select($0) }),
+                title: machineTitle,
+                systemImage: machineSymbol,
+                fontSize: 12
+            )
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    private func machineTitle(_ name: String) -> String {
+        guard let state = store.sitesByMachine[name], state.hasLoaded,
+              state.errorText == nil, state.notSetUpMessage == nil else { return name }
+        return "\(name) · \(state.rows.count)"
+    }
+
+    private func machineSymbol(_ name: String) -> String? {
+        if store.sitesByMachine[name]?.errorText != nil { return "exclamationmark.triangle" }
+        return store.machines.first { $0.name == name }?.isSelf == true ? "laptopcomputer" : "server.rack"
+    }
+
     private var tabsBar: some View {
         DMTabStrip(
             tabs: SubdomainsTabs.build(providers: store.dnsProviders),
@@ -154,12 +195,18 @@ struct SubdomainsView: View {
 
     @ViewBuilder
     private var sitesBody: some View {
-        if let err = store.errorText {
+        if let err = store.machinesError {
             DMStatusView(kind: .failed(message: err, retry: { store.refresh() }))
+        } else if let err = store.selectedState?.errorText {
+            DMStatusView(kind: .failed(
+                title: store.selectedMachine.map { "\($0) could not be read" },
+                message: err, retry: retrySelectedMachine))
+        } else if let message = store.notSetUpMessage {
+            DMStatusView(kind: .empty(systemImage: "server.rack", text: message))
         } else if store.showsSitesSkeleton {
             skeletonTable(header: sitesTableHeader) { siteSkeletonRow($0) }
         } else if visibleRows.isEmpty {
-            DMStatusView(kind: .empty(systemImage: "globe", text: "No subdomains found"))
+            DMStatusView(kind: .empty(systemImage: "globe", text: emptySitesText))
         } else {
             VStack(spacing: 0) {
                 if let addError = store.addError {
@@ -255,6 +302,19 @@ struct SubdomainsView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    private var emptySitesText: String {
+        guard store.showsMachinePicker, let machine = store.selectedMachine else { return "No subdomains found" }
+        return "No subdomains on \(machine)"
+    }
+
+    private func retrySelectedMachine() {
+        if let machine = store.selectedMachine {
+            store.reload(machine: machine)
+        } else {
+            store.refresh()
+        }
     }
 
     private var sitesTableHeader: some View {

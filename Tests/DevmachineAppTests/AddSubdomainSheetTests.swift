@@ -63,3 +63,28 @@ final class AddSubdomainSheetTests: XCTestCase {
         XCTAssertNil(form.request(baseDomain: "example.com"))
     }
 }
+
+final class AddSubdomainMachineScopeTests: XCTestCase {
+    func testTheFormOffersOnlyTheWorkspacesOnTheChosenMachine() {
+        let form = AddSubdomainForm(
+            workspaces: [
+                Workspace(name: "alice", alias: "alice-devmachine"),
+                Workspace(name: "bob", alias: "bob-devmachine"),
+            ],
+            onMachine: ["bob"])
+
+        XCTAssertEqual(form.workspaceNames, ["bob"])
+        XCTAssertEqual(form.selectedWorkspace, "bob")
+    }
+
+    func testNoMachineScopeOffersEveryRemoteWorkspace() {
+        let form = AddSubdomainForm(
+            workspaces: [
+                Workspace(name: "alice", alias: "alice-devmachine"),
+                Workspace(name: "bob", alias: "bob-devmachine"),
+            ],
+            onMachine: nil)
+
+        XCTAssertEqual(form.workspaceNames, ["alice", "bob"])
+    }
+}

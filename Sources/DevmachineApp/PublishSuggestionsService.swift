@@ -14,25 +14,22 @@ struct QuickPublishSuggestions: Sendable, Equatable {
 /// this is a rare, one-shot lookup, not something the rest of the app reads.
 struct PublishSuggestionsService: Sendable {
     let cli: DevmachineCLI?
-    private let adminMachine: AdminMachineCache
 
-    init(cli: DevmachineCLI? = nil, adminMachine: AdminMachineCache = .shared) {
+    init(cli: DevmachineCLI? = nil) {
         self.cli = cli
-        self.adminMachine = adminMachine
     }
 
+    /// Stats are read on the machine the workspace lives on — with several
+    /// machines, any other one has none of its ports.
     func suggestions(forWorkspace workspace: String) -> QuickPublishSuggestions {
         guard let cli = try? resolvedCLI() else { return QuickPublishSuggestions() }
         let domain = (try? cli.configShow().domain) ?? ""
-        guard let user = try? cli.listWorkspaces().first(where: { $0.name == workspace })?.user else {
-            return QuickPublishSuggestions(ports: [], domain: domain)
-        }
-        guard let machine = try? adminMachine.name(cli: { cli }),
-              let output = try? cli.run(machine: machine, package: "devmachine-app", args: ["stats"]),
+        guard let entry = try? cli.listWorkspaces().first(where: { $0.name == workspace }),
+              let output = try? cli.run(machine: entry.machine, package: "devmachine-app", args: ["stats"]),
               let snapshot = StatsParser.parse(output) else {
             return QuickPublishSuggestions(ports: [], domain: domain)
         }
-        let ports = PublishSuggestions.ports(forUser: user, ports: snapshot.ports, containers: snapshot.containers)
+        let ports = PublishSuggestions.ports(forUser: entry.user, ports: snapshot.ports, containers: snapshot.containers)
         return QuickPublishSuggestions(ports: ports, domain: domain)
     }
 

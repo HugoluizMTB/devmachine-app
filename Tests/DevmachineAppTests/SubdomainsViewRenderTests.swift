@@ -37,7 +37,7 @@ final class SubdomainsViewRenderTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
 
         let store = CaddyStore()
-        store.rows = [
+        let rows = [
             SubdomainRow(
                 site: ExposedSite(host: "app.example.com", port: 8080, workspace: "acme", status: .published),
                 resolvedWorkspace: "acme", containerName: nil),
@@ -45,6 +45,13 @@ final class SubdomainsViewRenderTests: XCTestCase {
                 site: ExposedSite(host: "old.example.com", port: 8810, workspace: nil, status: .unmanaged),
                 resolvedWorkspace: nil, containerName: "web"),
         ]
+        store.show(
+            machines: [CLIMachine(name: "box", isSelf: false), CLIMachine(name: "laptop", isSelf: true)],
+            states: [
+                "box": MachineSitesState(rows: rows, hasLoaded: true),
+                "laptop": MachineSitesState(hasLoaded: true, notSetUpMessage: CaddyService.selfMessage("laptop")),
+            ],
+            selected: "box")
         store.domain = "example.com"
         store.dnsProviders = ["Cloudflare"]
         store.dnsRecordsByProvider["Cloudflare"] = [

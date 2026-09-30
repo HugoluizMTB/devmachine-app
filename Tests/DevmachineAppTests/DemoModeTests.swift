@@ -93,6 +93,10 @@ final class DemoModeTests: XCTestCase {
         store.refresh()
         XCTAssertEqual(store.rows, DemoData.subdomainRows)
         XCTAssertEqual(store.domain, DemoData.domain)
+        XCTAssertEqual(store.selectedMachine, "main")
+        XCTAssertTrue(store.showsMachinePicker)
+        XCTAssertEqual(store.sitesByMachine["staging"]?.rows, DemoData.stagingSubdomainRows)
+        XCTAssertNotNil(store.sitesByMachine["laptop"]?.notSetUpMessage)
     }
 
     func testHealthCheckStoreRunSeedsDemoData() {

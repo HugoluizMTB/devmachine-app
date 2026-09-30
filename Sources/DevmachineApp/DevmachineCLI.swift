@@ -133,6 +133,14 @@ struct CLIMachine: Decodable, Equatable, Sendable {
     }
 }
 
+struct ExposureListing: Equatable, Sendable {
+    let sites: [ExposedSite]
+    let warning: String?
+
+    /// The CLI's own wording when the machine has no caddy package.
+    var caddyIsMissing: Bool { warning?.contains("caddy is not on") ?? false }
+}
+
 enum DevmachineCLIError: LocalizedError, Equatable {
     case commandFailed(String)
     case executableNotFound([String])
@@ -204,22 +212,28 @@ struct DevmachineCLI: Sendable {
         try requireSuccess(result)
     }
 
-    func listExposures() throws -> [ExposedSite] {
+    /// What `machine`'s Caddy publishes. `expose list` acts on one machine
+    /// and refuses to guess with several configured, so the machine is
+    /// always named. A machine it cannot ask still exits 0: it prints `null`
+    /// and says why on stderr, which is kept as `warning`.
+    func listExposures(machine: String) throws -> ExposureListing {
         let result = try runner.runCapturing(
             executable: executable,
-            args: ["--format", "json", "expose", "list"],
+            args: ["--machine", machine, "--format", "json", "expose", "list"],
             environment: environment()
         )
         try requireSuccess(result)
-        return try JSONDecoder().decode([ExposedSite].self, from: Data(result.stdout.utf8))
+        let sites = try JSONDecoder().decode([ExposedSite]?.self, from: Data(result.stdout.utf8)) ?? []
+        let warning = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ExposureListing(sites: sites, warning: warning.isEmpty ? nil : warning)
     }
 
     /// Stops publishing a site at the next sync. `--yes` skips the CLI's own
     /// confirmation prompt: the app already asked before calling this.
-    func unexpose(host: String) throws {
+    func unexpose(host: String, machine: String) throws {
         let result = try runner.runCapturing(
             executable: executable,
-            args: ["expose", "rm", host, "--yes"],
+            args: ["--machine", machine, "expose", "rm", host, "--yes"],
             environment: environment()
         )
         try requireSuccess(result)
@@ -337,11 +351,10 @@ struct DevmachineCLI: Sendable {
         return try JSONDecoder().decode(CLIPackageList.self, from: Data(result.stdout.utf8)).packages
     }
 
-    /// The machine workspaces live on, for a command that has to run as that
-    /// machine's admin rather than inside a workspace — stats, Caddy's own
-    /// logs. `self` is the Mac the app runs on, never the target. Several
-    /// non-self machines are not disambiguated yet: the first one found is
-    /// used.
+    /// The first configured server, for onboarding's "is a server set up"
+    /// check only. `self` is the Mac the app runs on, never the answer. A
+    /// command that acts on a server names its machine instead of asking
+    /// this: with several, the first one is a guess.
     func resolveAdminMachine() throws -> String {
         let machines = try listMachines()
         guard let machine = machines.first(where: { !$0.isSelf }) else {

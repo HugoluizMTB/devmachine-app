@@ -33,7 +33,7 @@ private final class ScriptedCaddyRunner: CommandRunner, @unchecked Sendable {
             return ("", "\(failed): connection refused", 1)
         }
         switch args {
-        case ["--format", "json", "expose", "list"]:
+        case ["--machine", "box", "--format", "json", "expose", "list"]:
             return (#"[{"host": "app.example.com", "port": 8080, "workspace": "alice", "status": "published"}]"#, "", 0)
         case ["--format", "json", "workspaces", "list"]:
             return (#"{"workspaces":[{"name":"alice","machine":"box","user":"alice","packages":[]}]}"#, "", 0)
@@ -64,7 +64,10 @@ private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async
 final class CaddyStoreTests: XCTestCase {
     private func makeStore(_ runner: ScriptedCaddyRunner) -> CaddyStore {
         let cli = DevmachineCLI(executable: "/fake/devmachine", runner: runner)
-        return CaddyStore(service: CaddyService(cli: cli, adminMachine: AdminMachineCache()))
+        let suiteName = "dev.devmachine.app.caddystore.tests"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return CaddyStore(service: CaddyService(cli: cli), selection: SitesMachineSelection(defaults: defaults))
     }
 
     func testTheSitesSkeletonShowsUntilTheFirstListArrives() async throws {
@@ -124,8 +127,8 @@ final class CaddyStoreTests: XCTestCase {
         XCTAssertEqual(store.dnsPhase(for: "Cloudflare"), .failed(store.dnsErrorByProvider["Cloudflare"] ?? ""))
     }
 
-    func testAProviderTabNeverWaitsForADomainTheSitesListCouldNotRead() async throws {
-        let store = makeStore(ScriptedCaddyRunner(failing: ["expose list"]))
+    func testAProviderTabNeverWaitsForADomainTheConfigurationCouldNotRead() async throws {
+        let store = makeStore(ScriptedCaddyRunner(failing: ["machines list"]))
 
         store.refresh()
         try await waitUntil { store.errorText != nil }

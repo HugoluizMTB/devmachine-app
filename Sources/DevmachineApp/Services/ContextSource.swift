@@ -6,9 +6,7 @@ protocol ContextSource: Sendable {
 }
 
 /// Resolves a value once and reuses it for the rest of the app's run. A
-/// throwing resolution is not cached, so the next call tries again — used by
-/// `SelfMachineCache` and `AdminMachineCache`, which differ only in which
-/// machine they ask `machines list` for.
+/// throwing resolution is not cached, so the next call tries again.
 private final class ResolvedOnce<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var resolved = false
@@ -32,20 +30,6 @@ final class SelfMachineCache: @unchecked Sendable {
 
     func name(cli: () throws -> DevmachineCLI) throws -> String? {
         try cache.get { try cli().listMachines().first { $0.isSelf }?.name }
-    }
-}
-
-/// The same idea, for the other direction: which machine an admin-level
-/// command (stats, Caddy's own logs) runs on. `.shared` is what every store
-/// that needs it defaults to, so Stats and Subdomains answer the same
-/// `machines list` call instead of each making their own.
-final class AdminMachineCache: @unchecked Sendable {
-    static let shared = AdminMachineCache()
-
-    private let cache = ResolvedOnce<String>()
-
-    func name(cli: () throws -> DevmachineCLI) throws -> String {
-        try cache.get { try cli().resolveAdminMachine() }
     }
 }
 

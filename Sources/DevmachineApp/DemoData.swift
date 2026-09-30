@@ -174,6 +174,16 @@ enum DemoData {
 
     static let domain = "acme.example.com"
 
+    /// Two servers with their own sites — acme on one, globex on the other —
+    /// and this Mac, which has nothing to publish from.
+    static let subdomainMachines: [CLIMachine] = [
+        CLIMachine(name: "main", isSelf: false),
+        CLIMachine(name: "staging", isSelf: false),
+        CLIMachine(name: "laptop", isSelf: true),
+    ]
+
+    static let subdomainSelectedMachine = "main"
+
     static let subdomainRows: [SubdomainRow] = [
         SubdomainRow(
             site: ExposedSite(host: "app.acme.example.com", port: 3000, workspace: "acme", status: .published),
@@ -182,8 +192,23 @@ enum DemoData {
             site: ExposedSite(host: "api.acme.example.com", port: 8080, workspace: "acme", status: .published),
             resolvedWorkspace: "acme", containerName: "api"),
         SubdomainRow(
-            site: ExposedSite(host: "staging.globex.example.com", port: 4000, workspace: "globex", status: .pending),
+            site: ExposedSite(host: "docs.acme.example.com", port: 4100, workspace: "acme", status: .pending),
+            resolvedWorkspace: "acme", containerName: nil),
+    ]
+
+    static let stagingSubdomainRows: [SubdomainRow] = [
+        SubdomainRow(
+            site: ExposedSite(host: "staging.globex.example.com", port: 4000, workspace: "globex", status: .published),
             resolvedWorkspace: "globex", containerName: "dashboard"),
+        SubdomainRow(
+            site: ExposedSite(host: "api.globex.example.com", port: 8000, workspace: "globex", status: .pending),
+            resolvedWorkspace: "globex", containerName: nil),
+    ]
+
+    static let subdomainStates: [String: MachineSitesState] = [
+        "main": MachineSitesState(rows: subdomainRows, hasLoaded: true),
+        "staging": MachineSitesState(rows: stagingSubdomainRows, hasLoaded: true),
+        "laptop": MachineSitesState(hasLoaded: true, notSetUpMessage: CaddyService.selfMessage("laptop")),
     ]
 
     static let dnsProviders = ["cloudflare", "hostinger"]
