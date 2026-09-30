@@ -456,3 +456,22 @@ final class HarnessIconSettingTests: XCTestCase {
         XCTAssertTrue(settings.showsHarnessIcons)
     }
 }
+
+final class AppSettingsLinkOpeningTests: XCTestCase {
+    func testLinksOpenInTheDefaultBrowserByDefault() {
+        XCTAssertEqual(AppSettings.empty.linkOpening, .defaultBrowser)
+    }
+
+    func testSettingsWrittenBeforeTheChoiceDecodeToTheDefaultBrowser() throws {
+        let json = #"{"opsRepoPath":"/Users/alice/.config/devmachine","hostAlias":"","publicIP":"203.0.113.10","baseDomain":"example.com"}"#
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.linkOpening, .defaultBrowser)
+    }
+
+    func testTheChoiceSurvivesARoundTrip() throws {
+        var settings = AppSettings.empty
+        settings.linkOpening = .inApp
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.linkOpening, .inApp)
+    }
+}

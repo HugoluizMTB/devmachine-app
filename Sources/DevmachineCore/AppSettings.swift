@@ -101,6 +101,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
     }
 
+    /// Where previews and links from the context panel open.
+    public var linkOpening: LinkOpening
+
     public var newSessionProgram: NewSessionProgram {
         get {
             localSessionProgram == .harness(.claude) && remoteSessionProgram == .harness(.claude)
@@ -136,6 +139,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         localSessionProgram: SessionLaunchChoice = .terminal,
         remoteSessionProgram: SessionLaunchChoice = .terminal,
         workspaceSessionPrograms: [String: SessionLaunchChoice] = [:],
+        linkOpening: LinkOpening = .defaultBrowser,
         newSessionProgram: NewSessionProgram? = nil
     ) {
         self.opsRepoPath = opsRepoPath
@@ -158,6 +162,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.localSessionProgram = localSessionProgram
         self.remoteSessionProgram = remoteSessionProgram
         self.workspaceSessionPrograms = workspaceSessionPrograms
+        self.linkOpening = linkOpening
 
         if let newSessionProgram {
             let choice: SessionLaunchChoice = newSessionProgram == .claude ? .harness(.claude) : .terminal
@@ -174,7 +179,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging, remoteTerminalMode
         case copyOnSelect, showsHarnessIcons
         case hiddenWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
-        case workspaceSessionPrograms, newSessionProgram
+        case workspaceSessionPrograms, newSessionProgram, linkOpening
     }
 
     public init(from decoder: Decoder) throws {
@@ -204,6 +209,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             try values.decodeIfPresent(RemoteTerminalMode.self, forKey: .remoteTerminalMode) ?? .automatic
         copyOnSelect = try values.decodeIfPresent(Bool.self, forKey: .copyOnSelect) ?? true
         showsHarnessIcons = try values.decodeIfPresent(Bool.self, forKey: .showsHarnessIcons) ?? false
+        linkOpening = (try? values.decodeIfPresent(LinkOpening.self, forKey: .linkOpening)) ?? .defaultBrowser
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
         // Settings written before this existed decode to "nothing detected yet".
@@ -264,6 +270,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(localSessionProgram, forKey: .localSessionProgram)
         try values.encode(remoteSessionProgram, forKey: .remoteSessionProgram)
         try values.encode(workspaceSessionPrograms, forKey: .workspaceSessionPrograms)
+        try values.encode(linkOpening, forKey: .linkOpening)
     }
 
     private func normalized(_ choice: SessionLaunchChoice) -> SessionLaunchChoice {
