@@ -64,6 +64,9 @@ final class UpdateControllerTests: XCTestCase {
     private var installer: FakeInstaller!
     private var homebrew: FakeHomebrew!
     private var relaunched: [URL] = []
+    private var dialogShownAtRelaunch: [Bool] = []
+    private var relaunchFails = false
+    private var built: UpdateController?
     private var cliOutput: String? = "0.7.1"
 
     override func setUp() async throws {
@@ -73,6 +76,8 @@ final class UpdateControllerTests: XCTestCase {
         installer = FakeInstaller()
         homebrew = FakeHomebrew()
         relaunched = []
+        dialogShownAtRelaunch = []
+        relaunchFails = false
     }
 
     override func tearDown() async throws {
@@ -84,7 +89,7 @@ final class UpdateControllerTests: XCTestCase {
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { _ in throw CancellationError() }
     ) -> UpdateController {
         let cliOutput = cliOutput
-        return UpdateController(dependencies: UpdateDependencies(
+        let updates = UpdateController(dependencies: UpdateDependencies(
             currentVersion: current.flatMap { SemanticVersion($0) },
             appFeed: ReleaseFeed(url: ReleaseFeed.appReleases, fetcher: http, userAgent: "Devmachine"),
             cliFeed: ReleaseFeed(url: ReleaseFeed.cliReleases, fetcher: http, userAgent: "Devmachine"),
@@ -97,7 +102,14 @@ final class UpdateControllerTests: XCTestCase {
             installer: installer,
             homebrew: homebrew,
             currentAppURL: URL(fileURLWithPath: "/Applications/Devmachine.app"),
-            relaunch: { [weak self] url in self?.relaunched.append(url) }))
+            relaunch: { [weak self] url in
+                guard let self else { return }
+                relaunched.append(url)
+                dialogShownAtRelaunch.append(built?.showsDialog ?? false)
+                if relaunchFails { throw Boom() }
+            }))
+        built = updates
+        return updates
     }
 
     private func serve(app tag: String, cli cliTag: String = "v0.7.1") {
@@ -250,6 +262,76 @@ final class UpdateControllerTests: XCTestCase {
         guard case .failed(let state) = updates.phase else { return XCTFail("\(updates.phase)") }
         XCTAssertTrue(state.details.contains("==> Upgrading devmachine-app"))
         XCTAssertTrue(relaunched.isEmpty)
+    }
+
+    func testTheDialogClosesBeforeQuittingBecauseASheetBlocksIt() async {
+        serve(app: "v0.1.3")
+        let updates = controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"))
+        await updates.check(userInitiated: false)
+        updates.requestUpdate()
+        XCTAssertTrue(updates.showsDialog)
+
+        await updates.install()
+
+        XCTAssertEqual(dialogShownAtRelaunch, [false])
+        XCTAssertEqual(updates.phase, .relaunching)
+    }
+
+    func testStillRunningTenSecondsAfterTheUpdateAsksToQuitAndReopen() async {
+        serve(app: "v0.1.3")
+        let sleeps = SleepRecorder(allowed: 1)
+        let updates = controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"), sleep: { try await sleeps.sleep($0) })
+        await updates.check(userInitiated: false)
+        updates.requestUpdate()
+
+        await updates.install()
+        await updates.relaunchWatchdog?.value
+
+        XCTAssertEqual(sleeps.delays, [10])
+        XCTAssertEqual(updates.phase, .restartNeeded("0.1.3"))
+        XCTAssertFalse(updates.phase.isBusy)
+        XCTAssertTrue(updates.showsDialog)
+        XCTAssertTrue(updates.showsBanner)
+    }
+
+    func testAHelperThatCannotStartAsksToQuitAndReopenAtOnce() async {
+        relaunchFails = true
+        serve(app: "v0.1.3")
+        let updates = controller()
+        await updates.check(userInitiated: false)
+
+        await updates.install()
+
+        XCTAssertEqual(updates.phase, .restartNeeded("0.1.3"))
+        XCTAssertNil(updates.relaunchWatchdog)
+        XCTAssertTrue(updates.showsDialog)
+    }
+
+    func testQuitAndReopenTriesTheSameAppAgain() async {
+        relaunchFails = true
+        serve(app: "v0.1.3")
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        await updates.install()
+        relaunchFails = false
+
+        updates.quitAndReopen()
+
+        XCTAssertEqual(relaunched, Array(repeating: URL(fileURLWithPath: "/Applications/Devmachine.app"), count: 2))
+        XCTAssertEqual(updates.phase, .relaunching)
+        XCTAssertFalse(updates.showsDialog)
+    }
+
+    func testAnUpdateWaitingForARestartIsNotInstalledTwice() async {
+        relaunchFails = true
+        serve(app: "v0.1.3")
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        await updates.install()
+
+        await updates.install()
+
+        XCTAssertEqual(installer.installed, ["v0.1.3"])
     }
 
     func testAnUnsignedLocalBuildCannotInstallInPlace() async {

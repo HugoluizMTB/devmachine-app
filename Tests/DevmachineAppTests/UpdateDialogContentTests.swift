@@ -33,4 +33,10 @@ final class UpdateDialogContentTests: XCTestCase {
         XCTAssertNil(content.subtitle)
     }
 
+
+    func testAnUpdateThatCouldNotRelaunchSaysHowToFinish() {
+        XCTAssertEqual(
+            UpdateDialogContent.restartNeeded(version: "0.1.4"),
+            "Updated to 0.1.4 — quit and reopen Devmachine to finish.")
+    }
 }

@@ -35,13 +35,14 @@ enum UpdatePhase: Equatable {
     case installing
     case upgradingWithHomebrew
     case relaunching
+    case restartNeeded(String)
     case manualMove(URL)
     case failed(DMErrorState)
 
     var isBusy: Bool {
         switch self {
         case .downloading, .verifying, .installing, .upgradingWithHomebrew, .relaunching: return true
-        case .idle, .manualMove, .failed: return false
+        case .idle, .restartNeeded, .manualMove, .failed: return false
         }
     }
 }
@@ -60,7 +61,8 @@ struct UpdateDependencies {
     var installer: any AppUpdateInstalling
     var homebrew: any HomebrewUpgrading
     var currentAppURL: URL
-    var relaunch: @MainActor (URL) -> Void
+    var relaunchTimeout: TimeInterval = 10
+    var relaunch: @MainActor (URL) throws -> Void
 }
 
 /// Looks for a newer Devmachine.app and a newer devmachine CLI, and replaces
@@ -82,6 +84,9 @@ final class UpdateController: ObservableObject {
     private let dependencies: UpdateDependencies
     private var launchedAt: Date
     private var scheduleTask: Task<Void, Never>?
+    private var relaunchTarget: URL?
+    private var installingVersion: String?
+    private(set) var relaunchWatchdog: Task<Void, Never>?
 
     init(dependencies: UpdateDependencies) {
         self.dependencies = dependencies
@@ -189,7 +194,8 @@ final class UpdateController: ObservableObject {
     }
 
     func install() async {
-        guard let release = availableRelease, !phase.isBusy else { return }
+        guard let release = availableRelease, !phase.isBusy, !isWaitingForRestart else { return }
+        installingVersion = release.version?.description ?? release.tagName
         homebrewOutput = []
         switch installMethod ?? .manual {
         case .homebrew(let brew):
@@ -210,6 +216,16 @@ final class UpdateController: ObservableObject {
                 release: $0, current: currentVersion,
                 method: installMethod ?? .manual)
         }
+    }
+
+    var isWaitingForRestart: Bool {
+        if case .restartNeeded = phase { return true }
+        return false
+    }
+
+    func quitAndReopen() {
+        guard isWaitingForRestart, let app = relaunchTarget else { return }
+        relaunch(app)
     }
 
     func dismissFailure() {
@@ -259,9 +275,33 @@ final class UpdateController: ObservableObject {
         }
     }
 
+    /// The dialog is a sheet, and AppKit will not quit while a sheet is up,
+    /// so it goes first. Anything else that keeps this copy running turns,
+    /// after a short wait, into a plain request to quit and reopen by hand.
     private func relaunch(_ app: URL) {
+        relaunchTarget = app
         phase = .relaunching
-        dependencies.relaunch(app)
+        showsDialog = false
+        relaunchWatchdog?.cancel()
+        relaunchWatchdog = nil
+        do {
+            try dependencies.relaunch(app)
+        } catch {
+            askToQuitAndReopen()
+            return
+        }
+        let sleep = dependencies.sleep
+        let timeout = dependencies.relaunchTimeout
+        relaunchWatchdog = Task { [weak self] in
+            guard (try? await sleep(timeout)) != nil else { return }
+            self?.askToQuitAndReopen()
+        }
+    }
+
+    private func askToQuitAndReopen() {
+        guard phase == .relaunching else { return }
+        phase = .restartNeeded(installingVersion ?? availableRelease?.tagName ?? "")
+        showsDialog = true
     }
 
     private func latest(from feed: ReleaseFeed) async throws -> GitHubRelease {

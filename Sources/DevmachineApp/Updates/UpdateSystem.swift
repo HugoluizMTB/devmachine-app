@@ -314,22 +314,33 @@ private final class LineSplitter: @unchecked Sendable {
     }
 }
 
-enum AppRelauncher {
+/// Starts the helper that reopens the app, then quits. AppKit refuses to
+/// quit while any window has a sheet attached ("App termination blocked by
+/// modal sheet"), and the update dialog is one, so every sheet is ended first.
+@MainActor
+struct AppRelauncher {
+    var spawnHelper: (RelaunchCommand) throws -> Void = { command in
+        try DetachedProcess.spawn(executable: command.executable, arguments: command.arguments)
+    }
+    var closeSheets: () -> Void = { SheetCloser.closeAll(in: NSApp.windows) }
+    var terminate: () -> Void = { NSApp.terminate(nil) }
+    var processID = ProcessInfo.processInfo.processIdentifier
+
+    func relaunch(_ app: URL) throws {
+        try spawnHelper(RelaunchCommand(appPath: app.path, processID: processID))
+        closeSheets()
+        terminate()
+    }
+}
+
+enum SheetCloser {
     @MainActor
-    static func relaunch(_ app: URL) {
-        let command = RelaunchCommand(appPath: app.path, processID: ProcessInfo.processInfo.processIdentifier)
-        let helper = Process()
-        helper.executableURL = URL(fileURLWithPath: command.executable)
-        helper.arguments = command.arguments
-        helper.standardInput = FileHandle.nullDevice
-        helper.standardOutput = FileHandle.nullDevice
-        helper.standardError = FileHandle.nullDevice
-        do {
-            try helper.run()
-        } catch {
-            NSWorkspace.shared.open(app)
+    static func closeAll(in windows: [NSWindow]) {
+        for window in windows {
+            guard let sheet = window.attachedSheet else { continue }
+            closeAll(in: [sheet])
+            window.endSheet(sheet)
         }
-        NSApp.terminate(nil)
     }
 }
 
@@ -342,6 +353,11 @@ extension UpdateController {
         let fetcher = URLSessionHTTPFetcher()
         let team = SystemCodeSignatureChecker.runningTeamIdentifier()
         let appURL = bundle.bundleURL
+        #if DEBUG
+        if let replacement = RelaunchRehearsal.replacement {
+            return RelaunchRehearsal.controller(replacing: appURL, with: replacement)
+        }
+        #endif
         return UpdateController(dependencies: UpdateDependencies(
             currentVersion: isPackaged && !DemoMode.isActive ? version : nil,
             appFeed: ReleaseFeed(url: ReleaseFeed.appReleases, fetcher: fetcher, userAgent: userAgent),
@@ -358,6 +374,6 @@ extension UpdateController {
                 currentApp: appURL, bundleID: bundle.bundleIdentifier ?? "app.devmachine.mac", runningTeamID: team),
             homebrew: ProcessHomebrewUpgrader(),
             currentAppURL: appURL,
-            relaunch: { AppRelauncher.relaunch($0) }))
+            relaunch: { try AppRelauncher().relaunch($0) }))
     }
 }

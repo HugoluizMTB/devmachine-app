@@ -79,7 +79,12 @@ struct DevmachineApp: App {
                 .environmentObject(fileSearchStore)
                 .environmentObject(paletteRecents)
                 .environmentObject(updates)
-                .onAppear { updates.start() }
+                .onAppear {
+                    updates.start()
+                    #if DEBUG
+                    RelaunchRehearsal.run(updates)
+                    #endif
+                }
                 .frame(minWidth: 900, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
         }
         .windowStyle(.hiddenTitleBar)

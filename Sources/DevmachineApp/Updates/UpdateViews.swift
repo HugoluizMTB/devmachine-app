@@ -16,6 +16,11 @@ struct UpdateDialogContent: Equatable {
     let sessionsNote = UpdateDialogContent.sessionsNote
     let homebrewCommand: String?
     let primaryTitle = "Update and Relaunch"
+    static let quitAndReopenTitle = "Quit and Reopen"
+
+    static func restartNeeded(version: String) -> String {
+        "Updated to \(version) — quit and reopen Devmachine to finish."
+    }
 
     init(release: GitHubRelease, current: SemanticVersion?, method: AppInstallMethod) {
         title = "Update Devmachine to \(release.version?.description ?? release.tagName)"
@@ -66,6 +71,24 @@ private struct UpdateProgressView: View {
     }
 }
 
+private struct RestartNeededView: View {
+    @EnvironmentObject private var updates: UpdateController
+    let version: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(verbatim: UpdateDialogContent.restartNeeded(version: version))
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                DMButton(UpdateDialogContent.quitAndReopenTitle, size: .small) { updates.quitAndReopen() }
+            }
+        }
+    }
+}
+
 /// The toast that says a new version is out. It never installs on its own:
 /// every path to an install goes through the dialog.
 struct UpdateBanner: View {
@@ -81,14 +104,17 @@ struct UpdateBanner: View {
                         .foregroundStyle(Color.accentColor)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: "Devmachine \(release.version?.description ?? release.tagName) is available")
+                        Text(verbatim: "Devmachine \(release.version?.description ?? release.tagName) "
+                            + (updates.isWaitingForRestart ? "is installed" : "is available"))
                             .font(.dm(12, weight: .semibold))
                         Text(verbatim: "Your sessions keep running.")
                             .font(.dm(11))
                             .foregroundStyle(Color.dmMuted)
                     }
                 }
-                if updates.phase.isBusy {
+                if case .restartNeeded(let version) = updates.phase {
+                    RestartNeededView(version: version)
+                } else if updates.phase.isBusy {
                     UpdateProgressView(phase: updates.phase)
                 } else {
                     HStack(spacing: 6) {
@@ -156,6 +182,16 @@ struct UpdateDialog: View {
             HStack {
                 Spacer()
                 DMButton("Close", variant: .outline) { close() }
+            }
+        case .restartNeeded(let version):
+            Text(verbatim: UpdateDialogContent.restartNeeded(version: version))
+                .font(.dm(11.5))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                DMButton("Close", variant: .outline) { close() }
+                DMButton(UpdateDialogContent.quitAndReopenTitle) { updates.quitAndReopen() }
+                    .keyboardShortcut(.defaultAction)
             }
         case .manualMove(let app):
             Text(verbatim: "Devmachine cannot write to its own folder. Move the new app into Applications, "
@@ -308,9 +344,13 @@ struct UpdatesSettingsView: View {
                 DMErrorStateView(state: error, retry: { updates.requestUpdate() })
             }
             HStack(spacing: 8) {
-                DMButton("Update and Relaunch", size: .small) { updates.requestUpdate() }
-                    .disabled(updates.phase.isBusy)
-                if !updates.isSkipped {
+                if updates.isWaitingForRestart {
+                    DMButton(UpdateDialogContent.quitAndReopenTitle, size: .small) { updates.quitAndReopen() }
+                } else {
+                    DMButton("Update and Relaunch", size: .small) { updates.requestUpdate() }
+                        .disabled(updates.phase.isBusy)
+                }
+                if !updates.isSkipped, !updates.isWaitingForRestart {
                     DMButton("Skip This Version", variant: .outline, size: .small) { updates.skipThisVersion() }
                 }
                 if let url = release.htmlURL {
@@ -343,6 +383,11 @@ struct UpdatesSettingsView: View {
     private var statusLine: String {
         guard updates.currentVersion != nil else {
             return "Updates work in the packaged app, not in a development build."
+        }
+        switch updates.phase {
+        case .restartNeeded(let version): return UpdateDialogContent.restartNeeded(version: version)
+        case .relaunching: return "Relaunching…"
+        default: break
         }
         if updates.isChecking { return "Checking…" }
         switch updates.availability {

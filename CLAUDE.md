@@ -408,6 +408,17 @@ ssh/mosh/mosh-client/scp under XCTest; tests inject a fake `CommandRunner`.
   ID. A local ad-hoc build has none, so it links to the release page instead.
 - `scripts/package_app.sh` takes the version from the newest `v*` tag when
   `DEVMACHINE_APP_VERSION` is unset, so a local build compares correctly.
+- AppKit will not quit while any window has a sheet attached (the log says
+  "App termination blocked by modal sheet"), and the update dialog is a
+  sheet. `AppRelauncher` starts the helper first (`DetachedProcess`: its own
+  session, none of the app's open files), ends every sheet, then terminates.
+  The helper opens the app only once the old pid is gone, never a second copy
+  beside a stuck one; if the app is still running 10 s later, the dialog, the
+  toast and About ask to "Quit and Reopen".
+- To watch a real relaunch, run a debug build from a temp `.app` with its own
+  bundle id: `open --env DEVMACHINE_DEMO=1 --env
+  DEVMACHINE_RELAUNCH_REHEARSAL=<another .app> <copy>.app`. It "updates" to
+  the other bundle through the real dialog, swap and relaunch. Debug only.
 
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action

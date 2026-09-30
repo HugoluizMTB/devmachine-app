@@ -30,7 +30,9 @@ final class UpdateViewsRenderTests: XCTestCase {
         UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
     }
 
-    private func controller(method: AppInstallMethod) async -> UpdateController {
+    private struct HelperDidNotStart: Error {}
+
+    private func controller(method: AppInstallMethod, relaunches: Bool = true) async -> UpdateController {
         suite = "app.devmachine.mac.tests.\(UUID().uuidString)"
         let updates = UpdateController(dependencies: UpdateDependencies(
             currentVersion: SemanticVersion("0.1.2"),
@@ -42,7 +44,7 @@ final class UpdateViewsRenderTests: XCTestCase {
             cliVersion: { CLIVersionReading(output: "0.7.1", method: .homebrew) },
             installer: NoInstall(), homebrew: NoInstall(),
             currentAppURL: URL(fileURLWithPath: "/Applications/Devmachine.app"),
-            relaunch: { _ in }))
+            relaunch: { _ in if !relaunches { throw HelperDidNotStart() } }))
         await updates.check(userInitiated: true)
         return updates
     }
@@ -74,5 +76,22 @@ final class UpdateViewsRenderTests: XCTestCase {
             UpdatesSettingsView().environmentObject(homebrew)
                 .frame(width: 640).padding(24).background(Color.black.opacity(0.8)),
             name: "about")
+    }
+
+    func testAnUpdateWaitingForARestartRendersEverywhere() async throws {
+        let updates = await controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"), relaunches: false)
+        await updates.install()
+        XCTAssertEqual(updates.phase, .restartNeeded("0.1.3"))
+        let model = AppModel(store: SessionStore(runner: SilentRunner()))
+
+        try render(
+            UpdateBanner().environmentObject(updates).environmentObject(model)
+                .padding(20).background(Color.dmContentBg),
+            name: "banner-restart")
+        try render(UpdateDialog().environmentObject(updates).background(Color.dmContentBg), name: "dialog-restart")
+        try render(
+            UpdatesSettingsView().environmentObject(updates)
+                .frame(width: 640).padding(24).background(Color.black.opacity(0.8)),
+            name: "about-restart")
     }
 }
