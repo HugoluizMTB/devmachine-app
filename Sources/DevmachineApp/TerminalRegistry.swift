@@ -277,10 +277,28 @@ final class TerminalRegistry: NSObject {
         redrawAfterReattach(kind)
     }
 
+    /// A demo pane has no program behind it to repaint after a resize or a
+    /// move between layouts, so its transcript, which starts by clearing the
+    /// screen, is drawn again from the top.
+    func replayDemoTranscripts() {
+        guard DemoMode.isActive else { return }
+        for (kind, term) in terminals {
+            term.feed(text: DemoData.terminalTranscript(for: kind))
+            // SwiftTerm paints from a snapshot that only its frame clock
+            // refreshes; a same-size frame refreshes it now, so a bitmap
+            // capture taken next does not paint an old, empty frame.
+            term.setFrameSize(term.frame.size)
+            term.needsDisplay = true
+        }
+    }
+
     private func redrawAfterReattach(_ kind: TerminalKind) {
         terminals[kind]?.requestRedraw()
         guard reattached.remove(kind) != nil else { return }
-        if DemoMode.isActive { return }
+        if DemoMode.isActive {
+            terminals[kind]?.feed(text: DemoData.terminalTranscript(for: kind))
+            return
+        }
         switch kind {
         case let .remote(alias, session):
             PaneLog.log("refresh pane=\(kind)")

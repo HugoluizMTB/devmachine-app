@@ -127,8 +127,13 @@ struct SetupPage: View {
         )
     }
 
-    private var issues: [SettingsIssue] {
-        AppSettings.validate(draft, cliExecutableFound: (try? DevmachineCLI.resolve()) != nil)
+    private var issues: [SettingsIssue] { Self.issues(for: draft) }
+
+    /// The demo's folder and CLI are invented, so they are never looked up on
+    /// this Mac: a screenshot must not warn about the owner's own disk.
+    static func issues(for draft: AppSettings, demo: Bool = DemoMode.isActive) -> [SettingsIssue] {
+        guard !demo else { return AppSettings.validate(draft, fileExists: { _ in true }) }
+        return AppSettings.validate(draft, cliExecutableFound: (try? DevmachineCLI.resolve()) != nil)
     }
 
     private var isFirstRun: Bool { !settingsStore.isConfigured }

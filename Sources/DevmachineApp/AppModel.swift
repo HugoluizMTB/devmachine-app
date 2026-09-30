@@ -1306,6 +1306,10 @@ final class AppModel: ObservableObject {
         sessionsByAlias = DemoData.sessionsByAlias
         hasLoadedWorkspaces = true
         answeredAliases = Set(DemoData.workspaces.map(\.alias))
+        let socketDirectory = Zmx.socketDirectory()
+        localSessionHarnesses = Dictionary(uniqueKeysWithValues: DemoData.localSessionHarnesses.map { name, harnesses in
+            (Zmx.sessionName(from: name, socketDirectory: socketDirectory), harnesses)
+        })
         // `localSessions` (below) reads `DemoData.localSessions` directly in
         // demo mode; `addedLocalSessions` is left untouched so nothing here
         // is ever written to `UserDefaults`.

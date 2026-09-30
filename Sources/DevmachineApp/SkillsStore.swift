@@ -35,7 +35,7 @@ final class SkillsStore: ObservableObject {
     init(host: HostRunner = HostRunner(), defaults: UserDefaults = .standard) {
         self.host = host
         self.defaults = defaults
-        self.skills = Self.load(from: defaults)
+        self.skills = DemoMode.isActive ? DemoData.skills : Self.load(from: defaults)
     }
 
     private static func load(from defaults: UserDefaults) -> [SkillCommand] {
@@ -47,7 +47,7 @@ final class SkillsStore: ObservableObject {
     }
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(skills) else { return }
+        guard !DemoMode.isActive, let data = try? JSONEncoder().encode(skills) else { return }
         defaults.set(data, forKey: Self.defaultsKey)
     }
 

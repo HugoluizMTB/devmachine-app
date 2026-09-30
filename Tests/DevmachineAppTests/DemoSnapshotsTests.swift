@@ -57,7 +57,7 @@ final class DemoSnapshotsTests: XCTestCase {
             String(screen.fileName.prefix(while: \.isNumber))
         }
         XCTAssertEqual(numbers, numbers.sorted())
-        XCTAssertEqual(numbers.first, "00")
+        XCTAssertEqual(numbers.first, "01")
         XCTAssertEqual(numbers.last, "21")
     }
 
@@ -72,8 +72,14 @@ final class DemoSnapshotsTests: XCTestCase {
         }
     }
 
-    func testThereAreExactlyTwelveScreens() {
-        XCTAssertEqual(DemoSnapshots.screens.count, 12)
+    func testTheWalkWritesEveryImageTheWebsiteShows() {
+        XCTAssertEqual(DemoSnapshots.screens.map(\.fileName), [
+            "01-sessions.png", "02-session-claude.png", "03-pull-requests.png",
+            "04-subdomains-sites.png", "05-subdomains-dns-cloudflare.png", "06-stats.png",
+            "07-settings-health.png", "08-session-defaults.png", "09-onboarding.png",
+            "10-publish-port.png", "18-operator.png", "19-home.png",
+            "20-menubar-usage.png", "21-command-palette.png",
+        ])
     }
 
     func testTheLastScreenShowsTheCommandPalette() {
@@ -85,13 +91,14 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(DemoSnapshots.paletteInitialQuery, "")
     }
 
-    func testTheFirstScreenIsHomeWithTheMachineCards() {
-        XCTAssertEqual(DemoSnapshots.screens[0].id, "home")
-        XCTAssertEqual(DemoSnapshots.screens[0].fileName, "00-home.png")
+    func testHomeIsCapturedAsNineteen() {
+        XCTAssertEqual(DemoSnapshots.screens.first { $0.id == "home" }?.fileName, "19-home.png")
     }
 
-    func testTheNinthScreenShowsTheSessionDefaults() {
-        XCTAssertEqual(DemoSnapshots.screens[8].fileName, "08-session-defaults.png")
+    func testTheOperatorScreenSelectsTheOperatorSession() {
+        XCTAssertEqual(
+            DemoSnapshots.operatorSelection,
+            .localSession(name: Workspace.operatorSession, path: DemoData.operatorPath))
     }
 
     func testSubdomainsInitialTabDefaultsToSites() {

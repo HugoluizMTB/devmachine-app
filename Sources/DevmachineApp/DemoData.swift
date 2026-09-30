@@ -38,18 +38,26 @@ enum DemoData {
         ],
     ]
 
+    static let operatorPath = "/Users/alice/.config/devmachine"
+
     static let localSessions: [LocalSession] = [
-        LocalSession(name: Workspace.operatorSession, path: "/Users/alice/dev/ops"),
+        LocalSession(name: Workspace.operatorSession, path: operatorPath),
         LocalSession(name: "claude", path: "/Users/alice/dev/acme-app"),
         LocalSession(name: "codex", path: "/Users/alice/dev/globex-dashboard"),
     ]
 
+    static let localSessionHarnesses: [String: Set<HarnessID>] = [
+        Workspace.operatorSession: [.claude],
+        "claude": [.claude],
+        "codex": [.codex],
+    ]
+
     // MARK: Terminal transcripts
 
-    // Lines are kept short (well under 45 columns): a stacked grid cell is
-    // narrow, and a terminal wraps mid-word rather than mid-sentence — a long
-    // line here reads fine alone but breaks ugly once four panes share a
-    // window.
+    // Lines are kept short (well under 45 columns) and few (at most 24): a
+    // stacked grid cell is narrow and short, and a terminal wraps mid-word and
+    // scrolls its first lines away — a transcript that reads fine alone
+    // breaks once four panes share a window.
     private static let claudeTranscript = """
     \u{1B}[1m\u{1B}[36m● Claude Code\u{1B}[0m — payments refactor
 
@@ -65,8 +73,7 @@ enum DemoData {
       \u{1B}[33m→\u{1B}[0m Cover the retry path in a test
       \u{1B}[2m○ Update CHANGELOG\u{1B}[0m
 
-    \u{1B}[2m--- a/ChargeService.swift\u{1B}[0m
-    \u{1B}[2m+++ b/ChargeService.swift\u{1B}[0m
+    \u{1B}[2m~ ChargeService.swift\u{1B}[0m
     \u{1B}[31m-   try gateway.charge(order)\u{1B}[0m
     \u{1B}[32m+   try gateway.charge(order,\u{1B}[0m
     \u{1B}[32m+     idempotencyKey: order.id)\u{1B}[0m
@@ -74,7 +81,6 @@ enum DemoData {
     \u{1B}[2m$\u{1B}[0m swift test --filter Charge
     \u{1B}[32mTest Suite passed\u{1B}[0m at 09:14:02.
     \u{1B}[32m  6 tests, 0 failures\u{1B}[0m
-
     \u{1B}[36m❯\u{1B}[0m
     """
 
@@ -126,14 +132,28 @@ enum DemoData {
     """
 
     private static let operatorTranscript = """
-    \u{1B}[2m$\u{1B}[0m devmachine workspaces list
-    NAME      STATUS
-    acme      online
-    globex    online
-    initech   online
-    umbrella  online
+    \u{1B}[1m\u{1B}[36m● Claude Code\u{1B}[0m — ~/.config/devmachine
 
-    \u{1B}[36m$\u{1B}[0m
+    \u{1B}[2m>\u{1B}[0m Add a workspace globex with claude-code
+      and sync it.
+
+    \u{1B}[2mReading AGENTS.md\u{1B}[0m
+    \u{1B}[2mReading config.yml\u{1B}[0m
+
+    \u{1B}[2m$\u{1B}[0m devmachine workspaces new globex
+    \u{1B}[32m✓\u{1B}[0m workspace globex added to config.yml
+
+    \u{1B}[2m$\u{1B}[0m devmachine packages add claude-code --workspace globex
+    \u{1B}[32m✓\u{1B}[0m claude-code added to globex
+
+    \u{1B}[2m$\u{1B}[0m devmachine sync --yes
+    \u{1B}[2mPLAY RECAP\u{1B}[0m
+    main  : \u{1B}[32mok=86\u{1B}[0m  \u{1B}[33mchanged=12\u{1B}[0m  \u{1B}[32mfailed=0\u{1B}[0m
+
+    globex is ready, with Claude Code installed.
+    Open it with \u{1B}[1mdevmachine ssh globex\u{1B}[0m.
+
+    \u{1B}[36m❯\u{1B}[0m
     """
 
     /// One static transcript per demo session, chosen by what the session's
@@ -147,10 +167,11 @@ enum DemoData {
         // column it was already at, leaving every line after the first
         // starting mid-row instead of at the left edge.
         //
-        // The leading "clear screen, cursor home" sequence is what a real
+        // The leading "cursor home, clear screen" sequence is what a real
         // shell sends on start too, so the pane opens at the top-left the
-        // same way a live session does.
-        "\u{1B}[2J\u{1B}[H" + rawTranscript(for: kind).replacingOccurrences(of: "\n", with: "\r\n")
+        // same way a live session does. Clearing the scrollback as well keeps
+        // a replayed transcript from stacking the previous copy above it.
+        "\u{1B}[H\u{1B}[2J\u{1B}[3J" + rawTranscript(for: kind).replacingOccurrences(of: "\n", with: "\r\n")
     }
 
     private static func rawTranscript(for kind: TerminalKind) -> String {
@@ -338,11 +359,14 @@ enum DemoData {
 
     // MARK: Settings
 
+    /// A generated gradient, never the bundled or a downloaded photo: those
+    /// show real people and places that the website has no rights to reuse.
     static let settings = AppSettings(
-        opsRepoPath: "/Users/alice/dev/ops",
+        opsRepoPath: operatorPath,
         hostAlias: "devmachine",
         publicIP: machineAddress,
         baseDomain: "example.com",
+        wallpaper: .gradient(name: "midnight"),
         enabledHarnesses: [.claude, .codex],
         localSessionProgram: .harness(.claude),
         remoteSessionProgram: .harness(.claude),
@@ -359,12 +383,16 @@ enum DemoData {
             snapshot: HarnessUsageSnapshot(
                 planName: "Max",
                 blocks: [
-                    UsageBlock(kind: .session, label: "Session", percent: 62, resets: "resets in 2h 10m"),
-                    UsageBlock(kind: .weeklyAll, label: "Weekly (all models)", percent: 41, resets: "resets Mon"),
-                    UsageBlock(kind: .weeklyModel, label: "Weekly (Opus)", percent: 28, resets: "resets Mon"),
+                    UsageBlock(kind: .session, label: "Session", percent: 62, resets: "in 2h 10m"),
+                    UsageBlock(kind: .weeklyAll, label: "Weekly (all models)", percent: 41, resets: "Mon"),
+                    UsageBlock(kind: .weeklyModel, label: "Weekly (Opus)", percent: 28, resets: "Mon"),
                 ],
                 stats: UsageStats(
                     dailyTotals: [
+                        DayTokens(date: "2026-09-23", tokens: 540_000),
+                        DayTokens(date: "2026-09-24", tokens: 910_000),
+                        DayTokens(date: "2026-09-25", tokens: 760_000),
+                        DayTokens(date: "2026-09-26", tokens: 310_000),
                         DayTokens(date: "2026-09-27", tokens: 820_000),
                         DayTokens(date: "2026-09-28", tokens: 1_140_000),
                         DayTokens(date: "2026-09-29", tokens: 640_000),
@@ -380,11 +408,11 @@ enum DemoData {
             snapshot: HarnessUsageSnapshot(
                 planName: "Plus",
                 blocks: [
-                    UsageBlock(kind: .session, label: "Session", percent: 35, resets: "resets in 4h"),
-                    UsageBlock(kind: .weeklyAll, label: "Weekly", percent: 52, resets: "resets Mon"),
+                    UsageBlock(kind: .session, label: "Session", percent: 35, resets: "in 4h"),
+                    UsageBlock(kind: .weeklyAll, label: "Weekly", percent: 52, resets: "Mon"),
                 ],
                 stats: nil,
-                summaryMetrics: [UsageSummaryMetric(id: "session", label: "Session", value: "35%")])),
+                summaryMetrics: [UsageSummaryMetric(id: "today", label: "Today", value: "410K tokens")])),
     ]
 
     // MARK: Session context (the context panel)
@@ -422,11 +450,43 @@ enum DemoData {
             ContextState.Link(url: "https://acme.example.com/docs/payments", label: "payments runbook", kind: "doc"),
         ])
 
-    /// One `ContextSource.context(for:settings:)` answer, the same for every
-    /// target: the panel needs no live process to show something realistic.
+    static let operatorContextState = ContextState(
+        cwd: operatorPath,
+        isClaude: true,
+        updatedAt: ISO8601DateFormatter().string(from: Date()),
+        plan: ContextState.Plan(
+            title: "Add the globex workspace",
+            source: "session",
+            done: 3,
+            total: 4,
+            items: [
+                ContextState.Plan.Item(text: "Add globex to config.yml", state: "done"),
+                ContextState.Plan.Item(text: "Add the claude-code package to globex", state: "done"),
+                ContextState.Plan.Item(text: "Sync the machine", state: "done"),
+                ContextState.Plan.Item(text: "Open a session in globex", state: "active"),
+            ]),
+        prs: [],
+        links: [
+            ContextState.Link(url: "https://example.com/docs/workspaces", label: "workspaces guide", kind: "doc"),
+        ])
+
+    /// The Operator gets its own answer, since it works on the setup rather
+    /// than on a project; every other target shares one mid-task session.
     static func contextState(for target: CommandTarget) -> ContextState? {
-        contextState
+        if case let .local(session, _) = target, session == Workspace.operatorSession {
+            return operatorContextState
+        }
+        return contextState
     }
+
+    // MARK: Context panel shortcuts
+
+    static let skills: [SkillCommand] = [
+        SkillCommand(label: "review", command: "/review", systemImage: "checkmark.seal"),
+        SkillCommand(label: "test", command: "/test", systemImage: "list.bullet"),
+        SkillCommand(label: "plan", command: "/plan", systemImage: "chart.bar"),
+        SkillCommand(label: "commit", command: "/commit", systemImage: "text.bubble"),
+    ]
 
     // MARK: Publish-a-port suggestions
 

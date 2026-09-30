@@ -68,7 +68,6 @@ enum DemoSnapshots {
     /// screen waits, after its state change, for layout and the terminal
     /// feed to catch up before the pixels are read.
     static let screens: [Screen] = [
-        Screen(id: "home", fileName: "00-home.png", settleNanoseconds: 700_000_000),
         Screen(id: "sessions", fileName: "01-sessions.png", settleNanoseconds: 900_000_000),
         Screen(id: "session-claude", fileName: "02-session-claude.png", settleNanoseconds: 700_000_000),
         Screen(id: "pull-requests", fileName: "03-pull-requests.png", settleNanoseconds: 400_000_000),
@@ -79,8 +78,14 @@ enum DemoSnapshots {
         Screen(id: "session-defaults", fileName: "08-session-defaults.png", settleNanoseconds: 500_000_000),
         Screen(id: "onboarding", fileName: "09-onboarding.png", settleNanoseconds: 500_000_000),
         Screen(id: "publish-port", fileName: "10-publish-port.png", settleNanoseconds: 400_000_000),
+        Screen(id: "operator", fileName: "18-operator.png", settleNanoseconds: 900_000_000),
+        Screen(id: "home", fileName: "19-home.png", settleNanoseconds: 700_000_000),
+        Screen(id: "menubar-usage", fileName: "20-menubar-usage.png", settleNanoseconds: 400_000_000),
         Screen(id: "command-palette", fileName: "21-command-palette.png", settleNanoseconds: 600_000_000),
     ]
+
+    static let operatorSelection = SidebarItem.localSession(
+        name: Workspace.operatorSession, path: DemoData.operatorPath)
 
     /// The loading walk (`DEVMACHINE_DEMO_LOADING=1`): every store is held on
     /// its first load, so each screen shows its skeleton. The sidebar comes
@@ -136,12 +141,17 @@ enum DemoSnapshots {
         for screen in DemoMode.holdsLoading ? skeletonScreens : screens {
             await prepare(screen, environment: environment, mainWindow: window)
             try? await Task.sleep(nanoseconds: screen.settleNanoseconds)
+            // A pane resized after its transcript was drawn (the grid, the
+            // context panel opening) can be left blank or scrolled past its
+            // first lines; drawing it again right before the capture fixes both.
+            TerminalRegistry.shared.replayDemoTranscripts()
+            try? await Task.sleep(nanoseconds: 250_000_000)
             let view: NSView
             switch screen.id {
             case "pull-requests", "skeleton-menubar-prs":
                 view = standaloneView(
                     prPanel(environment), fittingSize: NSSize(width: 480, height: 640), fixedHeight: 640)
-            case "skeleton-menubar-usage":
+            case "menubar-usage", "skeleton-menubar-usage":
                 view = standaloneView(
                     prPanel(environment, tab: .usage),
                     fittingSize: NSSize(width: 780, height: 640), fixedHeight: 640)
@@ -191,6 +201,9 @@ enum DemoSnapshots {
             // is mounted — reusing "sessions"'s own claude pane here would
             // maximize it still carrying the grid cell's small cached size.
             model.clickSession(SessionRef(alias: "globex-devmachine", name: "claude"))
+            model.contextTab = .context
+        case "operator":
+            model.clickLocalSession(operatorSelection)
             model.contextTab = .context
         case "subdomains-sites":
             subdomainsInitialTab = .sites
