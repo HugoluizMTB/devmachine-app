@@ -8,8 +8,10 @@ extension Color {
                   blue: Double(hex & 0xFF) / 255,
                   opacity: 1)
     }
-    static let dmContentBg = Color(hex: 0x14191F)   // center (required)
-    static let dmSidebarBg = Color(hex: 0x0E1217)   // sidebar, a bit darker
+    static let dmContentBgHex: UInt32 = 0x14191F
+    static let dmSidebarBgHex: UInt32 = 0x0E1217
+    static let dmContentBg = Color(hex: dmContentBgHex)   // center (required)
+    static let dmSidebarBg = Color(hex: dmSidebarBgHex)   // sidebar, a bit darker
     static let dmRowText = Color(hex: 0xC9CED4)
     static let dmMuted = Color(hex: 0x767E88)
     static let dmSelection = Color.white.opacity(0.08)
@@ -20,16 +22,4 @@ extension Color {
     static let dmActive = Color.white.opacity(0.10)
     static let dmStroke = Color.white.opacity(0.12)
     static let dmSkeleton = Color.white.opacity(0.07)
-}
-
-extension Color {
-    /// A stable colour for a name, so every tracker/site gets its own without a
-    /// hard-coded list. Same name, same hue, on every launch.
-    static func dmTag(_ name: String) -> Color {
-        var hash: UInt64 = 5381
-        for byte in name.utf8 {
-            hash = (hash &* 33) &+ UInt64(byte)
-        }
-        return Color(hue: Double(hash % 360) / 360, saturation: 0.45, brightness: 0.85)
-    }
 }

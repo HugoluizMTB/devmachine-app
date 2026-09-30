@@ -71,6 +71,12 @@ final class DemoScreensTests: XCTestCase {
                        "/Users/alice/dev/acme-app")
     }
 
+    func testTheDemoContextShowsEveryPullRequestStateAndSeveralLinkKinds() {
+        let state = DemoData.contextState
+        XCTAssertEqual(Set(state.prs.map(\.rowState.kind)), Set(PRStateKind.allCases))
+        XCTAssertGreaterThanOrEqual(Set(state.links.map(\.kind)).count, 3)
+    }
+
     func testDemoLocalSessionsKnowTheirHarnessSoTheContextPanelFills() {
         let model = AppModel(cliAvailabilityCheck: { false })
         model.checkCLIAndProceed(isConfigured: true)

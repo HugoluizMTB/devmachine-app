@@ -64,6 +64,41 @@ public enum RowState {
     }
 }
 
+/// The four states a pull request list draws, the way GitHub draws them. A
+/// review decision is not a state of its own: an approved PR is still open.
+public enum PRStateKind: String, CaseIterable, Sendable {
+    case open, draft, merged, closed
+
+    public init(_ row: RowState) {
+        switch row {
+        case .merged: self = .merged
+        case .closed: self = .closed
+        case .draft: self = .draft
+        case .open, .approved, .changesRequested: self = .open
+        }
+    }
+
+    public var accessibilityLabel: String {
+        switch self {
+        case .open: return "Open pull request"
+        case .draft: return "Draft pull request"
+        case .merged: return "Merged pull request"
+        case .closed: return "Closed pull request"
+        }
+    }
+}
+
+extension RowState {
+    public var kind: PRStateKind { PRStateKind(self) }
+
+    public var help: String {
+        switch self {
+        case .approved, .changesRequested: return "\(kind.accessibilityLabel) · \(label)"
+        default: return kind.accessibilityLabel
+        }
+    }
+}
+
 // Where the PR is in its life comes first: a merged or closed PR keeps the
 // review it had, but that review no longer says what to do with it.
 public func rowState(lifecycle: PRLifecycle, review: ReviewState) -> RowState {

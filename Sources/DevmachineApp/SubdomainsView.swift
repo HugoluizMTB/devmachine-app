@@ -512,7 +512,7 @@ struct SubdomainsView: View {
                 .foregroundStyle(Color.dmRowText)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            DMPill(text: record.type, color: .dmTag(record.type))
+            DMKindLabel(text: record.type)
                 .frame(width: DNSColumns.type, alignment: .leading)
             Text(record.value)
                 .font(.dm(12, design: .monospaced))

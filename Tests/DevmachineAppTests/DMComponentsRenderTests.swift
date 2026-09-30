@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+import DevmachineCore
 @testable import DevmachineApp
 
 @MainActor
@@ -63,6 +64,17 @@ private struct DMComponentsGallery: View {
                 DMPill(text: "CI passing", color: .green)
             }
             DMRow(systemImage: "circle.fill", title: "acme / dash", selected: true)
+            HStack(spacing: 10) {
+                ForEach(PRStateKind.allCases, id: \.self) { state in
+                    HStack(spacing: 4) {
+                        DMPRStateIcon(state: state)
+                        Text(state.rawValue).font(.dm(11)).foregroundStyle(Color.dmMuted)
+                    }
+                }
+                DMKindLabel(text: "ISSUE")
+                DMKindLabel(text: "DOC")
+                DMKindLabel(text: "CNAME")
+            }
             DMCommandBlock(["devmachine packages add docker --machine main", "devmachine sync --machine main"])
             DMTabStrip(
                 tabs: ["Sites", "cloudflare"], selection: $tab, title: { $0 },

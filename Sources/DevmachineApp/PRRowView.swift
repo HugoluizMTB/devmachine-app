@@ -34,30 +34,6 @@ extension CIState {
     }
 }
 
-extension RowState {
-    var color: Color {
-        switch self {
-        case .merged: return Color(red: 0.54, green: 0.34, blue: 0.90)
-        case .closed: return Color(red: 0.81, green: 0.31, blue: 0.29)
-        case .draft: return .secondary
-        case .changesRequested: return Color(red: 0.90, green: 0.29, blue: 0.36)
-        case .approved: return .green
-        case .open: return Color(red: 0.39, green: 0.40, blue: 0.95)
-        }
-    }
-
-    var glyph: String {
-        switch self {
-        case .merged: return "arrow.triangle.merge"
-        case .closed: return "xmark.circle.fill"
-        case .draft: return "circle.dashed"
-        case .changesRequested: return "exclamationmark.circle.fill"
-        case .approved: return "checkmark.circle.fill"
-        case .open: return "arrow.triangle.pull"
-        }
-    }
-}
-
 struct PRRowView: View {
     let pr: PullRequest
     let depth: Int
@@ -66,14 +42,12 @@ struct PRRowView: View {
         HStack(spacing: 0) {
             if depth > 0 { indent }
             DMRow(
-                systemImage: "circle.fill",
-                iconColor: pr.rowState.color,
-                iconSize: 8,
+                leading: AnyView(DMPRStateIcon(state: pr.rowState.kind, size: 12)),
                 title: pr.title,
                 trailing: AnyView(trailing),
                 tap: open
             )
-            .help(pr.rowState.label)
+            .help(pr.rowState.help)
         }
     }
 

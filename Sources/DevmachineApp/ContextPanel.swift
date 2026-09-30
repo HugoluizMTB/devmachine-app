@@ -304,11 +304,8 @@ struct ContextPanel: View {
 
     private func prRow(_ pr: ContextState.PR) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: pr.rowState.glyph)
-                .font(.dm(11, weight: .semibold))
-                .foregroundStyle(pr.rowState.color)
-                .frame(width: 14)
-                .help(pr.rowState.label)
+            DMPRStateIcon(state: pr.rowState.kind, size: 12)
+                .help(pr.rowState.help)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(verbatim: "#\(pr.number)")
@@ -385,12 +382,7 @@ struct ContextPanel: View {
 
     private func linkRow(_ link: ContextState.Link) -> some View {
         HStack(spacing: 8) {
-            DMPill(
-                text: link.kind.uppercased(),
-                color: .dmTag(link.kind),
-                font: .dm(9, weight: .semibold),
-                backgroundOpacity: 0.18
-            )
+            DMKindLabel(text: link.kind.uppercased())
             Text(link.label)
                 .font(.dm(12))
                 .foregroundStyle(Color(hex: 0x5AA9E6))

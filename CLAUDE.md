@@ -124,8 +124,10 @@ What is there:
 - Rows and sections (`DMComponents.swift`): `DMRow`, `DMRowBackground`
   (radius and selected colour are parameters), `DMSection`, `DMSectionLabel`,
   `DMSectionValue`, `DMTableRow` (striped, hover-lit table row), `DMHairline`,
-  `DMPill`, `DMProgressBar`, `DMStatBubble`, `DMToastCard`; `DMTabStrip`
-  (`grouped: true` for a segmented second level), `FlowLayout`.
+  `DMPill` (a status), `DMKindLabel` (a kind: one calm style, no colour per kind),
+  `DMPRStateIcon` (a PR's open/draft/merged/closed glyph), `DMProgressBar`,
+  `DMStatBubble`, `DMToastCard`; `DMTabStrip` (`grouped: true` for a segmented
+  second level), `FlowLayout`.
 
 Rules:
 - Never hand-roll `.buttonStyle(.plain)` + `Image` + `.foregroundStyle` +

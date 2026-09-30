@@ -22,6 +22,9 @@ struct DMRow: View {
     var systemImage: String?
     var iconColor: Color = .dmMuted
     var iconSize: CGFloat = 7
+    /// Drawn in place of `systemImage` when the glyph needs more than a name
+    /// and a colour, such as a spoken label.
+    var leading: AnyView?
     let title: String
     var titleColor: Color = .dmRowText
     var selected: Bool = false
@@ -37,7 +40,9 @@ struct DMRow: View {
 
     var body: some View {
         let content = HStack(spacing: 8) {
-            if let systemImage {
+            if let leading {
+                leading
+            } else if let systemImage {
                 Image(systemName: systemImage)
                     .font(.dm(iconSize))
                     .foregroundStyle(iconColor)

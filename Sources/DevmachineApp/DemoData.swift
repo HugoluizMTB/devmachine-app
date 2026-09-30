@@ -481,10 +481,24 @@ enum DemoData {
                 number: 3, repo: "acme/api", title: "Bump the webhook signing key rotation to 30 days",
                 url: "https://github.com/acme/api/pull/3", ci: "failure", review: "changes_requested", state: "open",
                 threads: 1, lastSeen: nil),
+            ContextState.PR(
+                number: 415, repo: "acme/api", title: "Log the idempotency key on every retry",
+                url: "https://github.com/acme/api/pull/415", ci: "pending", review: "none", state: "draft",
+                threads: nil, lastSeen: nil),
+            ContextState.PR(
+                number: 405, repo: "acme/api", title: "Retry the gateway call once on timeout",
+                url: "https://github.com/acme/api/pull/405", ci: "success", review: "approved", state: "merged",
+                threads: nil, lastSeen: nil),
+            ContextState.PR(
+                number: 401, repo: "acme/web", title: "Disable the pay button while a charge runs",
+                url: "https://github.com/acme/web/pull/401", ci: "none", review: "none", state: "closed",
+                threads: nil, lastSeen: nil),
         ],
         links: [
             ContextState.Link(url: "https://github.com/acme/api/issues/398", label: "double-charge on retry", kind: "issue"),
             ContextState.Link(url: "https://acme.example.com/docs/payments", label: "payments runbook", kind: "doc"),
+            ContextState.Link(url: "https://github.com/acme/api/pull/405", label: "gateway retry", kind: "pr"),
+            ContextState.Link(url: "https://linear.example.com/acme/issue/PAY-212", label: "PAY-212 retries", kind: "linear"),
         ])
 
     static let operatorContextState = ContextState(
