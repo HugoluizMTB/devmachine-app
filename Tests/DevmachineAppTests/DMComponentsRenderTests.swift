@@ -39,6 +39,7 @@ final class DMComponentsRenderTests: XCTestCase {
 private struct DMComponentsGallery: View {
     @State private var query = "dash"
     @State private var field = "example.com"
+    @State private var tab = "Sites"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -63,6 +64,20 @@ private struct DMComponentsGallery: View {
                 DMPill(text: "CI passing", color: .green)
             }
             DMRow(systemImage: "circle.fill", title: "acme / dash", selected: true)
+            DMTabStrip(
+                tabs: ["Sites", "cloudflare"], selection: $tab, title: { $0 },
+                fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
+            VStack(spacing: 0) {
+                ForEach(0..<3, id: \.self) { index in
+                    DMTableRow(index: index) {
+                        Text(verbatim: "app\(index).example.com")
+                            .font(.dm(12))
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            DMHairline()
             Text(verbatim: "Glass panel")
                 .font(.dm(12))
                 .padding(12)

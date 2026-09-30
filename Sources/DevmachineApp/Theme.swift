@@ -15,6 +15,8 @@ extension Color {
     static let dmSelection = Color.white.opacity(0.08)
     static let dmHover = Color.white.opacity(0.04)
     static let dmDivider = Color.white.opacity(0.06)
+    static let dmStripe = Color.white.opacity(0.022)
+    static let dmBand = Color.black.opacity(0.14)
     static let dmActive = Color.white.opacity(0.10)
     static let dmStroke = Color.white.opacity(0.12)
     static let dmSkeleton = Color.white.opacity(0.07)

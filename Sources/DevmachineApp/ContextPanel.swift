@@ -164,7 +164,6 @@ struct ContextPanel: View {
         DMSection(
             headerSpacing: 6,
             padding: EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14),
-            showBottomDivider: true,
             label: {
                 DMTabStrip(
                     tabs: ContextTab.allCases,
@@ -200,7 +199,6 @@ struct ContextPanel: View {
         DMSection(
             contentSpacing: 7,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
-            showBottomDivider: true,
             label: { sectionLabel(title) },
             trailing: { sectionTrailing("\(rows.count)") }
         ) {
@@ -255,7 +253,6 @@ struct ContextPanel: View {
         DMSection(
             contentSpacing: 9,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
-            showBottomDivider: true,
             label: { sectionLabel("TODO") },
             trailing: { sectionTrailing(plan.map { "\($0.done)/\($0.total)" } ?? "0") }
         ) {
@@ -298,7 +295,6 @@ struct ContextPanel: View {
         DMSection(
             contentSpacing: 7,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
-            showBottomDivider: true,
             label: { sectionLabel("PULL REQUESTS") },
             trailing: { sectionTrailing("\(prs.count)") }
         ) {
@@ -438,7 +434,7 @@ private struct ContextSkeleton: View {
                             }
                         }
                     }
-                    section("PULL REQUESTS", divider: false) {
+                    section("PULL REQUESTS") {
                         VStack(alignment: .leading, spacing: 0) {
                             ForEach(0..<2, id: \.self) { index in
                                 prRow(index)
@@ -452,13 +448,12 @@ private struct ContextSkeleton: View {
     }
 
     private func section<Content: View>(
-        _ title: String, spacing: CGFloat = 7, divider: Bool = true,
+        _ title: String, spacing: CGFloat = 7,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         DMSection(
             contentSpacing: spacing,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
-            showBottomDivider: divider,
             label: { DMSectionLabel(text: title) },
             trailing: { DMSkeletonText(size: 10, weight: .bold, width: .fixed(10)) },
             content: content)

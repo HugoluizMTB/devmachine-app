@@ -75,7 +75,6 @@ struct FilesTab: View {
         DMSection(
             headerSpacing: 6,
             padding: EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14),
-            showBottomDivider: true,
             label: {
                 Text(Self.shortPath(root))
                     .font(.dm(11, design: .monospaced))
@@ -112,9 +111,11 @@ struct FilesTab: View {
             .help(store.hasExpandedFolders ? "Collapse every folder" : "Expand the folders read so far")
         }
         .onSubmit { openFirstHit() }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.dmDivider), alignment: .bottom)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.dmHover, in: RoundedRectangle(cornerRadius: DMRadius.control, style: .continuous))
+        .padding(.horizontal, 8)
+        .padding(.bottom, 6)
     }
 
     /// What the field found. Opening a hit also points the tree at it, so the

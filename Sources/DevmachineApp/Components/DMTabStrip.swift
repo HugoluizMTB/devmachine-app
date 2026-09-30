@@ -1,6 +1,8 @@
 import SwiftUI
 
 /// Horizontal pill tab bar shared by the menubar popover and the context panel.
+/// `grouped` sets the pills in one tinted track, a segmented control for a
+/// second level of tabs under a first.
 struct DMTabStrip<Tab: Hashable>: View {
     let tabs: [Tab]
     @Binding var selection: Tab
@@ -11,8 +13,24 @@ struct DMTabStrip<Tab: Hashable>: View {
     var verticalPadding: CGFloat = 5
     var cornerRadius: CGFloat = DMRadius.control
     var spacing: CGFloat = 6
+    var grouped = false
 
     var body: some View {
+        HStack(spacing: 0) {
+            buttons
+                .padding(grouped ? 3 : 0)
+                .background {
+                    if grouped {
+                        RoundedRectangle(cornerRadius: cornerRadius + 3, style: .continuous)
+                            .fill(Color.dmHover)
+                    }
+                }
+            Spacer(minLength: 0)
+        }
+        .animation(.easeInOut(duration: 0.15), value: selection)
+    }
+
+    private var buttons: some View {
         HStack(spacing: spacing) {
             ForEach(tabs, id: \.self) { tab in
                 DMTabButton(
@@ -27,9 +45,7 @@ struct DMTabStrip<Tab: Hashable>: View {
                     selection = tab
                 }
             }
-            Spacer(minLength: 0)
         }
-        .animation(.easeInOut(duration: 0.15), value: selection)
     }
 }
 

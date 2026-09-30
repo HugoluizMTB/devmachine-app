@@ -37,16 +37,17 @@ struct SubdomainsView: View {
         _selectedTab = State(initialValue: initialTab)
     }
 
+    private static let tableInset: CGFloat = 6
+    private static let cellInset: CGFloat = 8
+    private static let cellVertical: CGFloat = 8
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Rectangle().fill(Color.dmDivider).frame(height: 1)
             if store.showsMachinePicker {
                 machinePicker
-                Rectangle().fill(Color.dmDivider).frame(height: 1)
             }
             tabsBar
-            Rectangle().fill(Color.dmDivider).frame(height: 1)
             body(for: selectedTab)
         }
         .animation(.easeOut(duration: 0.2), value: showsSkeleton)
@@ -103,7 +104,7 @@ struct SubdomainsView: View {
                 .frame(maxWidth: 240)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
-                .dmSurface(Color.dmSelection, radius: DMRadius.control)
+                .background(Color.dmSelection, in: RoundedRectangle(cornerRadius: DMRadius.control, style: .continuous))
 
             Spacer()
 
@@ -121,7 +122,9 @@ struct SubdomainsView: View {
             .buttonStyle(.dmChipProminent)
             .disabled(settingsStore.settings == nil)
         }
-        .padding(10)
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
     }
 
     /// One tab per configured machine; each loads, fails and counts on its
@@ -139,8 +142,8 @@ struct SubdomainsView: View {
                 fontSize: 12
             )
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 4)
     }
 
     private func machineTitle(_ name: String) -> String {
@@ -158,10 +161,17 @@ struct SubdomainsView: View {
         DMTabStrip(
             tabs: SubdomainsTabs.build(providers: store.dnsProviders),
             selection: $selectedTab,
-            title: { $0.title }
+            title: { $0.title },
+            fontSize: 12,
+            horizontalPadding: 10,
+            verticalPadding: 4,
+            cornerRadius: DMRadius.row,
+            spacing: 2,
+            grouped: true
         )
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .padding(.bottom, 10)
     }
 
     private var showsSkeleton: Bool {
@@ -221,19 +231,16 @@ struct SubdomainsView: View {
                 }
                 VStack(spacing: 0) {
                     sitesTableHeader
-                    Rectangle().fill(Color.dmDivider).frame(height: 1)
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(searchedRows) { row in
-                                siteRow(row)
-                                Rectangle().fill(Color.dmDivider).frame(height: 1)
+                            ForEach(Array(searchedRows.enumerated()), id: \.element.id) { index, row in
+                                DMTableRow(index: index) { siteRow(row) }
                             }
                         }
                     }
                     footer(showing: searchedRows.count, of: visibleRows.count)
                 }
-                .dmSurface(Color.clear, radius: DMRadius.tile)
-                .padding(10)
+                .padding(.horizontal, Self.tableInset)
             }
             .transition(.opacity)
         }
@@ -246,22 +253,20 @@ struct SubdomainsView: View {
     ) -> some View {
         VStack(spacing: 0) {
             header
-            Rectangle().fill(Color.dmDivider).frame(height: 1)
             DMSkeleton {
                 DMSkeletonRows(rowHeight: 33) { index in
                     row(index)
-                    Rectangle().fill(Color.dmDivider).frame(height: 1)
                 }
             }
             DMSkeleton {
                 DMSkeletonText(size: 11, width: .fixed(96))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, Self.cellInset)
+                    .padding(.top, Self.cellVertical)
+                    .padding(.bottom, Self.cellVertical + 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .dmSurface(Color.clear, radius: DMRadius.tile)
-        .padding(10)
+        .padding(.horizontal, Self.tableInset)
         .transition(.opacity)
     }
 
@@ -285,8 +290,8 @@ struct SubdomainsView: View {
             }
             .frame(width: SubdomainColumns.actions, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Self.cellInset)
+        .padding(.vertical, Self.cellVertical)
     }
 
     private func dnsSkeletonRow(_ index: Int) -> some View {
@@ -300,8 +305,8 @@ struct SubdomainsView: View {
             DMSkeletonText(size: 11, width: .fixed(28))
                 .frame(width: DNSColumns.ttl, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Self.cellInset)
+        .padding(.vertical, Self.cellVertical)
     }
 
     private var emptySitesText: String {
@@ -325,8 +330,8 @@ struct SubdomainsView: View {
             columnLabel("STATUS").frame(width: SubdomainColumns.status, alignment: .leading)
             columnLabel("").frame(width: SubdomainColumns.actions, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Self.cellInset)
+        .padding(.vertical, Self.cellVertical)
     }
 
     private func columnLabel(_ text: String) -> some View {
@@ -367,8 +372,8 @@ struct SubdomainsView: View {
             actions(for: row)
                 .frame(width: SubdomainColumns.actions, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Self.cellInset)
+        .padding(.vertical, Self.cellVertical)
         .contentShape(Rectangle())
     }
 
@@ -427,8 +432,9 @@ struct SubdomainsView: View {
                 .foregroundStyle(Color.dmMuted)
             Spacer()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Self.cellInset)
+        .padding(.top, Self.cellVertical)
+        .padding(.bottom, Self.cellVertical + 4)
     }
 
     private func open(_ host: String) {
@@ -468,19 +474,16 @@ struct SubdomainsView: View {
         } else {
             VStack(spacing: 0) {
                 dnsTableHeader
-                Rectangle().fill(Color.dmDivider).frame(height: 1)
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(searched) { record in
-                            dnsRow(record)
-                            Rectangle().fill(Color.dmDivider).frame(height: 1)
+                        ForEach(Array(searched.enumerated()), id: \.element.id) { index, record in
+                            DMTableRow(index: index) { dnsRow(record) }
                         }
                     }
                 }
                 footer(showing: searched.count, of: records.count)
             }
-            .dmSurface(Color.clear, radius: DMRadius.tile)
-            .padding(10)
+            .padding(.horizontal, Self.tableInset)
             .transition(.opacity)
         }
     }
@@ -492,8 +495,8 @@ struct SubdomainsView: View {
             columnLabel("CONTENT").frame(maxWidth: .infinity, alignment: .leading)
             columnLabel("TTL").frame(width: DNSColumns.ttl, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Self.cellInset)
+        .padding(.vertical, Self.cellVertical)
     }
 
     private func dnsRow(_ record: DNSRecordRow) -> some View {
@@ -516,8 +519,8 @@ struct SubdomainsView: View {
                 .foregroundStyle(Color.dmMuted)
                 .frame(width: DNSColumns.ttl, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Self.cellInset)
+        .padding(.vertical, Self.cellVertical)
     }
 }
 

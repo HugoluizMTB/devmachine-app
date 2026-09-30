@@ -60,7 +60,6 @@ struct GitTab: View {
             headerSpacing: 6,
             contentSpacing: 8,
             padding: Self.sectionPadding,
-            showBottomDivider: true,
             label: {
                 Image(systemName: "arrow.triangle.branch")
                     .font(.dm(11))
@@ -104,7 +103,6 @@ struct GitTab: View {
         DMSection(
             contentSpacing: 6,
             padding: Self.sectionPadding,
-            showBottomDivider: true,
             label: { DMSectionLabel(text: "WORKTREES") },
             trailing: { DMSectionValue(text: "\(worktrees.count)") }
         ) {

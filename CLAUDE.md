@@ -95,8 +95,9 @@ What is there:
   hairline edge; `DMKeyCap`; `DMChip`.
 - Rows and sections (`DMComponents.swift`): `DMRow`, `DMRowBackground`
   (radius and selected colour are parameters), `DMSection`, `DMSectionLabel`,
-  `DMSectionValue`, `DMPill`, `DMProgressBar`, `DMStatBubble`, `DMToastCard`;
-  `DMTabStrip`, `FlowLayout`.
+  `DMSectionValue`, `DMTableRow` (striped, hover-lit table row), `DMHairline`,
+  `DMPill`, `DMProgressBar`, `DMStatBubble`, `DMToastCard`; `DMTabStrip`
+  (`grouped: true` for a segmented second level), `FlowLayout`.
 
 Rules:
 - Never hand-roll `.buttonStyle(.plain)` + `Image` + `.foregroundStyle` +
@@ -115,6 +116,11 @@ Rules:
   below.
 
 ## Hard UI rules
+- **Few lines.** The owner reads a screen full of dividers as noise. Areas
+  are separated by spacing first, then by a faint tint (`Color.dmBand`,
+  `Color.dmHover`); tables have no outer border and no line between rows
+  (`DMTableRow`); tab rows are pills, never underlined. A line is the last
+  resort, drawn with `DMHairline`, and at most one per area.
 - **Never put a `Divider` inside a `ZStack`** — it becomes horizontal and greedy.
   Use `Rectangle().frame(width:1)` / `.frame(height:1)`.
 - Numbers shown to the user go through `Text(verbatim:)` with explicit formatting.

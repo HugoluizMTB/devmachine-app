@@ -9,7 +9,6 @@ struct ShortcutsSection: View {
         DMSection(
             contentSpacing: 9,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
-            showBottomDivider: true,
             label: {
                 Text("SHORTCUTS")
                     .font(.dm(10, weight: .bold))
@@ -91,7 +90,7 @@ private struct SkillsEditorView: View {
                 }
             }
 
-            Rectangle().fill(Color.dmDivider).frame(height: 1)
+            DMHairline()
 
             VStack(alignment: .leading, spacing: 6) {
                 TextField("Label", text: $newLabel)

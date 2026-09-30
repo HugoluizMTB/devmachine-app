@@ -69,13 +69,46 @@ struct DMRow: View {
     }
 }
 
+/// The app's one line. Areas are told apart by spacing and tint first; this
+/// is for the rare place where nothing else says where one ends.
+struct DMHairline: View {
+    var axis: Axis = .horizontal
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.dmDivider)
+            .frame(width: axis == .vertical ? 1 : nil, height: axis == .horizontal ? 1 : nil)
+    }
+}
+
+/// A table row without a separator: every other row carries a faint tint
+/// and the row under the pointer a stronger one.
+struct DMTableRow<Content: View>: View {
+    let index: Int
+    @ViewBuilder var content: () -> Content
+    @State private var hovering = false
+
+    var body: some View {
+        content()
+            .background(
+                RoundedRectangle(cornerRadius: DMRadius.row, style: .continuous)
+                    .fill(fill))
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+    }
+
+    private var fill: Color {
+        if hovering { return .dmHover }
+        return index.isMultiple(of: 2) ? .clear : .dmStripe
+    }
+}
+
 /// Uppercase-ish muted section title + optional trailing (count/button) + content below.
 /// Mirrors `SidebarView`'s group headers/top bar and `ContextPanel`'s sections.
 struct DMSection<Label: View, Trailing: View, Content: View>: View {
     var headerSpacing: CGFloat = 4
     var contentSpacing: CGFloat = 0
     var padding: EdgeInsets
-    var showBottomDivider: Bool = false
     @ViewBuilder var label: () -> Label
     @ViewBuilder var trailing: () -> Trailing
     @ViewBuilder var content: () -> Content
@@ -90,11 +123,6 @@ struct DMSection<Label: View, Trailing: View, Content: View>: View {
             content()
         }
         .padding(padding)
-        .overlay(alignment: .bottom) {
-            if showBottomDivider {
-                Rectangle().fill(Color.dmDivider).frame(height: 1)
-            }
-        }
     }
 }
 
@@ -103,7 +131,6 @@ extension DMSection where Trailing == EmptyView {
         headerSpacing: CGFloat = 4,
         contentSpacing: CGFloat = 0,
         padding: EdgeInsets,
-        showBottomDivider: Bool = false,
         @ViewBuilder label: @escaping () -> Label,
         @ViewBuilder content: @escaping () -> Content
     ) {
@@ -111,7 +138,6 @@ extension DMSection where Trailing == EmptyView {
             headerSpacing: headerSpacing,
             contentSpacing: contentSpacing,
             padding: padding,
-            showBottomDivider: showBottomDivider,
             label: label,
             trailing: { EmptyView() },
             content: content
@@ -123,7 +149,6 @@ extension DMSection where Content == EmptyView {
     init(
         headerSpacing: CGFloat = 4,
         padding: EdgeInsets,
-        showBottomDivider: Bool = false,
         @ViewBuilder label: @escaping () -> Label,
         @ViewBuilder trailing: @escaping () -> Trailing
     ) {
@@ -131,7 +156,6 @@ extension DMSection where Content == EmptyView {
             headerSpacing: headerSpacing,
             contentSpacing: 0,
             padding: padding,
-            showBottomDivider: showBottomDivider,
             label: label,
             trailing: trailing,
             content: { EmptyView() }
