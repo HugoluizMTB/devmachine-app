@@ -149,6 +149,13 @@ final class PreviewStore: ObservableObject {
         for tab in tabs { close(tab.id) }
     }
 
+    func pageChanged(_ id: UUID, title: String?, url: URL?) {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        let name = PreviewTitle.display(pageTitle: title, url: url, fallback: tab.request?.title ?? tab.title)
+        guard name != tab.title else { return }
+        update(id) { $0.title = name }
+    }
+
     func retry(_ id: UUID) {
         guard let tab = tabs.first(where: { $0.id == id }), let request = tab.request else { return }
         load(request, into: id)

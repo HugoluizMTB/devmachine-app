@@ -12,9 +12,9 @@ struct ContentView: View {
     @EnvironmentObject private var updates: UpdateController
     @State private var dragStartWidth: CGFloat? = nil
     @State private var contextDragStartWidth: CGFloat?
-    @State private var viewerDragStartWidth: CGFloat? = nil
     @StateObject private var quickPublish = QuickPublishState()
     @ObservedObject private var previews = PreviewStore.shared
+    @ObservedObject private var split = DocumentSplitState.shared
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -203,9 +203,13 @@ struct ContentView: View {
             if !model.sidebarCollapsed {
                 sidebarDivider
             }
-            centerPane
-            if model.activePage == nil {
-                viewerArea
+            DocumentSplitView(split: split, showsTrailing: showsDocumentPane) {
+                centerPane
+            } trailing: {
+                DocumentPane()
+            }
+            .onChange(of: showsDocumentPane) { _, shown in
+                if !shown { split.paneClosed() }
             }
             if model.showsContextPanel {
                 contextArea
@@ -246,20 +250,9 @@ struct ContentView: View {
 
     /// The file pane: it sits beside the terminal, the way an editor puts a
     /// file next to a shell, instead of taking a window of its own.
-    @ViewBuilder
-    private var viewerArea: some View {
-        if DocumentPane.isVisible(fileOpen: viewerStore.isOpen, previewTabs: previews.tabs.count) {
-            ResizeHandle(
-                onDrag: { dx in
-                    let base = viewerDragStartWidth ?? model.viewerWidth
-                    if viewerDragStartWidth == nil { viewerDragStartWidth = base }
-                    model.setViewerWidth(base - dx)
-                },
-                onEnd: { viewerDragStartWidth = nil }
-            )
-            DocumentPane()
-                .frame(width: model.viewerWidth)
-        }
+    private var showsDocumentPane: Bool {
+        model.activePage == nil
+            && DocumentPane.isVisible(fileOpen: viewerStore.isOpen, previewTabs: previews.tabs.count)
     }
 
     @ViewBuilder

@@ -66,18 +66,21 @@ private struct PreviewLoadedView: View {
 /// The toolbar of a tab that has no page yet: the same row, nothing to press.
 private struct PreviewToolbarPlaceholder: View {
     let address: String
+    @ObservedObject private var split = DocumentSplitState.shared
 
     var body: some View {
         PreviewToolbarRow(
             address: .constant(address), canGoBack: false, canGoForward: false, isLoading: false,
-            canOpenInBrowser: false, enabled: false, onEditingChanged: { _ in }, back: {}, forward: {},
-            reloadOrStop: {}, submit: {}, openInBrowser: {})
+            canOpenInBrowser: false, enabled: false, isMaximized: split.isMaximized,
+            onEditingChanged: { _ in }, back: {}, forward: {},
+            reloadOrStop: {}, submit: {}, openInBrowser: {}, toggleMaximized: split.toggleMaximized)
     }
 }
 
 private struct PreviewToolbar: View {
     @ObservedObject var page: PreviewPage
     let fallbackAddress: String
+    @ObservedObject private var split = DocumentSplitState.shared
     @State private var typed = ""
     @State private var editing = false
 
@@ -88,6 +91,7 @@ private struct PreviewToolbar: View {
             address: Binding(get: { editing ? typed : address }, set: { typed = $0 }),
             canGoBack: page.canGoBack, canGoForward: page.canGoForward, isLoading: page.isLoading,
             canOpenInBrowser: page.url.map(PreviewURLPolicy.isWeb) == true, enabled: true,
+            isMaximized: split.isMaximized,
             onEditingChanged: { isEditing in
                 editing = isEditing
                 if isEditing { typed = address }
@@ -97,7 +101,15 @@ private struct PreviewToolbar: View {
             submit: go,
             openInBrowser: {
                 if let url = page.url, PreviewURLPolicy.isWeb(url) { NSWorkspace.shared.open(url) }
-            })
+            },
+            toggleMaximized: toggleMaximized)
+    }
+
+    /// The terminal stays under a maximized preview, so the keyboard moves to
+    /// the page: typing must not reach a shell nobody can see.
+    private func toggleMaximized() {
+        split.toggleMaximized()
+        if split.isMaximized { page.webView.window?.makeFirstResponder(page.webView) }
     }
 
     /// The address bar is this Mac's browser: `localhost` here is this Mac.
@@ -118,12 +130,14 @@ private struct PreviewToolbarRow: View {
     let isLoading: Bool
     let canOpenInBrowser: Bool
     let enabled: Bool
+    let isMaximized: Bool
     let onEditingChanged: (Bool) -> Void
     let back: () -> Void
     let forward: () -> Void
     let reloadOrStop: () -> Void
     let submit: () -> Void
     let openInBrowser: () -> Void
+    let toggleMaximized: () -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -152,6 +166,11 @@ private struct PreviewToolbarRow: View {
                 .disabled(!enabled)
             DMButton("Open in browser", systemImage: "safari", variant: .ghost, size: .small, action: openInBrowser)
                 .disabled(!canOpenInBrowser)
+            DMButton(
+                icon: isMaximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                label: isMaximized ? "Restore the terminal" : "Maximize preview",
+                size: .small, action: toggleMaximized)
+                .help(isMaximized ? "Restore the terminal (⇧⌘↩)" : "Maximize preview (⇧⌘↩)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)

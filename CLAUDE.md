@@ -385,6 +385,23 @@ Rules:
 - The in-app browser loads http(s) and `about:blank` only (`PreviewURLPolicy`),
   keeps `target=_blank` in the same tab, and uses one non-persistent data
   store per app run. The address bar shows the web view's real URL.
+- **The terminal and the pane beside it are one split** (`DocumentSplitView`,
+  `DocumentSplit` in Core). The pane's share is a fraction, saved only when a
+  drag ends (`DocumentSplitState`); each side keeps 320 pt, nothing else caps
+  it; a double-click on the divider goes back to half and half. Every
+  `ResizeHandle` drag is measured in `.global` coordinates: measured in the
+  handle's own, each step moved the origin of the next and the pane shook.
+- **Maximize lays the pane over the terminal, which keeps its width**, so the
+  program inside gets no resize and comes back as it was; the keyboard moves
+  to the page. ⇧⌘↩ is the preview's while its page has the keyboard
+  (`FocusedPreview`), and ⌘W then closes that tab instead of ending the session.
+- **A tab's close mark is never inside the part that selects.** A tap gesture on
+  the whole chip took the click before the mark's button saw it, and a tab
+  could not be closed. Middle click and the chip's menu close it too.
+- The in-app browser sends the system Safari's user agent (`SafariUserAgent`,
+  version read from Safari's bundle): WebKit's default lacks `Version/… Safari/…`
+  and Google served its page for an old browser. A tab's name follows the page
+  (`PreviewTitle`: its title, else its current host).
 
 ## Coding harnesses
 - Multiple harnesses may be enabled globally. Enabling one validates only its

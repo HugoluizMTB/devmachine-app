@@ -434,16 +434,6 @@ final class AppModel: ObservableObject {
     }() {
         didSet { UserDefaults.standard.set(Double(contextWidth), forKey: "contextWidth") }
     }
-    @Published var viewerWidth: CGFloat =
-        CGFloat(UserDefaults.standard.double(forKey: "viewerWidth") == 0
-            ? 640 : UserDefaults.standard.double(forKey: "viewerWidth")) {
-        didSet { UserDefaults.standard.set(Double(viewerWidth), forKey: "viewerWidth") }
-    }
-
-    func setViewerWidth(_ width: CGFloat) {
-        viewerWidth = min(max(width, 320), 1200)
-    }
-
     @Published var contextTab: ContextTab =
         ContextTab(rawValue: UserDefaults.standard.string(forKey: "contextTab") ?? "") ?? .context {
         didSet {
@@ -819,6 +809,11 @@ final class AppModel: ObservableObject {
     // ⌘⇧↩ — like maximizing/restoring a pane: grid cell → that session alone;
     // single session → its workspace grid.
     func toggleMaximize() {
+        if DocumentSplitState.shared.handleMaximizeShortcut(
+            previewFocused: FocusedPreview.tabID() != nil,
+            paneVisible: activePage == nil && !PreviewStore.shared.tabs.isEmpty) {
+            return
+        }
         if case let .stack(refs) = activePage {
             guard let ref = FocusedTerminal.ref().flatMap({ refs.contains($0) ? $0 : nil })
                 ?? refs.first else { return }

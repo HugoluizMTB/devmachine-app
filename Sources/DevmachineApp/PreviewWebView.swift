@@ -13,6 +13,9 @@ final class PreviewPage: NSObject, ObservableObject, WKNavigationDelegate, WKUID
     @Published private(set) var isLoading = false
     @Published private(set) var failure: String?
     @Published private(set) var blocked: URL?
+    /// Told on every change of the page's title or address, so the tab's
+    /// name follows the page instead of the host it was opened with.
+    var onChange: ((_ title: String?, _ url: URL?) -> Void)?
 
     let webView: WKWebView
     private var shown: PreviewTab.State?
@@ -23,13 +26,20 @@ final class PreviewPage: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         configuration.websiteDataStore = dataStore
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.customUserAgent = PreviewUserAgent.current
         super.init()
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         observations = [
             webView.observe(\.url, options: [.initial, .new]) { [weak self] view, _ in
-                MainActor.assumeIsolated { self?.url = view.url }
+                MainActor.assumeIsolated {
+                    self?.url = view.url
+                    self?.onChange?(view.title, view.url)
+                }
+            },
+            webView.observe(\.title, options: [.new]) { [weak self] view, _ in
+                MainActor.assumeIsolated { self?.onChange?(view.title, view.url) }
             },
             webView.observe(\.canGoBack, options: [.new]) { [weak self] view, _ in
                 MainActor.assumeIsolated { self?.canGoBack = view.canGoBack }
@@ -137,6 +147,7 @@ final class PreviewWebViews {
         if let page = pages[id] { return page }
         let page = PreviewPage(dataStore: dataStore)
         page.webView.identifier = NSUserInterfaceItemIdentifier(FocusedPreview.tag(for: id))
+        page.onChange = { title, url in PreviewStore.shared.pageChanged(id, title: title, url: url) }
         pages[id] = page
         return page
     }
@@ -145,6 +156,21 @@ final class PreviewWebViews {
         guard let page = pages.removeValue(forKey: id) else { return }
         page.webView.stopLoading()
         page.webView.removeFromSuperview()
+    }
+}
+
+/// What the in-app browser tells sites it is: the Safari of this Mac, read
+/// from Safari's own bundle, else the one that ships with this macOS.
+enum PreviewUserAgent {
+    static let current = SafariUserAgent.full(applicationName: SafariUserAgent.applicationName(
+        safariVersion: installedSafariVersion(),
+        osVersion: ProcessInfo.processInfo.operatingSystemVersion))
+
+    private static func installedSafariVersion() -> String? {
+        ["/Applications/Safari.app", "/System/Cryptexes/App/System/Applications/Safari.app"]
+            .lazy
+            .compactMap { Bundle(path: $0)?.infoDictionary?["CFBundleShortVersionString"] as? String }
+            .first
     }
 }
 

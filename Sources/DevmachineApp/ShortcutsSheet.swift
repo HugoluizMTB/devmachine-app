@@ -30,7 +30,7 @@ struct ShortcutsSheet: View {
             Shortcut(keys: ["⌘", "⇧", "↓"], action: "Next session"),
             Shortcut(keys: ["⌘", "⇧", "←"], action: "Back"),
             Shortcut(keys: ["⌘", "⇧", "→"], action: "Forward"),
-            Shortcut(keys: ["⌘", "⇧", "↩"], action: "Maximize the focused grid cell / back to its workspace grid"),
+            Shortcut(keys: ["⌘", "⇧", "↩"], action: "Maximize the focused grid cell or preview / back again"),
         ]),
         Group(title: "Sidebar", items: [
             Shortcut(keys: ["click"], action: "Open a session (click again → Home)"),

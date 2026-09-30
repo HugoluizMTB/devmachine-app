@@ -222,4 +222,38 @@ final class PreviewStoreTests: XCTestCase {
         XCTAssertEqual(previews.selectedTabID, selected)
         XCTAssertEqual(previews.tabs.map(\.title), ["localhost:5173"])
     }
+
+    func testTheTabTitleFollowsThePage() {
+        let previews = store()
+        previews.openLink(URL(string: "https://docs.example.com/start")!)
+        let id = previews.tabs[0].id
+        XCTAssertEqual(previews.tabs[0].title, "docs.example.com")
+
+        previews.pageChanged(id, title: "", url: URL(string: "https://www.example.net/search?q=x"))
+        XCTAssertEqual(previews.tabs[0].title, "www.example.net")
+
+        previews.pageChanged(id, title: "Search results", url: URL(string: "https://www.example.net/search?q=x"))
+        XCTAssertEqual(previews.tabs[0].title, "Search results")
+    }
+
+    func testAPageWithNothingToNameItKeepsTheTabsName() {
+        let previews = store()
+        previews.open(PreviewRequest(place: .workspace("acme"), input: .port(3000, path: "")))
+        let id = previews.tabs[0].id
+
+        previews.pageChanged(id, title: nil, url: nil)
+
+        XCTAssertEqual(previews.tabs[0].title, "acme:3000")
+    }
+
+    func testARetitleForAClosedTabIsIgnored() {
+        let previews = store()
+        previews.openLink(URL(string: "https://example.com")!)
+        let id = previews.tabs[0].id
+        previews.close(id)
+
+        previews.pageChanged(id, title: "Late", url: nil)
+
+        XCTAssertTrue(previews.tabs.isEmpty)
+    }
 }
