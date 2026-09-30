@@ -39,7 +39,7 @@ public enum SSHFailure: Equatable, Sendable {
 
     public static func classify(exitCode: Int32, stderr: String) -> SSHFailure? {
         guard exitCode == 255 else { return nil }
-        return stderr.contains("Permission denied") ? .authDenied : .unreachable
+        return FailureCause.isSSHLoginRefused(stderr) ? .authDenied : .unreachable
     }
 }
 
