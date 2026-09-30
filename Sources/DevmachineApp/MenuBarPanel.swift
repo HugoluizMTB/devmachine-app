@@ -67,10 +67,9 @@ struct MenuBarPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             tabBar
-            Rectangle().fill(Color.dmDivider).frame(height: 1)
             body(for: tab)
-            Rectangle().fill(Color.dmDivider).frame(height: 1)
             footer
+                .background(Color.dmBand)
         }
         .frame(width: panelWidth)
         .frame(height: MenuBarSizing.height(for: tab))
@@ -110,9 +109,6 @@ struct MenuBarPanel: View {
             } else {
                 HStack(spacing: 0) {
                     ForEach(Array(usageStore.states.enumerated()), id: \.element.id) { index, state in
-                        if index > 0 {
-                            Rectangle().fill(Color.dmDivider).frame(width: 1)
-                        }
                         if let descriptor = harnessSettingsFacade.descriptor(
                             for: HarnessID(rawValue: state.harnessID)) {
                             HarnessUsagePanel(

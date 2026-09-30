@@ -27,7 +27,6 @@ public struct UsageCardSkeleton: View {
                     limitBlock(index)
                 }
             }
-            Rectangle().fill(UsagePalette.divider).frame(height: 1)
             VStack(alignment: .leading, spacing: 14) {
                 Text(verbatim: "Stats")
                     .font(.headline)
@@ -36,6 +35,7 @@ public struct UsageCardSkeleton: View {
                 chart
                 models
             }
+            .padding(.top, 12)
         }
         .environment(\.usageSkeletonMask, mask)
     }

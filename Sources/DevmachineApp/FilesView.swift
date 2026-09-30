@@ -10,9 +10,8 @@ struct FilesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Rectangle().fill(Color.dmDivider).frame(height: 1)
             pathBar
-            Rectangle().fill(Color.dmDivider).frame(height: 1)
+            DMHairline()
             content
             Spacer(minLength: 0)
         }

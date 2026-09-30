@@ -7,7 +7,6 @@ struct PRsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Rectangle().fill(Color.dmDivider).frame(height: 1)
             content
         }
         .animation(.easeOut(duration: 0.2), value: store.showsSkeleton)

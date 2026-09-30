@@ -148,7 +148,6 @@ public struct HarnessUsageCardContent: View {
                     UsageSummaryView(metrics: snapshot.summaryMetrics)
                 }
                 if let stats = snapshot.stats {
-                    Rectangle().fill(UsagePalette.divider).frame(height: 1)
                     VStack(alignment: .leading, spacing: 14) {
                         Text(verbatim: "Stats")
                             .font(.headline)
@@ -165,6 +164,7 @@ public struct HarnessUsageCardContent: View {
                                 mostUsed: stats.mostUsedModel)
                         }
                     }
+                    .padding(.top, 12)
                 }
             }
         }

@@ -156,10 +156,13 @@ struct SetupPage: View {
     private var card: some View {
         HStack(spacing: 0) {
             rail
-            Divider().overlay(Color.dmStroke)
+                .background(
+                    Color.dmBand,
+                    in: UnevenRoundedRectangle(
+                        topLeadingRadius: DMRadius.panel, bottomLeadingRadius: DMRadius.panel,
+                        style: .continuous))
             VStack(spacing: 0) {
                 sectionBody
-                Divider().overlay(Color.dmStroke)
                 footer
             }
         }
@@ -408,7 +411,7 @@ struct SetupPage: View {
     }
 
     private var harnessesBlock: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 30) {
             VStack(alignment: .leading, spacing: 10) {
                 settingsHeading("Available harnesses")
                 ForEach(harnessSettingsFacade.harnesses) { descriptor in
@@ -442,10 +445,6 @@ struct SetupPage: View {
                 note("Turning a harness on checks only this Mac. The app never "
                     + "installs a CLI or probes a remote workspace.")
             }
-
-            Rectangle()
-                .fill(Color.white.opacity(0.1))
-                .frame(height: 1)
 
             VStack(alignment: .leading, spacing: 10) {
                 settingsHeading("Session defaults")
@@ -675,9 +674,8 @@ struct SetupPage: View {
                 + "chasing something; off, nothing is written. The file keeps "
                 + "itself under a megabyte.")
 
-            Rectangle().fill(Color.dmDivider).frame(height: 1).padding(.vertical, 4)
-
             HealthCheckView()
+                .padding(.top, 20)
         }
     }
 

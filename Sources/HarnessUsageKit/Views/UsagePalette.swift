@@ -7,6 +7,5 @@ enum UsagePalette {
     static let accent = Color(red: 0.30, green: 0.75, blue: 0.42)
     static let primaryText = Color.white
     static let secondaryText = Color(red: 0.65, green: 0.65, blue: 0.68)
-    static let divider = Color.white.opacity(0.08)
     static let skeleton = Color.white.opacity(0.07)
 }
