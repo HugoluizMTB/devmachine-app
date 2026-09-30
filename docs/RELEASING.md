@@ -131,14 +131,19 @@ downloaded them (usually `~/Downloads`). They have no reason to stay on disk.
    release workflow always overrides it from the git tag
    (`DEVMACHINE_APP_VERSION`, passed to `scripts/make_dmg.sh`).
 
-2. **Tag and push:**
+2. **Preflight:** `scripts/preflight.sh` runs the tests, a release build and
+   the real-data check. The release build matters on its own: the optimizer
+   runs only there, and a compiler crash in it once reached CI only after a
+   tag was pushed.
+
+3. **Tag and push:**
 
    ```
    git tag -s v1.2.3 -m v1.2.3
    git push origin v1.2.3
    ```
 
-3. **Watch the `Release` workflow.** It runs on `macos-15` and does, in
+4. **Watch the `Release` workflow.** It runs on `macos-15` and does, in
    order:
 
    - Selects the newest stable Xcode. The default Xcode on the runner ships

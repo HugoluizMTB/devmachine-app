@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Who answers a mouse gesture in a terminal pane. The pane owns selection: a
