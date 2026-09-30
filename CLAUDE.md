@@ -99,8 +99,8 @@ What is there:
 - Buttons (`DMButton.swift`): `DMButton` / `.buttonStyle(.dm(_:size:))` for every
   labelled button. Variants: `.primary` (the one action of a sheet or page),
   `.outline` (the action beside it, Cancel), `.danger` / `.dangerOutline` (ends or
-  removes something), `.ghost` (toolbars, quiet inline actions), `.link` (reads as
-  text). Sizes `.small`, `.regular`, `.large`; `isLoading:` shows a spinner and
+  removes something), `.ghost` (toolbars, quiet inline actions), `.ghostDanger`
+  (a quiet remove in a row, red only on hover), `.link` (reads as text). Sizes `.small`, `.regular`, `.large`; `isLoading:` shows a spinner and
   disables it. An icon-only button is `DMButton(icon:label:)`: the label is
   required and is what VoiceOver reads. Native buttons stay only in menus,
   context menus and `.confirmationDialog`.
@@ -289,6 +289,11 @@ Rules:
   session. Two commands are not portable and have a local form: `find -printf`
   is GNU only, so a local listing uses `ls -Ap1` with
   `FileTreeParser.parseNames`.
+- **A worktree is removed only after a read-only check** (`WorktreeRemoval`).
+  The main checkout and the session's own worktree are never offered. Dirty or
+  locked needs its own checkbox before `--force` / `--force --force`; a branch
+  is deleted only with `-d`, only when merged into the main checkout's branch.
+  Paths and branches are single-quoted; the remove runs from the main checkout.
 - **Hiding a workspace also empties its rows from Stats and the subdomain
   list.** The host is what says who owns a row: a container by the folder it was
   started from (compose or the Supabase CLI writes it, and it lives under

@@ -62,7 +62,8 @@ enum DemoSnapshots {
 
     static func chrome(for screenID: String) -> SnapshotChrome.Kind {
         switch screenID {
-        case "pull-requests", "publish-port", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage":
+        case "pull-requests", "publish-port", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
+             "worktree-remove", "worktrees-merged":
             return .panel
         default:
             return .window
@@ -148,6 +149,27 @@ enum DemoSnapshots {
         Screen(id: "skeleton-menubar-usage", fileName: "17-skeleton-menubar-usage.png", settleNanoseconds: 400_000_000),
     ]
 
+    /// The worktree walk (`DEVMACHINE_DEMO_WALK=worktrees`): the Git tab's
+    /// worktree list and both removal sheets, captured on their own so a
+    /// check of that feature does not redraw the whole website set.
+    static let worktreeScreens: [Screen] = [
+        Screen(id: "git-worktrees", fileName: "31-git-worktrees.png", settleNanoseconds: 900_000_000),
+        Screen(id: "worktree-remove", fileName: "32-worktree-remove.png", settleNanoseconds: 400_000_000),
+        Screen(id: "worktrees-merged", fileName: "33-worktrees-merged.png", settleNanoseconds: 400_000_000),
+    ]
+
+    static func walk(environment: [String: String] = ProcessInfo.processInfo.environment) -> [Screen] {
+        if DemoMode.holdsLoading { return skeletonScreens }
+        return environment["DEVMACHINE_DEMO_WALK"] == "worktrees" ? worktreeScreens : screens
+    }
+
+    /// `DEVMACHINE_DEMO_HIDDEN=1` draws every window fully transparent and
+    /// never brings the app forward: the capture reads the views, not the
+    /// screen, so nothing needs to show on the Mac running it.
+    static var isHidden: Bool {
+        ProcessInfo.processInfo.environment["DEVMACHINE_DEMO_HIDDEN"] == "1"
+    }
+
     /// The snapshot directory from the environment, or nil when this is a
     /// normal demo launch with nothing to capture.
     static var targetDirectory: URL? {
@@ -183,10 +205,15 @@ enum DemoSnapshots {
         guard let window = await mainWindow() else { return }
         window.setContentSize(windowSize)
         window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if isHidden {
+            window.alphaValue = 0
+            window.orderFrontRegardless()
+        } else {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
 
-        for screen in DemoMode.holdsLoading ? skeletonScreens : screens {
+        for screen in walk() {
             await prepare(screen, environment: environment, mainWindow: window)
             try? await Task.sleep(nanoseconds: screen.settleNanoseconds)
             // A pane resized after its transcript was drawn (the grid, the
@@ -212,6 +239,10 @@ enum DemoSnapshots {
                 try? await Task.sleep(nanoseconds: 300_000_000)
             case "publish-port":
                 view = standaloneView(publishSheet(environment), fittingSize: NSSize(width: 480, height: 620))
+            case "worktree-remove":
+                view = standaloneView(worktreeRemovalSheet, fittingSize: NSSize(width: 420, height: 400))
+            case "worktrees-merged":
+                view = standaloneView(mergedWorktreesSheet, fittingSize: NSSize(width: 420, height: 360))
             default:
                 window.displayIfNeeded()
                 view = window.contentView ?? NSView()
@@ -271,6 +302,10 @@ enum DemoSnapshots {
         case "session-defaults":
             setupInitialSection = .harnesses
             model.showPage(.setup)
+        case "git-worktrees":
+            guard case let .remote(alias, session) = dropKind else { break }
+            model.clickSession(SessionRef(alias: alias, name: session))
+            model.contextTab = .git
         case "command-palette":
             paletteInitialQuery = "sub"
             model.showCommandPalette = true
@@ -334,6 +369,23 @@ enum DemoSnapshots {
             .environmentObject(environment.caddyStore)
     }
 
+    private static var worktreeRemovalSheet: some View {
+        let check = DemoData.worktreeChecks.first { $0.path.hasSuffix("api-webhooks") }
+        let worktree = DemoData.gitSnapshot.worktrees.first { $0.path == check?.path }
+            ?? DemoData.gitSnapshot.worktrees[0]
+        return WorktreeRemovalSheet(
+            request: WorktreeRemovalRequest(worktree: worktree, check: check, phase: .ready),
+            onRemove: { _ in }, onCancel: {})
+            .background(Color.dmSidebarBg)
+    }
+
+    private static var mergedWorktreesSheet: some View {
+        MergedWorktreesRemovalSheet(
+            request: MergedRemovalRequest(checks: DemoData.worktreeChecks.filter(\.isCleanAndMerged)),
+            onRemove: { _ in }, onCancel: {})
+            .background(Color.dmSidebarBg)
+    }
+
     // MARK: - AppKit plumbing
 
     private static func mainWindow() async -> NSWindow? {
@@ -362,6 +414,7 @@ enum DemoSnapshots {
             contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = hosting
+        if isHidden { window.alphaValue = 0 }
         window.setIsVisible(true)
         window.orderFrontRegardless()
         hosting.layoutSubtreeIfNeeded()

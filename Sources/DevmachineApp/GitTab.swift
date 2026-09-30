@@ -23,6 +23,18 @@ struct GitTab: View {
         .onAppear { store.start(target) }
         .onDisappear { store.stop() }
         .onChange(of: target.key) { _, _ in store.start(target) }
+        .sheet(item: $store.removal) { request in
+            WorktreeRemovalSheet(
+                request: request,
+                onRemove: { store.confirmRemoval(options: $0) },
+                onCancel: { store.cancelRemoval() })
+        }
+        .sheet(item: $store.mergedRemoval) { request in
+            MergedWorktreesRemovalSheet(
+                request: request,
+                onRemove: { store.confirmMergedRemoval(deleteBranches: $0) },
+                onCancel: { store.cancelMergedRemoval() })
+        }
     }
 
     private func content(_ snapshot: GitSnapshot) -> some View {
@@ -103,39 +115,51 @@ struct GitTab: View {
         DMSection(
             contentSpacing: 6,
             padding: Self.sectionPadding,
-            label: { DMSectionLabel(text: "WORKTREES") },
-            trailing: { DMSectionValue(text: "\(worktrees.count)") }
+            label: {
+                DMSectionLabel(text: "WORKTREES")
+                    .help(WorktreeDot.legend)
+            },
+            trailing: {
+                if !store.mergedWorktrees.isEmpty {
+                    DMButton(
+                        WorktreeRemovalText.removeMergedTitle(store.mergedWorktrees.count),
+                        variant: .ghost, size: .small
+                    ) { store.requestMergedRemoval() }
+                    .help("Remove the worktrees that are clean and fully merged into the main branch")
+                }
+                DMSectionValue(text: "\(worktrees.count)")
+            }
         ) {
             VStack(alignment: .leading, spacing: 0) {
+                legend
                 ForEach(worktrees, id: \.path) { worktree in
-                    worktreeRow(worktree, isCurrent: worktree.path == root)
+                    WorktreeRow(
+                        worktree: worktree,
+                        isCurrent: worktree.path == root,
+                        block: WorktreeRemoval.block(worktree, currentRoot: root),
+                        accent: Self.accent,
+                        onRemove: { store.requestRemoval(worktree) })
                 }
             }
         }
     }
 
-    private func worktreeRow(_ worktree: GitSnapshot.Worktree, isCurrent: Bool) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(isCurrent ? Color.green : Color.dmDivider)
-                .frame(width: 5, height: 5)
-            Text(shortPath(worktree.path))
-                .font(.dm(11, design: .monospaced))
-                .foregroundStyle(isCurrent ? Color.dmRowText : Color.dmMuted)
-                .lineLimit(1)
-                .truncationMode(.head)
-            Spacer(minLength: 4)
-            if let branch = worktree.branch {
-                DMPill(
-                    text: branch,
-                    color: Self.accent,
-                    font: .dm(9, weight: .semibold),
-                    backgroundOpacity: 0.18
-                )
-            }
+    private var legend: some View {
+        HStack(spacing: 10) {
+            legendItem(WorktreeDot.current, "this session")
+            legendItem(WorktreeDot.other, "other worktree")
         }
-        .padding(.vertical, 4)
-        .help(worktree.path)
+        .font(.dm(10))
+        .foregroundStyle(Color.dmMuted)
+        .padding(.bottom, 2)
+        .help(WorktreeDot.legend)
+    }
+
+    private func legendItem(_ color: Color, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 5, height: 5)
+            Text(verbatim: text)
+        }
     }
 
     private func historySection(_ snapshot: GitSnapshot) -> some View {
@@ -234,9 +258,83 @@ struct GitTab: View {
     private func changesLabel(_ count: Int) -> String {
         count == 1 ? "1 change" : "\(count) changes"
     }
+}
 
-    private func shortPath(_ path: String) -> String {
-        path.split(separator: "/").suffix(2).joined(separator: "/")
+/// What the small dot in front of a worktree means.
+enum WorktreeDot {
+    static let current = Color.green
+    static let other = Color.dmDivider
+    static let currentHelp = "This session is in this worktree"
+    static let otherHelp = "Another worktree of this repository"
+    static let legend = "Green: \(currentHelp.lowercased()). Dim: \(otherHelp.lowercased())."
+}
+
+private struct WorktreeRow: View {
+    let worktree: GitSnapshot.Worktree
+    let isCurrent: Bool
+    let block: WorktreeRemoval.Block?
+    let accent: Color
+    let onRemove: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(isCurrent ? WorktreeDot.current : WorktreeDot.other)
+                .frame(width: 5, height: 5)
+                .help(isCurrent ? WorktreeDot.currentHelp : WorktreeDot.otherHelp)
+            Text(verbatim: WorktreeRemovalText.shortPath(worktree.path))
+                .font(.dm(11, design: .monospaced))
+                .foregroundStyle(isCurrent ? Color.dmRowText : Color.dmMuted)
+                .lineLimit(1)
+                .truncationMode(.head)
+            if worktree.isLocked {
+                Image(systemName: "lock.fill")
+                    .font(.dm(8))
+                    .foregroundStyle(Color.dmMuted)
+            }
+            Spacer(minLength: 4)
+            if let branch = worktree.branch {
+                DMPill(
+                    text: branch,
+                    color: accent,
+                    font: .dm(9, weight: .semibold),
+                    backgroundOpacity: 0.18
+                )
+            }
+            removeButton
+        }
+        .padding(.leading, 0)
+        .frame(minHeight: 24)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Button("Remove Worktree…", action: onRemove)
+                .disabled(block != nil)
+            if let block {
+                Text(verbatim: block.reason)
+            }
+        }
+        .help(tooltip)
+    }
+
+    private var removeButton: some View {
+        DMButton(icon: "trash", label: "Remove Worktree…", variant: .ghostDanger, size: .small, action: onRemove)
+            .disabled(block != nil)
+            .opacity(hovering ? 1 : 0)
+            .allowsHitTesting(hovering)
+            .help(block?.reason ?? "Remove Worktree…")
+    }
+
+    private var tooltip: String {
+        var lines = [worktree.path, isCurrent ? WorktreeDot.currentHelp : WorktreeDot.otherHelp]
+        if worktree.isLocked {
+            lines.append("Locked" + (worktree.lockReason.map { ": \($0)" } ?? ""))
+        }
+        if let block, block != .currentWorktree {
+            lines.append(block.reason)
+        }
+        return lines.joined(separator: "\n")
     }
 }
 

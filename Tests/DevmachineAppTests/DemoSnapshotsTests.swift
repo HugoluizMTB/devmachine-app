@@ -178,4 +178,13 @@ final class DemoSnapshotsTests: XCTestCase {
     func testTheUsagePaneIsTallEnoughForEveryModelRow() {
         XCTAssertEqual(DemoSnapshots.usagePaneHeight, 700)
     }
+
+    func testTheWorktreeWalkIsItsOwnSetAndPickedByTheEnvironment() {
+        let names = DemoSnapshots.worktreeScreens.map(\.fileName)
+        XCTAssertEqual(names, ["31-git-worktrees.png", "32-worktree-remove.png", "33-worktrees-merged.png"])
+        XCTAssertTrue(Set(names).isDisjoint(with: DemoSnapshots.screens.map(\.fileName)))
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "worktrees"]).map(\.id),
+                       DemoSnapshots.worktreeScreens.map(\.id))
+        XCTAssertEqual(DemoSnapshots.walk(environment: [:]).map(\.id), DemoSnapshots.screens.map(\.id))
+    }
 }

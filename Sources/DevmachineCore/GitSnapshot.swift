@@ -6,12 +6,19 @@ public struct GitSnapshot: Equatable, Sendable {
         public let head: String
         public let branch: String?
         public let isMain: Bool
+        public let isLocked: Bool
+        public let lockReason: String?
 
-        public init(path: String, head: String, branch: String?, isMain: Bool) {
+        public init(
+            path: String, head: String, branch: String?, isMain: Bool,
+            isLocked: Bool = false, lockReason: String? = nil
+        ) {
             self.path = path
             self.head = head
             self.branch = branch
             self.isMain = isMain
+            self.isLocked = isLocked
+            self.lockReason = lockReason
         }
     }
 
@@ -96,7 +103,7 @@ public enum GitSnapshotParser {
             behind: status.behind,
             dirtyFiles: status.dirtyFiles,
             detachedHead: status.detachedHead,
-            worktrees: parseWorktrees(sections.count > 1 ? sections[1] : ""),
+            worktrees: parseWorktreeList(sections.count > 1 ? sections[1] : ""),
             commits: parseCommits(sections.count > 2 ? sections[2] : "")
         )
     }
@@ -146,16 +153,22 @@ public enum GitSnapshotParser {
         return status
     }
 
-    private static func parseWorktrees(_ section: String) -> [GitSnapshot.Worktree] {
+    /// `git worktree list --porcelain`, where the first entry is always the
+    /// repository's primary checkout.
+    public static func parseWorktreeList(_ section: String) -> [GitSnapshot.Worktree] {
         var worktrees: [GitSnapshot.Worktree] = []
         var path: String?
         var head = ""
         var branch: String?
+        var isLocked = false
+        var lockReason: String?
 
         func flush() {
             guard let path else { return }
             worktrees.append(
-                GitSnapshot.Worktree(path: path, head: head, branch: branch, isMain: worktrees.isEmpty)
+                GitSnapshot.Worktree(
+                    path: path, head: head, branch: branch, isMain: worktrees.isEmpty,
+                    isLocked: isLocked, lockReason: lockReason)
             )
         }
 
@@ -165,6 +178,13 @@ public enum GitSnapshotParser {
                 path = value
                 head = ""
                 branch = nil
+                isLocked = false
+                lockReason = nil
+            } else if line == "locked" {
+                isLocked = true
+            } else if let value = value(of: "locked", in: line) {
+                isLocked = true
+                lockReason = value.isEmpty ? nil : value
             } else if let value = value(of: "HEAD", in: line) {
                 head = value
             } else if let value = value(of: "branch", in: line) {

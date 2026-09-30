@@ -578,3 +578,51 @@ enum DemoUsageError: Error, LocalizedError {
         }
     }
 }
+
+// MARK: Git
+
+extension DemoData {
+    static let gitSnapshot = GitSnapshot(
+        root: "/home/acme/dev/api-payments",
+        branch: "payments-refactor",
+        upstream: "origin/payments-refactor",
+        ahead: 2,
+        dirtyFiles: 1,
+        worktrees: [
+            GitSnapshot.Worktree(path: "/home/acme/dev/api", head: "4e1f0a2", branch: "main", isMain: true),
+            GitSnapshot.Worktree(
+                path: "/home/acme/dev/api-docs", head: "4e1f0a2", branch: "docs-typos", isMain: false),
+            GitSnapshot.Worktree(
+                path: "/home/acme/dev/api-payments", head: "9b7c3d1", branch: "payments-refactor", isMain: false),
+            GitSnapshot.Worktree(
+                path: "/home/acme/dev/api-spike", head: "71aa0c9", branch: "spike-cache", isMain: false,
+                isLocked: true, lockReason: "on an external disk"),
+            GitSnapshot.Worktree(
+                path: "/home/acme/dev/api-webhooks", head: "c20d8e4", branch: "webhooks-retry", isMain: false),
+        ],
+        commits: [
+            GitSnapshot.Commit(
+                sha: "9b7c3d1", subject: "Retry the charge once on a gateway timeout", author: "alice",
+                age: "12 minutes ago", refs: ["payments-refactor"]),
+            GitSnapshot.Commit(
+                sha: "5d2e8f0", subject: "Extract the gateway client", author: "alice", age: "2 hours ago",
+                refs: []),
+            GitSnapshot.Commit(
+                sha: "4e1f0a2", subject: "Fix typos in the webhooks guide", author: "bob", age: "yesterday",
+                refs: ["origin/main", "main"]),
+        ])
+
+    static let worktreeChecks: [WorktreeCheck] = [
+        WorktreeCheck(
+            path: "/home/acme/dev/api-docs", branch: "docs-typos", upstream: nil, uncommittedChanges: 0,
+            unpushedCommits: nil, unmergedCommits: 0, mainBranch: "main", isLocked: false, lockReason: nil),
+        WorktreeCheck(
+            path: "/home/acme/dev/api-spike", branch: "spike-cache", upstream: nil, uncommittedChanges: 0,
+            unpushedCommits: nil, unmergedCommits: 2, mainBranch: "main", isLocked: true,
+            lockReason: "on an external disk"),
+        WorktreeCheck(
+            path: "/home/acme/dev/api-webhooks", branch: "webhooks-retry", upstream: "origin/webhooks-retry",
+            uncommittedChanges: 3, unpushedCommits: 1, unmergedCommits: 4, mainBranch: "main",
+            isLocked: false, lockReason: nil),
+    ]
+}

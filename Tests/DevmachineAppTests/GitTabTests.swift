@@ -92,4 +92,46 @@ final class GitTabTests: XCTestCase {
         XCTAssertEqual(ContextTab.allCases.map(\.title), ["Context", "Files", "Git"])
         XCTAssertEqual(ContextTab(rawValue: "git"), .git)
     }
+
+    func testTheWarningsNameWhatWouldBeLost() throws {
+        let check = try XCTUnwrap(DemoData.worktreeChecks.first { $0.path.hasSuffix("api-webhooks") })
+        XCTAssertEqual(WorktreeRemovalText.warnings(check, deletingBranch: false).map(\.text), [
+            "3 uncommitted changes will be lost",
+            "1 commit not pushed to origin/webhooks-retry",
+            "4 commits not merged into main",
+            "Branch webhooks-retry will be kept",
+        ])
+        let locked = try XCTUnwrap(DemoData.worktreeChecks.first { $0.isLocked })
+        XCTAssertTrue(WorktreeRemovalText.warnings(locked, deletingBranch: false).map(\.text)
+            .contains("Locked: on an external disk"))
+        let merged = try XCTUnwrap(DemoData.worktreeChecks.first { $0.isCleanAndMerged })
+        XCTAssertEqual(WorktreeRemovalText.warnings(merged, deletingBranch: true), [])
+        XCTAssertEqual(WorktreeRemovalText.removeMergedTitle(1), "Remove 1 merged…")
+        XCTAssertEqual(WorktreeRemovalText.removeMergedTitle(3), "Remove 3 merged…")
+    }
+
+    func testTheRemovalSheetsRenderEveryPhase() throws {
+        let worktree = try XCTUnwrap(DemoData.gitSnapshot.worktrees.first { $0.path.hasSuffix("api-webhooks") })
+        let check = DemoData.worktreeChecks.first { $0.path == worktree.path }
+        let phases: [WorktreeRemovalRequest.Phase] = [
+            .checking, .ready, .removing,
+            .failed(DMErrorState(title: "Could not remove the worktree", message: "fatal: not a working tree")),
+        ]
+        for phase in phases {
+            let sheet = WorktreeRemovalSheet(
+                request: WorktreeRemovalRequest(worktree: worktree, check: check, phase: phase),
+                onRemove: { _ in }, onCancel: {})
+            let image = try XCTUnwrap(ImageRenderer(content: sheet).nsImage, "\(phase)")
+            XCTAssertEqual(image.size.width, 420)
+        }
+        let merged = MergedWorktreesRemovalSheet(
+            request: MergedRemovalRequest(checks: DemoData.worktreeChecks.filter(\.isCleanAndMerged)),
+            onRemove: { _ in }, onCancel: {})
+        XCTAssertEqual(try XCTUnwrap(ImageRenderer(content: merged).nsImage).size.width, 420)
+    }
+
+    func testTheDemoWorktreesRender() throws {
+        let image = try render(store(snapshot: DemoData.gitSnapshot))
+        XCTAssertEqual(image.size.width, 300)
+    }
 }
