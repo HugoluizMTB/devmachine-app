@@ -81,6 +81,18 @@ final class EndSessionTests: XCTestCase {
         XCTAssertNil(FocusedPreview.id(fromTag: "preview:not-a-uuid"))
     }
 
+    func testTheSelectedSessionOwnsThePreviews() {
+        model.clickSession(SessionRef(alias: acme.alias, name: "dash"))
+        XCTAssertEqual(PreviewStore.shared.owner, SessionRef(alias: acme.alias, name: "dash"))
+
+        model.addLocalSession(path: "/Users/alice/dev/beta")
+        model.selection = .localSession(name: "beta", path: "/Users/alice/dev/beta")
+        XCTAssertEqual(PreviewStore.shared.owner, SessionRef(alias: Workspace.local.alias, name: "beta"))
+
+        model.selection = nil
+        XCTAssertNil(PreviewStore.shared.owner)
+    }
+
     func testAGridOfSessionsKeepsTheDefaultClose() {
         let dash = SessionRef(alias: acme.alias, name: "dash")
         let api = SessionRef(alias: acme.alias, name: "api")

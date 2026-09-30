@@ -261,6 +261,7 @@ final class AppModel: ObservableObject {
         pendingLocalDelete = nil
         guard let s = localSessions.first(where: { $0.handle == handle }) else { return }
         TerminalRegistry.shared.close(.local(session: s.handle, path: s.path))
+        PreviewStore.shared.closeSession(SessionRef(alias: Workspace.local.alias, name: s.handle))
         // Closing the pane only drops this app's client; the multiplexer would
         // keep the shell running with nothing pointing at it.
         TerminalRegistry.shared.killLocalSession(named: s.handle)
@@ -349,6 +350,7 @@ final class AppModel: ObservableObject {
                 selectedSessions = []
                 selectionAnchor = nil
             }
+            PreviewStore.shared.setOwner(selection?.sessionRef)
             syncContext()
             recordNavigation()
         }
@@ -535,6 +537,7 @@ final class AppModel: ObservableObject {
                      item: .session(alias: alias, name: session.name))
             }
             TerminalRegistry.shared.closeWorkspace(alias: alias)
+            PreviewStore.shared.closeWorkspace(alias: alias)
             sessionsByAlias[alias] = nil
             offlineAliases.remove(alias)
             if selectionPollAlias == alias {
@@ -1159,6 +1162,7 @@ final class AppModel: ObservableObject {
                 for ref in refs {
                     self.selectedSessions.remove(ref)
                     TerminalRegistry.shared.close(alias: ref.alias, session: ref.name)
+                    PreviewStore.shared.closeSession(ref)
                     let item = SidebarItem.session(alias: ref.alias, name: ref.name)
                     if self.selection == item {
                         self.selection = nil
@@ -1187,6 +1191,8 @@ final class AppModel: ObservableObject {
                 // The old client is still attached to the renamed tmux session;
                 // drop it so the new name mounts as the only client.
                 TerminalRegistry.shared.close(alias: alias, session: old)
+                PreviewStore.shared.moveSession(
+                    from: SessionRef(alias: alias, name: old), to: SessionRef(alias: alias, name: clean))
                 let oldItem = SidebarItem.session(alias: alias, name: old)
                 if self.selection == oldItem {
                     self.selection = .session(alias: alias, name: clean)
@@ -1205,6 +1211,7 @@ final class AppModel: ObservableObject {
                 self.bumpTask(taskId)
                 self.refresh(alias: alias)
                 TerminalRegistry.shared.close(alias: alias, session: name)
+                PreviewStore.shared.closeSession(SessionRef(alias: alias, name: name))
                 let item = SidebarItem.session(alias: alias, name: name)
                 if self.selection == item {
                     self.selection = nil

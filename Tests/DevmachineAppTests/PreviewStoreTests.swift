@@ -256,4 +256,112 @@ final class PreviewStoreTests: XCTestCase {
 
         XCTAssertTrue(previews.tabs.isEmpty)
     }
+
+    private let dash = SessionRef(alias: "acme-devmachine", name: "dash")
+    private let api = SessionRef(alias: "acme-devmachine", name: "api")
+    private let notes = SessionRef(alias: Workspace.local.alias, name: "notes")
+
+    func testAPreviewBelongsToTheSessionItWasOpenedIn() {
+        let previews = store()
+        previews.setOwner(dash)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+
+        previews.setOwner(api)
+        XCTAssertTrue(previews.tabs.isEmpty)
+        XCTAssertNil(previews.selectedTab)
+
+        previews.setOwner(dash)
+        XCTAssertEqual(previews.tabs.map(\.title), ["localhost:3000"])
+        XCTAssertEqual(previews.selectedTabID, previews.tabs[0].id)
+    }
+
+    func testEachSessionKeepsItsOwnSelectedTab() {
+        let previews = store()
+        previews.setOwner(dash)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+        previews.open(PreviewRequest(place: .thisMac, input: .port(5173, path: "")))
+        previews.select(previews.tabs[0].id)
+        let dashSelected = previews.selectedTabID
+
+        previews.setOwner(notes)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(8080, path: "")))
+        let notesSelected = previews.selectedTabID
+
+        previews.setOwner(dash)
+        XCTAssertEqual(previews.selectedTabID, dashSelected)
+        previews.setOwner(notes)
+        XCTAssertEqual(previews.selectedTabID, notesSelected)
+    }
+
+    func testClosingATabInOneSessionLeavesTheOtherAlone() {
+        let previews = store()
+        previews.setOwner(dash)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+        previews.setOwner(api)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+
+        previews.close(previews.tabs[0].id)
+        XCTAssertTrue(previews.tabs.isEmpty)
+
+        previews.setOwner(dash)
+        XCTAssertEqual(previews.tabs.count, 1)
+        XCTAssertEqual(previews.selectedTabID, previews.tabs[0].id)
+    }
+
+    func testEndingASessionClosesItsPreviewsOnly() {
+        let previews = store()
+        previews.setOwner(dash)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+        previews.setOwner(api)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(5173, path: "")))
+
+        previews.closeSession(dash)
+
+        XCTAssertEqual(previews.tabs.map(\.title), ["localhost:5173"])
+        previews.setOwner(dash)
+        XCTAssertTrue(previews.tabs.isEmpty)
+    }
+
+    func testATunnelUsedByTwoSessionsStopsWithTheLastOne() async {
+        let previews = store()
+        previews.setOwner(dash)
+        previews.open(PreviewRequest(place: .workspace("acme"), input: .port(3000, path: "")))
+        previews.setOwner(api)
+        previews.open(PreviewRequest(place: .workspace("acme"), input: .port(3000, path: "")))
+        await settle(previews)
+        XCTAssertEqual(launcher.launches.count, 1)
+
+        previews.closeSession(dash)
+        XCTAssertFalse(launcher.processes[0].wasTerminated)
+
+        previews.close(previews.tabs[0].id)
+        XCTAssertTrue(launcher.processes[0].wasTerminated)
+    }
+
+    func testHidingAWorkspaceClosesThePreviewsOfItsSessions() {
+        let previews = store()
+        previews.setOwner(dash)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+        previews.setOwner(notes)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(5173, path: "")))
+
+        previews.closeWorkspace(alias: "acme-devmachine")
+
+        XCTAssertEqual(previews.tabs.count, 1)
+        previews.setOwner(dash)
+        XCTAssertTrue(previews.tabs.isEmpty)
+    }
+
+    func testARenamedSessionKeepsItsPreviews() {
+        let previews = store()
+        previews.setOwner(dash)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+        let renamed = SessionRef(alias: dash.alias, name: "board")
+
+        previews.moveSession(from: dash, to: renamed)
+        previews.setOwner(renamed)
+
+        XCTAssertEqual(previews.tabs.map(\.title), ["localhost:3000"])
+        XCTAssertEqual(previews.selectedTabID, previews.tabs[0].id)
+    }
 }

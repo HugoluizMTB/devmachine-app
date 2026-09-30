@@ -38,38 +38,38 @@ struct DocumentPane: View {
         }
     }
 
+    /// A plain row, not a horizontal `ScrollView`: hit-tested in the running
+    /// app, a click on a tab's close mark inside the scroll view landed on its
+    /// clip view and never reached the button. Long titles shorten instead.
     private var strip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                if viewerStore.isOpen {
-                    DocumentTabChip(
-                        systemImage: FileViewerView.icon(for: viewerStore.preview?.kind),
-                        title: viewerStore.preview?.name
-                            ?? (viewerStore.path as NSString?)?.lastPathComponent ?? "Viewer",
-                        selected: previews.selectedTabID == nil,
-                        closeHelp: "Close the file",
-                        select: { previews.select(nil) },
-                        close: { viewerStore.close() })
-                }
-                ForEach(previews.tabs) { tab in
-                    DocumentTabChip(
-                        systemImage: "globe",
-                        title: tab.title,
-                        selected: previews.selectedTabID == tab.id,
-                        closeHelp: "Close the preview",
-                        select: { previews.select(tab.id) },
-                        close: { previews.close(tab.id) })
-                }
+        HStack(spacing: 2) {
+            if viewerStore.isOpen {
+                DocumentTabChip(
+                    systemImage: FileViewerView.icon(for: viewerStore.preview?.kind),
+                    title: viewerStore.preview?.name
+                        ?? (viewerStore.path as NSString?)?.lastPathComponent ?? "Viewer",
+                    selected: previews.selectedTabID == nil,
+                    closeHelp: "Close the file",
+                    select: { previews.select(nil) },
+                    close: { viewerStore.close() })
             }
+            ForEach(previews.tabs) { tab in
+                DocumentTabChip(
+                    systemImage: "globe",
+                    title: tab.title,
+                    selected: previews.selectedTabID == tab.id,
+                    closeHelp: "Close the preview",
+                    select: { previews.select(tab.id) },
+                    close: { previews.close(tab.id) })
+            }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.dmSidebarBg)
     }
 }
 
-/// The close mark sits beside the part that selects, never inside it: a tap
-/// gesture on the whole chip took the click before the mark's button ever
-/// saw it, so a tab could not be closed.
+/// The close mark sits beside the part that selects, not inside it, so the
+/// tap that selects never competes with the button that closes.
 struct DocumentTabChip: View {
     let systemImage: String
     let title: String
@@ -79,19 +79,23 @@ struct DocumentTabChip: View {
     let close: () -> Void
     @State private var hovering = false
 
+    static let maxTitleLength = 36
+
+    static func shortened(_ title: String) -> String {
+        title.count > maxTitleLength ? String(title.prefix(maxTitleLength - 1)) + "…" : title
+    }
+
     var body: some View {
         HStack(spacing: 2) {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
                     .font(.dm(10))
                     .foregroundStyle(Color(hex: 0x5AA9E6))
-                Text(verbatim: title)
+                Text(verbatim: Self.shortened(title))
                     .font(.dm(11.5))
                     .foregroundStyle(.white.opacity(selected ? 0.9 : 0.55))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(maxWidth: 200, alignment: .leading)
-                    .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.leading, 10)
             .padding(.vertical, 7)

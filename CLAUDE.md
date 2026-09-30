@@ -395,9 +395,18 @@ Rules:
   program inside gets no resize and comes back as it was; the keyboard moves
   to the page. ⇧⌘↩ is the preview's while its page has the keyboard
   (`FocusedPreview`), and ⌘W then closes that tab instead of ending the session.
-- **A tab's close mark is never inside the part that selects.** A tap gesture on
-  the whole chip took the click before the mark's button saw it, and a tab
-  could not be closed. Middle click and the chip's menu close it too.
+- **The pane's tab strip is a plain row, never a horizontal `ScrollView`.**
+  Inside the scroll view a click on a tab's close mark hit-tested to its
+  `NSClipView` and never reached the button (checked in a demo build with
+  events sent through the window: no close with the scroll view, a close
+  without it). Long titles are shortened instead. Middle click, the chip's
+  menu and ⌘W close a tab too.
+- **A preview tab belongs to the session it was opened in**
+  (`PreviewTab.owner`, set from `AppModel.selection`). Each session shows its
+  own tabs and selected tab; ending, removing or hiding a session closes its
+  tabs, and a rename carries them over. Tunnels are held per tab, so one
+  shared by two sessions stops with the last tab. The split width stays global;
+  maximize is dropped on a session switch.
 - The in-app browser sends the system Safari's user agent (`SafariUserAgent`,
   version read from Safari's bundle): WebKit's default lacks `Version/… Safari/…`
   and Google served its page for an old browser. A tab's name follows the page

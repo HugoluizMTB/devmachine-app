@@ -56,6 +56,8 @@ struct PreviewTab: Identifiable, Equatable {
     var title: String
     let request: PreviewRequest?
     var state: State
+    /// The session the tab was opened in; nil when no session was selected.
+    var owner: SessionRef? = nil
 }
 
 @MainActor
@@ -69,7 +71,9 @@ struct WorkspaceURLOpener: ExternalURLOpening {
 }
 
 /// The open preview tabs, and the one place that decides where a preview or
-/// a link goes: a tab here, or the default browser.
+/// a link goes: a tab here, or the default browser. A tab belongs to the
+/// session it was opened in: each session shows its own tabs and its own
+/// selected one, and ending the session closes them.
 @MainActor
 final class PreviewStore: ObservableObject {
     static let shared = PreviewStore()
@@ -78,8 +82,12 @@ final class PreviewStore: ObservableObject {
     /// when that page closes, so they stay until stopped or the app quits.
     static let browserHolder = "browser"
 
-    @Published private(set) var tabs: [PreviewTab] = []
-    @Published private(set) var selectedTabID: UUID?
+    @Published private(set) var allTabs: [PreviewTab] = []
+    @Published private(set) var owner: SessionRef?
+    @Published private var selections: [SessionRef?: UUID] = [:]
+
+    var tabs: [PreviewTab] { allTabs.filter { $0.owner == owner } }
+    var selectedTabID: UUID? { selections[owner] }
     @Published private(set) var isOpeningInBrowser = false
 
     let tunnels: TunnelManager
@@ -126,46 +134,78 @@ final class PreviewStore: ObservableObject {
     }
 
     func showPage(title: String, html: String, baseURL: URL) {
-        let tab = PreviewTab(id: UUID(), title: title, request: nil, state: .page(html: html, baseURL: baseURL))
-        tabs.append(tab)
-        selectedTabID = tab.id
+        add(PreviewTab(id: UUID(), title: title, request: nil, state: .page(html: html, baseURL: baseURL)))
+    }
+
+    func setOwner(_ owner: SessionRef?) {
+        guard owner != self.owner else { return }
+        self.owner = owner
     }
 
     func select(_ id: UUID?) {
-        selectedTabID = id
+        selections[owner] = id
     }
 
     func close(_ id: UUID) {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        tabs.remove(at: index)
+        guard let tab = allTabs.first(where: { $0.id == id }) else { return }
+        let siblings = allTabs.filter { $0.owner == tab.owner }
+        let index = siblings.firstIndex { $0.id == id } ?? 0
+        allTabs.removeAll { $0.id == id }
         tunnels.release(holder: id.uuidString)
         PreviewWebViews.shared.forget(id)
-        if selectedTabID == id {
-            selectedTabID = tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)].id
+        if selections[tab.owner] == id {
+            let rest = siblings.filter { $0.id != id }
+            selections[tab.owner] = rest.isEmpty ? nil : rest[min(index, rest.count - 1)].id
         }
     }
 
     func closeAll() {
-        for tab in tabs { close(tab.id) }
+        for tab in allTabs { close(tab.id) }
+    }
+
+    /// The session ended or was removed: its tabs go, and so do the tunnels
+    /// no other tab still holds.
+    func closeSession(_ session: SessionRef) {
+        for tab in allTabs where tab.owner == session { close(tab.id) }
+        selections[session] = nil
+    }
+
+    func closeWorkspace(alias: String) {
+        for tab in allTabs where tab.owner?.alias == alias { close(tab.id) }
+        selections = selections.filter { $0.key?.alias != alias }
+    }
+
+    func moveSession(from old: SessionRef, to new: SessionRef) {
+        for index in allTabs.indices where allTabs[index].owner == old {
+            allTabs[index].owner = new
+        }
+        if let selected = selections.removeValue(forKey: old) { selections[new] = selected }
+        if owner == old { owner = new }
     }
 
     func pageChanged(_ id: UUID, title: String?, url: URL?) {
-        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        guard let tab = allTabs.first(where: { $0.id == id }) else { return }
         let name = PreviewTitle.display(pageTitle: title, url: url, fallback: tab.request?.title ?? tab.title)
         guard name != tab.title else { return }
         update(id) { $0.title = name }
     }
 
     func retry(_ id: UUID) {
-        guard let tab = tabs.first(where: { $0.id == id }), let request = tab.request else { return }
+        guard let tab = allTabs.first(where: { $0.id == id }), let request = tab.request else { return }
         load(request, into: id)
     }
 
     private func openTab(_ request: PreviewRequest) {
         let id = UUID()
-        tabs.append(PreviewTab(id: id, title: request.title, request: request, state: .connecting("")))
-        selectedTabID = id
+        add(PreviewTab(id: id, title: request.title, request: request, state: .connecting("")))
         load(request, into: id)
+    }
+
+    private func add(_ tab: PreviewTab) {
+        var tab = tab
+        tab.owner = owner
+        allTabs.append(tab)
+        selections[owner] = tab.id
     }
 
     private func load(_ request: PreviewRequest, into id: UUID) {
@@ -206,7 +246,7 @@ final class PreviewStore: ObservableObject {
     }
 
     private func update(_ id: UUID, _ change: (inout PreviewTab) -> Void) {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        change(&tabs[index])
+        guard let index = allTabs.firstIndex(where: { $0.id == id }) else { return }
+        change(&allTabs[index])
     }
 }

@@ -211,6 +211,7 @@ struct ContentView: View {
             .onChange(of: showsDocumentPane) { _, shown in
                 if !shown { split.paneClosed() }
             }
+            .onChange(of: previews.owner) { _, _ in split.paneClosed() }
             if model.showsContextPanel {
                 contextArea
             }

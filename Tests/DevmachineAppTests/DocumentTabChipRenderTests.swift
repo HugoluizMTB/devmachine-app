@@ -31,4 +31,11 @@ final class DocumentTabChipRenderTests: XCTestCase {
             try png.write(to: URL(fileURLWithPath: "/tmp/devmachine-tabs.png"))
         }
     }
+
+    func testALongTitleIsShortenedSoTheStripFitsWithoutScrolling() {
+        XCTAssertEqual(DocumentTabChip.shortened("localhost:5173"), "localhost:5173")
+        let long = String(repeating: "a", count: 80)
+        XCTAssertEqual(DocumentTabChip.shortened(long).count, DocumentTabChip.maxTitleLength)
+        XCTAssertTrue(DocumentTabChip.shortened(long).hasSuffix("…"))
+    }
 }
