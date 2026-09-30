@@ -114,7 +114,12 @@ enum DemoSnapshots {
         Screen(id: "menubar-usage", fileName: "20-menubar-usage.png", settleNanoseconds: 400_000_000),
         Screen(id: "command-palette", fileName: "21-command-palette.png", settleNanoseconds: 600_000_000),
         Screen(id: "drop-files", fileName: "22-drop-files.png", settleNanoseconds: 900_000_000),
+        Screen(id: "preview", fileName: "23-preview.png", settleNanoseconds: 1_500_000_000),
     ]
+
+    /// The preview screen: acme's dev server session with its landing page
+    /// open in a preview tab, and the Preview tab listing what else to open.
+    static let previewSession = SessionRef(alias: acmeAlias, name: "web \u{2014} dev server")
 
     /// The drop screen: a second file dragged over acme's Claude session, whose
     /// prompt already holds the path of the first one, typed by that upload.
@@ -266,6 +271,7 @@ enum DemoSnapshots {
         environment.model.showCommandPalette = false
         PaneUploadStore.shared.dropTarget = nil
         DemoData.typedAtPrompt = [:]
+        PreviewStore.shared.closeAll()
         environment.model.goHome()
     }
 
@@ -285,6 +291,7 @@ enum DemoSnapshots {
         model.showCommandPalette = false
         PaneUploadStore.shared.dropTarget = nil
         DemoData.typedAtPrompt = [:]
+        PreviewStore.shared.closeAll()
         model.goHome()
         try? await Task.sleep(nanoseconds: 150_000_000)
         switch screen.id {
@@ -331,6 +338,10 @@ enum DemoSnapshots {
             model.contextTab = .context
             DemoData.typedAtPrompt = [dropKind: dropPrompt]
             PaneUploadStore.shared.dropTarget = dropKind
+        case "preview":
+            model.clickSession(previewSession)
+            model.contextTab = .preview
+            PreviewStore.shared.open(PreviewRequest(place: .workspace("acme"), input: .port(3000, path: "")))
         case "skeleton-context":
             model.seedDemoWorkspacesAwaitingSessions(answered: "globex-devmachine")
             model.clickSession(SessionRef(alias: "globex-devmachine", name: "claude"))

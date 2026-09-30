@@ -59,7 +59,7 @@ final class DemoSnapshotsTests: XCTestCase {
         }
         XCTAssertEqual(numbers, numbers.sorted())
         XCTAssertEqual(numbers.first, "01")
-        XCTAssertEqual(numbers.last, "22")
+        XCTAssertEqual(numbers.last, "23")
     }
 
     func testEveryScreenHasAUniqueID() {
@@ -80,12 +80,19 @@ final class DemoSnapshotsTests: XCTestCase {
             "07-settings-health.png", "08-session-defaults.png", "09-onboarding.png",
             "10-publish-port.png", "18-operator.png", "19-home.png",
             "20-menubar-usage.png", "21-command-palette.png", "22-drop-files.png",
+            "23-preview.png",
         ])
     }
 
-    func testTheLastScreenShowsFilesDroppedOnASession() {
-        XCTAssertEqual(DemoSnapshots.screens.last?.id, "drop-files")
-        XCTAssertEqual(DemoSnapshots.screens.last?.fileName, "22-drop-files.png")
+    func testTheLastScreenShowsAPreviewTab() {
+        XCTAssertEqual(DemoSnapshots.screens.last?.id, "preview")
+        XCTAssertEqual(DemoSnapshots.screens.last?.fileName, "23-preview.png")
+    }
+
+    func testThePreviewScreenOpensAnAcmeDevServerSession() {
+        XCTAssertEqual(DemoSnapshots.previewSession.alias, "acme-devmachine")
+        XCTAssertTrue(DemoData.sessionsByAlias["acme-devmachine"]?.contains {
+            $0.name == DemoSnapshots.previewSession.name } ?? false)
     }
 
     func testTheDropScreenTargetsAcmesClaudeSession() {
