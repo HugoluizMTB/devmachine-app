@@ -89,7 +89,7 @@ final class GitTabTests: XCTestCase {
     }
 
     func testEveryTabHasATitle() {
-        XCTAssertEqual(ContextTab.allCases.map(\.title), ["Context", "Files", "Git"])
+        XCTAssertEqual(ContextTab.allCases.map(\.title), ["Context", "Preview", "Files", "Git"])
         XCTAssertEqual(ContextTab(rawValue: "git"), .git)
     }
 

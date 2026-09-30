@@ -1543,6 +1543,28 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Where the Preview tab's ports live: the selected session's workspace,
+    /// or this Mac for a local session.
+    var selectedPreviewPlace: PreviewPlace? {
+        switch selection {
+        case let .session(alias, _):
+            return .workspace((settings ?? .empty).workspaceName(forAlias: alias))
+        case .localSession:
+            return .thisMac
+        case nil:
+            return nil
+        }
+    }
+
+    /// ⌘K "Open preview…": the Preview tab, with its field ready to type in.
+    @Published var pendingPreviewField = false
+
+    func requestPreviewField() {
+        contextCollapsed = false
+        contextTab = .preview
+        pendingPreviewField = true
+    }
+
     /// Asked for by whoever opens a file, so the tree follows it. The panel
     /// owns the tree, so it listens for this instead of being called directly.
     @Published var revealInTree: String?

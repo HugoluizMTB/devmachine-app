@@ -5,7 +5,7 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case connection, workspaces, harnesses, appearance, terminal, advanced, about
+    case connection, workspaces, harnesses, appearance, terminal, previews, advanced, about
 
     var title: String {
         switch self {
@@ -14,6 +14,7 @@ enum SettingsSection: String, CaseIterable {
         case .harnesses: return "Harnesses"
         case .appearance: return "Appearance"
         case .terminal: return "Terminal"
+        case .previews: return "Previews"
         case .advanced: return "Advanced"
         case .about: return "About"
         }
@@ -26,6 +27,7 @@ enum SettingsSection: String, CaseIterable {
         case .harnesses: return "Choose what new sessions start with."
         case .appearance: return "The wallpaper behind the panes, and the size of the interface."
         case .terminal: return "How a terminal looks, and how many stay connected."
+        case .previews: return "Where a dev server, a published site or a link opens."
         case .advanced: return "Things to turn on only while chasing a problem."
         case .about: return "This app's version and updates, and the devmachine CLI's."
         }
@@ -38,6 +40,7 @@ enum SettingsSection: String, CaseIterable {
         case .harnesses: return "sparkles"
         case .appearance: return "photo"
         case .terminal: return "terminal"
+        case .previews: return "safari"
         case .advanced: return "wrench.and.screwdriver"
         case .about: return "info.circle"
         }
@@ -105,6 +108,7 @@ struct SetupPage: View {
     @State private var remoteTerminalMode = RemoteTerminalMode.automatic
     @State private var copyOnSelect = true
     @State private var showsHarnessIcons = false
+    @State private var linkOpening = LinkOpening.defaultBrowser
     @State private var hiddenWorkspaces: [String] = []
     @State private var enabledHarnesses = AppSettings.empty.enabledHarnesses
     @State private var localSessionProgram = SessionLaunchChoice.terminal
@@ -132,7 +136,8 @@ struct SetupPage: View {
             enabledHarnesses: enabledHarnesses,
             localSessionProgram: localSessionProgram,
             remoteSessionProgram: remoteSessionProgram,
-            workspaceSessionPrograms: workspaceSessionPrograms
+            workspaceSessionPrograms: workspaceSessionPrograms,
+            linkOpening: linkOpening
         )
     }
 
@@ -269,6 +274,7 @@ struct SetupPage: View {
                 case .harnesses: harnessesBlock
                 case .appearance: wallpaperBlock
                 case .terminal: terminalBlock
+                case .previews: previewsBlock
                 case .advanced: advancedBlock
                 case .about: UpdatesSettingsView()
                 }
@@ -739,6 +745,32 @@ struct SetupPage: View {
         }
     }
 
+    private var previewsBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Text(verbatim: "Open previews and links in")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+                Spacer(minLength: 8)
+                Picker("", selection: $linkOpening) {
+                    ForEach(LinkOpening.allCases, id: \.self) { choice in
+                        Text(verbatim: choice.title).tag(choice)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .frame(width: 190)
+            }
+            note("Applies to the Preview tab's sites and dev servers and to the pull "
+                + "requests and links in the Context tab. ⌥-click opens the other way, "
+                + "once. In Devmachine, a preview is a tab beside the terminal; its "
+                + "cookies and logins last until the app quits. A dev server on a "
+                + "workspace is reached through devmachine tunnel, bound to this Mac "
+                + "only, and the tunnel closes with its tab or when the app quits.")
+        }
+    }
+
     private var advancedBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(isOn: $debugLogging) {
@@ -944,6 +976,7 @@ struct SetupPage: View {
             remoteTerminalMode = current.remoteTerminalMode
             copyOnSelect = current.copyOnSelect
             showsHarnessIcons = current.showsHarnessIcons
+            linkOpening = current.linkOpening
             hiddenWorkspaces = current.hiddenWorkspaces
             applyHarnessSettings(current)
         } else {

@@ -17,12 +17,14 @@ enum RunningStatus: Equatable {
 
 enum ContextTab: String, CaseIterable {
     case context
+    case preview
     case files
     case git
 
     var title: String {
         switch self {
         case .context: return "Context"
+        case .preview: return "Preview"
         case .files: return "Files"
         case .git: return "Git"
         }
@@ -68,6 +70,12 @@ struct ContextPanel: View {
         switch model.contextTab {
         case .context:
             contextBody
+        case .preview:
+            if let place = model.selectedPreviewPlace {
+                PreviewSidebarTab(place: place)
+            } else {
+                message("No session")
+            }
         case .files:
             if let commandTarget {
                 FilesTab(store: fileTreeStore, target: commandTarget)
@@ -342,9 +350,8 @@ struct ContextPanel: View {
         .onHover { hovering in
             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
-        .onTapGesture {
-            if let u = URL(string: pr.url) { NSWorkspace.shared.open(u) }
-        }
+        .onTapGesture { openLink(pr.url) }
+        .contextMenu { linkMenu(pr.url) }
     }
 
     @ViewBuilder
@@ -402,8 +409,26 @@ struct ContextPanel: View {
         .onHover { hovering in
             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
-        .onTapGesture {
-            if let u = URL(string: link.url) { NSWorkspace.shared.open(u) }
+        .onTapGesture { openLink(link.url) }
+        .contextMenu { linkMenu(link.url) }
+    }
+
+    /// Follows "Open previews and links in"; ⌥-click takes the other place once.
+    private func openLink(_ raw: String) {
+        guard let url = URL(string: raw) else { return }
+        PreviewStore.shared.openLink(url, inverted: NSEvent.modifierFlags.contains(.option))
+    }
+
+    @ViewBuilder
+    private func linkMenu(_ raw: String) -> some View {
+        if let url = URL(string: raw) {
+            let preference = model.settings?.linkOpening ?? .defaultBrowser
+            Button("Open in Devmachine") { PreviewStore.shared.openLink(url, inverted: preference != .inApp) }
+            Button("Open in Default Browser") { NSWorkspace.shared.open(url) }
+            Button("Copy Link") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(raw, forType: .string)
+            }
         }
     }
 }

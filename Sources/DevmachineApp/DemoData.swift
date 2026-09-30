@@ -253,6 +253,55 @@ enum DemoData {
         ],
     ]
 
+    // MARK: Previews
+
+    static func previewTargets(for place: PreviewPlace) -> [PreviewTarget] {
+        switch place {
+        case .thisMac:
+            return PreviewTargets.local([
+                ListeningPort(port: 4000, command: "ruby"), ListeningPort(port: 5173, command: "node"),
+            ])
+        case let .workspace(name):
+            let user = name
+            return PreviewTargets.remote(
+                workspace: name, user: user, sites: subdomainRows.map(\.site) + stagingSubdomainRows.map(\.site),
+                ports: [PortOwner(port: 3000, owner: "acme"), PortOwner(port: 5173, owner: "acme"),
+                        PortOwner(port: 4000, owner: "globex")],
+                containers: [])
+        }
+    }
+
+    static let previewBaseURL = URL(string: "http://localhost:3000/")!
+
+    static let previewPage = """
+    <!doctype html>
+    <html><head><meta charset="utf-8"><title>Acme</title>
+    <style>
+    body{margin:0;font:16px -apple-system,system-ui,sans-serif;color:#1d2330;background:#f6f4ef}
+    nav{display:flex;justify-content:space-between;align-items:center;padding:22px 48px}
+    nav b{font-size:20px;letter-spacing:-.02em}
+    nav span{margin-left:24px;color:#5b6272}
+    header{padding:72px 48px 40px;max-width:720px}
+    h1{font-size:52px;line-height:1.05;letter-spacing:-.03em;margin:0 0 18px}
+    p{font-size:19px;line-height:1.5;color:#4a5263;margin:0 0 28px}
+    a.cta{display:inline-block;background:#1d2330;color:#fff;text-decoration:none;padding:13px 22px;border-radius:10px}
+    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;padding:24px 48px 64px}
+    .card{background:#fff;border-radius:14px;padding:22px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+    .card h3{margin:0 0 8px;font-size:17px}.card div{color:#5b6272;font-size:15px;line-height:1.45}
+    </style></head>
+    <body>
+    <nav><b>acme</b><div><span>Pricing</span><span>Docs</span><span>Sign in</span></div></nav>
+    <header><h1>Payments that never charge twice.</h1>
+    <p>Idempotent checkout, retries that are safe by default, and a dashboard your support team will like.</p>
+    <a class="cta" href="#">Start free</a></header>
+    <section class="cards">
+    <div class="card"><h3>Safe retries</h3><div>Every charge carries a key, so a timeout never becomes a second charge.</div></div>
+    <div class="card"><h3>Refunds in one call</h3><div>Full or partial, with the reason kept next to the order.</div></div>
+    <div class="card"><h3>Webhooks you can trust</h3><div>Signed, retried, and replayable from the dashboard.</div></div>
+    </section>
+    </body></html>
+    """
+
     // MARK: Pull requests
 
     static let pullRequests: [PullRequest] = [

@@ -55,6 +55,8 @@ enum PaletteAction: Equatable {
     case maximizePane
     case openURL(URL)
     case checkForUpdates
+    case preview(PreviewRequest)
+    case openPreviewField
     case quit
 }
 
@@ -87,10 +89,17 @@ struct PaletteContext {
     var currentWorkspaceAlias: String?
     var activePage: AppPage?
     var cliUpdate: CLIUpdateNotice?
+    var previewTargets: [PalettePreviewGroup] = []
 
     var currentWorkspace: Workspace? {
         guard let alias = currentWorkspaceAlias else { return nil }
         if alias == Workspace.local.alias { return .local }
         return workspaces.first { $0.alias == alias }
     }
+}
+
+/// What one workspace, or this Mac, can preview: the Preview tab's last list.
+struct PalettePreviewGroup {
+    let place: PreviewPlace
+    let targets: [PreviewTarget]
 }

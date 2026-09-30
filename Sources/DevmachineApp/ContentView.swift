@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var contextDragStartWidth: CGFloat?
     @State private var viewerDragStartWidth: CGFloat? = nil
     @StateObject private var quickPublish = QuickPublishState()
+    @ObservedObject private var previews = PreviewStore.shared
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -247,7 +248,7 @@ struct ContentView: View {
     /// file next to a shell, instead of taking a window of its own.
     @ViewBuilder
     private var viewerArea: some View {
-        if viewerStore.isOpen {
+        if DocumentPane.isVisible(fileOpen: viewerStore.isOpen, previewTabs: previews.tabs.count) {
             ResizeHandle(
                 onDrag: { dx in
                     let base = viewerDragStartWidth ?? model.viewerWidth
@@ -256,7 +257,7 @@ struct ContentView: View {
                 },
                 onEnd: { viewerDragStartWidth = nil }
             )
-            FileViewerView()
+            DocumentPane()
                 .frame(width: model.viewerWidth)
         }
     }

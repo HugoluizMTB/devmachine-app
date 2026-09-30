@@ -41,6 +41,12 @@ protocol PaletteSystem {
     func chooseFileAndSend(to kind: TerminalKind)
 }
 
+@MainActor
+protocol PalettePreviewOpening: AnyObject {
+    func open(_ request: PreviewRequest, inverted: Bool)
+}
+
+extension PreviewStore: PalettePreviewOpening {}
 extension StatsStore: PaletteStatsControlling {}
 extension CaddyStore: PaletteSitesControlling {}
 extension HealthCheckStore: PaletteHealthChecking {}
@@ -58,6 +64,7 @@ struct PaletteDispatcher {
     let updates: any PaletteUpdateChecking
     let recents: PaletteRecentsStore
     let system: any PaletteSystem
+    var previews: any PalettePreviewOpening = PreviewStore.shared
 
     func perform(_ command: PaletteCommand) {
         model.showCommandPalette = false
@@ -110,6 +117,8 @@ struct PaletteDispatcher {
         case .checkForUpdates:
             updates.checkNow()
             model.openSettings(.about)
+        case let .preview(request): previews.open(request, inverted: false)
+        case .openPreviewField: model.requestPreviewField()
         case .quit: system.quit()
         }
     }

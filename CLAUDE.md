@@ -369,6 +369,23 @@ Rules:
 - Only a started mosh that could not get through shows the pane notice. A
   machine without mosh-server is a choice; the badge's tooltip says why.
 
+## Previews
+- The context panel's Preview tab lists the selected workspace's published
+  sites and the ports its user listens on (`PreviewTargets`, from `expose list`
+  and the stats `ports`); a local session lists what this Mac listens on
+  (`lsof`). Nothing polls it: it reads on show and on Refresh.
+- Where a preview or a context-panel link opens is one setting
+  (`AppSettings.linkOpening`, default browser); ⌥-click flips it once.
+  `PreviewStore` is the only place that decides.
+- A workspace port is reached through `devmachine tunnel --local`, spawned and
+  owned by `TunnelManager`: reused per workspace and port, held by the tabs (or
+  the browser) that use it, stopped when the last one lets go and on quit. The
+  local port is the remote one when free here, else any free port. The CLI
+  binds 127.0.0.1 only.
+- The in-app browser loads http(s) and `about:blank` only (`PreviewURLPolicy`),
+  keeps `target=_blank` in the same tab, and uses one non-persistent data
+  store per app run. The address bar shows the web view's real URL.
+
 ## Coding harnesses
 - Multiple harnesses may be enabled globally. Enabling one validates only its
   local CLI; a failed check does not change settings.

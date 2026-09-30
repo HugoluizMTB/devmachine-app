@@ -9,6 +9,8 @@ import DevmachineCore
 struct FileViewerView: View {
     @EnvironmentObject var store: FileViewerStore
     @EnvironmentObject var model: AppModel
+    /// Off inside `DocumentPane`, whose strip already holds the file's tab.
+    var showsTab = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +27,7 @@ struct FileViewerView: View {
     /// the path under it so two files with one name stay apart.
     private var header: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if showsTab {
             HStack(spacing: 0) {
                 HStack(spacing: 6) {
                     Image(systemName: icon)
@@ -47,6 +50,7 @@ struct FileViewerView: View {
                 Spacer(minLength: 0)
             }
             .background(Color.dmSidebarBg)
+            }
 
             HStack(spacing: 8) {
                 Text(store.path ?? "")
@@ -212,8 +216,10 @@ struct FileViewerView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var icon: String {
-        switch store.preview?.kind {
+    private var icon: String { Self.icon(for: store.preview?.kind) }
+
+    static func icon(for kind: FilePreviewKind?) -> String {
+        switch kind {
         case .markdown: return "doc.richtext"
         case .image: return "photo"
         case .binary: return "shippingbox"

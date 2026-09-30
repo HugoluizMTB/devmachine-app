@@ -16,6 +16,7 @@ enum CommandRegistry {
         fixed(context).filter { $0.isAvailable(context) }.map(\.command)
             + sessionCommands(context)
             + workspaceCommands(context)
+            + previewCommands(context)
             + machineCommands(context)
             + settingsCommands()
     }
@@ -97,6 +98,12 @@ enum CommandRegistry {
                     systemImage: "plus.circle", keywords: subdomainKeywords,
                     action: .addSubdomain(machine: context.subdomainsMachine)),
                 isAvailable: { $0.hasCaddyMachine && !$0.machines.isEmpty }),
+            Entry(
+                command: PaletteCommand(
+                    id: "action.open-preview", title: "Open preview…", subtitle: "",
+                    category: .action, systemImage: "safari", keywords: previewKeywords,
+                    action: .openPreviewField),
+                isAvailable: { $0.currentTerminal != nil }),
             Entry(command: PaletteCommand(
                 id: "action.refresh", title: "Refresh", subtitle: "Current screen", category: .action,
                 systemImage: "arrow.clockwise", keywords: ["reload", "update"], action: .refresh)),
@@ -220,6 +227,35 @@ enum CommandRegistry {
             }
         }
         return commands
+    }
+
+    private static let previewKeywords = ["browser", "web", "localhost", "dev server", "port", "tunnel", "open"]
+
+    private static func previewCommands(_ context: PaletteContext) -> [PaletteCommand] {
+        context.previewTargets.flatMap { group -> [PaletteCommand] in
+            let name: String
+            switch group.place {
+            case .thisMac: name = "This Mac"
+            case let .workspace(workspace): name = workspace
+            }
+            return group.targets.map { target in
+                switch target.kind {
+                case let .port(port):
+                    return PaletteCommand(
+                        id: "preview.\(group.place.key).port.\(port)", title: "Preview \(name) port \(port)",
+                        subtitle: target.label, category: .workspace, systemImage: "play.display",
+                        keywords: previewKeywords + [name, target.label],
+                        action: .preview(PreviewRequest(place: group.place, input: .port(port, path: ""))))
+                case let .site(host):
+                    return PaletteCommand(
+                        id: "preview.\(group.place.key).site.\(host)", title: "Preview \(host)",
+                        subtitle: name, category: .workspace, systemImage: "globe",
+                        keywords: previewKeywords + [name, "site", "https"],
+                        action: .preview(PreviewRequest(
+                            place: group.place, input: .url(target.siteURL ?? URL(string: "https://\(host)")!))))
+                }
+            }
+        }
     }
 
     private static func machineCommands(_ context: PaletteContext) -> [PaletteCommand] {

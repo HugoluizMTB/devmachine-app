@@ -33,6 +33,9 @@ struct CommandPaletteView: View {
         context.currentWorkspaceAlias = model.currentWorkspaceAlias
         context.activePage = model.activePage
         context.cliUpdate = updates.cliNotice
+        context.previewTargets = PreviewTargetsStore.shared.knownTargets().map {
+            PalettePreviewGroup(place: $0.place, targets: $0.targets)
+        }
         return context
     }
 
