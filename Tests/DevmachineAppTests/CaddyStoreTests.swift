@@ -70,6 +70,30 @@ final class CaddyStoreTests: XCTestCase {
         return CaddyStore(service: CaddyService(cli: cli), selection: SitesMachineSelection(defaults: defaults))
     }
 
+    func testAPreferredMachineIsRememberedBeforeTheListArrives() {
+        let defaults = UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!
+        let selection = SitesMachineSelection(defaults: defaults)
+        let store = CaddyStore(
+            service: CaddyService(cli: DevmachineCLI(
+                executable: "/fake/devmachine", runner: ScriptedCaddyRunner())),
+            selection: selection)
+
+        store.prefer(machine: "staging")
+
+        XCTAssertEqual(selection.machineName, "staging")
+    }
+
+    func testAPreferredMachineIsSelectedOnceTheListIsIn() {
+        let store = makeStore(ScriptedCaddyRunner())
+        store.show(
+            machines: [CLIMachine(name: "main", isSelf: false), CLIMachine(name: "staging", isSelf: false)],
+            states: [:], selected: "main")
+
+        store.prefer(machine: "staging")
+
+        XCTAssertEqual(store.selectedMachine, "staging")
+    }
+
     func testTheSitesSkeletonShowsUntilTheFirstListArrives() async throws {
         let store = makeStore(ScriptedCaddyRunner())
         XCTAssertTrue(store.showsSitesSkeleton)

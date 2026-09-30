@@ -329,6 +329,8 @@ enum DemoData {
 
     // MARK: Recent custom commands
 
+    static let paletteRecents = ["go.stats", "machine.main.subdomains", "settings.appearance"]
+
     static let recentCommands: [String: [String]] = [
         "acme-devmachine": ["npm run dev", "htop", "claude --model opus"],
         "globex-devmachine": ["npm run dev", "bin/rails server", "tail -f log/development.log"],

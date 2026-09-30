@@ -150,7 +150,17 @@ struct SetupPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
-        .onAppear { load() }
+        .onAppear {
+            load()
+            openRequestedSection()
+        }
+        .onChange(of: model.requestedSettingsSection) { _, _ in openRequestedSection() }
+    }
+
+    private func openRequestedSection() {
+        guard let requested = model.requestedSettingsSection else { return }
+        section = requested
+        model.requestedSettingsSection = nil
     }
 
     private var card: some View {

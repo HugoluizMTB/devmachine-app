@@ -1,0 +1,145 @@
+import AppKit
+import DevmachineCore
+
+@MainActor
+protocol PaletteStatsControlling: AnyObject {
+    func select(_ name: String)
+    func refresh()
+}
+
+@MainActor
+protocol PaletteSitesControlling: AnyObject {
+    func prefer(machine: String)
+    func refresh()
+}
+
+@MainActor
+protocol PaletteHealthChecking: AnyObject {
+    func run()
+}
+
+@MainActor
+protocol PaletteSavedCommandRecording: AnyObject {
+    @discardableResult
+    func record(_ raw: String, for alias: String) -> String?
+}
+
+/// What reaches outside the app's own state: windows, Finder, the browser.
+@MainActor
+protocol PaletteSystem {
+    func openFilesWindow(alias: String)
+    func reveal(path: String)
+    func open(_ url: URL)
+    func quit()
+    func chooseFileAndSend(to kind: TerminalKind)
+}
+
+extension StatsStore: PaletteStatsControlling {}
+extension CaddyStore: PaletteSitesControlling {}
+extension HealthCheckStore: PaletteHealthChecking {}
+extension RecentCommandStore: PaletteSavedCommandRecording {}
+
+/// Runs a palette command through the same model calls the sidebar, the
+/// menus and the pages use, so the palette has no navigation of its own.
+@MainActor
+struct PaletteDispatcher {
+    let model: AppModel
+    let stats: any PaletteStatsControlling
+    let sites: any PaletteSitesControlling
+    let health: any PaletteHealthChecking
+    let savedCommands: any PaletteSavedCommandRecording
+    let recents: PaletteRecentsStore
+    let system: any PaletteSystem
+
+    func perform(_ command: PaletteCommand) {
+        model.showCommandPalette = false
+        recents.record(command.id)
+        perform(command.action)
+    }
+
+    private func perform(_ action: PaletteAction) {
+        switch action {
+        case .goHome: model.goHome()
+        case let .showPage(page): model.showPage(page)
+        case let .openSettings(section): model.openSettings(section)
+        case .runHealthCheck:
+            health.run()
+            model.openSettings(.advanced)
+        case let .openSession(item): model.jump(to: item)
+        case let .newSession(alias, choice): model.openSession(in: alias, startup: .program(choice))
+        case let .runSavedCommand(alias, command):
+            savedCommands.record(command, for: alias)
+            model.openSession(in: alias, startup: .command(command))
+        case let .customCommand(alias): model.pendingCustomCommandAlias = alias
+        case let .newNamedSession(alias): model.newSession(alias: alias)
+        case .newQuickSession: model.requestQuickSession()
+        case let .publishPort(workspace): model.requestPublish(workspace: workspace)
+        case let .openFiles(alias): system.openFilesWindow(alias: alias)
+        case let .workspaceHome(alias): model.stackWorkspace(alias)
+        case let .revealInFinder(path): system.reveal(path: path)
+        case let .stats(machine):
+            stats.select(machine)
+            model.showPage(.stats)
+        case let .subdomains(machine):
+            sites.prefer(machine: machine)
+            model.showPage(.subdomains)
+        case let .addSubdomain(machine):
+            if let machine { sites.prefer(machine: machine) }
+            model.requestAddSubdomain()
+        case let .sendFile(kind): system.chooseFileAndSend(to: kind)
+        case .findFile: model.showFileSearch = true
+        case .refresh: refreshCurrentScreen()
+        case .toggleSidebar: model.sidebarCollapsed.toggle()
+        case .toggleContext: model.contextCollapsed.toggle()
+        case .showShortcuts: model.showShortcuts = true
+        case .back: model.goBack()
+        case .forward: model.goForward()
+        case .previousSession: model.moveToPreviousSession()
+        case .nextSession: model.moveToNextSession()
+        case .maximizePane: model.toggleMaximize()
+        case let .openURL(url): system.open(url)
+        case .quit: system.quit()
+        }
+    }
+
+    private func refreshCurrentScreen() {
+        switch model.activePage {
+        case .stats: stats.refresh()
+        case .subdomains: sites.refresh()
+        default: model.refreshAll()
+        }
+    }
+}
+
+/// The real outside world. A modal panel cannot open while the palette's
+/// key handling still runs, so it waits for the next turn of the run loop.
+@MainActor
+struct AppPaletteSystem: PaletteSystem {
+    let openFiles: (String) -> Void
+
+    func openFilesWindow(alias: String) { openFiles(alias) }
+
+    func reveal(path: String) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
+    func open(_ url: URL) { NSWorkspace.shared.open(url) }
+
+    func quit() { NSApp.terminate(nil) }
+
+    func chooseFileAndSend(to kind: TerminalKind) {
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Send"
+            guard panel.runModal() == .OK, let url = panel.url,
+                  let data = try? Data(contentsOf: url) else { return }
+            TerminalRegistry.shared.sendFile(
+                (data, url.pathExtension.isEmpty ? "bin" : url.pathExtension.lowercased()),
+                into: kind, noun: "file")
+            TerminalRegistry.shared.requestFocus(kind)
+        }
+    }
+}

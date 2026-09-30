@@ -46,6 +46,18 @@ When the owner asks for a feature or "a page", he wants something that loads
   Existing exception: the **Files** window is contextual per-workspace (opened
   from the sidebar folder button) and stays a window for now.
 
+## Command palette (⌘K)
+- `CommandRegistry` builds every command from a `PaletteContext` (plain values:
+  workspaces, sessions, machines, the current terminal). A fixed command carries
+  an `isAvailable` check; per-workspace, per-machine and per-session commands
+  are generated from state. A new screen or sheet gets a command there.
+- A command is data (`PaletteAction`); `PaletteDispatcher` is the one place that
+  runs it, through the same `AppModel` calls the sidebar and menus use. A sheet
+  that lives in a view opens through a model request (`pendingAddSubdomain`,
+  `pendingPublishWorkspace`, `requestedSettingsSection`), never a second copy.
+- Ranking is `FuzzyMatch` (Core) plus the recent-use bonus from `CommandMRU`,
+  persisted by `PaletteRecentsStore`.
+
 ## Menubar
 `MenuBarExtra` uses `.menuBarExtraStyle(.window)` — an interactive popover with a
 tab bar (`MenuBarTab`), mouse-navigable like pr-menubar. Tabs render inline

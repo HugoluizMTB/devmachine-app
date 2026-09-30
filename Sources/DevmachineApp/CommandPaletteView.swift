@@ -1,29 +1,63 @@
 import SwiftUI
+import DevmachineCore
 
 struct CommandPaletteView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject private var stats: StatsStore
+    @EnvironmentObject private var caddy: CaddyStore
+    @EnvironmentObject private var health: HealthCheckStore
+    @EnvironmentObject private var savedCommands: RecentCommandStore
+    @EnvironmentObject private var settingsStore: SettingsStore
+    @EnvironmentObject private var filesStore: FilesStore
+    @EnvironmentObject private var recents: PaletteRecentsStore
+    @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
+    @Environment(\.openWindow) private var openWindow
     @State private var query = ""
     @State private var index = 0
     @FocusState private var focused: Bool
 
-    private var results: [PaletteItem] {
-        let all = model.paletteItems()
-        guard !query.isEmpty else { return all }
-        return all
-            .compactMap { item -> (PaletteItem, Int)? in
-                guard let s = Self.fuzzyScore(query, "\(item.subtitle) \(item.title)") else { return nil }
-                return (item, s)
-            }
-            .sorted { $0.1 > $1.1 }
-            .map(\.0)
+    private var context: PaletteContext {
+        var context = PaletteContext()
+        context.workspaces = model.visibleWorkspaces
+        context.sessions = model.paletteItems()
+        context.localSessions = model.localSessions
+        context.launchOptions = harnessSettingsFacade.launchOptions(for: settingsStore.settings ?? .empty)
+        context.savedCommands = Dictionary(
+            uniqueKeysWithValues: model.sidebarWorkspaces.map { ($0.alias, savedCommands.recents(for: $0.alias)) })
+        context.machines = stats.machines.map(\.name)
+        context.hasCaddyMachine = model.hasCaddyMachine
+        context.subdomainsMachine = caddy.dnsMachine ?? stats.machines.first?.name
+        context.currentTerminal = model.currentTerminalKind
+        context.currentWorkspaceAlias = model.currentWorkspaceAlias
+        context.activePage = model.activePage
+        return context
+    }
+
+    private var sections: [PaletteSection] {
+        let context = context
+        return PaletteRanker.sections(
+            CommandRegistry.commands(in: context), query: query, mru: recents.mru,
+            currentWorkspace: context.currentWorkspace?.name)
+    }
+
+    private var dispatcher: PaletteDispatcher {
+        PaletteDispatcher(
+            model: model, stats: stats, sites: caddy, health: health, savedCommands: savedCommands,
+            recents: recents,
+            system: AppPaletteSystem(openFiles: { alias in
+                filesStore.open(.host(alias: alias))
+                openWindow(id: "files")
+            }))
     }
 
     var body: some View {
+        let sections = sections
+        let flat = sections.flatMap(\.commands)
         VStack(spacing: 0) {
             DMSearchField(
-                prompt: "Search sessions…", text: $query, focus: $focused,
+                prompt: "Search sessions, pages and actions…", text: $query, focus: $focused,
                 fontSize: 15, iconSize: 13, spacing: 10, iconColor: .secondary)
-            .onSubmit(openSelected)
+            .onSubmit { run(flat) }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
 
@@ -31,39 +65,76 @@ struct CommandPaletteView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(Array(results.enumerated()), id: \.element.id) { i, item in
-                            row(i: i, item: item)
-                                .id(item.id)
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(sections) { section in
+                            DMSectionLabel(text: section.category.title.uppercased())
+                                .padding(.horizontal, 10)
+                                .padding(.top, 8)
+                                .padding(.bottom, 2)
+                            ForEach(section.commands) { command in
+                                let position = flat.firstIndex { $0.id == command.id } ?? 0
+                                row(command, selected: position == index)
+                                    .id(command.id)
+                                    .onTapGesture { dispatcher.perform(command) }
+                            }
                         }
                     }
                     .padding(6)
                 }
-                .frame(maxHeight: 360)
+                .frame(maxHeight: 420)
                 .onChange(of: index) { _, new in
-                    if new < results.count { withAnimation { proxy.scrollTo(results[new].id) } }
+                    if new < flat.count { withAnimation { proxy.scrollTo(flat[new].id) } }
                 }
             }
         }
-        .frame(width: 560)
+        .frame(width: 600)
         .dmGlass(radius: DMRadius.panel)
         .shadow(radius: 30, y: 12)
-        .onAppear { focused = true; index = 0 }
+        .onAppear {
+            focused = true
+            index = 0
+            query = DemoSnapshots.paletteInitialQuery
+        }
         .onChange(of: query) { _, _ in index = 0 }
-        .onKeyPress(.downArrow) { index = min(index + 1, max(results.count - 1, 0)); return .handled }
+        .onKeyPress(.downArrow) { index = min(index + 1, max(flat.count - 1, 0)); return .handled }
         .onKeyPress(.upArrow) { index = max(index - 1, 0); return .handled }
-        .onKeyPress(.return) { openSelected(); return .handled }
+        .onKeyPress(.return) { run(flat); return .handled }
         .onKeyPress(.escape) { model.showCommandPalette = false; return .handled }
     }
 
-    private func row(i: Int, item: PaletteItem) -> some View {
+    private func row(_ command: PaletteCommand, selected: Bool) -> some View {
         HStack(spacing: 10) {
+            icon(command)
+                .frame(width: 18)
+            Text(verbatim: command.title)
+                .font(.dm(13, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Text(verbatim: command.subtitle)
+                .font(.dm(11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if let shortcut = command.shortcut {
+                DMKeyCap(key: shortcut)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            DMRowBackground(selected: selected, cornerRadius: DMRadius.control, selectedColor: .dmActive))
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func icon(_ command: PaletteCommand) -> some View {
+        if command.category == .session || command.action.opensSession {
             HStack(spacing: 3) {
-                if item.badges.isEmpty {
+                if command.badges.isEmpty {
                     Image(systemName: "circle")
                         .foregroundStyle(Color.dmMuted)
                 } else {
-                    ForEach(item.badges) { badge in
+                    ForEach(command.badges) { badge in
                         Image(systemName: badge.systemImage)
                             .foregroundStyle(badge.color)
                             .help(badge.helpText)
@@ -71,42 +142,22 @@ struct CommandPaletteView: View {
                 }
             }
             .font(.dm(7))
-            Text(item.title)
-                .font(.dm(13, weight: .medium))
-                .foregroundStyle(.primary)
-            Text(item.subtitle)
-                .font(.dm(11))
-                .foregroundStyle(.secondary)
-            Spacer()
+        } else {
+            Image(systemName: command.systemImage)
+                .font(.dm(12))
+                .foregroundStyle(Color.dmMuted)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            DMRowBackground(
-                selected: i == index, cornerRadius: DMRadius.control, selectedColor: .dmActive))
-        .contentShape(Rectangle())
-        .onTapGesture { model.openPalette(item) }
     }
 
-    private func openSelected() {
-        guard index < results.count else { return }
-        model.openPalette(results[index])
+    private func run(_ flat: [PaletteCommand]) {
+        guard index < flat.count else { return }
+        dispatcher.perform(flat[index])
     }
+}
 
-    static func fuzzyScore(_ q: String, _ text: String) -> Int? {
-        let t = text.lowercased()
-        let query = q.lowercased()
-        if query.isEmpty { return 0 }
-        if let r = t.range(of: query) {
-            return 1000 - t.distance(from: t.startIndex, to: r.lowerBound)
-        }
-        var ti = t.startIndex
-        var score = 0
-        for ch in query {
-            guard let f = t[ti...].firstIndex(of: ch) else { return nil }
-            ti = t.index(after: f)
-            score += 1
-        }
-        return score
+private extension PaletteAction {
+    var opensSession: Bool {
+        if case .openSession = self { return true }
+        return false
     }
 }

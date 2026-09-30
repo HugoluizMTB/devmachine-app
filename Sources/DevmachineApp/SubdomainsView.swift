@@ -55,7 +55,9 @@ struct SubdomainsView: View {
         .background(Color.dmContentBg)
         .onAppear {
             if store.machines.isEmpty { store.refresh() }
+            openRequestedAdd()
         }
+        .onChange(of: model.pendingAddSubdomain) { _, _ in openRequestedAdd() }
         .onChange(of: store.dnsProviders) {
             if case .provider(let name) = selectedTab, !store.dnsProviders.contains(name) {
                 selectedTab = .sites
@@ -312,6 +314,12 @@ struct SubdomainsView: View {
     private var emptySitesText: String {
         guard store.showsMachinePicker, let machine = store.selectedMachine else { return "No subdomains found" }
         return "No subdomains on \(machine)"
+    }
+
+    private func openRequestedAdd() {
+        guard model.pendingAddSubdomain else { return }
+        model.pendingAddSubdomain = false
+        showAdd = true
     }
 
     private func retrySelectedMachine() {

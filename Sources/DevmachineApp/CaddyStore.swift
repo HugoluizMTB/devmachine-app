@@ -137,6 +137,16 @@ final class CaddyStore: ObservableObject {
         }
     }
 
+    /// Selects a machine now when its list is in, or remembers it so the
+    /// first load opens on it.
+    func prefer(machine name: String) {
+        if machines.contains(where: { $0.name == name }) {
+            select(name)
+        } else {
+            selection.machineName = name
+        }
+    }
+
     /// Sets every machine's state at once — demo mode and render tests, which
     /// have nothing real to ask.
     func show(machines: [CLIMachine], states: [String: MachineSitesState], selected: String?) {

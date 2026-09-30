@@ -7,7 +7,6 @@ struct SidebarView: View {
     @EnvironmentObject var filesStore: FilesStore
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var savedCommands: RecentCommandStore
-    @StateObject private var quickPublish = QuickPublishState()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
 
@@ -29,7 +28,6 @@ struct SidebarView: View {
             footerRow
         }
         .background(Color.dmSidebarBg)
-        .quickPublishSheet(quickPublish, settings: settingsStore.settings, workspaces: model.visibleWorkspaces)
     }
 
     private var workspaceList: some View {
@@ -166,7 +164,7 @@ struct SidebarView: View {
             Button("Files…") { openFiles(alias: alias) }
             if alias != Workspace.local.alias, model.hasCaddyMachine {
                 Button("Publish a port…") {
-                    quickPublish.start(workspace: title)
+                    model.requestPublish(workspace: title)
                 }
             }
         }

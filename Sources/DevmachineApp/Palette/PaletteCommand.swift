@@ -1,0 +1,91 @@
+import Foundation
+import DevmachineCore
+
+/// The group a command is listed under. The order here is the order of the
+/// groups when nothing else decides it.
+enum PaletteCategory: Int, CaseIterable, Comparable {
+    case recent, goTo, session, workspace, machine, settings, action
+
+    var title: String {
+        switch self {
+        case .recent: return "Recent"
+        case .goTo: return "Go to"
+        case .session: return "Session"
+        case .workspace: return "Workspace"
+        case .machine: return "Machine"
+        case .settings: return "Settings"
+        case .action: return "Action"
+        }
+    }
+
+    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
+/// What a command does, as data: the registry builds these and
+/// `PaletteDispatcher` is the one place that turns them into app calls.
+enum PaletteAction: Equatable {
+    case goHome
+    case showPage(AppPage)
+    case openSettings(SettingsSection)
+    case runHealthCheck
+    case openSession(SidebarItem)
+    case newSession(alias: String, choice: SessionLaunchChoice)
+    case runSavedCommand(alias: String, command: String)
+    case customCommand(alias: String)
+    case newNamedSession(alias: String)
+    case newQuickSession
+    case publishPort(workspace: String)
+    case openFiles(alias: String)
+    case workspaceHome(alias: String)
+    case revealInFinder(path: String)
+    case stats(machine: String)
+    case subdomains(machine: String)
+    case addSubdomain(machine: String?)
+    case sendFile(TerminalKind)
+    case findFile
+    case refresh
+    case toggleSidebar
+    case toggleContext
+    case showShortcuts
+    case back
+    case forward
+    case previousSession
+    case nextSession
+    case maximizePane
+    case openURL(URL)
+    case quit
+}
+
+struct PaletteCommand: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let category: PaletteCategory
+    let systemImage: String
+    var shortcut: String? = nil
+    var keywords: [String] = []
+    var badges: [HarnessBadgePresentation] = []
+    let action: PaletteAction
+}
+
+/// What the registry needs to know about the app right now, as plain values,
+/// so the list of commands can be built and tested without a running app.
+struct PaletteContext {
+    var workspaces: [Workspace] = []
+    var sessions: [PaletteItem] = []
+    var localSessions: [LocalSession] = []
+    var launchOptions: [HarnessLaunchOption] = [.terminal]
+    var savedCommands: [String: [String]] = [:]
+    var machines: [String] = []
+    var hasCaddyMachine = false
+    var subdomainsMachine: String?
+    var currentTerminal: TerminalKind?
+    var currentWorkspaceAlias: String?
+    var activePage: AppPage?
+
+    var currentWorkspace: Workspace? {
+        guard let alias = currentWorkspaceAlias else { return nil }
+        if alias == Workspace.local.alias { return .local }
+        return workspaces.first { $0.alias == alias }
+    }
+}

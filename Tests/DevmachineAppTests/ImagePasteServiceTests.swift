@@ -87,6 +87,14 @@ final class ImagePasteServiceTests: XCTestCase {
             "Saving image\u{2026}")
     }
 
+    @MainActor
+    func testAFileSentFromThePaletteIsCalledAFile() {
+        XCTAssertEqual(
+            TerminalRegistry.sendingLabel(
+                for: .remote(alias: "acme-devmachine", session: "dash"), noun: "file"),
+            "Sending file to acme-devmachine\u{2026}")
+    }
+
     func testStoringReportsEveryByte() throws {
         let runner = RecordingRunner(output: "/home/alice/a.png\n")
         let service = ImagePasteService(runner: runner, storagePolicy: .appManaged)

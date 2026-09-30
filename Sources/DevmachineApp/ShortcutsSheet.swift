@@ -19,7 +19,7 @@ struct ShortcutsSheet: View {
         Group(title: "Layout", items: [
             Shortcut(keys: ["⌘", "B"], action: "Toggle sidebar"),
             Shortcut(keys: ["⌘", "J"], action: "Toggle context panel"),
-            Shortcut(keys: ["⌘", "K"], action: "Command palette (jump to a session)"),
+            Shortcut(keys: ["⌘", "K"], action: "Command palette: sessions, pages and actions"),
             Shortcut(keys: ["⌘", "?"], action: "This list"),
         ]),
         Group(title: "Sessions", items: [

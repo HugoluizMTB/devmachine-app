@@ -406,6 +406,12 @@ final class AppModel: ObservableObject {
     /// The file finder, opened over any session.
     @Published var showFileSearch = false
     @Published var showShortcuts = false
+    /// The workspace whose "Publish a port…" sheet should open.
+    @Published var pendingPublishWorkspace: String?
+    /// Asks the Subdomains page to open its Add subdomain sheet once shown.
+    @Published var pendingAddSubdomain = false
+    /// The Settings pane to open on, read once by the Settings page.
+    @Published var requestedSettingsSection: SettingsSection?
     var selectionAnchor: SessionRef? = nil
 
     @Published var sidebarCollapsed: Bool = (UserDefaults.standard.object(forKey: "sidebarCollapsed") as? Bool) ?? true {
@@ -1035,13 +1041,53 @@ final class AppModel: ObservableObject {
     }
 
     func openPalette(_ item: PaletteItem) {
-        selection = item.target
-        if case let .session(alias, name) = item.target {
+        jump(to: item.target)
+        showCommandPalette = false
+    }
+
+    func jump(to item: SidebarItem) {
+        selection = item
+        if case let .session(alias, name) = item {
             let ref = SessionRef(alias: alias, name: name)
             selectedSessions = [ref]
             selectionAnchor = ref
         }
-        showCommandPalette = false
+    }
+
+    func openSettings(_ section: SettingsSection) {
+        requestedSettingsSection = section
+        activePage = .setup
+    }
+
+    func requestPublish(workspace: String) {
+        pendingPublishWorkspace = workspace
+    }
+
+    func requestAddSubdomain() {
+        activePage = .subdomains
+        pendingAddSubdomain = true
+    }
+
+    /// The terminal a command such as "Send file" acts on: the selected
+    /// session, or the focused cell of a stack.
+    var currentTerminalKind: TerminalKind? {
+        switch activePage {
+        case nil:
+            return selection?.terminalKind
+        case let .stack(refs):
+            let ref = FocusedTerminal.ref().flatMap { refs.contains($0) ? $0 : nil } ?? refs.first
+            return ref.map { sidebarItem(for: $0).terminalKind }
+        default:
+            return nil
+        }
+    }
+
+    var currentWorkspaceAlias: String? {
+        switch currentTerminalKind {
+        case let .remote(alias, _): return alias
+        case .local: return Workspace.local.alias
+        case nil: return nil
+        }
     }
 
     func cmdClickSession(_ ref: SessionRef) {

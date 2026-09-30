@@ -10,6 +10,7 @@ final class DemoSnapshotsTests: XCTestCase {
         unsetenv("DEVMACHINE_DEMO_LOADING")
         DemoSnapshots.subdomainsInitialTab = .sites
         DemoSnapshots.setupInitialSection = .connection
+        DemoSnapshots.paletteInitialQuery = ""
         try await super.tearDown()
     }
 
@@ -57,7 +58,7 @@ final class DemoSnapshotsTests: XCTestCase {
         }
         XCTAssertEqual(numbers, numbers.sorted())
         XCTAssertEqual(numbers.first, "00")
-        XCTAssertEqual(numbers.last, "10")
+        XCTAssertEqual(numbers.last, "21")
     }
 
     func testEveryScreenHasAUniqueID() {
@@ -71,8 +72,17 @@ final class DemoSnapshotsTests: XCTestCase {
         }
     }
 
-    func testThereAreExactlyElevenScreens() {
-        XCTAssertEqual(DemoSnapshots.screens.count, 11)
+    func testThereAreExactlyTwelveScreens() {
+        XCTAssertEqual(DemoSnapshots.screens.count, 12)
+    }
+
+    func testTheLastScreenShowsTheCommandPalette() {
+        XCTAssertEqual(DemoSnapshots.screens.last?.id, "command-palette")
+        XCTAssertEqual(DemoSnapshots.screens.last?.fileName, "21-command-palette.png")
+    }
+
+    func testThePaletteOpensEmptyOutsideTheScreenshotWalk() {
+        XCTAssertEqual(DemoSnapshots.paletteInitialQuery, "")
     }
 
     func testTheFirstScreenIsHomeWithTheMachineCards() {

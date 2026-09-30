@@ -20,6 +20,7 @@ struct DevmachineApp: App {
     @StateObject private var viewerStore = FileViewerStore()
     @StateObject private var fileTreeStore = FileTreeStore()
     @StateObject private var fileSearchStore = FileSearchStore()
+    @StateObject private var paletteRecents = PaletteRecentsStore()
 
     init() {
         let facade = HarnessSettingsFacade()
@@ -74,6 +75,7 @@ struct DevmachineApp: App {
                 .environmentObject(viewerStore)
                 .environmentObject(fileTreeStore)
                 .environmentObject(fileSearchStore)
+                .environmentObject(paletteRecents)
                 .frame(minWidth: 900, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
         }
         .windowStyle(.hiddenTitleBar)
@@ -119,7 +121,7 @@ struct DevmachineApp: App {
                 Divider()
                 Button("Find File…") { model.showFileSearch.toggle() }
                     .keyboardShortcut("p", modifiers: .command)
-                Button("Go to Session…") { model.showCommandPalette.toggle() }
+                Button("Command Palette…") { model.showCommandPalette.toggle() }
                     .keyboardShortcut("k", modifiers: .command)
                 Divider()
                 Button("Maximize Pane") { model.toggleMaximize() }

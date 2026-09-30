@@ -23,6 +23,10 @@ enum DemoSnapshots {
     /// screen. Same rule as `subdomainsInitialTab`.
     static var setupInitialSection: SettingsSection = .connection
 
+    /// Read by `CommandPaletteView` so the palette opens already typed into
+    /// for one screen. Same rule as `subdomainsInitialTab`.
+    static var paletteInitialQuery = ""
+
     private static let acmeAlias = "acme-devmachine"
     private static let defaultWindowSize = NSSize(width: 1440, height: 900)
 
@@ -75,6 +79,7 @@ enum DemoSnapshots {
         Screen(id: "session-defaults", fileName: "08-session-defaults.png", settleNanoseconds: 500_000_000),
         Screen(id: "onboarding", fileName: "09-onboarding.png", settleNanoseconds: 500_000_000),
         Screen(id: "publish-port", fileName: "10-publish-port.png", settleNanoseconds: 400_000_000),
+        Screen(id: "command-palette", fileName: "21-command-palette.png", settleNanoseconds: 600_000_000),
     ]
 
     /// The loading walk (`DEVMACHINE_DEMO_LOADING=1`): every store is held on
@@ -156,6 +161,7 @@ enum DemoSnapshots {
             capture(view, to: directory.appendingPathComponent(screen.fileName))
         }
 
+        environment.model.showCommandPalette = false
         environment.model.goHome()
     }
 
@@ -172,6 +178,7 @@ enum DemoSnapshots {
         // (read from a static var, since `PageHost` builds them with no
         // arguments) has any effect. Skipping the beat leaves the *previous*
         // instance on screen, still on its own tab.
+        model.showCommandPalette = false
         model.goHome()
         try? await Task.sleep(nanoseconds: 150_000_000)
         switch screen.id {
@@ -199,6 +206,9 @@ enum DemoSnapshots {
         case "session-defaults":
             setupInitialSection = .harnesses
             model.showPage(.setup)
+        case "command-palette":
+            paletteInitialQuery = "sub"
+            model.showCommandPalette = true
         case "skeleton-context":
             model.seedDemoWorkspacesAwaitingSessions(answered: "globex-devmachine")
             model.clickSession(SessionRef(alias: "globex-devmachine", name: "claude"))

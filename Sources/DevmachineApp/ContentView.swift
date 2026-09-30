@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var dragStartWidth: CGFloat? = nil
     @State private var contextDragStartWidth: CGFloat?
     @State private var viewerDragStartWidth: CGFloat? = nil
+    @StateObject private var quickPublish = QuickPublishState()
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -76,6 +77,12 @@ struct ContentView: View {
             model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
         }
         .onReceive(settingsStore.$settings) { model.settings = $0 }
+        .onChange(of: model.pendingPublishWorkspace) { _, workspace in
+            guard let workspace else { return }
+            model.pendingPublishWorkspace = nil
+            quickPublish.start(workspace: workspace)
+        }
+        .quickPublishSheet(quickPublish, settings: settingsStore.settings, workspaces: model.visibleWorkspaces)
         .sheet(isPresented: $model.showShortcuts) {
             ShortcutsSheet().environmentObject(model)
         }

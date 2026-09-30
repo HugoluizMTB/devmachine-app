@@ -85,7 +85,7 @@ final class TerminalRegistry: NSObject {
                 if TerminalKeyboard.pastesClipboard(keyCode: keyCode, flags: flags),
                    let (kind, _) = registry.focusedEntry(),
                    let image = ImagePasteService.image(from: .general) {
-                    registry.pasteImage(image, into: kind)
+                    registry.sendFile(image, into: kind)
                     return true
                 }
                 guard TerminalKeyboard.optionActsAsMeta(for: flags) else { return false }
@@ -155,14 +155,16 @@ final class TerminalRegistry: NSObject {
         return nil
     }
 
-    /// Stores the image where the session's agent can read it, then types the
+    /// Stores the file where the session's agent can read it, then types the
     /// path without a newline: the sentence around it is yours to write.
-    private func pasteImage(_ image: (data: Data, fileExtension: String), into kind: TerminalKind) {
+    func sendFile(
+        _ image: (data: Data, fileExtension: String), into kind: TerminalKind, noun: String = "image"
+    ) {
         let model = AppModel.shared
         let service = ImagePasteService(
             runner: ProcessRunner(),
             storagePolicy: model?.imageStoragePolicy(for: kind) ?? .appManaged)
-        model?.beginTransfer(label: Self.sendingLabel(for: kind), total: image.data.count)
+        model?.beginTransfer(label: Self.sendingLabel(for: kind, noun: noun), total: image.data.count)
         Task.detached {
             let path = try? service.store(
                 image.data, fileExtension: image.fileExtension, on: kind,
@@ -178,10 +180,10 @@ final class TerminalRegistry: NSObject {
         }
     }
 
-    static func sendingLabel(for kind: TerminalKind) -> String {
+    static func sendingLabel(for kind: TerminalKind, noun: String = "image") -> String {
         switch kind {
-        case let .remote(alias, _): return "Sending image to \(alias)…"
-        case .local: return "Saving image…"
+        case let .remote(alias, _): return "Sending \(noun) to \(alias)…"
+        case .local: return "Saving \(noun)…"
         }
     }
 
