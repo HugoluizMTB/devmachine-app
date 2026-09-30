@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ContainerStat: Decodable, Equatable, Sendable {
+public struct ContainerStat: Codable, Equatable, Sendable {
     public let name: String
     public let memUsedBytes: Int64
     public let memLimitBytes: Int64
@@ -27,7 +27,7 @@ public struct ContainerStat: Decodable, Equatable, Sendable {
     }
 }
 
-public struct UserRAM: Decodable, Equatable, Sendable {
+public struct UserRAM: Codable, Equatable, Sendable {
     public let user: String
     public let rssBytes: Int64
 
@@ -42,7 +42,7 @@ public struct UserRAM: Decodable, Equatable, Sendable {
     }
 }
 
-public struct PortOwner: Decodable, Equatable, Sendable {
+public struct PortOwner: Codable, Equatable, Sendable {
     public let port: Int
     public let owner: String?
 
@@ -56,8 +56,8 @@ public struct PortOwner: Decodable, Equatable, Sendable {
 /// (`~/dev/packages/packages/devmachine-app/README.md`): one JSON document
 /// per read, replacing a shell snippet the app used to send over ssh and
 /// parse itself.
-public struct StatsSnapshot: Decodable, Equatable, Sendable {
-    public struct Memory: Decodable, Equatable, Sendable {
+public struct StatsSnapshot: Codable, Equatable, Sendable {
+    public struct Memory: Codable, Equatable, Sendable {
         public let totalBytes: Int64
         public let usedBytes: Int64
         public let availableBytes: Int64
@@ -75,7 +75,7 @@ public struct StatsSnapshot: Decodable, Equatable, Sendable {
         }
     }
 
-    public struct Swap: Decodable, Equatable, Sendable {
+    public struct Swap: Codable, Equatable, Sendable {
         public let totalBytes: Int64
         public let usedBytes: Int64
 
@@ -90,7 +90,7 @@ public struct StatsSnapshot: Decodable, Equatable, Sendable {
         }
     }
 
-    public struct Disk: Decodable, Equatable, Sendable {
+    public struct Disk: Codable, Equatable, Sendable {
         public let path: String
         public let usedBytes: Int64
         public let availableBytes: Int64
@@ -111,7 +111,7 @@ public struct StatsSnapshot: Decodable, Equatable, Sendable {
         }
     }
 
-    public struct Load: Decodable, Equatable, Sendable {
+    public struct Load: Codable, Equatable, Sendable {
         public let load1: Double
         public let load5: Double
         public let load15: Double
@@ -123,7 +123,7 @@ public struct StatsSnapshot: Decodable, Equatable, Sendable {
         }
     }
 
-    public struct Docker: Decodable, Equatable, Sendable {
+    public struct Docker: Codable, Equatable, Sendable {
         public let available: Bool
         public let containers: [ContainerStat]
 
