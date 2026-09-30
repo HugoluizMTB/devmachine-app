@@ -46,6 +46,14 @@ mkdir -p "$APP/Contents/Resources/zmx"
 cp vendor/zmx/zmx "$APP/Contents/Resources/zmx/zmx"
 chmod 755 "$APP/Contents/Resources/zmx/zmx"
 
+# mosh-client for remote panes, built from source with protobuf linked in,
+# so mosh works without Homebrew. The app starts mosh-server itself and
+# hands this client the key; the Perl `mosh` wrapper is not needed.
+./scripts/fetch_mosh.sh
+mkdir -p "$APP/Contents/Helpers"
+cp vendor/mosh/mosh-client "$APP/Contents/Helpers/mosh-client"
+chmod 755 "$APP/Contents/Helpers/mosh-client"
+
 # Inside out: signing the bundle seals what is already inside it, so a nested
 # binary signed afterwards breaks the seal. `-` is an ad-hoc signature, which
 # is all a local install needs; notarizing needs a Developer ID identity here.
@@ -58,9 +66,9 @@ if [ "$IDENTITY" != "-" ]; then
 fi
 
 # Every nested executable/dylib/framework first, then the app that seals them.
-# zmx is the only one this bundle carries today; a future embedded binary
-# joins this list before the final "${SIGN[@]}" "$APP" line.
+# A future embedded binary joins this list before the final "${SIGN[@]}" "$APP" line.
 "${SIGN[@]}" "$APP/Contents/Resources/zmx/zmx"
+"${SIGN[@]}" "$APP/Contents/Helpers/mosh-client"
 "${SIGN[@]}" "$APP"
 
 codesign --verify --deep --strict --verbose=2 "$APP"

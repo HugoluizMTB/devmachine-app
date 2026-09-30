@@ -64,6 +64,14 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
+      # mosh-client is built from source (scripts/fetch_mosh.sh, about a
+      # minute); the result only changes when that script does.
+      - name: Cache the embedded mosh-client
+        uses: actions/cache@v4
+        with:
+          path: vendor/mosh
+          key: mosh-client-${{ runner.os }}-${{ hashFiles('scripts/fetch_mosh.sh') }}
+
       - name: Build and test
         run: |
           swift build

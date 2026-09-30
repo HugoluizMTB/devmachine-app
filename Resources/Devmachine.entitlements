@@ -16,6 +16,9 @@
         as a child process (Process/NSTask), never dlopen'd into this process,
         so library validation does not touch it and
         `com.apple.security.cs.disable-library-validation` is not needed.
+      - mosh-client is the same: its own signed executable in
+        Contents/Helpers, run as a child process, with protobuf linked in
+        statically and only system libraries left dynamic.
       - SwiftTerm, HighlightSwift and swift-markdown-ui link in as ordinary
         signed frameworks/dylibs from the same signing identity — hardened
         runtime's default library validation already allows same-team code.
