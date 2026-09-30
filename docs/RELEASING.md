@@ -165,7 +165,10 @@ downloaded them (usually `~/Downloads`). They have no reason to stay on disk.
      `RELEASES_TOKEN` secret — twice, once as `Devmachine-X.Y.Z.dmg` (the
      asset of record) and once as a stable-named copy `Devmachine.dmg`, so
      `.../releases/latest/download/Devmachine.dmg` always serves the newest
-     build without anyone having to know the version.
+     build without anyone having to know the version. Beside them it uploads
+     `Devmachine-X.Y.Z.dmg.sha256` (`shasum -a 256` output). The app's
+     updater downloads it and refuses a disk image whose digest differs; a
+     release without it falls back to the `sha256:` line in the notes.
    - Renders `packaging/devmachine-app.rb.template` into a Homebrew cask,
      then updates `mydevmachine/homebrew-tap`:
      - If `TAP_APP_ID`/`TAP_APP_PRIVATE_KEY` are set, mints a short-lived

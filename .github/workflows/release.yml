@@ -129,7 +129,12 @@ jobs:
           dmg="build/Devmachine-${{ steps.version.outputs.version }}.dmg"
           stable="build/Devmachine.dmg"
           cp "$dmg" "$stable"
+          # The app's updater downloads this next to the dmg and refuses a
+          # download whose digest differs. `cd` keeps the bare file name in
+          # the line, the same format `shasum -c` reads.
+          (cd build && shasum -a 256 "$(basename "$dmg")" > "$(basename "$dmg").sha256")
           echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
+          echo "digest=$dmg.sha256" >> "$GITHUB_OUTPUT"
           echo "stable=$stable" >> "$GITHUB_OUTPUT"
           echo "sha256=$(shasum -a 256 "$dmg" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
@@ -142,9 +147,10 @@ jobs:
           # of record (and what the Homebrew cask points at), and the
           # stable-named copy is what
           # .../releases/latest/download/Devmachine.dmg always serves, so a
-          # direct download link never has to change.
+          # direct download link never has to change. The `.sha256` beside
+          # the versioned one is what the app's updater checks.
           gh release create "$GITHUB_REF_NAME" \
-            "${{ steps.sha.outputs.dmg }}" "${{ steps.sha.outputs.stable }}" \
+            "${{ steps.sha.outputs.dmg }}" "${{ steps.sha.outputs.digest }}" "${{ steps.sha.outputs.stable }}" \
             --repo "$RELEASES_REPO" \
             --title "Devmachine ${{ steps.version.outputs.version }}" \
             --notes "sha256: ${{ steps.sha.outputs.sha256 }}"
