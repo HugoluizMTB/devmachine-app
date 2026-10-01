@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import DevmachineCore
 
 enum FileTreeIcon {
@@ -28,12 +29,17 @@ struct FilesTab: View {
     @Environment(\.dmMetrics) private var m
     @ObservedObject var store: FileTreeStore
     let target: CommandTarget
+    /// The CLI moves files as a workspace's account; a remote tree with no
+    /// workspace behind it offers no transfers.
+    var workspace: String?
+    @ObservedObject var transfers: FileTransferStore = .shared
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
     @EnvironmentObject var viewerStore: FileViewerStore
     @EnvironmentObject var search: FileSearchStore
     @Environment(\.openWindow) private var openWindow
     @State private var query = ""
+    @State private var rootTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -85,6 +91,9 @@ struct FilesTab: View {
                     .help(root)
             },
             trailing: {
+                if transfers.busy.contains(root) {
+                    ProgressView().controlSize(.small)
+                }
                 DMIconButton(systemImage: "arrow.clockwise", size: 11, hitSize: DMHitSize.compact) {
                     store.refresh()
                 }
@@ -176,7 +185,7 @@ struct FilesTab: View {
                         FileTreeRowView(
                             row: row,
                             expanded: store.expanded.contains(row.path),
-                            loading: store.loading.contains(row.path),
+                            loading: store.loading.contains(row.path) || transfers.busy.contains(row.path),
                             selected: store.selected == row.path,
                             tap: { tapped(row) },
                             copyPath: { copy(row.path, label: "Copied path") },
@@ -184,13 +193,82 @@ struct FilesTab: View {
                                 copy(store.relativePath(of: row.path), label: "Copied path")
                             },
                             openInFilesWindow: row.isDirectory ? nil : { openInFilesWindow(row) },
-                            openInViewer: row.isDirectory ? nil : { openInViewer(row) }
+                            openInViewer: row.isDirectory ? nil : { openInViewer(row) },
+                            transfer: transferActions(for: row)
                         )
                     }
                 }
             }
             .padding(.vertical, m.space.sm)
         }
+        .onDrop(of: [.fileURL], isTargeted: $rootTargeted) { providers in
+            guard let root = store.root else { return false }
+            return receive(providers, into: root)
+        }
+        .overlay {
+            if rootTargeted {
+                RoundedRectangle(cornerRadius: m.radius.row, style: .continuous)
+                    .strokeBorder(FileTreeRowView.accent, lineWidth: m.pt(1.5))
+                    .padding(m.space.xxs)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Download for a remote tree, Reveal in Finder for this Mac's own, and a
+    /// drag and a drop that do the same as Finder in both.
+    private func transferActions(for row: FileTreeRow) -> FileTreeRowView.Transfer {
+        let dropFolder = row.isDirectory ? row.path : store.parentPath(of: row.path)
+        let drop: ([NSItemProvider]) -> Bool = { receive($0, into: dropFolder) }
+        let transfers = self.transfers
+        if target.isLocal {
+            return FileTreeRowView.Transfer(
+                downloadTitle: nil, download: nil,
+                revealInFinder: { transfers.reveal(URL(fileURLWithPath: row.path)) },
+                drag: { FileTreeDrag.localProvider(for: row.path) },
+                drop: drop)
+        }
+        guard let workspace else {
+            return FileTreeRowView.Transfer(
+                downloadTitle: nil, download: nil, revealInFinder: nil, drag: nil, drop: nil)
+        }
+        return FileTreeRowView.Transfer(
+            downloadTitle: row.isDirectory ? "Download as \(FileTransfer.folderExtension)" : "Download",
+            download: { Task { await transfers.download([row.path], workspace: workspace) } },
+            revealInFinder: nil,
+            drag: {
+                FileTreeDrag.remoteProvider(for: row) { path in
+                    try await transfers.exportForDrag(path, workspace: workspace)
+                }
+            },
+            drop: drop)
+    }
+
+    /// Files from Finder: uploaded into the folder for a remote tree, copied
+    /// for a local one, and the tree then points at what arrived.
+    private func receive(_ providers: [NSItemProvider], into folder: String) -> Bool {
+        guard FileTreeDrag.acceptsDrop(providers) else { return false }
+        if !target.isLocal, workspace == nil { return false }
+        let target = self.target
+        let workspace = self.workspace
+        let transfers = self.transfers
+        let store = self.store
+        Task {
+            let urls = await FileTreeDrag.fileURLs(from: providers)
+            guard !urls.isEmpty else { return }
+            let landed: [String]
+            if target.isLocal {
+                landed = await transfers.copyLocally(urls, into: folder)
+            } else if let workspace {
+                landed = await transfers.upload(urls, into: folder, workspace: workspace)
+            } else {
+                landed = []
+            }
+            guard store.root != nil else { return }
+            store.refresh()
+            if let first = landed.first { store.reveal(first) }
+        }
+        return true
     }
 
     private func placeholder(_ row: FileTreeRow) -> some View {
@@ -262,7 +340,7 @@ struct FilesTab: View {
     }
 }
 
-private struct FileTreeRowView: View {
+struct FileTreeRowView: View {
     @Environment(\.dmMetrics) private var m
     let row: FileTreeRow
     let expanded: Bool
@@ -273,9 +351,19 @@ private struct FileTreeRowView: View {
     let copyRelativePath: () -> Void
     let openInFilesWindow: (() -> Void)?
     let openInViewer: (() -> Void)?
+    let transfer: Transfer
     @State private var hovering = false
+    @State private var targeted = false
 
-    private static let accent = Color(hex: 0x5AA9E6)
+    struct Transfer {
+        let downloadTitle: String?
+        let download: (() -> Void)?
+        let revealInFinder: (() -> Void)?
+        let drag: (() -> NSItemProvider)?
+        let drop: (([NSItemProvider]) -> Bool)?
+    }
+
+    static let accent = Color(hex: 0x5AA9E6)
 
     var body: some View {
         HStack(spacing: m.pt(5)) {
@@ -313,7 +401,16 @@ private struct FileTreeRowView: View {
             if let openInFilesWindow {
                 Button("Open in Files window") { openInFilesWindow() }
             }
+            if let download = transfer.download, let title = transfer.downloadTitle {
+                Divider()
+                Button(title) { download() }
+            }
+            if let revealInFinder = transfer.revealInFinder {
+                Divider()
+                Button("Reveal in Finder") { revealInFinder() }
+            }
         }
+        .modifier(FileTreeRowTransfer(transfer: transfer, targeted: $targeted))
         .help(row.path)
     }
 
@@ -332,7 +429,7 @@ private struct FileTreeRowView: View {
 
     private var background: some View {
         DMRowBackground(
-            selected: selected, hovering: hovering, selectedColor: Self.accent.opacity(0.22))
+            selected: selected || targeted, hovering: hovering, selectedColor: Self.accent.opacity(0.22))
     }
 
     private var dimmed: Bool {
@@ -342,5 +439,25 @@ private struct FileTreeRowView: View {
     private var iconColor: Color {
         if dimmed { return Color.dmMuted }
         return row.isDirectory ? Self.accent : Color.dmMuted
+    }
+}
+
+/// Attaches only what the row offers, so a row with no drag is not draggable
+/// and a row with no drop does not light up under one.
+private struct FileTreeRowTransfer: ViewModifier {
+    let transfer: FileTreeRowView.Transfer
+    @Binding var targeted: Bool
+
+    func body(content: Content) -> some View {
+        switch (transfer.drag, transfer.drop) {
+        case let (drag?, drop?):
+            content.onDrag(drag).onDrop(of: [.fileURL], isTargeted: $targeted, perform: drop)
+        case let (drag?, nil):
+            content.onDrag(drag)
+        case let (nil, drop?):
+            content.onDrop(of: [.fileURL], isTargeted: $targeted, perform: drop)
+        case (nil, nil):
+            content
+        }
     }
 }

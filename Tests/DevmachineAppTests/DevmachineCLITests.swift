@@ -443,3 +443,63 @@ final class DevmachineCLIAutoDetectEndpointsTests: XCTestCase {
         }
     }
 }
+
+final class DevmachineCLITransferTests: XCTestCase {
+    private let executable = "/opt/homebrew/bin/devmachine"
+
+    func testDownloadRunsTheCLIWithEveryPathAfterTheFlagsAndReadsItsJSON() throws {
+        let json = #"[{"remote":"/home/acme/a b.png","local":"/Users/alice/Downloads/a b.png","bytes":3,"folder":false}]"#
+        let runner = CLIRecordingRunner(result: (json, "", 0))
+        let cli = DevmachineCLI(executable: executable, runner: runner)
+
+        let files = try cli.download(paths: ["/home/acme/a b.png"], workspace: "acme", to: "/Users/alice/Downloads")
+
+        XCTAssertEqual(files.first?.local, "/Users/alice/Downloads/a b.png")
+        XCTAssertEqual(runner.calls.first?.args, [
+            "--format", "json", "download", "--workspace", "acme", "--to", "/Users/alice/Downloads", "--",
+            "/home/acme/a b.png"
+        ])
+    }
+
+    func testDownloadKeepsThePerPathErrorsWhenTheCLIExitsNonZero() throws {
+        let json = #"[{"remote":"/home/acme/gone","bytes":0,"folder":false,"error":"/home/acme/gone does not exist"}]"#
+        let runner = CLIRecordingRunner(result: (json, "Error: /home/acme/gone does not exist\n", 1))
+        let cli = DevmachineCLI(executable: executable, runner: runner)
+
+        let files = try cli.download(paths: ["/home/acme/gone"], workspace: "acme", to: "/tmp")
+
+        XCTAssertEqual(files.first?.error, "/home/acme/gone does not exist")
+    }
+
+    func testDownloadOnAnOlderCLIAsksForAnUpdate() {
+        let runner = CLIRecordingRunner(result: ("", "Error: unknown command \"download\" for \"devmachine\"\n", 1))
+        let cli = DevmachineCLI(executable: executable, runner: runner)
+
+        XCTAssertThrowsError(try cli.download(paths: ["/a"], workspace: "acme", to: "/tmp")) { error in
+            XCTAssertEqual(error as? DevmachineCLIError, .needsNewerCLI("download"))
+            XCTAssertTrue(error.localizedDescription.contains("devmachine update"))
+        }
+    }
+
+    func testDownloadSurfacesAFailureBeforeAnyPathWasTried() {
+        let runner = CLIRecordingRunner(result: ("", "Error: no workspace named acme\n", 1))
+        let cli = DevmachineCLI(executable: executable, runner: runner)
+
+        XCTAssertThrowsError(try cli.download(paths: ["/a"], workspace: "acme", to: "/tmp")) { error in
+            XCTAssertEqual(error as? DevmachineCLIError, .commandFailed("Error: no workspace named acme\n"))
+        }
+    }
+
+    func testUploadPointsDirAtTheFolderAndReadsTheRemotePaths() throws {
+        let json = #"[{"local":"/Users/alice/x.png","remote":"/home/acme/proj/x-20260930-143012.png","bytes":3}]"#
+        let runner = CLIRecordingRunner(result: (json, "", 0))
+        let cli = DevmachineCLI(executable: executable, runner: runner)
+
+        let files = try cli.upload(files: ["/Users/alice/x.png"], workspace: "acme", directory: "/home/acme/proj")
+
+        XCTAssertEqual(files.first?.remote, "/home/acme/proj/x-20260930-143012.png")
+        XCTAssertEqual(runner.calls.first?.args, [
+            "--format", "json", "upload", "--workspace", "acme", "--dir", "/home/acme/proj", "--", "/Users/alice/x.png"
+        ])
+    }
+}

@@ -144,6 +144,7 @@ struct ExposureListing: Codable, Equatable, Sendable {
 enum DevmachineCLIError: LocalizedError, Equatable {
     case commandFailed(String)
     case executableNotFound([String])
+    case needsNewerCLI(String)
 
     var errorDescription: String? {
         switch self {
@@ -151,6 +152,8 @@ enum DevmachineCLIError: LocalizedError, Equatable {
             return detail.trimmingCharacters(in: .whitespacesAndNewlines)
         case .executableNotFound(let paths):
             return "Devmachine CLI was not found at \(paths.joined(separator: " or ")). Install it with `brew install mydevmachine/tap/devmachine`."
+        case .needsNewerCLI(let command):
+            return "The installed devmachine CLI has no `\(command)` yet. Update it with `devmachine update`."
         }
     }
 
@@ -213,6 +216,34 @@ struct DevmachineCLI: Sendable {
             environment: environment()
         )
         return CLIOutput(stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode)
+    }
+
+    /// Saves `paths` from the workspace into `directory` on this Mac. The CLI
+    /// answers per path, so one missing file does not hide the others.
+    func download(paths: [String], workspace: String, to directory: String) throws -> [DownloadedFile] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: FileTransfer.downloadArguments(paths: paths, workspace: workspace, to: directory),
+            environment: environment()
+        )
+        if let files = FileTransfer.parseDownloads(result.stdout) { return files }
+        if FileTransfer.isUnknownCommand(result.stderr, FileTransfer.downloadCommand) {
+            throw DevmachineCLIError.needsNewerCLI(FileTransfer.downloadCommand)
+        }
+        try requireSuccess(result)
+        throw DevmachineCLIError.commandFailed("The CLI gave no result for the download.")
+    }
+
+    /// Sends `files` into `directory` in the workspace's home.
+    func upload(files: [String], workspace: String, directory: String) throws -> [UploadedFile] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: FileTransfer.uploadArguments(files: files, workspace: workspace, directory: directory),
+            environment: environment()
+        )
+        if let files = FileTransfer.parseUploads(result.stdout) { return files }
+        try requireSuccess(result)
+        throw DevmachineCLIError.commandFailed("The CLI gave no result for the upload.")
     }
 
     /// What `machine`'s Caddy publishes. `expose list` acts on one machine

@@ -83,6 +83,7 @@ struct ContentView: View {
                     DMToastCard(task: task)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+                TransferNoticeOverlay()
             }
             .padding(m.pt(18))
             .animation(.easeInOut(duration: 0.2), value: model.activeTasks)

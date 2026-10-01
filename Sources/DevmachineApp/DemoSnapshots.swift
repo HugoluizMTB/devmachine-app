@@ -203,6 +203,14 @@ enum DemoSnapshots {
 
         """
 
+    /// The file transfer walk (`DEVMACHINE_DEMO_WALK=file-transfer`): the
+    /// Files tab with a folder receiving a drop, and the result cards.
+    static let fileTransferScreens: [Screen] = [
+        Screen(id: "file-transfer-tree", fileName: "50-file-transfer-tree.png", settleNanoseconds: 200_000_000),
+        Screen(id: "file-transfer-saved", fileName: "51-file-transfer-saved.png", settleNanoseconds: 200_000_000),
+        Screen(id: "file-transfer-failed", fileName: "52-file-transfer-failed.png", settleNanoseconds: 200_000_000),
+    ]
+
     /// The sizing walk (`DEVMACHINE_DEMO_WALK=sizing`): the screens a text
     /// size change touches most, run once per `DEVMACHINE_DEMO_UI_SCALE`.
     static let sizingScreens: [Screen] = [
@@ -231,6 +239,7 @@ enum DemoSnapshots {
         case "harness-icons": return harnessIconScreens
         case "update-toast": return updateToastScreens
         case "file-viewer": return fileViewerScreens
+        case "file-transfer": return fileTransferScreens
         case "sizing": return sizingScreens
         default: return screens
         }
@@ -321,6 +330,10 @@ enum DemoSnapshots {
                 view = standaloneView(foreignWorktreeSheet, fittingSize: NSSize(width: 460, height: 560))
             case "file-viewer":
                 view = await fileViewerView(model: environment.model)
+            case "file-transfer-tree":
+                view = await fileTransferTree(model: environment.model)
+            case "file-transfer-saved", "file-transfer-failed":
+                view = fileTransferNotice(failed: screen.id == "file-transfer-failed")
             #if DEBUG
             case "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
                 view = await updateToastView(screen.id, model: environment.model)
@@ -487,6 +500,53 @@ enum DemoSnapshots {
             request: MergedRemovalRequest(checks: DemoData.worktreeChecks.filter(\.isCleanAndMerged)),
             onRemove: { _ in }, onCancel: {})
             .background(Color.dmSidebarBg)
+    }
+
+    /// Every store here answers from silence, so the tree never reaches a host.
+    private static func fileTransferTree(model: AppModel) async -> NSView {
+        let silent = HostRunner(remote: RemoteService(runner: DemoFileRunner(stdout: "")), local: DemoMode.runner)
+        let root = "/home/acme/dash"
+        let target = CommandTarget.remote(alias: acmeAlias, session: "dash")
+        let store = FileTreeStore(host: silent)
+        store.start(target)
+        for _ in 0..<50 where store.isLoading {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        store.root = root
+        store.children = [
+            root: [
+                FileTreeEntry(name: "assets", kind: .directory),
+                FileTreeEntry(name: "Sources", kind: .directory),
+                FileTreeEntry(name: "README.md", kind: .file),
+                FileTreeEntry(name: "relatório final.pdf", kind: .file),
+            ],
+            root + "/assets": [FileTreeEntry(name: "logo.png", kind: .file)],
+        ]
+        store.expanded = [root + "/assets"]
+        store.selected = root + "/relatório final.pdf"
+        let transfers = FileTransferStore(cli: { throw DevmachineCLIError.commandFailed("demo") })
+        transfers.busy = [root + "/assets"]
+        let tab = FilesTab(store: store, target: target, workspace: "acme", transfers: transfers)
+            .environmentObject(model)
+            .environmentObject(FileViewerStore(host: silent))
+            .environmentObject(FileSearchStore(host: silent))
+            .environmentObject(FilesStore(service: FileService(host: silent), runner: DemoFileRunner(stdout: "")))
+            .background(Color.dmSidebarBg)
+        return standaloneView(tab, fittingSize: NSSize(width: 300, height: 260), autosize: false)
+    }
+
+    private static func fileTransferNotice(failed: Bool) -> NSView {
+        let notice = failed
+            ? TransferNotice(
+                title: "Saved 1 of 2 to ~/Downloads",
+                detail: "/home/acme/dash/secret.env cannot be read", reveal: nil, failed: true)
+            : TransferNotice(
+                title: "Saved to ~/Downloads/relatório final.pdf", detail: nil,
+                reveal: URL(fileURLWithPath: "/tmp/relatório final.pdf"), failed: false)
+        return standaloneView(
+            TransferNoticeCard(notice: notice, reveal: notice.reveal.map { _ in {} }, close: {})
+                .padding(18),
+            fittingSize: NSSize(width: 320, height: 200))
     }
 
     private static func fileViewerView(model: AppModel) async -> NSView {

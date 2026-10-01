@@ -66,6 +66,13 @@ struct ContextPanel: View {
         return model.visibleWorkspaces.first(where: { $0.alias == alias })?.name
     }
 
+    /// The workspace the CLI moves the Files tab's files as. A session's alias
+    /// always names one, even before the workspace list has loaded.
+    private var transferWorkspace: String? {
+        guard let alias = session?.alias else { return nil }
+        return workspaceName ?? settingsStore.settings?.workspaceName(forAlias: alias)
+    }
+
     /// Where the Files and Git tabs read from: the host for a remote session,
     /// this Mac for a local one.
     private var commandTarget: CommandTarget? {
@@ -85,7 +92,7 @@ struct ContextPanel: View {
             }
         case .files:
             if let commandTarget {
-                FilesTab(store: fileTreeStore, target: commandTarget)
+                FilesTab(store: fileTreeStore, target: commandTarget, workspace: transferWorkspace)
             } else {
                 message("No session")
             }
