@@ -5,6 +5,7 @@ import DevmachineCore
 /// One preview tab: a small browser toolbar over the page. The address shown
 /// is the page's real one, read from the web view, never the one asked for.
 struct PreviewPaneView: View {
+    @Environment(\.dmMetrics) private var m
     let tab: PreviewTab
     @ObservedObject private var previews = PreviewStore.shared
 
@@ -22,7 +23,7 @@ struct PreviewPaneView: View {
                 DMErrorStateView(
                     state: DMErrorState(title: "Couldn't open \(tab.title)", message: message),
                     retry: { previews.retry(tab.id) })
-                    .padding(24)
+                    .padding(m.space.xxl)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         case .ready, .page:
@@ -32,6 +33,7 @@ struct PreviewPaneView: View {
 }
 
 private struct PreviewLoadedView: View {
+    @Environment(\.dmMetrics) private var m
     let tab: PreviewTab
     @ObservedObject var page: PreviewPage
 
@@ -44,7 +46,7 @@ private struct PreviewLoadedView: View {
                     DMErrorStateView(
                         state: DMErrorState(title: "The page didn't load", message: failure),
                         retry: { page.reload() })
-                        .padding(24)
+                        .padding(m.space.xxl)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.dmContentBg)
                 }
@@ -124,6 +126,7 @@ private struct PreviewToolbar: View {
 }
 
 private struct PreviewToolbarRow: View {
+    @Environment(\.dmMetrics) private var m
     @Binding var address: String
     let canGoBack: Bool
     let canGoForward: Bool
@@ -141,7 +144,7 @@ private struct PreviewToolbarRow: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: m.space.xs) {
             DMButton(icon: "chevron.left", label: "Back", size: .small, action: back)
                 .disabled(!canGoBack)
             DMButton(icon: "chevron.right", label: "Forward", size: .small, action: forward)
@@ -154,8 +157,8 @@ private struct PreviewToolbarRow: View {
                 .font(.dm(11.5, design: .monospaced))
                 .foregroundStyle(Color.dmRowText)
                 .lineLimit(1)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
+                .padding(.horizontal, m.space.md)
+                .padding(.vertical, m.pt(5))
                 .dmSurface(Color.dmSelection, radius: DMRadius.row, style: .continuous)
                 .focused($focused)
                 .onChange(of: focused) { _, isFocused in onEditingChanged(isFocused) }
@@ -172,8 +175,8 @@ private struct PreviewToolbarRow: View {
                 size: .small, action: toggleMaximized)
                 .help(isMaximized ? "Restore the terminal (⇧⌘↩)" : "Maximize preview (⇧⌘↩)")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, m.space.md)
+        .padding(.vertical, m.space.sm)
         .background(Color.dmContentBg)
     }
 }

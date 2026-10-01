@@ -60,6 +60,7 @@ struct AddSubdomainForm {
 }
 
 struct AddSubdomainSheet: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var store: CaddyStore
     @Environment(\.dismiss) private var dismiss
 
@@ -88,12 +89,12 @@ struct AddSubdomainSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: m.space.xl) {
             Text("Add subdomain")
                 .font(.dm(14, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: m.space.sm) {
                 Text("Workspace")
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
@@ -121,11 +122,11 @@ struct AddSubdomainSheet: View {
 
             switch form.mode {
             case .managed:
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: m.space.sm) {
                     Text("Label")
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
-                    HStack(spacing: 4) {
+                    HStack(spacing: m.space.xs) {
                         TextField("myapp", text: $form.label)
                             .textFieldStyle(.roundedBorder)
                         Text(verbatim: ".\(settings.baseDomain)")
@@ -134,7 +135,7 @@ struct AddSubdomainSheet: View {
                     }
                 }
             case .custom:
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: m.space.sm) {
                     Text("Domain")
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
@@ -146,7 +147,7 @@ struct AddSubdomainSheet: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: m.space.sm) {
                 Text("Local port")
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
@@ -165,8 +166,8 @@ struct AddSubdomainSheet: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
-        .frame(width: 360)
+        .padding(m.pt(20))
+        .frame(width: m.card.sheetSmall)
         .background(Color.dmContentBg)
         .confirmationDialog(
             confirmMessage,

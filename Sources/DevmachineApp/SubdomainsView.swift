@@ -22,6 +22,7 @@ private struct LogsRequest: Identifiable {
 }
 
 struct SubdomainsView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var store: CaddyStore
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var settingsStore: SettingsStore
@@ -66,7 +67,7 @@ struct SubdomainsView: View {
         .overlay(alignment: .bottomTrailing) {
             if let task = store.task {
                 DMToastCard(task: task)
-                    .padding(18)
+                    .padding(m.pt(18))
             }
         }
         .sheet(isPresented: $showAdd) {
@@ -97,38 +98,38 @@ struct SubdomainsView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: m.pt(10)) {
             Text("Subdomains")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 
             DMSearchField(prompt: "Search subdomains", text: $searchText)
-                .frame(maxWidth: 240)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Color.dmSelection, in: RoundedRectangle(cornerRadius: DMRadius.control, style: .continuous))
+                .frame(maxWidth: m.pt(240))
+                .padding(.horizontal, m.space.md)
+                .padding(.vertical, m.pt(5))
+                .background(Color.dmSelection, in: RoundedRectangle(cornerRadius: m.radius.control, style: .continuous))
 
             Spacer()
 
             if (store.isLoading && !store.showsSitesSkeleton) || store.isLoadingDNSProviders {
                 ProgressView().controlSize(.small)
             }
-            DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.refresh() }
+            DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { store.refresh() }
                 .help("Refresh")
             DMButton("Add subdomain", systemImage: "plus", size: .small) {
                 showAdd = true
             }
             .disabled(settingsStore.settings == nil)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
+        .padding(.horizontal, m.pt(14))
+        .padding(.top, m.pt(10))
+        .padding(.bottom, m.space.sm)
     }
 
     /// One tab per configured machine; each loads, fails and counts on its
     /// own, so the tab says which one needs a look.
     private var machinePicker: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: m.pt(10)) {
             columnLabel("MACHINE")
             DMTabStrip(
                 tabs: store.machines.map(\.name),
@@ -140,8 +141,8 @@ struct SubdomainsView: View {
                 fontSize: 12
             )
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 4)
+        .padding(.horizontal, m.pt(14))
+        .padding(.vertical, m.space.xs)
     }
 
     private func machineTitle(_ name: String) -> String {
@@ -167,9 +168,9 @@ struct SubdomainsView: View {
             spacing: 2,
             grouped: true
         )
-        .padding(.horizontal, 14)
-        .padding(.top, 4)
-        .padding(.bottom, 10)
+        .padding(.horizontal, m.pt(14))
+        .padding(.top, m.space.xs)
+        .padding(.bottom, m.pt(10))
     }
 
     private var showsSkeleton: Bool {
@@ -220,12 +221,12 @@ struct SubdomainsView: View {
             VStack(spacing: 0) {
                 if let addError = store.addError {
                     DMBanner(message: addError) {
-                        DMIconButton(systemImage: "xmark", tint: nil) { store.addError = nil }
+                        DMIconButton(systemImage: "xmark", size: DMMetrics.baseFontSize, tint: nil) { store.addError = nil }
                     }
                 }
                 if let removeError = store.removeError {
                     DMBanner(message: removeError) {
-                        DMIconButton(systemImage: "xmark", tint: nil) { store.removeError = nil }
+                        DMIconButton(systemImage: "xmark", size: DMMetrics.baseFontSize, tint: nil) { store.removeError = nil }
                     }
                 }
                 VStack(spacing: 0) {
@@ -239,7 +240,7 @@ struct SubdomainsView: View {
                     }
                     footer(showing: searchedRows.count, of: visibleRows.count)
                 }
-                .padding(.horizontal, Self.tableInset)
+                .padding(.horizontal, m.pt(Self.tableInset))
             }
             .transition(.opacity)
         }
@@ -259,53 +260,53 @@ struct SubdomainsView: View {
             }
             DMSkeleton {
                 DMSkeletonText(size: 11, width: .fixed(96))
-                    .padding(.horizontal, Self.cellInset)
-                    .padding(.top, Self.cellVertical)
-                    .padding(.bottom, Self.cellVertical + 4)
+                    .padding(.horizontal, m.pt(Self.cellInset))
+                    .padding(.top, m.pt(Self.cellVertical))
+                    .padding(.bottom, m.pt(Self.cellVertical) + m.space.xs)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(.horizontal, Self.tableInset)
+        .padding(.horizontal, m.pt(Self.tableInset))
         .transition(.opacity)
     }
 
     private func siteSkeletonRow(_ index: Int) -> some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 6) {
+        HStack(spacing: m.pt(10)) {
+            HStack(spacing: m.space.sm) {
                 DMSkeletonBlock(width: .fixed(11), height: 11, radius: 5.5)
                 DMSkeletonText(size: 12, width: .varied(index, shares: [0.55, 0.38, 0.7, 0.46, 0.62]))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             DMSkeletonText(size: 12, width: .varied(index + 2, shares: [0.7, 0.5, 0.85]))
-                .frame(width: SubdomainColumns.workspace, alignment: .leading)
+                .frame(width: m.pt(SubdomainColumns.workspace), alignment: .leading)
             DMSkeletonText(size: 12, width: .fixed(36))
-                .frame(width: SubdomainColumns.port, alignment: .leading)
+                .frame(width: m.pt(SubdomainColumns.port), alignment: .leading)
             DMSkeletonBlock(width: .fixed(72), height: 14, radius: 7)
-                .frame(width: SubdomainColumns.status, alignment: .leading)
-            HStack(spacing: 8) {
+                .frame(width: m.pt(SubdomainColumns.status), alignment: .leading)
+            HStack(spacing: m.space.md) {
                 ForEach(0..<3, id: \.self) { _ in
                     DMSkeletonBlock(width: .fixed(11), height: 11, radius: 3)
                 }
             }
-            .frame(width: SubdomainColumns.actions, alignment: .trailing)
+            .frame(width: m.pt(SubdomainColumns.actions), alignment: .trailing)
         }
-        .padding(.horizontal, Self.cellInset)
-        .padding(.vertical, Self.cellVertical)
+        .padding(.horizontal, m.pt(Self.cellInset))
+        .padding(.vertical, m.pt(Self.cellVertical))
     }
 
     private func dnsSkeletonRow(_ index: Int) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: m.pt(10)) {
             DMSkeletonText(size: 12, width: .varied(index, shares: [0.4, 0.62, 0.3, 0.52]))
                 .frame(maxWidth: .infinity, alignment: .leading)
             DMSkeletonBlock(width: .fixed(34), height: 14, radius: 7)
-                .frame(width: DNSColumns.type, alignment: .leading)
+                .frame(width: m.pt(DNSColumns.type), alignment: .leading)
             DMSkeletonText(size: 12, width: .varied(index + 1, shares: [0.8, 0.55, 0.7, 0.45]))
                 .frame(maxWidth: .infinity, alignment: .leading)
             DMSkeletonText(size: 11, width: .fixed(28))
-                .frame(width: DNSColumns.ttl, alignment: .trailing)
+                .frame(width: m.pt(DNSColumns.ttl), alignment: .trailing)
         }
-        .padding(.horizontal, Self.cellInset)
-        .padding(.vertical, Self.cellVertical)
+        .padding(.horizontal, m.pt(Self.cellInset))
+        .padding(.vertical, m.pt(Self.cellVertical))
     }
 
     private var emptySitesText: String {
@@ -328,15 +329,15 @@ struct SubdomainsView: View {
     }
 
     private var sitesTableHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: m.pt(10)) {
             columnLabel("NAME").frame(maxWidth: .infinity, alignment: .leading)
-            columnLabel("WORKSPACE").frame(width: SubdomainColumns.workspace, alignment: .leading)
-            columnLabel("PORT").frame(width: SubdomainColumns.port, alignment: .leading)
-            columnLabel("STATUS").frame(width: SubdomainColumns.status, alignment: .leading)
-            columnLabel("").frame(width: SubdomainColumns.actions, alignment: .trailing)
+            columnLabel("WORKSPACE").frame(width: m.pt(SubdomainColumns.workspace), alignment: .leading)
+            columnLabel("PORT").frame(width: m.pt(SubdomainColumns.port), alignment: .leading)
+            columnLabel("STATUS").frame(width: m.pt(SubdomainColumns.status), alignment: .leading)
+            columnLabel("").frame(width: m.pt(SubdomainColumns.actions), alignment: .trailing)
         }
-        .padding(.horizontal, Self.cellInset)
-        .padding(.vertical, Self.cellVertical)
+        .padding(.horizontal, m.pt(Self.cellInset))
+        .padding(.vertical, m.pt(Self.cellVertical))
     }
 
     private func columnLabel(_ text: String) -> some View {
@@ -347,8 +348,8 @@ struct SubdomainsView: View {
     }
 
     private func siteRow(_ row: SubdomainRow) -> some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 6) {
+        HStack(spacing: m.pt(10)) {
+            HStack(spacing: m.space.sm) {
                 Image(systemName: "globe")
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
@@ -364,21 +365,21 @@ struct SubdomainsView: View {
             workspaceCell(row)
                 .font(.dm(12))
                 .lineLimit(1)
-                .frame(width: SubdomainColumns.workspace, alignment: .leading)
+                .frame(width: m.pt(SubdomainColumns.workspace), alignment: .leading)
 
             Text(verbatim: "\(row.site.port)")
                 .font(.dm(12, design: .monospaced))
                 .foregroundStyle(Color.dmMuted)
-                .frame(width: SubdomainColumns.port, alignment: .leading)
+                .frame(width: m.pt(SubdomainColumns.port), alignment: .leading)
 
             statusPill(row.site.status)
-                .frame(width: SubdomainColumns.status, alignment: .leading)
+                .frame(width: m.pt(SubdomainColumns.status), alignment: .leading)
 
             actions(for: row)
-                .frame(width: SubdomainColumns.actions, alignment: .trailing)
+                .frame(width: m.pt(SubdomainColumns.actions), alignment: .trailing)
         }
-        .padding(.horizontal, Self.cellInset)
-        .padding(.vertical, Self.cellVertical)
+        .padding(.horizontal, m.pt(Self.cellInset))
+        .padding(.vertical, m.pt(Self.cellVertical))
         .contentShape(Rectangle())
     }
 
@@ -410,7 +411,7 @@ struct SubdomainsView: View {
     }
 
     private func actions(for row: SubdomainRow) -> some View {
-        HStack(spacing: 2) {
+        HStack(spacing: m.space.xxs) {
             DMIconButton(systemImage: "arrow.up.right.square", size: 11, hitSize: DMHitSize.compact) {
                 open(row.site.host)
             }
@@ -437,9 +438,9 @@ struct SubdomainsView: View {
                 .foregroundStyle(Color.dmMuted)
             Spacer()
         }
-        .padding(.horizontal, Self.cellInset)
-        .padding(.top, Self.cellVertical)
-        .padding(.bottom, Self.cellVertical + 4)
+        .padding(.horizontal, m.pt(Self.cellInset))
+        .padding(.top, m.pt(Self.cellVertical))
+        .padding(.bottom, m.pt(Self.cellVertical) + m.space.xs)
     }
 
     private func open(_ host: String) {
@@ -489,31 +490,31 @@ struct SubdomainsView: View {
                 }
                 footer(showing: searched.count, of: records.count)
             }
-            .padding(.horizontal, Self.tableInset)
+            .padding(.horizontal, m.pt(Self.tableInset))
             .transition(.opacity)
         }
     }
 
     private var dnsTableHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: m.pt(10)) {
             columnLabel("NAME").frame(maxWidth: .infinity, alignment: .leading)
-            columnLabel("TYPE").frame(width: DNSColumns.type, alignment: .leading)
+            columnLabel("TYPE").frame(width: m.pt(DNSColumns.type), alignment: .leading)
             columnLabel("CONTENT").frame(maxWidth: .infinity, alignment: .leading)
-            columnLabel("TTL").frame(width: DNSColumns.ttl, alignment: .trailing)
+            columnLabel("TTL").frame(width: m.pt(DNSColumns.ttl), alignment: .trailing)
         }
-        .padding(.horizontal, Self.cellInset)
-        .padding(.vertical, Self.cellVertical)
+        .padding(.horizontal, m.pt(Self.cellInset))
+        .padding(.vertical, m.pt(Self.cellVertical))
     }
 
     private func dnsRow(_ record: DNSRecordRow) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: m.pt(10)) {
             Text(record.name)
                 .font(.dm(12))
                 .foregroundStyle(Color.dmRowText)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             DMKindLabel(text: record.type)
-                .frame(width: DNSColumns.type, alignment: .leading)
+                .frame(width: m.pt(DNSColumns.type), alignment: .leading)
             Text(record.value)
                 .font(.dm(12, design: .monospaced))
                 .foregroundStyle(Color.dmMuted)
@@ -523,15 +524,16 @@ struct SubdomainsView: View {
             Text(verbatim: "\(record.ttl)")
                 .font(.dm(11, design: .monospaced))
                 .foregroundStyle(Color.dmMuted)
-                .frame(width: DNSColumns.ttl, alignment: .trailing)
+                .frame(width: m.pt(DNSColumns.ttl), alignment: .trailing)
         }
-        .padding(.horizontal, Self.cellInset)
-        .padding(.vertical, Self.cellVertical)
+        .padding(.horizontal, m.pt(Self.cellInset))
+        .padding(.vertical, m.pt(Self.cellVertical))
     }
 }
 
 /// One row's Caddy log tail, read on open and not kept once dismissed.
 private struct LogsSheet: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var store: CaddyStore
     @Environment(\.dismiss) private var dismiss
     let host: String
@@ -541,7 +543,7 @@ private struct LogsSheet: View {
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
             HStack {
                 Text(host)
                     .font(.dm(13, weight: .semibold))
@@ -566,10 +568,10 @@ private struct LogsSheet: View {
                     }
                 }
             }
-            .frame(height: 320)
+            .frame(height: m.pt(320))
         }
-        .padding(16)
-        .frame(width: 520)
+        .padding(m.space.xl)
+        .frame(width: m.card.sheetWide)
         .background(Color.dmContentBg)
         .task { load() }
     }

@@ -37,7 +37,7 @@ final class DMComponentsFitTests: XCTestCase {
             DMIconButton(systemImage: "arrow.clockwise", size: 11, hitSize: DMHitSize.compact) {}
         }
         DMFitCheck.assertFits("footer icon button") {
-            DMIconButton(systemImage: "gearshape", hitSize: DMHitSize.footer) {}.font(.dm(13))
+            DMIconButton(systemImage: "gearshape", size: DMMetrics.baseFontSize, hitSize: DMHitSize.footer) {}
         }
         DMFitCheck.assertFits("chip button") {
             Button("Commit") {}.buttonStyle(.dmChip).font(.dm(11))

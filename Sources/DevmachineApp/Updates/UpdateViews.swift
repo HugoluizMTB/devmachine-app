@@ -39,10 +39,11 @@ private func revealInFinder(_ url: URL) {
 }
 
 private struct UpdateProgressView: View {
+    @Environment(\.dmMetrics) private var m
     let phase: UpdatePhase
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: m.space.sm) {
             Text(verbatim: label)
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
@@ -72,11 +73,12 @@ private struct UpdateProgressView: View {
 }
 
 private struct RestartNeededView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var updates: UpdateController
     let version: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: m.space.md) {
             Text(verbatim: UpdateDialogContent.restartNeeded(version: version))
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
@@ -168,12 +170,13 @@ struct UpdateBannerActions: View {
 }
 
 struct UpdateDialog: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var updates: UpdateController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: m.pt(14)) {
             if let content = updates.dialogContent {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: m.pt(3)) {
                     Text(verbatim: content.title)
                         .font(.dm(15, weight: .semibold))
                     if let subtitle = content.subtitle {
@@ -187,10 +190,10 @@ struct UpdateDialog: View {
                         notes(content.notes)
                         ScrollView { notes(content.notes) }
                     }
-                    .frame(maxHeight: 180)
+                    .frame(maxHeight: m.pt(180))
                 }
                 if let command = content.homebrewCommand {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: m.space.sm) {
                         Text(verbatim: "Installed with Homebrew. The app runs this for you:")
                             .font(.dm(11))
                             .foregroundStyle(Color.dmMuted)
@@ -204,8 +207,8 @@ struct UpdateDialog: View {
                 state(content)
             }
         }
-        .padding(20)
-        .frame(width: 460)
+        .padding(m.pt(20))
+        .frame(width: m.card.sheetLarge)
     }
 
     @ViewBuilder
@@ -281,6 +284,7 @@ struct UpdateDialog: View {
 }
 
 private struct HomebrewOutputView: View {
+    @Environment(\.dmMetrics) private var m
     let lines: [String]
 
     var body: some View {
@@ -296,9 +300,9 @@ private struct HomebrewOutputView: View {
                 }
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
+                .padding(m.space.md)
             }
-            .frame(height: 120)
+            .frame(height: m.pt(120))
             .dmSurface(Color.dmSelection, radius: DMRadius.control)
             .onChange(of: lines.count) { _, count in proxy.scrollTo(count - 1, anchor: .bottom) }
         }
@@ -306,18 +310,19 @@ private struct HomebrewOutputView: View {
 }
 
 struct UpdatesSettingsView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var updates: UpdateController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: m.pt(22)) {
             appBlock
             cliBlock
         }
     }
 
     private var appBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
+            HStack(spacing: m.space.md) {
                 Text(verbatim: "Devmachine")
                     .font(.dm(13, weight: .semibold))
                     .foregroundStyle(.white)
@@ -353,7 +358,7 @@ struct UpdatesSettingsView: View {
     }
 
     private func releaseBlock(_ release: GitHubRelease) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
             Text(verbatim: "Devmachine \(release.version?.description ?? release.tagName)"
                 + (updates.isSkipped ? " · skipped" : ""))
                 .font(.dm(12.5, weight: .semibold))
@@ -364,7 +369,7 @@ struct UpdatesSettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if case .homebrew = updates.installMethod {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: m.space.sm) {
                     Text(verbatim: "Installed with Homebrew")
                         .font(.dm(11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.7))
@@ -377,7 +382,7 @@ struct UpdatesSettingsView: View {
             if case .failed(let error) = updates.phase {
                 DMErrorStateView(state: error, retry: { updates.requestUpdate() })
             }
-            HStack(spacing: 8) {
+            HStack(spacing: m.space.md) {
                 if updates.isWaitingForRestart {
                     DMButton(UpdateDialogContent.quitAndReopenTitle, size: .small) { updates.quitAndReopen() }
                 } else {
@@ -393,14 +398,14 @@ struct UpdatesSettingsView: View {
             }
             note("Your sessions keep running.")
         }
-        .padding(14)
+        .padding(m.pt(14))
         .dmSurface(Color.white.opacity(0.06), radius: DMRadius.panel)
     }
 
     @ViewBuilder
     private var cliBlock: some View {
         if let notice = updates.cliNotice {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: m.space.md) {
                 Text(verbatim: "devmachine CLI \(notice.latest) is available")
                     .font(.dm(12.5, weight: .semibold))
                     .foregroundStyle(.white)

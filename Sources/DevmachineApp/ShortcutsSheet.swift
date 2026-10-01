@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ShortcutsSheet: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
 
     private struct Shortcut: Identifiable {
@@ -58,25 +59,25 @@ struct ShortcutsSheet: View {
                 DMButton("Close", variant: .outline, size: .small) { model.showShortcuts = false }
                     .keyboardShortcut(.cancelAction)
             }
-            .padding(16)
+            .padding(m.space.xl)
             Rectangle().fill(Color.dmDivider).frame(height: 1)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: m.pt(18)) {
                     ForEach(groups) { group in
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: m.space.md) {
                             Text(group.title.uppercased())
                                 .font(.dm(11, weight: .semibold))
                                 .foregroundStyle(Color.dmMuted)
                                 .kerning(0.8)
                             ForEach(group.items) { item in
-                                HStack(spacing: 12) {
-                                    HStack(spacing: 4) {
+                                HStack(spacing: m.space.lg) {
+                                    HStack(spacing: m.space.xs) {
                                         ForEach(item.keys, id: \.self) { key in
                                             DMKeyCap(key: key)
                                         }
                                     }
-                                    .frame(width: 130, alignment: .leading)
+                                    .frame(width: m.pt(130), alignment: .leading)
                                     Text(item.action)
                                         .font(.dm(12))
                                         .foregroundStyle(Color.dmRowText)
@@ -86,10 +87,10 @@ struct ShortcutsSheet: View {
                         }
                     }
                 }
-                .padding(16)
+                .padding(m.space.xl)
             }
         }
-        .frame(width: 460, height: 520)
+        .frame(width: m.card.sheetLarge, height: m.pt(520))
         .background(Color.dmContentBg)
     }
 }

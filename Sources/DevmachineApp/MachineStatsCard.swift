@@ -24,6 +24,7 @@ struct MachineCardSummary: Equatable {
 /// are, and a mark when they are stale or the last read failed. Clicking it
 /// opens Stats on that machine.
 struct MachineStatsCard: View {
+    @Environment(\.dmMetrics) private var m
     static let width: CGFloat = 184
 
     let machine: StatsMachine
@@ -33,22 +34,22 @@ struct MachineStatsCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: m.space.sm) {
+                HStack(spacing: m.space.sm) {
                     Text(verbatim: machine.name)
                         .font(.dm(12.5, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    Spacer(minLength: 4)
+                    Spacer(minLength: m.space.xs)
                     statusMark
                 }
                 content
                 footer
             }
-            .padding(12)
-            .frame(width: Self.width, alignment: .leading)
-            .contentShape(RoundedRectangle(cornerRadius: DMRadius.panel))
+            .padding(m.space.lg)
+            .frame(width: m.pt(Self.width), alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: m.radius.panel))
             .dmGlass(radius: DMRadius.panel, stroke: .white.opacity(0.15))
         }
         .buttonStyle(.plain)
@@ -70,7 +71,7 @@ struct MachineStatsCard: View {
     private var content: some View {
         if let snapshot = state?.snapshot {
             let summary = MachineCardSummary(snapshot: snapshot, containerCount: containerCount(snapshot))
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: m.pt(3)) {
                 statLine("RAM", summary.ram)
                 statLine("Disk free", summary.diskFree)
                 statLine("Load 1m", summary.load1)
@@ -84,11 +85,11 @@ struct MachineStatsCard: View {
                 .fixedSize(horizontal: false, vertical: true)
         } else {
             DMSkeleton {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: m.pt(3)) {
                     ForEach(0..<4, id: \.self) { index in
                         HStack {
                             DMSkeletonText(size: 11, width: .fixed([30, 52, 44, 62][index]))
-                            Spacer(minLength: 6)
+                            Spacer(minLength: m.space.sm)
                             DMSkeletonText(size: 11, weight: .medium, width: .fixed(32))
                         }
                     }
@@ -102,7 +103,7 @@ struct MachineStatsCard: View {
         if let refreshedAt = state?.refreshedAt {
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 let stale = StatsFreshness.isStale(since: refreshedAt, now: context.date)
-                HStack(spacing: 4) {
+                HStack(spacing: m.space.xs) {
                     if stale {
                         Image(systemName: "clock.badge.exclamationmark")
                             .font(.dm(9.5))
@@ -120,7 +121,7 @@ struct MachineStatsCard: View {
             Text(label)
                 .font(.dm(11))
                 .foregroundStyle(.white.opacity(0.6))
-            Spacer(minLength: 6)
+            Spacer(minLength: m.space.sm)
             Text(verbatim: value)
                 .font(.dm(11, weight: .medium))
                 .foregroundStyle(.white)

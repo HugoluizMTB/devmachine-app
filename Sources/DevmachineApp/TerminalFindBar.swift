@@ -4,6 +4,7 @@ import SwiftUI
 /// SwiftTerm and selects the match. Enter walks forward, ⇧Enter back, Esc
 /// closes it and hands the keyboard back to the session.
 struct TerminalFindBar: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     let kind: TerminalKind
 
@@ -27,12 +28,12 @@ struct TerminalFindBar: View {
         }
         .onSubmit { step(forward: true) }
         .onChange(of: term) { _, _ in missed = false }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, m.space.md)
+        .padding(.vertical, m.space.sm)
         .dmSurface(
             Color.dmSidebarBg.opacity(0.96), radius: DMRadius.tile, stroke: .dmDivider,
             lineWidth: 1)
-        .padding(12)
+        .padding(m.space.lg)
         .onAppear { focused = true }
     }
 

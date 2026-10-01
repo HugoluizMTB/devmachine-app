@@ -25,6 +25,7 @@ enum FileTreeIcon {
 }
 
 struct FilesTab: View {
+    @Environment(\.dmMetrics) private var m
     @ObservedObject var store: FileTreeStore
     let target: CommandTarget
     @EnvironmentObject var model: AppModel
@@ -41,8 +42,8 @@ struct FilesTab: View {
                 searchField
                 if let error = store.errorText {
                     message(error)
-                        .padding(.horizontal, 14)
-                        .padding(.top, 10)
+                        .padding(.horizontal, m.pt(14))
+                        .padding(.top, m.pt(10))
                 }
                 if query.isEmpty {
                     tree
@@ -111,11 +112,11 @@ struct FilesTab: View {
             .help(store.hasExpandedFolders ? "Collapse every folder" : "Expand the folders read so far")
         }
         .onSubmit { openFirstHit() }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(Color.dmHover, in: RoundedRectangle(cornerRadius: DMRadius.control, style: .continuous))
-        .padding(.horizontal, 8)
-        .padding(.bottom, 6)
+        .padding(.horizontal, m.space.md)
+        .padding(.vertical, m.pt(5))
+        .background(Color.dmHover, in: RoundedRectangle(cornerRadius: m.radius.control, style: .continuous))
+        .padding(.horizontal, m.space.md)
+        .padding(.bottom, m.space.sm)
     }
 
     /// What the field found. Opening a hit also points the tree at it, so the
@@ -125,7 +126,7 @@ struct FilesTab: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if search.hits.isEmpty {
                     message(search.isLoading ? "Listing files…" : "No file matches")
-                        .padding(.top, 12)
+                        .padding(.top, m.space.lg)
                 } else {
                     ForEach(search.hits, id: \.id) { hit in
                         Button { open(hit.path) } label: {
@@ -141,15 +142,15 @@ struct FilesTab: View {
                                     .truncationMode(.head)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, m.pt(14))
+                            .padding(.vertical, m.pt(5))
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, m.space.sm)
         }
     }
 
@@ -188,7 +189,7 @@ struct FilesTab: View {
                     }
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, m.space.sm)
         }
     }
 
@@ -197,7 +198,7 @@ struct FilesTab: View {
             .font(.dm(12))
             .foregroundStyle(Color.dmMuted)
             .padding(.leading, Self.indent(row.depth) + 21)
-            .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: m.pt(Self.rowHeight), alignment: .leading)
     }
 
     @ViewBuilder
@@ -262,6 +263,7 @@ struct FilesTab: View {
 }
 
 private struct FileTreeRowView: View {
+    @Environment(\.dmMetrics) private var m
     let row: FileTreeRow
     let expanded: Bool
     let loading: Bool
@@ -276,27 +278,27 @@ private struct FileTreeRowView: View {
     private static let accent = Color(hex: 0x5AA9E6)
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: m.pt(5)) {
             chevron
             Image(systemName: FileTreeIcon.name(for: row, expanded: expanded))
                 .font(.dm(10))
                 .foregroundStyle(iconColor)
-                .frame(width: 12, alignment: .center)
+                .frame(width: m.pt(12), alignment: .center)
             Text(row.name)
                 .font(.dm(12))
                 .foregroundStyle(dimmed ? Color.dmMuted : Color.dmRowText)
                 .lineLimit(1)
                 .truncationMode(.tail)
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             if loading {
                 ProgressView().controlSize(.small)
             }
         }
         .padding(.leading, FilesTab.indent(row.depth) + 8)
-        .padding(.trailing, 8)
-        .frame(maxWidth: .infinity, minHeight: FilesTab.rowHeight, alignment: .leading)
+        .padding(.trailing, m.space.md)
+        .frame(maxWidth: .infinity, minHeight: m.pt(FilesTab.rowHeight), alignment: .leading)
         .background(background)
-        .padding(.horizontal, 6)
+        .padding(.horizontal, m.space.sm)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture(count: 2) { (openInViewer ?? tap)() }
@@ -322,9 +324,9 @@ private struct FileTreeRowView: View {
                 .font(.dm(10, weight: .semibold))
                 .foregroundStyle(Color.dmMuted)
                 .rotationEffect(.degrees(expanded ? 90 : 0))
-                .frame(width: 10, alignment: .center)
+                .frame(width: m.pt(10), alignment: .center)
         } else {
-            Color.clear.frame(width: 10, height: 10)
+            Color.clear.frame(width: m.pt(10), height: m.pt(10))
         }
     }
 

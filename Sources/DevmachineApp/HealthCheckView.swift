@@ -5,15 +5,16 @@ import DevmachineCore
 /// logging: what `devmachine doctor` (and, for this Mac, `devmachine machine
 /// doctor`) say about every configured machine.
 struct HealthCheckView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var store: HealthCheckStore
     @State private var copiedCheck: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
             header
             if let err = store.commandErrorText {
                 DMBanner(message: err) {
-                    DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.run() }
+                    DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { store.run() }
                 }
             }
             if store.isRunning && store.results.isEmpty {
@@ -37,7 +38,7 @@ struct HealthCheckView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: m.space.md) {
             Text("Health check")
                 .font(.dm(12))
                 .foregroundStyle(.white.opacity(0.85))
@@ -56,9 +57,9 @@ struct HealthCheckView: View {
     }
 
     private var results: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: m.pt(14)) {
             ForEach(store.results) { machine in
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: m.space.sm) {
                     if store.results.count > 1 {
                         Text(verbatim: machine.isSelf ? "\(machine.machineName) (this Mac)" : machine.machineName)
                             .font(.dm(11, weight: .semibold))
@@ -69,7 +70,7 @@ struct HealthCheckView: View {
                     } else if let raw = machine.rawOutput {
                         rawOutputView(raw)
                     } else {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: m.space.xs) {
                             ForEach(machine.checks) { check in
                                 checkRow(check)
                             }
@@ -86,17 +87,17 @@ struct HealthCheckView: View {
             .foregroundStyle(Color.dmRowText)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(8)
+            .padding(m.space.md)
             .dmSurface(Color.dmSelection, radius: DMRadius.control)
     }
 
     private func checkRow(_ check: DoctorCheck) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: m.space.md) {
             Image(systemName: check.status.systemImage)
                 .foregroundStyle(check.status.color)
-                .frame(width: 14)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+                .frame(width: m.pt(14))
+            VStack(alignment: .leading, spacing: m.space.xxs) {
+                HStack(spacing: m.space.sm) {
                     Text(verbatim: check.name)
                         .font(.dm(12, weight: .medium))
                         .foregroundStyle(Color.dmRowText)
@@ -107,7 +108,7 @@ struct HealthCheckView: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, m.space.xxs)
     }
 
     /// A `fail`'s detail often reads `"...: run \`the fix command\`"`. Pulled
@@ -116,18 +117,18 @@ struct HealthCheckView: View {
     @ViewBuilder
     private func detailText(_ check: DoctorCheck) -> some View {
         if let command = Self.fixCommand(in: check.detail) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: m.space.xs) {
                 Text(verbatim: check.detail)
                     .font(.dm(10))
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 6) {
+                HStack(spacing: m.space.sm) {
                     Text(verbatim: command)
                         .font(.dm(10.5, design: .monospaced))
                         .foregroundStyle(Color.dmRowText)
                         .textSelection(.enabled)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, m.space.sm)
+                        .padding(.vertical, m.pt(3))
                         .dmSurface(Color.dmSelection, radius: DMRadius.control)
                     DMButton(copiedCheck == check.id ? "Copied" : "Copy",
                              systemImage: copiedCheck == check.id ? "checkmark" : "doc.on.doc",

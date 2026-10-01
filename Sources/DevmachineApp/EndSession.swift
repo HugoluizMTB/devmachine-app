@@ -86,12 +86,13 @@ enum CloseCommand {
 /// Ending a session cannot be undone, so Return and Escape both cancel and
 /// ending takes a click or ⌘⌫, as macOS does when the default would destroy.
 struct EndSessionSheet: View {
+    @Environment(\.dmMetrics) private var m
     let request: SessionEndRequest
     let onEnd: () -> Void
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: m.space.lg) {
             Text(verbatim: "End \(request.name)?")
                 .font(.headline)
             Text(verbatim: "The session and anything running in it will stop on \(request.place).")
@@ -106,8 +107,8 @@ struct EndSessionSheet: View {
                     .keyboardShortcut(.delete, modifiers: .command)
             }
         }
-        .padding(20)
-        .frame(width: 380)
+        .padding(m.pt(20))
+        .frame(width: m.pt(380))
         .onExitCommand(perform: onCancel)
     }
 }

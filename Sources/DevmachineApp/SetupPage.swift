@@ -84,6 +84,7 @@ private enum LaunchChoiceTag: Hashable {
 }
 
 struct SetupPage: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var settingsStore: SettingsStore
     @EnvironmentObject var wallpapers: WallpaperStore
@@ -164,8 +165,8 @@ struct SetupPage: View {
         ZStack {
             WallpaperBackground(style: .photo, choice: wallpaper)
             card
-                .frame(maxWidth: 940, maxHeight: 640)
-                .padding(24)
+                .frame(maxWidth: m.pt(940), maxHeight: m.pt(640))
+                .padding(m.space.xxl)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
@@ -198,15 +199,15 @@ struct SetupPage: View {
         .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.14))
         .background(
             Color.black.opacity(0.35),
-            in: RoundedRectangle(cornerRadius: DMRadius.panel, style: .continuous))
+            in: RoundedRectangle(cornerRadius: m.radius.panel, style: .continuous))
         .environment(\.colorScheme, .dark)
     }
 
     /// The list of sections. Everything used to be one column, so a change to
     /// the font size meant scrolling past every wallpaper.
     private var rail: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: m.space.xxs) {
+            VStack(alignment: .leading, spacing: m.pt(3)) {
                 Text(isFirstRun ? "Welcome" : "Settings")
                     .font(.dm(18, weight: .semibold))
                     .foregroundStyle(.white)
@@ -214,52 +215,52 @@ struct SetupPage: View {
                     .font(.dm(11))
                     .foregroundStyle(.white.opacity(0.5))
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 18)
-            .padding(.bottom, 14)
+            .padding(.horizontal, m.pt(14))
+            .padding(.top, m.pt(18))
+            .padding(.bottom, m.pt(14))
 
             ForEach(SettingsSection.allCases, id: \.self) { item in
                 railRow(item)
             }
             Spacer(minLength: 0)
         }
-        .frame(width: 208)
+        .frame(width: m.pt(208))
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private func railRow(_ item: SettingsSection) -> some View {
         let selected = section == item
         let broken = item.showsValidation && !issues.isEmpty
-        return HStack(spacing: 8) {
+        return HStack(spacing: m.space.md) {
             Image(systemName: item.systemImage)
                 .font(.dm(11))
-                .frame(width: 16)
+                .frame(width: m.pt(16))
                 .foregroundStyle(selected ? .white : .white.opacity(0.6))
             Text(item.title)
                 .font(.dm(12.5))
                 .foregroundStyle(selected ? .white : .white.opacity(0.75))
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             if broken {
                 Image(systemName: "exclamationmark.circle.fill")
                     .font(.dm(10))
                     .foregroundStyle(.orange)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, m.pt(10))
+        .padding(.vertical, m.pt(7))
         .background(
             DMRowBackground(
                 selected: selected, cornerRadius: DMRadius.control, style: .continuous,
                 selectedColor: .white.opacity(0.14)))
-        .padding(.horizontal, 8)
+        .padding(.horizontal, m.space.md)
         .contentShape(Rectangle())
         .onTapGesture { section = item }
     }
 
     private var sectionBody: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: m.pt(18)) {
+                VStack(alignment: .leading, spacing: m.space.xs) {
                     Text(section.title)
                         .font(.dm(15, weight: .semibold))
                         .foregroundStyle(.white)
@@ -279,7 +280,7 @@ struct SetupPage: View {
                 case .about: UpdatesSettingsView()
                 }
             }
-            .padding(24)
+            .padding(m.space.xxl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollIndicators(.automatic)
@@ -287,7 +288,7 @@ struct SetupPage: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: m.pt(10)) {
             if let issue = issues.first {
                 Image(systemName: "exclamationmark.circle.fill")
                     .font(.dm(11))
@@ -307,18 +308,18 @@ struct SetupPage: View {
                 .keyboardShortcut(.defaultAction)
         }
         .controlSize(.regular)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.horizontal, m.pt(20))
+        .padding(.vertical, m.pt(14))
     }
 
     private var connectionBlock: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: m.space.xl) {
             field(
                 title: "Ops repo folder",
                 hint: "Holds \(AppSettings.opsRepoMarker) — the devmachine CLI's configuration, usually ~/.config/devmachine.",
                 field: .opsRepoPath
             ) {
-                HStack(spacing: 8) {
+                HStack(spacing: m.space.md) {
                     TextField("/Users/you/.config/devmachine", text: $opsRepoPath)
                         .dmField()
                     DMButton("Choose…", variant: .outline) { chooseFolder() }
@@ -355,7 +356,7 @@ struct SetupPage: View {
                     .dmField()
             }
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: m.pt(5)) {
                 Text(verbatim: "SSH agent socket")
                     .font(.dm(11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.7))
@@ -374,7 +375,7 @@ struct SetupPage: View {
         field: SettingsIssue.Field,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: m.pt(5)) {
             Text(title)
                 .font(.dm(11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
@@ -407,7 +408,7 @@ struct SetupPage: View {
                 + "-\(hostAlias.isEmpty ? "devmachine" : hostAlias); the app reads them from "
                 + "~/.ssh/config once the host above is set.")
         } else {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: m.pt(10)) {
                 ForEach(model.workspaces, id: \.alias) { workspace in
                     Toggle(isOn: Binding(
                         get: {
@@ -440,13 +441,13 @@ struct SetupPage: View {
     }
 
     private var harnessesBlock: some View {
-        VStack(alignment: .leading, spacing: 30) {
-            VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: m.pt(30)) {
+            VStack(alignment: .leading, spacing: m.pt(10)) {
                 settingsHeading("Available harnesses")
                 ForEach(harnessSettingsFacade.harnesses) { descriptor in
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: m.space.xs) {
                         Toggle(isOn: harnessEnabledBinding(descriptor.id)) {
-                            HStack(spacing: 8) {
+                            HStack(spacing: m.space.md) {
                                 Image(systemName: descriptor.systemImage)
                                     .font(.dm(10))
                                     .foregroundStyle(descriptor.color)
@@ -467,7 +468,7 @@ struct SetupPage: View {
                             Text(verbatim: message)
                                 .font(.dm(10))
                                 .foregroundStyle(.orange)
-                                .padding(.leading, 24)
+                                .padding(.leading, m.space.xxl)
                         }
                     }
                 }
@@ -477,7 +478,7 @@ struct SetupPage: View {
 
             harnessIconToggle
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: m.pt(10)) {
                 settingsHeading("Session defaults")
                 launchChoicePicker(
                     title: "This Mac",
@@ -532,8 +533,8 @@ struct SetupPage: View {
         showsCommandField: Bool = true,
         selection: Binding<SessionLaunchChoice>
     ) -> some View {
-        VStack(alignment: .trailing, spacing: 6) {
-            HStack(spacing: 12) {
+        VStack(alignment: .trailing, spacing: m.space.sm) {
+            HStack(spacing: m.space.lg) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: title)
                         .font(.dm(12))
@@ -542,7 +543,7 @@ struct SetupPage: View {
                         .font(.dm(10))
                         .foregroundStyle(.white.opacity(0.4))
                 }
-                Spacer(minLength: 8)
+                Spacer(minLength: m.space.md)
                 Picker("", selection: Binding(
                     get: { LaunchChoiceTag(selection.wrappedValue) },
                     set: { selection.wrappedValue = $0.choice(replacing: selection.wrappedValue) }
@@ -566,7 +567,7 @@ struct SetupPage: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .controlSize(.small)
-                .frame(width: 170)
+                .frame(width: m.pt(170))
             }
             if showsCommandField, case let .custom(command) = selection.wrappedValue {
                 TextField("command to run, e.g. npm run dev", text: Binding(
@@ -576,7 +577,7 @@ struct SetupPage: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.dm(12, design: .monospaced))
                 .controlSize(.small)
-                .frame(maxWidth: 360)
+                .frame(maxWidth: m.pt(360))
             }
         }
     }
@@ -654,7 +655,7 @@ struct SetupPage: View {
     }
 
     private var terminalBlock: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: m.pt(14)) {
             slider(
                 title: "Terminal transparency",
                 value: $terminalOpacity,
@@ -691,7 +692,7 @@ struct SetupPage: View {
     }
 
     private var harnessIconToggle: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: m.space.sm) {
             settingsHeading("Sidebar")
             Toggle(isOn: $showsHarnessIcons) {
                 Text(verbatim: "Show harness icon in sidebar sessions")
@@ -706,7 +707,7 @@ struct SetupPage: View {
     }
 
     private var copyOnSelectToggle: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: m.space.sm) {
             Toggle(isOn: $copyOnSelect) {
                 Text(verbatim: "Copy on select")
                     .font(.dm(12))
@@ -721,12 +722,12 @@ struct SetupPage: View {
     }
 
     private var remoteTerminalPicker: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            HStack(spacing: m.space.lg) {
                 Text(verbatim: "Remote terminals")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
-                Spacer(minLength: 8)
+                Spacer(minLength: m.space.md)
                 Picker("", selection: $remoteTerminalMode) {
                     ForEach(RemoteTerminalMode.allCases, id: \.self) { mode in
                         Text(verbatim: mode.title).tag(mode)
@@ -735,7 +736,7 @@ struct SetupPage: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .controlSize(.small)
-                .frame(width: 260)
+                .frame(width: m.pt(260))
             }
             note("mosh keeps a session through sleep, a new Wi-Fi and a slow link. "
                 + "It needs mosh-server on the machine and UDP 60000\u{2013}61000 open "
@@ -746,12 +747,12 @@ struct SetupPage: View {
     }
 
     private var previewsBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
+            HStack(spacing: m.space.lg) {
                 Text(verbatim: "Open previews and links in")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
-                Spacer(minLength: 8)
+                Spacer(minLength: m.space.md)
                 Picker("", selection: $linkOpening) {
                     ForEach(LinkOpening.allCases, id: \.self) { choice in
                         Text(verbatim: choice.title).tag(choice)
@@ -760,7 +761,7 @@ struct SetupPage: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .controlSize(.small)
-                .frame(width: 190)
+                .frame(width: m.pt(190))
             }
             note("Applies to the Preview tab's sites and dev servers and to the pull "
                 + "requests and links in the Context tab. ⌥-click opens the other way, "
@@ -772,7 +773,7 @@ struct SetupPage: View {
     }
 
     private var advancedBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
             Toggle(isOn: $debugLogging) {
                 Text(verbatim: "Debug logging")
                     .font(.dm(12))
@@ -787,7 +788,7 @@ struct SetupPage: View {
                 + "itself under a megabyte.")
 
             HealthCheckView()
-                .padding(.top, 20)
+                .padding(.top, m.pt(20))
         }
     }
 
@@ -802,7 +803,7 @@ struct SetupPage: View {
         title: String, value: Binding<Double>, range: ClosedRange<Double>,
         step: Double = 0.01, reading: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: m.space.xxs) {
             HStack {
                 Text(verbatim: title)
                     .font(.dm(12))
@@ -817,7 +818,7 @@ struct SetupPage: View {
     }
 
     private var wallpaperBlock: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: m.pt(14)) {
             slider(
                 title: "App font size",
                 value: $uiFontScale,
@@ -866,10 +867,10 @@ struct SetupPage: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(height: 62)
-        .clipShape(RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
+        .frame(height: m.pt(62))
+        .clipShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
         .overlay(ring(selected: wallpaper == Self.choice(for: photo)))
-        .contentShape(RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
         .onTapGesture { select(photo) }
         .onAppear { wallpapers.ensureThumbnail(photo) }
     }
@@ -885,21 +886,21 @@ struct SetupPage: View {
 
     private func gradientCell(_ gradient: WallpaperGradient) -> some View {
         gradientSwatch(gradient)
-            .frame(height: 62)
-            .clipShape(RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
+            .frame(height: m.pt(62))
+            .clipShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
             .overlay(alignment: .bottomLeading) {
                 Text(verbatim: gradient.title)
                     .font(.dm(10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.8))
-                    .padding(6)
+                    .padding(m.space.sm)
             }
             .overlay(ring(selected: wallpaper == .gradient(name: gradient.name)))
-            .contentShape(RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
             .onTapGesture { wallpaper = .gradient(name: gradient.name) }
     }
 
     private func ring(selected: Bool) -> some View {
-        RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous)
+        RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous)
             .stroke(
                 selected ? Color.accentColor : Color.dmStroke,
                 lineWidth: selected ? 2 : 0.5

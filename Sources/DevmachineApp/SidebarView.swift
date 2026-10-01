@@ -3,6 +3,7 @@ import AppKit
 import DevmachineCore
 
 struct SidebarView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var filesStore: FilesStore
     @EnvironmentObject var settingsStore: SettingsStore
@@ -55,7 +56,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, m.space.sm)
     }
 
     private var footerRow: some View {
@@ -73,13 +74,14 @@ struct SidebarView: View {
             }
             .help("Close sidebar (⌘B)")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, m.space.lg)
+        .padding(.vertical, m.space.md)
     }
 
     private func footerButton(_ systemImage: String, action: @escaping () -> Void) -> some View {
         DMIconButton(
-            systemImage: systemImage, hitSize: DMHitSize.footer, fillsWidth: true,
+            systemImage: systemImage, size: DMMetrics.baseFontSize, hitSize: DMHitSize.footer,
+            fillsWidth: true,
             action: action)
     }
 
@@ -94,7 +96,7 @@ struct SidebarView: View {
                     .kerning(0.8)
             },
             trailing: {
-                DMIconButton(systemImage: "arrow.clockwise") { model.refreshAll() }
+                DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize) { model.refreshAll() }
                     .help("Refresh")
 
                 Menu {
@@ -112,7 +114,7 @@ struct SidebarView: View {
             }
         )
         .safeAreaInset(edge: .top) {
-            Color.clear.frame(height: 12)
+            Color.clear.frame(height: m.pt(12))
         }
     }
 
@@ -134,7 +136,7 @@ struct SidebarView: View {
                 if offline {
                     Circle()
                         .fill(Color.red)
-                        .frame(width: 5, height: 5)
+                        .frame(width: m.pt(5), height: m.pt(5))
                         .help("Offline")
                 }
             },
@@ -210,7 +212,7 @@ struct SidebarView: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .frame(width: DMHitSize.header.width, height: DMHitSize.header.height)
+        .frame(width: m.hit.header.width, height: m.hit.header.height)
         .help("New session…")
     }
 
@@ -330,7 +332,7 @@ struct SidebarView: View {
                 AnyView(Text(verbatim: "\(count)").font(.dm(11)).foregroundStyle(Color.dmMuted))
             },
             trailingHover: glyph.hoverBadges.isEmpty ? nil : AnyView(
-                HStack(spacing: 4) {
+                HStack(spacing: m.space.xs) {
                     ForEach(glyph.hoverBadges) { badge in
                         Image(systemName: badge.systemImage)
                             .font(.dm(5))
@@ -346,6 +348,7 @@ struct SidebarView: View {
 /// The 14-point slot before a session's name. Empty for a terminal session,
 /// so every name in the list starts at the same place.
 private struct SidebarHarnessIcon: View {
+    @Environment(\.dmMetrics) private var m
     let icon: HarnessIcon?
     let help: String?
 
@@ -363,13 +366,14 @@ private struct SidebarHarnessIcon: View {
                 Color.clear
             }
         }
-        .frame(width: 14, height: 14)
+        .frame(width: m.pt(14), height: m.pt(14))
     }
 }
 
 /// The workspace list before it is read: group headers and session rows in
 /// the sidebar's own sizes, stretching with its width.
 struct SidebarSkeleton: View {
+    @Environment(\.dmMetrics) private var m
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             ForEach(0..<3, id: \.self) { group in
@@ -377,26 +381,27 @@ struct SidebarSkeleton: View {
                     DMSection(
                         padding: EdgeInsets(top: group > 0 ? 16 : 4, leading: 10, bottom: 4, trailing: 10),
                         label: { DMSkeletonText(size: 11, weight: .semibold, width: .fixed([54, 40, 66][group])) },
-                        trailing: { Color.clear.frame(width: DMHitSize.header.width, height: DMHitSize.header.height) }
+                        trailing: { Color.clear.frame(width: m.hit.header.width, height: m.hit.header.height) }
                     )
                 }
                 Self.sessionRows(count: [3, 2, 2][group], seed: group)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, m.space.sm)
     }
 
     static func sessionRows(count: Int, seed: Int) -> some View {
-        DMSkeleton {
+        let m = DMMetrics.current
+        return DMSkeleton {
             VStack(alignment: .leading, spacing: 1) {
                 ForEach(0..<count, id: \.self) { index in
-                    HStack(spacing: 8) {
+                    HStack(spacing: m.space.md) {
                         DMSkeletonText(size: 13, width: .varied(seed * 2 + index, shares: [0.5, 0.34, 0.62, 0.42, 0.56]))
                         DMSkeletonText(size: 11, width: .fixed(7))
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, m.row.horizontal)
+                    .padding(.vertical, m.row.vertical)
+                    .padding(.horizontal, m.row.outer)
                 }
             }
         }

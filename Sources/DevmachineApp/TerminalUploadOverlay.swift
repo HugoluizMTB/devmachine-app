@@ -11,6 +11,7 @@ extension View {
 }
 
 private struct TerminalUploadOverlay: ViewModifier {
+    @Environment(\.dmMetrics) private var m
     @ObservedObject private var uploads = PaneUploadStore.shared
     let kind: TerminalKind
 
@@ -25,7 +26,7 @@ private struct TerminalUploadOverlay: ViewModifier {
             .overlay(alignment: .bottom) {
                 if case let .uploading(label, done, total)? = uploads.phases[kind] {
                     UploadProgressCard(label: label, done: done, total: total)
-                        .padding(14)
+                        .padding(m.pt(14))
                         .allowsHitTesting(false)
                         .transition(.opacity)
                 }
@@ -54,7 +55,7 @@ private struct TerminalUploadOverlay: ViewModifier {
 
     private var dropHighlight: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: DMRadius.terminal, style: .continuous)
+            RoundedRectangle(cornerRadius: m.radius.terminal, style: .continuous)
                 .fill(Color.accentColor.opacity(0.10))
             Label {
                 Text(verbatim: "Drop to upload to \(destination)")
@@ -63,8 +64,8 @@ private struct TerminalUploadOverlay: ViewModifier {
             }
             .font(.dm(12.5, weight: .medium))
             .foregroundStyle(Color.dmRowText)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.horizontal, m.pt(14))
+            .padding(.vertical, m.space.md)
             .dmGlass(radius: DMRadius.pill)
         }
         .allowsHitTesting(false)
@@ -74,19 +75,20 @@ private struct TerminalUploadOverlay: ViewModifier {
 }
 
 private struct UploadProgressCard: View {
+    @Environment(\.dmMetrics) private var m
     let label: String
     let done: Int64
     let total: Int64
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            HStack(spacing: m.pt(10)) {
                 Text(verbatim: label)
                     .font(.dm(12, weight: .semibold))
                     .foregroundStyle(Color.dmRowText)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Spacer(minLength: 6)
+                Spacer(minLength: m.space.sm)
                 Text(verbatim: "\(FileUpload.byteText(done)) of \(FileUpload.byteText(total))")
                     .font(.dm(11).monospacedDigit())
                     .foregroundStyle(Color.dmMuted)
@@ -95,15 +97,16 @@ private struct UploadProgressCard: View {
                 done: Int(clamping: done), total: Int(clamping: max(total, 1)),
                 fillColor: .accentColor)
         }
-        .frame(width: 300)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .frame(width: m.pt(300))
+        .padding(.horizontal, m.space.lg)
+        .padding(.vertical, m.pt(9))
         .dmGlass(radius: DMRadius.toast)
         .accessibilityElement(children: .combine)
     }
 }
 
 private struct LargeUploadQuestion: View {
+    @Environment(\.dmMetrics) private var m
     let destination: String
     let names: [String]
     let totalBytes: Int64
@@ -111,8 +114,8 @@ private struct LargeUploadQuestion: View {
     let upload: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            VStack(spacing: 5) {
+        VStack(spacing: m.space.lg) {
+            VStack(spacing: m.pt(5)) {
                 Image(systemName: "externaldrive.badge.exclamationmark")
                     .font(.dm(20, weight: .light))
                     .foregroundStyle(Color.dmMuted)
@@ -128,31 +131,32 @@ private struct LargeUploadQuestion: View {
             }
             .multilineTextAlignment(.center)
             .accessibilityElement(children: .combine)
-            HStack(spacing: 6) {
+            HStack(spacing: m.space.sm) {
                 DMButton("Cancel", variant: .outline, size: .small, action: cancel)
                 DMButton("Upload", size: .small, action: upload)
             }
         }
-        .frame(maxWidth: 360)
-        .padding(18)
+        .frame(maxWidth: m.pt(360))
+        .padding(m.pt(18))
         .dmGlass(radius: DMRadius.panel)
     }
 }
 
 private struct UploadErrorCard: View {
+    @Environment(\.dmMetrics) private var m
     let state: DMErrorState
     let dismiss: () -> Void
 
     var body: some View {
         DMErrorStateView(state: state)
-            .padding(18)
-            .padding(.top, 4)
+            .padding(m.pt(18))
+            .padding(.top, m.space.xs)
             .dmGlass(radius: DMRadius.panel)
             .overlay(alignment: .topTrailing) {
                 DMButton(icon: "xmark", label: "Dismiss", size: .small, action: dismiss)
-                    .padding(6)
+                    .padding(m.space.sm)
             }
-            .frame(maxWidth: 440)
-            .padding(16)
+            .frame(maxWidth: m.pt(440))
+            .padding(m.space.xl)
     }
 }

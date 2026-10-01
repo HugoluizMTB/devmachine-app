@@ -6,6 +6,7 @@ import AppKit
 /// `devmachine-app` package are missing. It owns the whole window the same
 /// way those gates did — nothing else starts until every check passes.
 struct OnboardingPage: View {
+    @Environment(\.dmMetrics) private var m
     /// Known already when onboarding starts from the package-only gate (CLI
     /// present, config present, only the package missing) — the steps list
     /// then skips straight to `addPackage`/`sync`.
@@ -30,7 +31,7 @@ struct OnboardingPage: View {
     var body: some View {
         ZStack {
             WallpaperBackground(style: .ambient)
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: m.pt(18)) {
                 header
                 if !detection.homebrewFound {
                     homebrewBanner
@@ -43,8 +44,8 @@ struct OnboardingPage: View {
                     chooserCard
                 }
             }
-            .frame(maxWidth: 880)
-            .padding(28)
+            .frame(maxWidth: m.pt(880))
+            .padding(m.pt(28))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
@@ -72,7 +73,7 @@ struct OnboardingPage: View {
     // MARK: - Header / progress
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
             Text("Set up devmachine")
                 .font(.dm(20, weight: .semibold))
                 .foregroundStyle(.white)
@@ -80,7 +81,7 @@ struct OnboardingPage: View {
                 .font(.dm(12.5))
                 .foregroundStyle(.white.opacity(0.7))
             DMProgressBar(done: progressDone, total: progressTotal, fillColor: .green)
-                .frame(maxWidth: 360)
+                .frame(maxWidth: m.pt(360))
         }
     }
 
@@ -96,7 +97,7 @@ struct OnboardingPage: View {
     // MARK: - Homebrew banner
 
     private var homebrewBanner: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: m.space.md) {
             Text("Install Homebrew first")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(.white)
@@ -109,15 +110,15 @@ struct OnboardingPage: View {
                 NSWorkspace.shared.open(URL(string: "https://brew.sh")!)
             }
         }
-        .padding(16)
+        .padding(m.space.xl)
         .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
     }
 
     // MARK: - Chooser
 
     private var chooserCard: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 10) {
+        HStack(alignment: .top, spacing: m.space.xl) {
+            VStack(alignment: .leading, spacing: m.pt(10)) {
                 Text("Set it up here")
                     .font(.dm(14, weight: .semibold))
                     .foregroundStyle(.white)
@@ -126,15 +127,15 @@ struct OnboardingPage: View {
                     + "fingerprint to check with your provider.")
                     .font(.dm(11.5))
                     .foregroundStyle(.white.opacity(0.65))
-                Spacer(minLength: 4)
+                Spacer(minLength: m.space.xs)
                 DMButton("Start", systemImage: "play.fill") { startTerminalPath() }
                     .disabled(!detection.homebrewFound)
             }
-            .padding(16)
+            .padding(m.space.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
             .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: m.pt(10)) {
                 Text("Let your agent do it")
                     .font(.dm(14, weight: .semibold))
                     .foregroundStyle(.white)
@@ -142,12 +143,12 @@ struct OnboardingPage: View {
                     + "Watch it work and answer what it asks.")
                     .font(.dm(11.5))
                     .foregroundStyle(.white.opacity(0.65))
-                Spacer(minLength: 4)
+                Spacer(minLength: m.space.xs)
                 ForEach(AgentKind.allCases) { kind in
                     agentButton(kind)
                 }
             }
-            .padding(16)
+            .padding(m.space.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
             .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
         }
@@ -175,19 +176,19 @@ struct OnboardingPage: View {
     // MARK: - Running
 
     private func runningCard(_ path: ChosenPath) -> some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: m.space.xl) {
             VStack(spacing: 0) {
                 TerminalPaneView(kind: runner.terminalKind)
-                    .frame(minHeight: 360)
+                    .frame(minHeight: m.pt(360))
             }
             .frame(maxWidth: .infinity)
             .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
 
             if case .terminal = path {
                 stepList
-                    .frame(width: 260)
+                    .frame(width: m.pt(260))
             } else {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: m.space.md) {
                     Text("Answer the agent above.")
                         .font(.dm(12.5, weight: .medium))
                         .foregroundStyle(.white)
@@ -195,27 +196,27 @@ struct OnboardingPage: View {
                         .font(.dm(11.5))
                         .foregroundStyle(.white.opacity(0.65))
                 }
-                .padding(16)
-                .frame(width: 260, alignment: .topLeading)
+                .padding(m.space.xl)
+                .frame(width: m.pt(260), alignment: .topLeading)
                 .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
             }
         }
     }
 
     private var stepList: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
             ForEach(currentSteps, id: \.id) { step in
                 stepRow(step)
             }
         }
-        .padding(16)
+        .padding(m.space.xl)
         .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
     }
 
     private func stepRow(_ step: (id: OnboardingStepID, command: String)) -> some View {
         let status = runner.status(for: step.id)
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
+        return VStack(alignment: .leading, spacing: m.space.xs) {
+            HStack(spacing: m.space.md) {
                 stepIcon(status)
                 Text(step.id.title)
                     .font(.dm(12, weight: .medium))
@@ -254,7 +255,7 @@ struct OnboardingPage: View {
     // MARK: - Success
 
     private var successCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: m.pt(14)) {
             Text("Devmachine is ready")
                 .font(.dm(16, weight: .semibold))
                 .foregroundStyle(.white)
@@ -264,7 +265,7 @@ struct OnboardingPage: View {
             DMButton("Restart Devmachine", action: relaunch)
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(20)
+        .padding(m.pt(20))
         .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.14))
     }
 

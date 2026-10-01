@@ -6,6 +6,7 @@ import DevmachineCore
 /// Command+Enter types it into the session's prompt without sending it, which
 /// is how a path reaches an agent waiting for one.
 struct FileSearchOverlay: View {
+    @Environment(\.dmMetrics) private var m
     @ObservedObject var store: FileSearchStore
     let root: String
     let onCopy: (String) -> Void
@@ -49,8 +50,8 @@ struct FileSearchOverlay: View {
             .keyboardShortcut(.cancelAction)
         }
         .onSubmit { copySelected() }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, m.pt(14))
+        .padding(.vertical, m.pt(9))
     }
 
     private var results: some View {
@@ -62,9 +63,9 @@ struct FileSearchOverlay: View {
                             .id(index)
                     }
                 }
-                .padding(.bottom, 6)
+                .padding(.bottom, m.space.sm)
             }
-            .frame(maxHeight: 220)
+            .frame(maxHeight: m.pt(220))
             .onChange(of: selection) { _, value in
                 withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo(value) }
             }
@@ -74,7 +75,7 @@ struct FileSearchOverlay: View {
     private func row(_ hit: FileSearch.Hit, index: Int) -> some View {
         let name = (hit.path as NSString).lastPathComponent
         let folder = (hit.path as NSString).deletingLastPathComponent
-        return HStack(spacing: 6) {
+        return HStack(spacing: m.space.sm) {
             Text(name)
                 .font(.dm(12))
                 .foregroundStyle(.white.opacity(0.9))
@@ -83,10 +84,10 @@ struct FileSearchOverlay: View {
                 .foregroundStyle(Color.dmMuted)
                 .lineLimit(1)
                 .truncationMode(.head)
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 4)
+        .padding(.horizontal, m.pt(14))
+        .padding(.vertical, m.space.xs)
         .background(index == selection ? Color.dmSelection : .clear)
         .contentShape(Rectangle())
         .onTapGesture { selection = index; copySelected() }
@@ -100,8 +101,8 @@ struct FileSearchOverlay: View {
         Text(text)
             .font(.dm(11))
             .foregroundStyle(Color.dmMuted)
-            .padding(.horizontal, 14)
-            .padding(.bottom, 10)
+            .padding(.horizontal, m.pt(14))
+            .padding(.bottom, m.pt(10))
     }
 
     private func copySelected() {

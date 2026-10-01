@@ -35,6 +35,7 @@ extension CIState {
 }
 
 struct PRRowView: View {
+    @Environment(\.dmMetrics) private var m
     let pr: PullRequest
     let depth: Int
 
@@ -52,9 +53,9 @@ struct PRRowView: View {
     }
 
     private var trailing: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+        HStack(spacing: m.space.md) {
+            VStack(alignment: .leading, spacing: m.space.xxs) {
+                HStack(spacing: m.space.sm) {
                     Text(verbatim: "#\(pr.number)")
                         .font(.dm(11, design: .monospaced))
                         .foregroundStyle(pr.ci.color.opacity(0.9))
@@ -67,7 +68,7 @@ struct PRRowView: View {
             Image(systemName: pr.ci.glyph)
                 .font(.dm(12, weight: .semibold))
                 .foregroundColor(pr.ci.color)
-                .frame(width: 24, height: 24)
+                .frame(width: m.pt(24), height: m.pt(24))
                 .background(pr.ci.color.opacity(0.12))
                 .clipShape(Circle())
                 .help(pr.ci.help)
@@ -78,9 +79,9 @@ struct PRRowView: View {
         HStack(spacing: 0) {
             ForEach(0..<depth, id: \.self) { _ in
                 Rectangle().fill(Color.secondary.opacity(0.25))
-                    .frame(width: 1.5)
+                    .frame(width: m.pt(1.5))
                     .frame(maxHeight: .infinity)
-                    .frame(width: 13, alignment: .center)
+                    .frame(width: m.pt(13), alignment: .center)
             }
             Image(systemName: "arrow.turn.down.right")
                 .font(.dm(10))

@@ -417,9 +417,10 @@ final class AppModel: ObservableObject {
     @Published var sidebarCollapsed: Bool = (UserDefaults.standard.object(forKey: "sidebarCollapsed") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "sidebarCollapsed") }
     }
+    /// Points at 100% text size; drawn at `DMMetrics.pt(_:)`, so the pane grows with the text.
     @Published var sidebarWidth: CGFloat = {
-        let saved = UserDefaults.standard.double(forKey: "sidebarWidth")
-        return (saved >= 200 && saved <= 460) ? CGFloat(saved) : 260
+        let saved = CGFloat(UserDefaults.standard.double(forKey: "sidebarWidth"))
+        return DMPaneWidth.sidebar.contains(saved) ? saved : DMPaneWidth.sidebar.ideal
     }() {
         didSet { UserDefaults.standard.set(Double(sidebarWidth), forKey: "sidebarWidth") }
     }
@@ -430,9 +431,10 @@ final class AppModel: ObservableObject {
             syncContext()
         }
     }
+    /// Points at 100% text size, like `sidebarWidth`.
     @Published var contextWidth: CGFloat = {
-        let saved = UserDefaults.standard.double(forKey: "contextWidth")
-        return (saved >= 240 && saved <= 520) ? CGFloat(saved) : 300
+        let saved = CGFloat(UserDefaults.standard.double(forKey: "contextWidth"))
+        return DMPaneWidth.context.contains(saved) ? saved : DMPaneWidth.context.ideal
     }() {
         didSet { UserDefaults.standard.set(Double(contextWidth), forKey: "contextWidth") }
     }
@@ -867,11 +869,11 @@ final class AppModel: ObservableObject {
     }
 
     func setSidebarWidth(_ w: CGFloat) {
-        sidebarWidth = min(max(w, 200), 460)
+        sidebarWidth = DMPaneWidth.sidebar.clamp(w)
     }
 
     func setContextWidth(_ w: CGFloat) {
-        contextWidth = min(max(w, 240), 520)
+        contextWidth = DMPaneWidth.context.clamp(w)
     }
 
     func flattenedSessions() -> [SessionRef] {

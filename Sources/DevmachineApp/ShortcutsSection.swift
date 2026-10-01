@@ -39,12 +39,13 @@ struct ShortcutsSection: View {
 }
 
 private struct SkillButton: View {
+    @Environment(\.dmMetrics) private var m
     let skill: SkillCommand
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: m.space.xs) {
                 Image(systemName: skill.systemImage)
                     .font(.dm(11))
                 Text(skill.label)
@@ -57,6 +58,7 @@ private struct SkillButton: View {
 }
 
 private struct SkillsEditorView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var skillsStore: SkillsStore
     @State private var newLabel = ""
     @State private var newCommand = ""
@@ -68,15 +70,15 @@ private struct SkillsEditorView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
             Text("Shortcuts").font(.headline)
 
-            VStack(spacing: 4) {
+            VStack(spacing: m.space.xs) {
                 ForEach(skillsStore.skills) { skill in
-                    HStack(spacing: 8) {
+                    HStack(spacing: m.space.md) {
                         Image(systemName: skill.systemImage)
                             .foregroundStyle(Color.dmMuted)
-                            .frame(width: 16)
+                            .frame(width: m.pt(16))
                         Text(skill.label)
                             .font(.dm(12))
                         Text(skill.command)
@@ -92,7 +94,7 @@ private struct SkillsEditorView: View {
 
             DMHairline()
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: m.space.sm) {
                 TextField("Label", text: $newLabel)
                 TextField("Command", text: $newCommand)
                 TextField("SF Symbol", text: $newSystemImage)
@@ -109,7 +111,7 @@ private struct SkillsEditorView: View {
                 .disabled(!canAdd)
             }
         }
-        .padding(16)
-        .frame(width: 280)
+        .padding(m.space.xl)
+        .frame(width: m.pt(280))
     }
 }

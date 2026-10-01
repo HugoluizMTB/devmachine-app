@@ -14,6 +14,7 @@ private func memSize(_ bytes: Int64) -> String {
 }
 
 struct StatsView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var store: StatsStore
     @EnvironmentObject var model: AppModel
 
@@ -40,7 +41,7 @@ struct StatsView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: m.space.md) {
             Text("Stats")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
@@ -59,10 +60,10 @@ struct StatsView: View {
             if store.isLoading && !store.showsSkeleton {
                 ProgressView().controlSize(.small)
             }
-            DMIconButton(systemImage: "arrow.clockwise", tint: nil) { refresh() }
+            DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { refresh() }
                 .help("Refresh")
         }
-        .padding(10)
+        .padding(m.pt(10))
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -73,14 +74,14 @@ struct StatsView: View {
     }()
 
     private var machineSwitcher: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: m.space.sm) {
             ForEach(store.machines) { machine in
                 machineTab(machine)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, m.pt(10))
+        .padding(.vertical, m.space.md)
     }
 
     private func machineTab(_ machine: StatsMachine) -> some View {
@@ -98,10 +99,10 @@ struct StatsView: View {
                         .foregroundStyle(Color.dmMuted.opacity(0.7))
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, m.pt(10))
+            .padding(.vertical, m.space.sm)
             .background(
-                RoundedRectangle(cornerRadius: DMRadius.control, style: .continuous)
+                RoundedRectangle(cornerRadius: m.radius.control, style: .continuous)
                     .fill(selected ? Color.dmSelection : Color.clear)
             )
         }
@@ -132,7 +133,7 @@ struct StatsView: View {
 
     private func errorBanner(_ message: String) -> some View {
         DMBanner(message: message) {
-            DMIconButton(systemImage: "arrow.clockwise", tint: nil) { refresh() }
+            DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { refresh() }
         }
     }
 
@@ -148,14 +149,14 @@ struct StatsView: View {
 
     private func snapshotView(_ snapshot: StatsSnapshot) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: m.space.xl) {
                 bubblesRow(snapshot)
                 memorySection(snapshot)
                 diskSection(snapshot)
                 containersSection(snapshot)
                 usersSection(snapshot)
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, m.space.xl)
         }
     }
 
@@ -170,7 +171,7 @@ struct StatsView: View {
             DMStatBubble(value: containers.tileValue, label: containers.tileLabel)
             DMStatBubble(value: String(format: "%.2f", snapshot.load.load1), label: "Load 1m")
         }
-        .padding(16)
+        .padding(m.space.xl)
         .frame(maxWidth: .infinity)
     }
 
@@ -185,8 +186,8 @@ struct StatsView: View {
                     .kerning(0.8)
             },
             content: {
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: m.pt(10)) {
+                    VStack(alignment: .leading, spacing: m.space.xs) {
                         DMProgressBar(
                             done: Int(snapshot.memory.usedBytes / 1_048_576),
                             total: Int(snapshot.memory.totalBytes / 1_048_576)
@@ -196,7 +197,7 @@ struct StatsView: View {
                             .foregroundStyle(Color.dmMuted)
                     }
                     if snapshot.swap.totalBytes > 0 {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: m.space.xs) {
                             DMProgressBar(
                                 done: Int(snapshot.swap.usedBytes / 1_048_576),
                                 total: Int(snapshot.swap.totalBytes / 1_048_576),
@@ -223,7 +224,7 @@ struct StatsView: View {
                     .kerning(0.8)
             },
             content: {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: m.space.xs) {
                     DMProgressBar(done: snapshot.disk.usedPercent, total: 100)
                     Text(verbatim: "\(gb(snapshot.disk.usedBytes)) GB used · \(gb(snapshot.disk.availableBytes)) GB free")
                         .font(.dm(11))
@@ -242,7 +243,7 @@ struct StatsView: View {
                     .font(.dm(11, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
                     .kerning(0.8)
-                    .padding(.leading, 6)
+                    .padding(.leading, m.space.sm)
             },
             content: { containersContent(snapshot) }
         )
@@ -277,7 +278,7 @@ struct StatsView: View {
     @ViewBuilder
     private var noDockerHint: some View {
         let machine = store.selectedMachine ?? "this machine"
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: m.space.md) {
             Text(verbatim: DockerInstallHint.message(machine: machine))
                 .font(.dm(12))
                 .foregroundStyle(Color.dmRowText)
@@ -285,18 +286,18 @@ struct StatsView: View {
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
             DMCommandBlock(DockerInstallHint.commands(machine: machine))
-                .frame(maxWidth: 520, alignment: .leading)
+                .frame(maxWidth: m.pt(520), alignment: .leading)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .padding(.horizontal, m.space.sm)
+        .padding(.vertical, m.space.xs)
     }
 
     private func calmLine(_ text: String) -> some View {
         Text(verbatim: text)
             .font(.dm(12))
             .foregroundStyle(Color.dmMuted)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+            .padding(.horizontal, m.space.sm)
+            .padding(.vertical, m.space.xs)
     }
 
     private func containersState(_ snapshot: StatsSnapshot) -> ContainersState {
@@ -322,7 +323,7 @@ struct StatsView: View {
                     .font(.dm(11, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
                     .kerning(0.8)
-                    .padding(.leading, 6)
+                    .padding(.leading, m.space.sm)
             },
             content: { usersContent(users(snapshot)) }
         )
@@ -355,17 +356,18 @@ struct StatsView: View {
 /// The Stats page before its first snapshot: the same sections, tiles and
 /// rows as `snapshotView`, drawn as placeholders that stretch with the page.
 private struct StatsSkeleton: View {
+    @Environment(\.dmMetrics) private var m
     var body: some View {
         ScrollView {
             DMSkeleton {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: m.space.xl) {
                     tiles
                     barSection("MEMORY", captionShare: 0.28)
                     barSection("DISK", captionShare: 0.36)
                     rowsSection("CONTAINERS", count: 4)
                     rowsSection("RAM BY USER", count: 3)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, m.space.xl)
             }
         }
         .scrollDisabled(true)
@@ -377,19 +379,19 @@ private struct StatsSkeleton: View {
             spacing: 12
         ) {
             ForEach(0..<4, id: \.self) { index in
-                VStack(spacing: 3) {
+                VStack(spacing: m.pt(3)) {
                     DMSkeletonText(
                         size: 24, weight: .semibold, width: .fraction([0.5, 0.56, 0.3, 0.42][index]),
                         alignment: .center)
                     DMSkeletonText(size: 12, weight: .medium, width: .fraction(0.4), alignment: .center)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .padding(.horizontal, 16)
+                .padding(.vertical, m.pt(14))
+                .padding(.horizontal, m.space.xl)
                 .dmSurface(Color.dmHover, radius: DMRadius.bubble)
             }
         }
-        .padding(16)
+        .padding(m.space.xl)
         .frame(maxWidth: .infinity)
     }
 
@@ -406,7 +408,7 @@ private struct StatsSkeleton: View {
             padding: EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16),
             label: { label(title) },
             content: {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: m.space.xs) {
                     DMSkeletonBlock(height: 5, radius: 3)
                     DMSkeletonText(size: 11, width: .fraction(captionShare))
                 }
@@ -418,18 +420,18 @@ private struct StatsSkeleton: View {
         DMSection(
             contentSpacing: 2,
             padding: EdgeInsets(top: 12, leading: 10, bottom: 0, trailing: 10),
-            label: { label(title).padding(.leading, 6) },
+            label: { label(title).padding(.leading, m.space.sm) },
             content: {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(0..<count, id: \.self) { index in
-                        HStack(spacing: 8) {
+                        HStack(spacing: m.space.md) {
                             DMSkeletonBlock(width: .fixed(8), height: 8, radius: 2)
                             DMSkeletonText(size: 13, width: .varied(index, shares: [0.34, 0.22, 0.4, 0.28]))
                             DMSkeletonText(size: 11, width: .fixed(72))
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, m.pt(10))
+                        .padding(.vertical, m.pt(7))
+                        .padding(.horizontal, m.space.sm)
                     }
                 }
             }

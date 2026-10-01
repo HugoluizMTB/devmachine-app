@@ -82,6 +82,7 @@ enum WorktreeRemovalText {
 /// account owns get their own section: the machine's admin can delete them,
 /// behind a second checkbox, or the sheet shows the commands to run.
 struct WorktreeRemovalSheet: View {
+    @Environment(\.dmMetrics) private var m
     let request: WorktreeRemovalRequest
     let onRemove: (WorktreeRemoval.Options) -> Void
     let onRemoveAsAdmin: (WorktreeRemoval.Options) -> Void
@@ -91,10 +92,10 @@ struct WorktreeRemovalSheet: View {
     @State private var options = WorktreeRemoval.Options()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: m.space.lg) {
             Text(verbatim: WorktreeRemovalText.sheetTitle(request.kind))
                 .font(.headline)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: m.pt(3)) {
                 Text(verbatim: request.worktree.path)
                     .font(.dm(11.5, design: .monospaced))
                     .foregroundStyle(Color.dmRowText)
@@ -115,8 +116,8 @@ struct WorktreeRemovalSheet: View {
                 primaryButton
             }
         }
-        .padding(20)
-        .frame(width: 460)
+        .padding(m.pt(20))
+        .frame(width: m.card.sheetLarge)
         .onExitCommand(perform: onCancel)
         .interactiveDismissDisabled(request.phase == .removing)
     }
@@ -156,7 +157,7 @@ struct WorktreeRemovalSheet: View {
     private var phaseBody: some View {
         switch request.phase {
         case .checking:
-            HStack(spacing: 8) {
+            HStack(spacing: m.space.md) {
                 ProgressView().controlSize(.small)
                 Text(verbatim: request.kind == .leftover ? "Checking the folder…" : "Checking the worktree…")
                     .font(.dm(12))
@@ -207,10 +208,10 @@ struct WorktreeRemovalSheet: View {
     }
 
     private func details(_ check: WorktreeCheck) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: m.pt(10)) {
             let warnings = WorktreeRemovalText.warnings(check, deletingBranch: options.deleteBranch)
             if !warnings.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: m.pt(5)) {
                     ForEach(warnings, id: \.self) { warning in
                         Label {
                             Text(verbatim: warning.text)
@@ -222,7 +223,7 @@ struct WorktreeRemovalSheet: View {
                     }
                 }
             }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: m.space.sm) {
                 if WorktreeRemoval.canDeleteBranch(check), let branch = check.branch {
                     Toggle(isOn: $options.deleteBranch) {
                         Text(verbatim: "Also delete branch \(branch)")
@@ -249,7 +250,7 @@ struct WorktreeRemovalSheet: View {
     }
 
     private func ownership(_ foreign: ForeignFiles) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: m.space.md) {
             Label {
                 Text(verbatim: WorktreeRemovalText.foreignWarning(foreign))
             } icon: {
@@ -257,7 +258,7 @@ struct WorktreeRemovalSheet: View {
             }
             .font(.dm(12))
             .foregroundStyle(Color.yellow)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: m.space.xxs) {
                 ForEach(foreign.paths, id: \.self) { path in
                     Text(verbatim: path)
                         .font(.dm(11, design: .monospaced))
@@ -273,9 +274,9 @@ struct WorktreeRemovalSheet: View {
                 }
             }
             .textSelection(.enabled)
-            .padding(10)
+            .padding(m.pt(10))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.dmBand, in: RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
+            .background(Color.dmBand, in: RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
             routeBody
         }
     }
@@ -284,12 +285,12 @@ struct WorktreeRemovalSheet: View {
     private var routeBody: some View {
         switch request.route {
         case nil:
-            HStack(spacing: 8) {
+            HStack(spacing: m.space.md) {
                 ProgressView().controlSize(.small)
                 note("Looking up the machine…")
             }
         case let .admin(machine):
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: m.space.md) {
                 Toggle(isOn: $options.removeAsAdmin) {
                     Text(verbatim: WorktreeRemovalText.adminConsent(machine: machine))
                         .fixedSize(horizontal: false, vertical: true)
@@ -310,7 +311,7 @@ struct WorktreeRemovalSheet: View {
         case let .manual(reason):
             let steps = WorktreeAdminRemoval.manualSteps(
                 path: request.id, mainWorktree: request.mainWorktree ?? "", isLocalSession: request.isLocalSession)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: m.space.sm) {
                 note(reason.text + " To remove it by hand:")
                 Text(verbatim: request.isLocalSession ? "In a terminal on this Mac:" : "On the machine, as its admin:")
                     .font(.dm(11.5))
@@ -382,6 +383,7 @@ extension WorktreeRemovalText {
 /// one. After a run the sheet shows what happened to each worktree, and
 /// "Try again" offers only the ones still there.
 struct MergedWorktreesRemovalSheet: View {
+    @Environment(\.dmMetrics) private var m
     let request: MergedRemovalRequest
     let onRemove: (Bool) -> Void
     let onCancel: () -> Void
@@ -390,7 +392,7 @@ struct MergedWorktreesRemovalSheet: View {
     private var canRemove: Bool { !request.checks.isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: m.space.lg) {
             Text(verbatim: WorktreeRemovalText.mergedTitle(request))
                 .font(.headline)
             if request.results == nil {
@@ -399,15 +401,15 @@ struct MergedWorktreesRemovalSheet: View {
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: m.space.sm) {
                 if let results = request.results {
                     ForEach(results, id: \.path) { resultRow($0) }
                 } else {
                     ForEach(request.checks, id: \.path) { checkRow($0) }
                 }
             }
-            .padding(10)
-            .background(Color.dmBand, in: RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
+            .padding(m.pt(10))
+            .background(Color.dmBand, in: RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
             if canRemove {
                 Toggle(isOn: $deleteBranches) {
                     Text(verbatim: request.checks.count == 1 ? "Also delete its branch" : "Also delete their branches")
@@ -432,16 +434,16 @@ struct MergedWorktreesRemovalSheet: View {
                 }
             }
         }
-        .padding(20)
-        .frame(width: 420)
+        .padding(m.pt(20))
+        .frame(width: m.card.sheet)
         .onExitCommand(perform: onCancel)
         .interactiveDismissDisabled(request.isRemoving)
     }
 
     private func checkRow(_ check: WorktreeCheck) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: m.space.sm) {
             pathText(check.path)
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             if let branch = check.branch {
                 Text(verbatim: branch)
                     .font(.dm(11))
@@ -454,13 +456,13 @@ struct MergedWorktreesRemovalSheet: View {
 
     private func resultRow(_ result: WorktreeRemovalResult) -> some View {
         let status = WorktreeRemovalText.status(result)
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
+        return VStack(alignment: .leading, spacing: m.pt(3)) {
+            HStack(spacing: m.space.sm) {
                 Image(systemName: status.systemImage)
                     .foregroundStyle(status.isSerious ? Color.red : status.isWarning ? Color.yellow : Color.green)
                     .font(.dm(11))
                 pathText(result.path)
-                Spacer(minLength: 4)
+                Spacer(minLength: m.space.xs)
                 Text(verbatim: status.text)
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)

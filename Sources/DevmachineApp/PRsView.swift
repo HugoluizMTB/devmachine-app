@@ -2,6 +2,7 @@ import SwiftUI
 import DevmachineCore
 
 struct PRsView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var store: PRStore
 
     var body: some View {
@@ -17,7 +18,7 @@ struct PRsView: View {
     private var canFavorite: Bool { store.selectedOwner != allOwnersSentinel }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: m.space.md) {
             Picker("", selection: Binding(
                 get: { store.selectedOwner },
                 set: { store.select($0) }
@@ -27,7 +28,7 @@ struct PRsView: View {
                 }
             }
             .labelsHidden()
-            .frame(maxWidth: 190)
+            .frame(maxWidth: m.pt(190))
 
             DMIconButton(
                 systemImage: store.isFavorite(store.selectedOwner) ? "star.fill" : "star",
@@ -46,7 +47,7 @@ struct PRsView: View {
             DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.refresh() }
                 .help("Refresh")
         }
-        .padding(10)
+        .padding(m.pt(10))
     }
 
     private func ownerLabel(_ owner: String) -> String {
@@ -63,7 +64,7 @@ struct PRsView: View {
                 fillsHeight: false)
         } else if store.showsSkeleton {
             PRListSkeleton()
-                .padding(.vertical, 6)
+                .padding(.vertical, m.space.sm)
                 .transition(.opacity)
         } else if store.forest.isEmpty {
             DMStatusView(
@@ -73,12 +74,12 @@ struct PRsView: View {
                 fillsHeight: false)
         } else {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
+                LazyVStack(alignment: .leading, spacing: m.space.xxs) {
                     ForEach(store.forest, id: \.pr.id) { item in
                         PRRowView(pr: item.pr, depth: item.depth)
                     }
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, m.space.sm)
             }
             .frame(maxHeight: .infinity)
             .transition(.opacity)
@@ -89,19 +90,20 @@ struct PRsView: View {
 /// The pull request list before its first answer: rows in `PRRowView`'s
 /// sizes, as many as the panel holds.
 private struct PRListSkeleton: View {
+    @Environment(\.dmMetrics) private var m
     var body: some View {
         DMSkeleton {
             DMSkeletonRows(rowHeight: 40) { index in
-                HStack(spacing: 8) {
+                HStack(spacing: m.space.md) {
                     DMSkeletonBlock(width: .fixed(8), height: 8, radius: 4)
                     DMSkeletonText(size: 13, width: .varied(index, shares: [0.7, 0.5, 0.82, 0.6, 0.44, 0.76]))
                     DMSkeletonText(size: 11, width: .fixed([96, 120, 84][index % 3]))
                     DMSkeletonBlock(width: .fixed(24), height: 24, radius: 12)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .padding(.horizontal, 6)
-                .padding(.bottom, 2)
+                .padding(.horizontal, m.pt(10))
+                .padding(.vertical, m.pt(7))
+                .padding(.horizontal, m.space.sm)
+                .padding(.bottom, m.space.xxs)
             }
         }
     }

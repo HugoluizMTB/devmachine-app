@@ -6,6 +6,7 @@ import DevmachineCore
 /// does. What "opening" means here is putting the path where the session is
 /// waiting for input.
 struct FileSearchPaletteView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: FileSearchStore
     @EnvironmentObject var viewerStore: FileViewerStore
@@ -22,9 +23,9 @@ struct FileSearchPaletteView: View {
             content
             footer
         }
-        .frame(width: 620)
+        .frame(width: m.pt(620))
         .dmGlass(radius: DMRadius.panel)
-        .shadow(radius: 30, y: 12)
+        .shadow(radius: m.pt(30), y: m.pt(12))
         .onAppear {
             focused = true
             index = 0
@@ -55,8 +56,8 @@ struct FileSearchPaletteView: View {
             if store.isLoading { ProgressView().controlSize(.small) }
         }
         .onSubmit(typeSelected)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, m.space.xl)
+        .padding(.vertical, m.pt(14))
     }
 
     @ViewBuilder
@@ -68,14 +69,14 @@ struct FileSearchPaletteView: View {
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 2) {
+                    LazyVStack(spacing: m.space.xxs) {
                         ForEach(Array(store.hits.enumerated()), id: \.element.id) { i, hit in
                             row(i: i, hit: hit).id(hit.id)
                         }
                     }
-                    .padding(6)
+                    .padding(m.space.sm)
                 }
-                .frame(maxHeight: 360)
+                .frame(maxHeight: m.pt(360))
                 .onChange(of: index) { _, new in
                     guard new < store.hits.count else { return }
                     withAnimation { proxy.scrollTo(store.hits[new].id) }
@@ -94,25 +95,25 @@ struct FileSearchPaletteView: View {
                 .font(.dm(10))
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, m.space.xl)
+        .padding(.vertical, m.space.md)
         .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.dmSelection), alignment: .top)
     }
 
     private func row(i: Int, hit: FileSearch.Hit) -> some View {
         let parts = FileSearchRow.split(path: hit.path, matches: hit.matches)
-        return HStack(spacing: 8) {
+        return HStack(spacing: m.space.md) {
             highlighted(parts.name, weight: .medium, base: .primary)
             highlighted(parts.folder, weight: .regular, base: .secondary)
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             // The row says both things it can do, so neither is a secret.
             if i == index {
                 DMButton("Open", size: .small) { index = i; openSelected() }
                     .help("Open the file (⇧⏎)")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, m.pt(10))
+        .padding(.vertical, m.pt(7))
         .background(
             DMRowBackground(
                 selected: i == index, cornerRadius: DMRadius.control, selectedColor: .dmActive))
@@ -144,8 +145,8 @@ struct FileSearchPaletteView: View {
             .font(.dm(12))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.horizontal, m.space.xl)
+            .padding(.vertical, m.pt(14))
     }
 
     /// Reading before sending: Option+Return opens the file instead of putting

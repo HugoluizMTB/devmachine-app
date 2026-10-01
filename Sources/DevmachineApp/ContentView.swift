@@ -3,6 +3,7 @@ import DevmachineCore
 import AppKit
 
 struct ContentView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @EnvironmentObject private var fileSearch: FileSearchStore
     @EnvironmentObject var settingsStore: SettingsStore
@@ -48,7 +49,7 @@ struct ContentView: View {
                         .onTapGesture { model.showFileSearch = false }
                     FileSearchPaletteView(store: fileSearch, target: target)
                         .environmentObject(model)
-                        .padding(.top, 110)
+                        .padding(.top, m.pt(110))
                 }
                 .transition(.opacity)
             }
@@ -59,13 +60,13 @@ struct ContentView: View {
                         .onTapGesture { model.showCommandPalette = false }
                     CommandPaletteView()
                         .environmentObject(model)
-                        .padding(.top, 110)
+                        .padding(.top, m.pt(110))
                 }
                 .transition(.opacity)
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            VStack(alignment: .trailing, spacing: 8) {
+            VStack(alignment: .trailing, spacing: m.space.md) {
                 if updates.showsBanner {
                     UpdateBanner()
                         .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -75,7 +76,7 @@ struct ContentView: View {
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
-            .padding(18)
+            .padding(m.pt(18))
             .animation(.easeInOut(duration: 0.2), value: model.activeTasks)
             .animation(.easeInOut(duration: 0.2), value: updates.showsBanner)
         }
@@ -198,7 +199,7 @@ struct ContentView: View {
     private var mainRow: some View {
         HStack(spacing: 0) {
             SidebarView()
-                .frame(width: model.sidebarCollapsed ? 0 : model.sidebarWidth)
+                .frame(width: model.sidebarCollapsed ? 0 : m.pt(model.sidebarWidth))
                 .clipped()
             if !model.sidebarCollapsed {
                 sidebarDivider
@@ -225,7 +226,7 @@ struct ContentView: View {
             onDrag: { dx in
                 let base = dragStartWidth ?? model.sidebarWidth
                 if dragStartWidth == nil { dragStartWidth = base }
-                model.setSidebarWidth(base + dx)
+                model.setSidebarWidth(base + m.base(dx))
             },
             onEnd: { dragStartWidth = nil }
         )
@@ -265,12 +266,12 @@ struct ContentView: View {
                 onDrag: { dx in
                     let base = contextDragStartWidth ?? model.contextWidth
                     if contextDragStartWidth == nil { contextDragStartWidth = base }
-                    model.setContextWidth(base - dx)
+                    model.setContextWidth(base - m.base(dx))
                 },
                 onEnd: { contextDragStartWidth = nil }
             )
             ContextPanel(store: model.context)
-                .frame(width: model.contextWidth)
+                .frame(width: m.pt(model.contextWidth))
         }
     }
 
@@ -279,14 +280,14 @@ struct ContentView: View {
             withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = false }
         } label: {
             Image(systemName: "sidebar.left")
-                .padding(9)
+                .padding(m.pt(9))
                 .dmGlass(in: Circle(), stroke: .white.opacity(0.15))
-                .shadow(radius: 6, y: 2)
+                .shadow(radius: m.pt(6), y: m.pt(2))
         }
         .buttonStyle(DMIconButtonStyle(size: 13, weight: .semibold, tint: .white.opacity(0.9)))
         .help("Open sidebar (⌘B)")
-        .padding(.top, 18)
-        .padding(.leading, 14)
+        .padding(.top, m.pt(18))
+        .padding(.leading, m.pt(14))
     }
 
 }
@@ -371,6 +372,7 @@ enum MainPaneVisibility {
 }
 
 private struct RenameSheet: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     let alias: String
     let oldName: String
@@ -383,9 +385,9 @@ private struct RenameSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: m.space.lg) {
             Text("Rename \(oldName)").font(.headline)
-            TextField("new name", text: $name).frame(width: 240)
+            TextField("new name", text: $name).frame(width: m.pt(240))
             HStack {
                 Spacer()
                 DMButton("Cancel", variant: .outline) { model.pendingRename = nil }
@@ -393,11 +395,12 @@ private struct RenameSheet: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
+        .padding(m.pt(20))
     }
 }
 
 private struct LocalRenameSheet: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     let handle: String
     let currentName: String
@@ -410,9 +413,9 @@ private struct LocalRenameSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: m.space.lg) {
             Text("Rename \(currentName)").font(.headline)
-            TextField("new name", text: $name).frame(width: 240)
+            TextField("new name", text: $name).frame(width: m.pt(240))
             Text("Only the name in the sidebar changes. The shell keeps running.")
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
@@ -423,27 +426,28 @@ private struct LocalRenameSheet: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
+        .padding(m.pt(20))
     }
 }
 
 private struct NewSessionSheet: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     let alias: String
     @State private var name = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: m.space.lg) {
             Text("New session in \(alias)").font(.headline)
-            TextField("name", text: $name).frame(width: 240)
+            TextField("name", text: $name).frame(width: m.pt(240))
             // Where the session starts decides whether its harness can list
             // files there, so it is asked for, not assumed.
-            TextField("directory", text: $model.newSessionDirectory).frame(width: 240)
+            TextField("directory", text: $model.newSessionDirectory).frame(width: m.pt(240))
             // The rule used to be enforced silently: a name with a space closed
             // the sheet and created nothing.
             if let hint = SessionName.hint(for: name) {
                 let suggestion = SessionName.suggestion(for: name)
-                HStack(spacing: 6) {
+                HStack(spacing: m.space.sm) {
                     Text(hint)
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
@@ -463,11 +467,12 @@ private struct NewSessionSheet: View {
                     .disabled(!SessionName.isValid(name))
             }
         }
-        .padding(20)
+        .padding(m.pt(20))
     }
 }
 
 private struct QuickSessionSheet: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @State private var destinationAlias = Workspace.local.alias
     @State private var directory = ""
@@ -475,7 +480,7 @@ private struct QuickSessionSheet: View {
     private var isLocal: Bool { destinationAlias == Workspace.local.alias }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: m.space.xl) {
             Text("New Session")
                 .font(.headline)
 
@@ -486,7 +491,7 @@ private struct QuickSessionSheet: View {
                 }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: m.space.md) {
                 TextField(isLocal ? "folder" : "remote folder", text: $directory)
                 if isLocal {
                     DMButton("Choose…", variant: .outline, size: .small, action: chooseLocalFolder)
@@ -508,8 +513,8 @@ private struct QuickSessionSheet: View {
                 .disabled(directory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .padding(20)
-        .frame(width: 440)
+        .padding(m.pt(20))
+        .frame(width: m.pt(440))
         .onAppear {
             if directory.isEmpty { directory = model.newSessionDirectory }
         }

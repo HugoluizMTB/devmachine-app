@@ -2,6 +2,7 @@ import SwiftUI
 import DevmachineCore
 
 struct CommandPaletteView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @EnvironmentObject private var stats: StatsStore
     @EnvironmentObject private var caddy: CaddyStore
@@ -64,19 +65,19 @@ struct CommandPaletteView: View {
                 prompt: "Search sessions, pages and actions…", text: $query, focus: $focused,
                 fontSize: 15, iconSize: 13, spacing: 10, iconColor: .secondary)
             .onSubmit { run(flat) }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.horizontal, m.space.xl)
+            .padding(.vertical, m.pt(14))
 
             Divider()
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
+                    LazyVStack(alignment: .leading, spacing: m.space.xxs) {
                         ForEach(sections) { section in
                             DMSectionLabel(text: section.category.title.uppercased())
-                                .padding(.horizontal, 10)
-                                .padding(.top, 8)
-                                .padding(.bottom, 2)
+                                .padding(.horizontal, m.pt(10))
+                                .padding(.top, m.space.md)
+                                .padding(.bottom, m.space.xxs)
                             ForEach(section.commands) { command in
                                 let position = flat.firstIndex { $0.id == command.id } ?? 0
                                 row(command, selected: position == index)
@@ -85,17 +86,17 @@ struct CommandPaletteView: View {
                             }
                         }
                     }
-                    .padding(6)
+                    .padding(m.space.sm)
                 }
-                .frame(maxHeight: 420)
+                .frame(maxHeight: m.pt(420))
                 .onChange(of: index) { _, new in
                     if new < flat.count { withAnimation { proxy.scrollTo(flat[new].id) } }
                 }
             }
         }
-        .frame(width: 600)
+        .frame(width: m.card.palette)
         .dmGlass(radius: DMRadius.panel)
-        .shadow(radius: 30, y: 12)
+        .shadow(radius: m.pt(30), y: m.pt(12))
         .onAppear {
             focused = true
             index = 0
@@ -109,9 +110,9 @@ struct CommandPaletteView: View {
     }
 
     private func row(_ command: PaletteCommand, selected: Bool) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: m.pt(10)) {
             icon(command)
-                .frame(width: 18)
+                .frame(width: m.pt(18))
             Text(verbatim: command.title)
                 .font(.dm(13, weight: .medium))
                 .foregroundStyle(.primary)
@@ -120,7 +121,7 @@ struct CommandPaletteView: View {
                 .font(.dm(11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            Spacer(minLength: 8)
+            Spacer(minLength: m.space.md)
             if let badge = command.badgeText {
                 DMPill(text: badge, color: .accentColor)
             }
@@ -128,8 +129,8 @@ struct CommandPaletteView: View {
                 DMKeyCap(key: shortcut)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, m.pt(10))
+        .padding(.vertical, m.pt(7))
         .background(
             DMRowBackground(selected: selected, cornerRadius: DMRadius.control, selectedColor: .dmActive))
         .contentShape(Rectangle())
@@ -138,7 +139,7 @@ struct CommandPaletteView: View {
     @ViewBuilder
     private func icon(_ command: PaletteCommand) -> some View {
         if command.category == .session || command.action.opensSession {
-            HStack(spacing: 3) {
+            HStack(spacing: m.pt(3)) {
                 if command.badges.isEmpty {
                     Image(systemName: "circle")
                         .foregroundStyle(Color.dmMuted)

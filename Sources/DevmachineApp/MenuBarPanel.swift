@@ -44,6 +44,7 @@ enum MenuBarSizing {
 }
 
 struct MenuBarPanel: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var prStore: PRStore
     @EnvironmentObject var usageStore: HarnessUsageStore
     @EnvironmentObject var model: AppModel
@@ -88,13 +89,13 @@ struct MenuBarPanel: View {
                 title: { $0.title },
                 systemImage: { $0.systemImage }
             )
-            .padding(8)
+            .padding(m.space.md)
         } else if let onlyTab = MenuBarTab.allCases.first {
             Text(onlyTab.title)
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
+                .padding(m.pt(10))
         }
     }
 
@@ -121,7 +122,7 @@ struct MenuBarPanel: View {
                                 accent: descriptor.color)
                             .harnessUsageErrorView { error, retry in
                                 DMErrorStateView(state: DMErrorState(error), retry: retry)
-                                    .padding(.vertical, 12)
+                                    .padding(.vertical, m.space.lg)
                             }
                             .frame(width: MenuBarSizing.columnWidth(
                                 panelWidth: panelWidth, usageColumns: usageStore.states.count))
@@ -133,7 +134,7 @@ struct MenuBarPanel: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: m.pt(14)) {
             footerButton("macwindow", help: "Open") {
                 openWindow(id: "main")
             }
@@ -150,7 +151,7 @@ struct MenuBarPanel: View {
                 NSApplication.shared.terminate(nil)
             }
         }
-        .padding(10)
+        .padding(m.pt(10))
         .background(Color.dmSidebarBg)
     }
 

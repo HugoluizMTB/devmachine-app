@@ -10,6 +10,7 @@ extension View {
 }
 
 private struct TerminalTransportNotice: ViewModifier {
+    @Environment(\.dmMetrics) private var m
     @ObservedObject private var store = RemoteTransportStore.shared
     let kind: TerminalKind
     @State private var showsDetails = false
@@ -21,7 +22,7 @@ private struct TerminalTransportNotice: ViewModifier {
             .overlay(alignment: .topTrailing) {
                 if let pane = store.panes[kind], pane.showsNotice, let reason = pane.reason {
                     notice(pane, reason: reason)
-                        .padding(10)
+                        .padding(m.pt(10))
                         .transition(.opacity)
                         .task(id: pane) {
                             try? await Task.sleep(for: Self.visibleFor)
@@ -33,7 +34,7 @@ private struct TerminalTransportNotice: ViewModifier {
     }
 
     private func notice(_ pane: RemoteTransportStore.Pane, reason: MoshFallbackReason) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: m.space.sm) {
             Image(systemName: "antenna.radiowaves.left.and.right.slash")
                 .foregroundStyle(Color.dmMuted)
                 .accessibilityHidden(true)
@@ -51,16 +52,16 @@ private struct TerminalTransportNotice: ViewModifier {
                             showsDetails = false
                             store.retry(kind)
                         }, retryTitle: "Try mosh again")
-                        .padding(18)
-                        .frame(width: 400)
+                        .padding(m.pt(18))
+                        .frame(width: m.pt(400))
                     }
                 }
             DMButton(icon: "xmark", label: "Dismiss", size: .small) { store.dismissNotice(kind) }
         }
         .font(.dm(11))
-        .padding(.leading, 10)
-        .padding(.trailing, 4)
-        .padding(.vertical, 3)
+        .padding(.leading, m.pt(10))
+        .padding(.trailing, m.space.xs)
+        .padding(.vertical, m.pt(3))
         .dmGlass(radius: DMRadius.pill)
     }
 }

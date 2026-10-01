@@ -4,6 +4,7 @@ import DevmachineCore
 /// Asks for the raw command a new session runs, with the workspace's recent
 /// commands one click away.
 struct CustomCommandSheet: View {
+    @Environment(\.dmMetrics) private var m
     let workspaceName: String
     let recents: [String]
     let onRun: (String) -> Void
@@ -15,16 +16,16 @@ struct CustomCommandSheet: View {
     private var canRun: Bool { CustomSessionCommand.normalized(command) != nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: m.space.lg) {
             Text("Run a command in \(workspaceName)").font(.headline)
             TextField("command to run", text: $command)
                 .font(.dm(13, design: .monospaced))
                 .focused($fieldFocused)
                 .onSubmit { if canRun { onRun(command) } }
             if !recents.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: m.space.xxs) {
                     DMSectionLabel(text: "RECENT")
-                        .padding(.leading, 4)
+                        .padding(.leading, m.space.xs)
                     ForEach(recents, id: \.self) { recent in
                         DMRow(
                             systemImage: "clock.arrow.circlepath",
@@ -48,8 +49,8 @@ struct CustomCommandSheet: View {
                     .disabled(!canRun)
             }
         }
-        .padding(20)
-        .frame(width: 420)
+        .padding(m.pt(20))
+        .frame(width: m.card.sheet)
         .onAppear { fieldFocused = true }
     }
 }

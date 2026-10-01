@@ -65,6 +65,7 @@ enum HomeLayout {
 }
 
 struct HomeView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var usage: HarnessUsageStore
     @EnvironmentObject var stats: StatsStore
@@ -85,7 +86,7 @@ struct HomeView: View {
     var body: some View {
         GeometryReader { proxy in
             let plan = HomeLayout.plan(width: proxy.size.width, harnessCount: usage.states.count)
-            VStack(spacing: 16) {
+            VStack(spacing: m.space.xl) {
                 if plan.stacked {
                     stackedLayout(plan)
                 } else {
@@ -113,7 +114,7 @@ struct HomeView: View {
     private func sideBySideLayout(_ plan: HomeLayout.Plan) -> some View {
         HStack(alignment: .top, spacing: HomeLayout.gap) {
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: m.pt(14)) {
                     machinesSection
                     usageGrid(columns: plan.usageColumns)
                 }
@@ -128,11 +129,11 @@ struct HomeView: View {
 
     private func stackedLayout(_ plan: HomeLayout.Plan) -> some View {
         ScrollView(.vertical) {
-            VStack(spacing: 20) {
+            VStack(spacing: m.pt(20)) {
                 machinesSection
                     .frame(maxWidth: .infinity, alignment: .leading)
                 clock(size: plan.clockSize)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, m.space.lg)
                 usageGrid(columns: plan.usageColumns)
             }
         }
@@ -142,13 +143,13 @@ struct HomeView: View {
 
     private func clock(size: CGFloat) -> some View {
         TimelineView(.everyMinute) { ctx in
-            VStack(spacing: 6) {
+            VStack(spacing: m.space.sm) {
                 Text(ctx.date, format: .dateTime.hour().minute())
                     .font(.dm(size, weight: .thin, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                    .shadow(radius: 18, y: 2)
+                    .shadow(radius: m.pt(18), y: m.pt(2))
                 Text(ctx.date, format: .dateTime.weekday(.wide).day().month(.wide))
                     .font(.dm(13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
@@ -192,17 +193,17 @@ struct HomeView: View {
             scrollsContent: false)
         .harnessUsageErrorView { error, retry in
             DMErrorStateView(state: DMErrorState(error), retry: retry)
-                .padding(.vertical, 8)
+                .padding(.vertical, m.space.md)
         }
         .frame(width: HomeUsageLayout.cardWidth)
-        .clipShape(RoundedRectangle(cornerRadius: DMRadius.card))
+        .clipShape(RoundedRectangle(cornerRadius: m.radius.card))
         .dmGlass(radius: DMRadius.card, stroke: .white.opacity(0.15))
     }
 
     @ViewBuilder
     private var machinesSection: some View {
         if !stats.machines.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: m.space.md) {
                 Text("MACHINES")
                     .font(.dm(11, weight: .semibold))
                     .kerning(0.8)
@@ -227,7 +228,7 @@ struct HomeView: View {
     }
 
     private var compactStatCluster: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: m.space.sm) {
             Text(verbatim: "\(totalSessions) sessions")
             Text(verbatim: "·")
             Text(verbatim: "\(harnessSessions) with coding harnesses")
@@ -236,8 +237,8 @@ struct HomeView: View {
         }
         .font(.dm(11, weight: .medium))
         .foregroundStyle(.white.opacity(0.65))
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
+        .padding(.vertical, m.space.md)
+        .padding(.horizontal, m.space.lg)
         .dmGlass(radius: DMRadius.pill)
     }
 

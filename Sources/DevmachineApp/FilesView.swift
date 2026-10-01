@@ -2,6 +2,7 @@ import SwiftUI
 import DevmachineCore
 
 struct FilesView: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var store: FilesStore
     @EnvironmentObject var viewerStore: FileViewerStore
     @EnvironmentObject var model: AppModel
@@ -20,7 +21,7 @@ struct FilesView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: m.space.md) {
             Text(store.target.map { "\($0.label) — \(store.path)" } ?? "Files")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
@@ -35,11 +36,11 @@ struct FilesView: View {
             DMIconButton(systemImage: "arrow.up.doc", tint: nil) { store.uploadFiles() }
             .help("Upload…")
         }
-        .padding(10)
+        .padding(m.pt(10))
     }
 
     private var pathBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: m.space.md) {
             DMIconButton(systemImage: "arrow.up", tint: nil) { store.up() }
             .disabled(!store.canGoUp)
             .help("Up")
@@ -55,8 +56,8 @@ struct FilesView: View {
             DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.refresh() }
                 .help("Refresh")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, m.pt(10))
+        .padding(.vertical, m.space.sm)
     }
 
     @ViewBuilder
@@ -77,7 +78,7 @@ struct FilesView: View {
                         row(for: entry)
                     }
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, m.space.sm)
             }
         }
     }

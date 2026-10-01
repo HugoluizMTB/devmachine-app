@@ -32,6 +32,7 @@ enum ContextTab: String, CaseIterable {
 }
 
 struct ContextPanel: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: ContextStore
     @StateObject private var gitStore = GitStore()
@@ -127,15 +128,15 @@ struct ContextPanel: View {
         DMButton("Publish a port…", systemImage: "globe", variant: .outline, size: .small) {
             quickPublish.start(workspace: workspaceName)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
+        .padding(.horizontal, m.pt(14))
+        .padding(.top, m.space.md)
     }
 
     @ViewBuilder
     private var staleBanner: some View {
         if case .failed(let reason) = store.status {
             DMBanner(message: "Couldn't refresh: \(reason)", lineLimit: 2) {
-                DMIconButton(systemImage: "arrow.clockwise", tint: nil) { store.retry() }
+                DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { store.retry() }
                     .help("Try again")
             }
             .background(Color.dmSidebarBg)
@@ -230,11 +231,11 @@ struct ContextPanel: View {
         Text("empty")
             .font(.dm(12))
             .foregroundStyle(Color.dmMuted)
-            .padding(.vertical, 5)
+            .padding(.vertical, m.pt(5))
     }
 
     private func agentRow(_ agent: ContextState.Agent) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: m.space.md) {
             // The spinner is for work still going. Everything spun before,
             // which made finished work look stuck for ever.
             switch RunningStatus(agent.status) {
@@ -244,12 +245,12 @@ struct ContextPanel: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.dm(11))
                     .foregroundStyle(.green)
-                    .frame(width: 16)
+                    .frame(width: m.pt(16))
             case .failed:
                 Image(systemName: "xmark.circle.fill")
                     .font(.dm(11))
                     .foregroundStyle(.red)
-                    .frame(width: 16)
+                    .frame(width: m.pt(16))
             }
             Text(agent.label)
                 .font(.dm(12))
@@ -258,7 +259,7 @@ struct ContextPanel: View {
                 .truncationMode(.tail)
             Spacer()
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, m.pt(5))
     }
 
     private func todoSection(_ plan: ContextState.Plan?) -> some View {
@@ -270,7 +271,7 @@ struct ContextPanel: View {
         ) {
             if let plan {
                 DMProgressBar(done: plan.done, total: plan.total)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: m.pt(3)) {
                     ForEach(Array(plan.items.enumerated()), id: \.offset) { _, item in
                         planItemRow(item)
                     }
@@ -289,18 +290,18 @@ struct ContextPanel: View {
             default: return ("○", Color.dmDivider, Color.dmRowText)
             }
         }()
-        return HStack(alignment: .top, spacing: 8) {
+        return HStack(alignment: .top, spacing: m.space.md) {
             Text(symbol)
                 .font(.dm(10))
                 .foregroundStyle(color)
-                .frame(width: 12, alignment: .leading)
+                .frame(width: m.pt(12), alignment: .leading)
                 .padding(.top, 1)
             Text(item.text)
                 .font(.dm(12))
                 .foregroundStyle(textColor)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, m.space.xxs)
     }
 
     private func prsSection(_ prs: [ContextState.PR]) -> some View {
@@ -319,11 +320,11 @@ struct ContextPanel: View {
     }
 
     private func prRow(_ pr: ContextState.PR) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: m.space.md) {
             DMPRStateIcon(state: pr.rowState.kind, size: 12)
                 .help(pr.rowState.help)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: m.space.xxs) {
+                HStack(spacing: m.space.sm) {
                     Text(verbatim: "#\(pr.number)")
                         .font(.dm(12, design: .monospaced))
                         .foregroundStyle(Color(hex: 0x5AA9E6))
@@ -341,11 +342,11 @@ struct ContextPanel: View {
                         .truncationMode(.tail)
                 }
             }
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             threadsMark(pr.threads)
             ciMark(pr.ciState)
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, m.pt(5))
         .contentShape(Rectangle())
         .onHover { hovering in
             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
@@ -360,7 +361,7 @@ struct ContextPanel: View {
             Image(systemName: ci.glyph)
                 .font(.dm(10, weight: .semibold))
                 .foregroundStyle(ci.color)
-                .frame(width: 18, height: 18)
+                .frame(width: m.pt(18), height: m.pt(18))
                 .background(ci.color.opacity(0.12))
                 .clipShape(Circle())
                 .help(ci.help)
@@ -370,13 +371,13 @@ struct ContextPanel: View {
     @ViewBuilder
     private func threadsMark(_ threads: Int?) -> some View {
         if let count = threads, count > 0 {
-            HStack(spacing: 2) {
+            HStack(spacing: m.space.xxs) {
                 Image(systemName: "bubble.left.fill").font(.dm(9))
                 Text(verbatim: "\(count)").font(.dm(10, design: .monospaced))
             }
             .foregroundStyle(Color(hex: 0xE0B341))
             .help(count == 1 ? "1 review comment to answer" : "\(count) review comments to answer")
-            .padding(.top, 2)
+            .padding(.top, m.space.xxs)
         }
     }
 
@@ -396,7 +397,7 @@ struct ContextPanel: View {
     }
 
     private func linkRow(_ link: ContextState.Link) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: m.space.md) {
             DMKindLabel(text: link.kind.uppercased())
             Text(link.label)
                 .font(.dm(12))
@@ -404,7 +405,7 @@ struct ContextPanel: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, m.space.xs)
         .contentShape(Rectangle())
         .onHover { hovering in
             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
@@ -436,6 +437,7 @@ struct ContextPanel: View {
 /// The context list before its first answer: the same sections, with
 /// placeholder rows in the widths the panel has.
 private struct ContextSkeleton: View {
+    @Environment(\.dmMetrics) private var m
     var body: some View {
         ScrollView {
             DMSkeleton {
@@ -445,13 +447,13 @@ private struct ContextSkeleton: View {
                     section("SUB-AGENTS") { agentRows(1) }
                     section("TODO", spacing: 9) {
                         DMSkeletonBlock(height: 5, radius: 3)
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: m.pt(3)) {
                             ForEach(0..<4, id: \.self) { index in
-                                HStack(spacing: 8) {
+                                HStack(spacing: m.space.md) {
                                     DMSkeletonBlock(width: .fixed(9), height: 9, radius: 4.5)
                                     DMSkeletonText(size: 12, width: .varied(index))
                                 }
-                                .padding(.vertical, 2)
+                                .padding(.vertical, m.space.xxs)
                             }
                         }
                     }
@@ -483,39 +485,40 @@ private struct ContextSkeleton: View {
     private func agentRows(_ count: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(0..<count, id: \.self) { index in
-                HStack(spacing: 8) {
+                HStack(spacing: m.space.md) {
                     DMSkeletonBlock(width: .fixed(14), height: 14, radius: 7)
-                        .frame(width: 16)
+                        .frame(width: m.pt(16))
                     DMSkeletonText(size: 12, width: .varied(index + count))
                 }
-                .padding(.vertical, 5)
+                .padding(.vertical, m.pt(5))
             }
         }
     }
 
     private func prRow(_ index: Int) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: m.space.md) {
             DMSkeletonBlock(width: .fixed(12), height: 12, radius: 6)
-                .frame(width: 14)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 2) {
+                .frame(width: m.pt(14))
+                .padding(.top, m.space.xxs)
+            VStack(alignment: .leading, spacing: m.space.xxs) {
                 DMSkeletonText(size: 12, width: .varied(index, shares: [0.55, 0.42]))
                 DMSkeletonText(size: 11, width: .varied(index, shares: [0.8, 0.66]))
             }
             DMSkeletonBlock(width: .fixed(18), height: 18, radius: 9)
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, m.pt(5))
     }
 }
 
 struct ContextCollapsedStrip: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
 
     var body: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.18)) { model.contextCollapsed = false }
         } label: {
-            VStack(spacing: 18) {
+            VStack(spacing: m.pt(18)) {
                 Image(systemName: "sidebar.right")
                     .font(.dm(13, weight: .semibold))
                     .foregroundStyle(Color.dmMuted)
@@ -529,12 +532,12 @@ struct ContextCollapsedStrip: View {
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize()
                     .rotationEffect(.degrees(90))
-                    .frame(width: 14, height: 78)
+                    .frame(width: m.pt(14), height: m.pt(78))
 
                 Spacer()
             }
-            .padding(.top, 12)
-            .frame(width: 34)
+            .padding(.top, m.space.lg)
+            .frame(width: m.pt(34))
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
         }

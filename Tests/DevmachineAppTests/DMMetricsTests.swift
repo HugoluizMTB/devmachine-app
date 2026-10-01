@@ -100,6 +100,14 @@ final class DMMetricsTests: XCTestCase {
         XCTAssertEqual(DMButtonSize.regular.metrics(in: DMMetrics(scale: 1.6)).horizontalPadding, 19)
     }
 
+    func testADraggedPaneWidthStaysBetweenItsLimits() {
+        XCTAssertEqual(DMPaneWidth.sidebar.clamp(1000), 460)
+        XCTAssertEqual(DMPaneWidth.sidebar.clamp(10), 200)
+        XCTAssertEqual(DMPaneWidth.context.clamp(300), 300)
+        XCTAssertTrue(DMPaneWidth.context.contains(520))
+        XCTAssertFalse(DMPaneWidth.context.contains(0))
+    }
+
     func testThePaneWidthsAreStoredAtOneHundredPercent() {
         let m = DMMetrics(scale: 1.6)
         XCTAssertEqual(m.pt(260), 416)

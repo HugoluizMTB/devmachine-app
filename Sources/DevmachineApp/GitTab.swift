@@ -3,6 +3,7 @@ import AppKit
 import DevmachineCore
 
 struct GitTab: View {
+    @Environment(\.dmMetrics) private var m
     @ObservedObject var store: GitStore
     let target: CommandTarget
     var workspace: String?
@@ -64,7 +65,7 @@ struct GitTab: View {
                     .font(.dm(12))
                     .foregroundStyle(Color.dmMuted)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, m.pt(14))
             }
             Spacer()
         }
@@ -93,7 +94,7 @@ struct GitTab: View {
                 .help("Refresh")
             }
         ) {
-            HStack(spacing: 5) {
+            HStack(spacing: m.pt(5)) {
                 if let upstream = snapshot.upstream {
                     Text(upstream)
                         .font(.dm(11))
@@ -154,19 +155,19 @@ struct GitTab: View {
     }
 
     private var legend: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: m.pt(10)) {
             legendItem(WorktreeDot.current, "this session")
             legendItem(WorktreeDot.other, "other worktree")
         }
         .font(.dm(10))
         .foregroundStyle(Color.dmMuted)
-        .padding(.bottom, 2)
+        .padding(.bottom, m.space.xxs)
         .help(WorktreeDot.legend)
     }
 
     private func legendItem(_ color: Color, _ text: String) -> some View {
-        HStack(spacing: 4) {
-            Circle().fill(color).frame(width: 5, height: 5)
+        HStack(spacing: m.space.xs) {
+            Circle().fill(color).frame(width: m.pt(5), height: m.pt(5))
             Text(verbatim: text)
         }
     }
@@ -203,11 +204,11 @@ struct GitTab: View {
         hollow: Bool,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: m.space.md) {
             rail(isFirst: isFirst, isLast: isLast, hollow: hollow)
             content()
         }
-        .frame(height: Self.rowHeight)
+        .frame(height: m.pt(Self.rowHeight))
     }
 
     private func rail(isFirst: Bool, isLast: Bool, hollow: Bool) -> some View {
@@ -221,7 +222,7 @@ struct GitTab: View {
                 .fill(isLast ? Color.clear : Color.dmDivider)
                 .frame(width: 1, height: segment)
         }
-        .frame(width: 8)
+        .frame(width: m.pt(8))
     }
 
     @ViewBuilder
@@ -229,26 +230,26 @@ struct GitTab: View {
         if hollow {
             Circle()
                 .strokeBorder(Self.accent, lineWidth: 1.5)
-                .frame(width: Self.dotSize, height: Self.dotSize)
+                .frame(width: m.pt(Self.dotSize), height: m.pt(Self.dotSize))
         } else {
             Circle()
                 .fill(Self.accent)
-                .frame(width: Self.dotSize, height: Self.dotSize)
+                .frame(width: m.pt(Self.dotSize), height: m.pt(Self.dotSize))
         }
     }
 
     private func workingTreeRow(_ dirtyFiles: Int) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: m.space.sm) {
             Text("Working tree")
                 .font(.dm(12))
                 .foregroundStyle(Color.dmMuted)
                 .lineLimit(1)
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             Text(changesLabel(dirtyFiles))
                 .font(.dm(11))
                 .foregroundStyle(.yellow)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, m.space.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -281,6 +282,7 @@ enum WorktreeDot {
 }
 
 private struct WorktreeRow: View {
+    @Environment(\.dmMetrics) private var m
     let worktree: GitSnapshot.Worktree
     let isCurrent: Bool
     let block: WorktreeRemoval.Block?
@@ -289,10 +291,10 @@ private struct WorktreeRow: View {
     @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: m.space.sm) {
             Circle()
                 .fill(isCurrent ? WorktreeDot.current : WorktreeDot.other)
-                .frame(width: 5, height: 5)
+                .frame(width: m.pt(5), height: m.pt(5))
                 .help(isCurrent ? WorktreeDot.currentHelp : WorktreeDot.otherHelp)
             Text(verbatim: WorktreeRemovalText.shortPath(worktree.path))
                 .font(.dm(11, design: .monospaced))
@@ -307,7 +309,7 @@ private struct WorktreeRow: View {
             if worktree.isPrunable {
                 DMKindLabel(text: "folder gone")
             }
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             if let branch = worktree.branch {
                 DMPill(
                     text: branch,
@@ -319,7 +321,7 @@ private struct WorktreeRow: View {
             removeButton
         }
         .padding(.leading, 0)
-        .frame(minHeight: 24)
+        .frame(minHeight: m.pt(24))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
@@ -357,27 +359,28 @@ private struct WorktreeRow: View {
 
 /// A folder git no longer lists as a worktree, still on disk.
 private struct LeftoverRow: View {
+    @Environment(\.dmMetrics) private var m
     let path: String
     let onRemove: () -> Void
     @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: m.space.sm) {
             Circle()
                 .strokeBorder(Color.yellow, lineWidth: 1)
-                .frame(width: 5, height: 5)
+                .frame(width: m.pt(5), height: m.pt(5))
             Text(verbatim: WorktreeRemovalText.shortPath(path))
                 .font(.dm(11, design: .monospaced))
                 .foregroundStyle(Color.dmMuted)
                 .lineLimit(1)
                 .truncationMode(.head)
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             DMKindLabel(text: "leftover")
             DMButton(icon: "trash", label: "Remove Leftover Folder…", variant: .ghostDanger, size: .small, action: onRemove)
                 .opacity(hovering ? 1 : 0)
                 .allowsHitTesting(hovering)
         }
-        .frame(minHeight: 24)
+        .frame(minHeight: m.pt(24))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
@@ -388,13 +391,14 @@ private struct LeftoverRow: View {
 }
 
 private struct CommitRow: View {
+    @Environment(\.dmMetrics) private var m
     let commit: GitSnapshot.Commit
     let rowHeight: CGFloat
     let copy: (String, String) -> Void
     @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: m.pt(5)) {
             Text(commit.subject)
                 .font(.dm(12))
                 .foregroundStyle(Color.dmRowText)
@@ -409,13 +413,13 @@ private struct CommitRow: View {
                 )
                 .fixedSize()
             }
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             Text(commit.sha)
                 .font(.dm(11, design: .monospaced))
                 .foregroundStyle(Color.dmMuted)
                 .fixedSize()
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, m.space.sm)
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .background(DMRowBackground(selected: false, hovering: hovering))
         .contentShape(Rectangle())

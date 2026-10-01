@@ -5,6 +5,7 @@ import DevmachineCore
 /// The pane beside the terminal: the open file and the preview tabs, each a
 /// tab in one strip, the way an editor keeps a file next to a browser.
 struct DocumentPane: View {
+    @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var viewerStore: FileViewerStore
     @ObservedObject private var previews = PreviewStore.shared
 
@@ -42,7 +43,7 @@ struct DocumentPane: View {
     /// app, a click on a tab's close mark inside the scroll view landed on its
     /// clip view and never reached the button. Long titles shorten instead.
     private var strip: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: m.space.xxs) {
             if viewerStore.isOpen {
                 DocumentTabChip(
                     systemImage: FileViewerView.icon(for: viewerStore.preview?.kind),
@@ -71,6 +72,7 @@ struct DocumentPane: View {
 /// The close mark sits beside the part that selects, not inside it, so the
 /// tap that selects never competes with the button that closes.
 struct DocumentTabChip: View {
+    @Environment(\.dmMetrics) private var m
     let systemImage: String
     let title: String
     let selected: Bool
@@ -86,8 +88,8 @@ struct DocumentTabChip: View {
     }
 
     var body: some View {
-        HStack(spacing: 2) {
-            HStack(spacing: 6) {
+        HStack(spacing: m.space.xxs) {
+            HStack(spacing: m.space.sm) {
                 Image(systemName: systemImage)
                     .font(.dm(10))
                     .foregroundStyle(Color(hex: 0x5AA9E6))
@@ -97,8 +99,8 @@ struct DocumentTabChip: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            .padding(.leading, 10)
-            .padding(.vertical, 7)
+            .padding(.leading, m.pt(10))
+            .padding(.vertical, m.pt(7))
             .contentShape(Rectangle())
             .onTapGesture(perform: select)
             .contextMenu {
@@ -108,7 +110,7 @@ struct DocumentTabChip: View {
                 systemImage: "xmark", size: 9, weight: .semibold, tint: .white.opacity(0.45),
                 hitSize: DMHitSize.compact, action: close)
                 .help(closeHelp)
-                .padding(.trailing, 4)
+                .padding(.trailing, m.space.xs)
         }
         .background(selected ? Color.dmContentBg : (hovering ? Color.dmHover : Color.clear))
         .onHover { hovering = $0 }

@@ -5,6 +5,7 @@ import DevmachineCore
 /// The context panel's Preview tab: what the selected session's workspace
 /// can show in a browser, and a field for anything else.
 struct PreviewSidebarTab: View {
+    @Environment(\.dmMetrics) private var m
     let place: PreviewPlace
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var stats: StatsStore
@@ -37,8 +38,8 @@ struct PreviewSidebarTab: View {
     private var parsed: PreviewInput? { PreviewInput.parse(address) }
 
     private var field: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: m.pt(5)) {
+            HStack(spacing: m.space.sm) {
                 TextField("Port or URL", text: $address)
                     .dmField()
                     .font(.dm(12, design: .monospaced))
@@ -53,9 +54,9 @@ struct PreviewSidebarTab: View {
                     .foregroundStyle(Color.dmMuted)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
+        .padding(.horizontal, m.pt(14))
+        .padding(.top, m.pt(10))
+        .padding(.bottom, m.space.xs)
     }
 
     @ViewBuilder
@@ -63,11 +64,11 @@ struct PreviewSidebarTab: View {
         switch targets.phase(for: place) {
         case .loading, nil:
             DMStatusView(kind: .loading("Looking for sites and dev servers…"))
-                .frame(minHeight: 160)
+                .frame(minHeight: m.pt(160))
         case let .failed(message):
             DMStatusView(kind: .failed(
                 title: "Couldn't list what to preview", message: message, retry: { load(force: true) }))
-                .frame(minHeight: 200)
+                .frame(minHeight: m.pt(200))
         case let .loaded(list):
             let sites = list.filter { $0.siteURL != nil }
             let ports = list.filter { $0.siteURL == nil }
@@ -82,7 +83,7 @@ struct PreviewSidebarTab: View {
                         .font(.dm(11.5))
                         .foregroundStyle(Color.dmMuted)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, m.space.xs)
                 } else {
                     ForEach(ports) { targetRow($0) }
                 }
@@ -96,20 +97,20 @@ struct PreviewSidebarTab: View {
         if !open.isEmpty {
             section("TUNNELS", count: open.count) {
                 ForEach(open) { tunnel in
-                    HStack(spacing: 8) {
+                    HStack(spacing: m.space.md) {
                         Image(systemName: tunnel.state == .open ? "arrow.left.arrow.right" : "hourglass")
                             .font(.dm(10))
                             .foregroundStyle(tunnel.state == .open ? Color.green : Color.dmMuted)
-                            .frame(width: 14)
+                            .frame(width: m.pt(14))
                         Text(verbatim: "localhost:\(tunnel.localPort) → \(tunnel.key.remotePort)")
                             .font(.dm(12, design: .monospaced))
                             .foregroundStyle(Color.dmRowText)
                             .lineLimit(1)
-                        Spacer(minLength: 4)
+                        Spacer(minLength: m.space.xs)
                         DMIconButton(systemImage: "stop.circle", size: 12) { tunnels.stop(tunnel.key) }
                             .help("Close the tunnel")
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, m.space.xs)
                 }
             }
         }
@@ -120,8 +121,8 @@ struct PreviewSidebarTab: View {
         return Text(verbatim: "⌥-click opens in \(other == .inApp ? "Devmachine" : "the default browser").")
             .font(.dm(10.5))
             .foregroundStyle(Color.dmMuted)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.horizontal, m.pt(14))
+            .padding(.vertical, m.space.lg)
     }
 
     private func section<Content: View>(
@@ -132,7 +133,7 @@ struct PreviewSidebarTab: View {
             padding: EdgeInsets(top: 12, leading: 14, bottom: 8, trailing: 14),
             label: { DMSectionLabel(text: title) },
             trailing: {
-                HStack(spacing: 6) {
+                HStack(spacing: m.space.sm) {
                     if refreshes {
                         DMIconButton(systemImage: "arrow.clockwise", size: 10, weight: .semibold) { load(force: true) }
                             .help("Look again")
@@ -144,11 +145,11 @@ struct PreviewSidebarTab: View {
     }
 
     private func targetRow(_ target: PreviewTarget) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: m.space.md) {
             Image(systemName: target.siteURL == nil ? "play.display" : "globe")
                 .font(.dm(11))
                 .foregroundStyle(Color(hex: 0x5AA9E6))
-                .frame(width: 14)
+                .frame(width: m.pt(14))
             Text(verbatim: target.title)
                 .font(.dm(12, design: target.siteURL == nil ? .monospaced : .default))
                 .foregroundStyle(Color.dmRowText)
@@ -160,7 +161,7 @@ struct PreviewSidebarTab: View {
                     .foregroundStyle(Color.dmMuted)
                     .lineLimit(1)
             }
-            Spacer(minLength: 4)
+            Spacer(minLength: m.space.xs)
             if hasTunnel(target) {
                 Image(systemName: "arrow.left.arrow.right")
                     .font(.dm(9))
@@ -168,7 +169,7 @@ struct PreviewSidebarTab: View {
                     .help("A tunnel to this port is open")
             }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, m.pt(5))
         .contentShape(Rectangle())
         .onHover { hovering in
             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
