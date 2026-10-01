@@ -146,8 +146,8 @@ struct MenuBarPanel: View {
                 openWindow(id: "main")
                 model.showPage(.subdomains)
             }
-            footerButton("eyedropper", help: "Pick a color") {
-                ScreenColorPicker.pick { hex in model.flashToast("Copied \(hex)") }
+            DMButton(icon: "eyedropper", label: "Pick a color", size: .small) {
+                ScreenColorPicker.pick(onCopy: model.announceCopiedColor)
             }
             Spacer()
             footerButton("power", help: "Quit") {

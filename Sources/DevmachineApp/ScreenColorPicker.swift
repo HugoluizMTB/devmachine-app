@@ -5,15 +5,9 @@ import DevmachineCore
 /// the color under it as hex, Esc cancels.
 @MainActor
 enum ScreenColorPicker {
-    private static var sampler: NSColorSampler?
-
     static func pick(onCopy: @escaping @MainActor (String) -> Void) {
-        guard sampler == nil else { return }
-        let sampler = NSColorSampler()
-        Self.sampler = sampler
-        sampler.show { color in
+        NSColorSampler().show { color in
             MainActor.assumeIsolated {
-                Self.sampler = nil
                 guard let color, let hex = hex(of: color) else { return }
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(hex, forType: .string)

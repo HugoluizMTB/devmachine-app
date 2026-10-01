@@ -122,7 +122,7 @@ struct PaletteDispatcher {
             model.openSettings(.about)
         case let .preview(request): previews.open(request, inverted: false)
         case .openPreviewField: model.requestPreviewField()
-        case .pickColor: system.pickScreenColor { [model] hex in model.flashToast("Copied \(hex)") }
+        case .pickColor: system.pickScreenColor(onCopy: model.announceCopiedColor)
         case .quit: system.quit()
         }
     }

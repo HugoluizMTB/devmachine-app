@@ -18,4 +18,8 @@ final class ScreenColorTests: XCTestCase {
     func testComponentsRoundToTheNearestByte() {
         XCTAssertEqual(ScreenColor.hex(red: 0.1, green: 0.2, blue: 0.3), "#1A334D")
     }
+
+    func testANaNComponentReadsAsZeroInsteadOfCrashing() {
+        XCTAssertEqual(ScreenColor.hex(red: .nan, green: 1, blue: 0), "#00FF00")
+    }
 }

@@ -1150,6 +1150,10 @@ final class AppModel: ObservableObject {
         finishTask(beginTask(label: label, total: 1))
     }
 
+    func announceCopiedColor(_ hex: String) {
+        flashToast("Copied \(hex)")
+    }
+
     func finishTask(_ id: UUID) {
         if let i = activeTasks.firstIndex(where: { $0.id == id }) {
             activeTasks[i].completed = activeTasks[i].total

@@ -7,6 +7,7 @@ public enum ScreenColor {
     }
 
     private static func byte(_ component: Double) -> Int {
-        Int((min(max(component, 0), 1) * 255).rounded())
+        guard !component.isNaN else { return 0 }
+        return Int((min(max(component, 0), 1) * 255).rounded())
     }
 }
