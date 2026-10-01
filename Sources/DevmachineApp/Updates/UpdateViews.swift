@@ -3,6 +3,25 @@ import DevmachineCore
 import MarkdownUI
 import SwiftUI
 
+/// The CLI block's wording, kept apart from the view so it is tested.
+enum CLIUpdateContent {
+    static let buttonTitle = "Update CLI"
+    static let running = "Updating the CLI…"
+    static let scopeNote = "Updating the CLI replaces only the devmachine program. It does not change your "
+        + "configuration, packages or machines, and it never types into a session."
+
+    static func updated(_ version: SemanticVersion) -> String { "CLI updated to \(version)" }
+
+    static func terminalLead(manual: Bool) -> String {
+        manual ? "Run this once in a terminal:" : "Or run this in a terminal:"
+    }
+
+    static func needsManualUpdate(installed: SemanticVersion) -> String {
+        "The app can update the CLI from \(CLISelfUpdate.minimumVersion) on. Your \(installed) needs one "
+            + "update in a terminal first; after that, the button here does it."
+    }
+}
+
 /// Kept apart from the view so the wording is tested, and is the same for a
 /// Homebrew and a disk image install.
 struct UpdateDialogContent: Equatable {
@@ -40,7 +59,17 @@ private func revealInFinder(_ url: URL) {
 
 private struct UpdateProgressView: View {
     @Environment(\.dmMetrics) private var m
-    let phase: UpdatePhase
+    let label: String
+    let done: Int
+
+    init(label: String, done: Int = 0) {
+        self.label = label
+        self.done = done
+    }
+
+    init(phase: UpdatePhase) {
+        self.init(label: Self.label(phase), done: Self.done(phase))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.sm) {
@@ -51,7 +80,7 @@ private struct UpdateProgressView: View {
         }
     }
 
-    private var label: String {
+    private static func label(_ phase: UpdatePhase) -> String {
         switch phase {
         case .downloading(let fraction): return "Downloading… \(Int((fraction * 100).rounded()))%"
         case .verifying: return "Checking the download…"
@@ -62,7 +91,7 @@ private struct UpdateProgressView: View {
         }
     }
 
-    private var done: Int {
+    private static func done(_ phase: UpdatePhase) -> Int {
         switch phase {
         case .downloading(let fraction): return Int((fraction * 100).rounded())
         case .verifying: return 100
@@ -257,7 +286,7 @@ struct UpdateDialog: View {
         default:
             UpdateProgressView(phase: updates.phase)
             if case .upgradingWithHomebrew = updates.phase {
-                HomebrewOutputView(lines: updates.homebrewOutput)
+                ProcessOutputView(lines: updates.homebrewOutput)
             }
         }
     }
@@ -283,7 +312,7 @@ struct UpdateDialog: View {
     }
 }
 
-private struct HomebrewOutputView: View {
+private struct ProcessOutputView: View {
     @Environment(\.dmMetrics) private var m
     let lines: [String]
 
@@ -409,12 +438,54 @@ struct UpdatesSettingsView: View {
                 Text(verbatim: "devmachine CLI \(notice.latest) is available")
                     .font(.dm(12.5, weight: .semibold))
                     .foregroundStyle(.white)
-                Text(verbatim: "You have \(notice.installed). Run this in a terminal:")
+                Text(verbatim: "You have \(notice.installed).")
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.55))
+                cliState(notice)
+                Text(verbatim: CLIUpdateContent.terminalLead(manual: !updates.canUpdateCLIInApp))
                     .font(.dm(11))
                     .foregroundStyle(.white.opacity(0.55))
                 DMCommandBlock(notice.command)
-                note("The app never runs it for you. Upgrading the CLI does not change your configuration, "
-                    + "packages or machines.")
+                note(CLIUpdateContent.scopeNote)
+            }
+        } else if case .updated(let version) = updates.cliPhase {
+            VStack(alignment: .leading, spacing: m.space.md) {
+                Label {
+                    Text(verbatim: CLIUpdateContent.updated(version))
+                        .font(.dm(12.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                if !updates.cliOutput.isEmpty {
+                    ProcessOutputView(lines: updates.cliOutput)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cliState(_ notice: CLIUpdateNotice) -> some View {
+        switch updates.cliPhase {
+        case .running:
+            UpdateProgressView(label: CLIUpdateContent.running)
+            ProcessOutputView(lines: updates.cliOutput)
+        case .failed(let error):
+            DMErrorStateView(state: error, retry: { Task { await updates.updateCLI() } })
+        case .needsManualUpdate:
+            Text(verbatim: CLIUpdateContent.needsManualUpdate(installed: notice.installed))
+                .font(.dm(11))
+                .foregroundStyle(.white.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+        case .idle, .updated:
+            if updates.canUpdateCLIInApp {
+                DMButton(CLIUpdateContent.buttonTitle, size: .small) { Task { await updates.updateCLI() } }
+            } else {
+                Text(verbatim: CLIUpdateContent.needsManualUpdate(installed: notice.installed))
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

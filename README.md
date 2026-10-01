@@ -100,7 +100,12 @@ and `tmux`, not in the app).
 The app also compares `devmachine version` with the latest
 `mydevmachine/devmachine` release and, when the CLI is behind, shows the
 command to run in Settings → About and ⌘K: `brew upgrade devmachine` for a
-Homebrew install, the install script otherwise. It never runs it.
+Homebrew install, the install script otherwise. From CLI 0.7.23 on, the
+**Update CLI** button there runs `devmachine update --cli-only` in the
+background and shows its log: it replaces the binary only, never the packages
+pin, skills, doctor or sync, and never types into a session. An older CLI
+does not know that flag, and plain `devmachine update` would touch packages
+and machines, so the app only shows the command for that one manual update.
 
 To try the whole disk image path against the published release, into a
 temporary folder:

@@ -239,18 +239,44 @@ struct DiskImageUpdateInstaller: AppUpdateInstalling {
 }
 
 /// Runs `brew upgrade --cask` in the background and hands every line of its
-/// output back as it comes. stdin is closed, so a prompt fails instead of
-/// waiting forever.
+/// output back as it comes.
 struct ProcessHomebrewUpgrader: HomebrewUpgrading {
     func upgrade(brew: String, output: @escaping @Sendable (String) -> Void) async throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: brew)
-        process.arguments = HomebrewAppUpgrade.arguments
         var environment = ProcessInfo.processInfo.environment
         let brewBin = URL(fileURLWithPath: brew).deletingLastPathComponent().path
         environment["PATH"] = "\(brewBin):/usr/bin:/bin:/usr/sbin:/sbin"
         environment["HOMEBREW_NO_ENV_HINTS"] = "1"
         environment["HOMEBREW_NO_COLOR"] = "1"
+        let status = try await StreamingProcess.run(
+            executable: brew, arguments: HomebrewAppUpgrade.arguments, environment: environment, output: output)
+        guard status == 0 else { throw UpdateInstallError.homebrewFailed(status) }
+    }
+}
+
+/// Runs `devmachine update --cli-only` in the background, never in a
+/// terminal session, and hands every line of its output back as it comes.
+struct ProcessCLIUpdater: CLIUpdating {
+    var executable: @Sendable () throws -> String = { try DevmachineCLI.resolve().executable }
+    var environment: [String: String] = ProcessInfo.processInfo.environment
+
+    func updateCLI(output: @escaping @Sendable (String) -> Void) async throws {
+        let status = try await StreamingProcess.run(
+            executable: try executable(), arguments: CLISelfUpdate.arguments,
+            environment: CLISelfUpdate.environment(base: environment), output: output)
+        guard status == 0 else { throw CLIUpdateError.exited(status) }
+    }
+}
+
+/// stdout and stderr share one pipe, so the lines keep the order they were
+/// written in. stdin is closed, so a prompt fails instead of waiting forever.
+enum StreamingProcess {
+    static func run(
+        executable: String, arguments: [String], environment: [String: String],
+        output: @escaping @Sendable (String) -> Void
+    ) async throws -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
         let pipe = Pipe()
@@ -279,7 +305,7 @@ struct ProcessHomebrewUpgrader: HomebrewUpgrading {
         pipe.fileHandleForReading.readabilityHandler = nil
         lines.append(pipe.fileHandleForReading.readDataToEndOfFile())
         lines.flush()
-        guard status == 0 else { throw UpdateInstallError.homebrewFailed(status) }
+        return status
     }
 }
 
@@ -373,6 +399,7 @@ extension UpdateController {
             installer: DiskImageUpdateInstaller(
                 currentApp: appURL, bundleID: bundle.bundleIdentifier ?? "app.devmachine.mac", runningTeamID: team),
             homebrew: ProcessHomebrewUpgrader(),
+            cliUpdater: ProcessCLIUpdater(),
             currentAppURL: appURL,
             relaunch: { try AppRelauncher().relaunch($0) }))
     }

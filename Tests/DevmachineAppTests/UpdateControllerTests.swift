@@ -50,6 +50,33 @@ private final class FakeHomebrew: HomebrewUpgrading, @unchecked Sendable {
     }
 }
 
+private final class VersionBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: String?
+    init(_ value: String?) { stored = value }
+    var value: String? {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+}
+
+private final class FakeCLIUpdater: CLIUpdating, @unchecked Sendable {
+    var lines = ["==> CLI", "  0.7.23 → v0.8.0", "  upgrading through Homebrew", "  updated: 0.7.23 → 0.8.0"]
+    var failure: Error?
+    var installs: String? = "0.8.0"
+    let version: VersionBox
+    private(set) var runs = 0
+
+    init(version: VersionBox) { self.version = version }
+
+    func updateCLI(output: @escaping @Sendable (String) -> Void) async throws {
+        runs += 1
+        lines.forEach(output)
+        if let failure { throw failure }
+        version.value = installs
+    }
+}
+
 private struct Boom: Error {}
 
 private func releaseJSON(_ tag: String) -> Data {
@@ -67,7 +94,12 @@ final class UpdateControllerTests: XCTestCase {
     private var dialogShownAtRelaunch: [Bool] = []
     private var relaunchFails = false
     private var built: UpdateController?
-    private var cliOutput: String? = "0.7.1"
+    private var cliVersion = VersionBox("0.7.1")
+    private var cliUpdater: FakeCLIUpdater!
+    private var cliOutput: String? {
+        get { cliVersion.value }
+        set { cliVersion.value = newValue }
+    }
 
     override func setUp() async throws {
         suite = "app.devmachine.mac.tests.\(UUID().uuidString)"
@@ -78,6 +110,8 @@ final class UpdateControllerTests: XCTestCase {
         relaunched = []
         dialogShownAtRelaunch = []
         relaunchFails = false
+        cliVersion = VersionBox("0.7.1")
+        cliUpdater = FakeCLIUpdater(version: cliVersion)
     }
 
     override func tearDown() async throws {
@@ -88,7 +122,7 @@ final class UpdateControllerTests: XCTestCase {
         method: AppInstallMethod = .manual, runningTeam: String? = "TEAM123456", current: String? = "0.1.2",
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { _ in throw CancellationError() }
     ) -> UpdateController {
-        let cliOutput = cliOutput
+        let cliVersion = cliVersion
         let updates = UpdateController(dependencies: UpdateDependencies(
             currentVersion: current.flatMap { SemanticVersion($0) },
             appFeed: ReleaseFeed(url: ReleaseFeed.appReleases, fetcher: http, userAgent: "Devmachine"),
@@ -98,9 +132,10 @@ final class UpdateControllerTests: XCTestCase {
             sleep: sleep,
             detectInstallMethod: { method },
             runningTeamID: runningTeam,
-            cliVersion: { cliOutput.map { CLIVersionReading(output: $0, method: .homebrew) } },
+            cliVersion: { cliVersion.value.map { CLIVersionReading(output: $0, method: .homebrew) } },
             installer: installer,
             homebrew: homebrew,
+            cliUpdater: cliUpdater,
             currentAppURL: URL(fileURLWithPath: "/Applications/Devmachine.app"),
             relaunch: { [weak self] url in
                 guard let self else { return }
@@ -198,6 +233,86 @@ final class UpdateControllerTests: XCTestCase {
         let updates = controller()
         await updates.check(userInitiated: false)
         XCTAssertNil(updates.cliNotice)
+    }
+
+    private func cliNoticeFor(installed: String, latest: String = "v0.8.0") async -> UpdateController {
+        cliOutput = installed
+        serve(app: "v0.1.2", cli: latest)
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        return updates
+    }
+
+    func testUpdatingTheCLIStreamsItsLogAndHidesTheNotice() async {
+        let updates = await cliNoticeFor(installed: "0.7.23")
+        XCTAssertTrue(updates.canUpdateCLIInApp)
+
+        await updates.updateCLI()
+
+        XCTAssertEqual(cliUpdater.runs, 1)
+        XCTAssertEqual(updates.cliOutput, cliUpdater.lines)
+        XCTAssertEqual(updates.cliPhase, .updated(SemanticVersion("0.8.0")!))
+        XCTAssertNil(updates.cliNotice)
+        XCTAssertTrue(relaunched.isEmpty)
+        XCTAssertTrue(homebrew.runs.isEmpty)
+    }
+
+    func testAFailedCLIUpdateKeepsTheNoticeAndShowsTheExactError() async {
+        cliUpdater.lines = ["==> CLI", "error: updating the CLI: checksum mismatch for devmachine_0.8.0.tar.gz"]
+        cliUpdater.failure = CLIUpdateError.exited(1)
+        let updates = await cliNoticeFor(installed: "0.7.23")
+
+        await updates.updateCLI()
+
+        guard case .failed(let state) = updates.cliPhase else { return XCTFail("\(updates.cliPhase)") }
+        XCTAssertEqual(state.cause, "updating the CLI: checksum mismatch for devmachine_0.8.0.tar.gz")
+        XCTAssertTrue(state.details.contains("==> CLI"))
+        XCTAssertEqual(updates.cliNotice?.installed, SemanticVersion("0.7.23"))
+    }
+
+    func testRetryAfterAFailureRunsAgain() async {
+        cliUpdater.failure = CLIUpdateError.exited(1)
+        let updates = await cliNoticeFor(installed: "0.7.23")
+        await updates.updateCLI()
+        cliUpdater.failure = nil
+
+        await updates.updateCLI()
+
+        XCTAssertEqual(cliUpdater.runs, 2)
+        XCTAssertEqual(updates.cliPhase, .updated(SemanticVersion("0.8.0")!))
+    }
+
+    func testAnOldCLIIsNeverRunAndAsksForOneManualUpdate() async {
+        let updates = await cliNoticeFor(installed: "0.7.22")
+        XCTAssertFalse(updates.canUpdateCLIInApp)
+
+        await updates.updateCLI()
+
+        XCTAssertEqual(cliUpdater.runs, 0)
+        XCTAssertEqual(updates.cliPhase, .needsManualUpdate)
+        XCTAssertNotNil(updates.cliNotice)
+    }
+
+    func testAnUnknownFlagMeansAManualUpdateNotAFallback() async {
+        cliUpdater.lines = ["error: unknown flag: --cli-only"]
+        cliUpdater.failure = CLIUpdateError.exited(1)
+        let updates = await cliNoticeFor(installed: "0.7.23")
+
+        await updates.updateCLI()
+
+        XCTAssertEqual(cliUpdater.runs, 1)
+        XCTAssertEqual(updates.cliPhase, .needsManualUpdate)
+    }
+
+    func testAVersionThatDidNotMoveIsAFailure() async {
+        cliUpdater.installs = "0.7.23"
+        let updates = await cliNoticeFor(installed: "0.7.23")
+
+        await updates.updateCLI()
+
+        guard case .failed(let state) = updates.cliPhase else { return XCTFail("\(updates.cliPhase)") }
+        XCTAssertTrue(state.cause?.contains("0.7.23") ?? false, state.cause ?? "")
+        XCTAssertNotNil(updates.cliNotice)
     }
 
     func testAManualInstallRelaunchesTheReplacedApp() async {

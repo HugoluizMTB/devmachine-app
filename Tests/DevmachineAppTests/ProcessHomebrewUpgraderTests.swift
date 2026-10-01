@@ -46,4 +46,24 @@ final class ProcessHomebrewUpgraderTests: XCTestCase {
         }
         XCTAssertEqual(lines.all, ["nope"])
     }
+
+    func testTheCLIUpdateRunsOnlyCLIOnlyAndStreamsItsLog() async throws {
+        let cli = try fakeBrew(#"echo "args: $*"; echo "path: $PATH"; echo "  updated" 1>&2"#)
+        let lines = Lines()
+        try await ProcessCLIUpdater(executable: { cli }, environment: ["PATH": "/usr/bin:/bin"])
+            .updateCLI(output: lines.add)
+        XCTAssertEqual(lines.all, ["args: update --cli-only", "path: /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", "  updated"])
+    }
+
+    func testAFailingCLIUpdateThrowsItsStatus() async throws {
+        let cli = try fakeBrew("echo 'error: unknown flag: --cli-only' 1>&2; exit 1")
+        let lines = Lines()
+        do {
+            try await ProcessCLIUpdater(executable: { cli }, environment: [:]).updateCLI(output: lines.add)
+            XCTFail("expected a failure")
+        } catch {
+            XCTAssertEqual(error as? CLIUpdateError, .exited(1))
+        }
+        XCTAssertEqual(lines.all, ["error: unknown flag: --cli-only"])
+    }
 }

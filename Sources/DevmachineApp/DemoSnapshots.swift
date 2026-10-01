@@ -181,6 +181,17 @@ enum DemoSnapshots {
         Screen(id: "update-toast-installed", fileName: "39-update-toast-installed.png", settleNanoseconds: 200_000_000),
     ]
 
+    /// The CLI update walk (`DEVMACHINE_DEMO_WALK=cli-update`): the Updates
+    /// pane's CLI block before, during and after `update --cli-only`, run on
+    /// a fake CLI script.
+    static let cliUpdateScreens: [Screen] = [
+        Screen(id: "cli-update-available", fileName: "60-cli-update-available.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-running", fileName: "61-cli-update-running.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-updated", fileName: "62-cli-update-updated.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-failed", fileName: "63-cli-update-failed.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-old", fileName: "64-cli-update-old.png", settleNanoseconds: 200_000_000),
+    ]
+
     /// The file viewer walk (`DEVMACHINE_DEMO_WALK=file-viewer`): a Swift file
     /// in the viewer, highlighted. It is also the check that a packaged app
     /// finds the highlighter's script inside its own bundle.
@@ -244,6 +255,7 @@ enum DemoSnapshots {
         case "worktrees": return worktreeScreens
         case "harness-icons": return harnessIconScreens
         case "update-toast": return updateToastScreens
+        case "cli-update": return cliUpdateScreens
         case "file-viewer": return fileViewerScreens
         case "file-transfer": return fileTransferScreens
         case "sizing": return sizingScreens
@@ -344,6 +356,9 @@ enum DemoSnapshots {
             #if DEBUG
             case "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
                 view = await updateToastView(screen.id, model: environment.model)
+            case "cli-update-available", "cli-update-running", "cli-update-updated", "cli-update-failed",
+                 "cli-update-old":
+                view = await cliUpdateView(screen.id)
             #endif
             default:
                 window.displayIfNeeded()
@@ -592,6 +607,18 @@ enum DemoSnapshots {
         }
         return standaloneView(
             await DemoUpdateToasts.toastStack(state, model: model), fittingSize: NSSize(width: 400, height: 300))
+    }
+
+    private static func cliUpdateView(_ id: String) async -> NSView {
+        let state: DemoCLIUpdate.State
+        switch id {
+        case "cli-update-running": state = .running
+        case "cli-update-updated": state = .updated
+        case "cli-update-failed": state = .failed
+        case "cli-update-old": state = .oldCLI
+        default: state = .available
+        }
+        return standaloneView(await DemoCLIUpdate.pane(state), fittingSize: NSSize(width: 688, height: 700))
     }
     #endif
 

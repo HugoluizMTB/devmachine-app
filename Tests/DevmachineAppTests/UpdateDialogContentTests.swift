@@ -39,4 +39,13 @@ final class UpdateDialogContentTests: XCTestCase {
             UpdateDialogContent.restartNeeded(version: "0.1.4"),
             "Updated to 0.1.4 — quit and reopen Devmachine to finish.")
     }
+
+    func testTheCLIBlockSaysWhatTheButtonDoesAndWhatItLeavesAlone() {
+        XCTAssertEqual(CLIUpdateContent.buttonTitle, "Update CLI")
+        XCTAssertEqual(CLIUpdateContent.updated(SemanticVersion("0.8.0")!), "CLI updated to 0.8.0")
+        XCTAssertTrue(CLIUpdateContent.scopeNote.contains("configuration, packages or machines"))
+        XCTAssertEqual(CLIUpdateContent.terminalLead(manual: false), "Or run this in a terminal:")
+        XCTAssertEqual(CLIUpdateContent.terminalLead(manual: true), "Run this once in a terminal:")
+        XCTAssertTrue(CLIUpdateContent.needsManualUpdate(installed: SemanticVersion("0.7.22")!).contains("0.7.22"))
+    }
 }

@@ -23,6 +23,36 @@ protocol HomebrewUpgrading: Sendable {
     func upgrade(brew: String, output: @escaping @Sendable (String) -> Void) async throws
 }
 
+protocol CLIUpdating: Sendable {
+    func updateCLI(output: @escaping @Sendable (String) -> Void) async throws
+}
+
+enum CLIUpdateError: LocalizedError, Equatable {
+    case exited(Int32)
+    case unavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .exited(let status): return "devmachine update --cli-only exited with status \(status)."
+        case .unavailable: return "The devmachine CLI cannot be run from here."
+        }
+    }
+}
+
+struct UnavailableCLIUpdater: CLIUpdating {
+    func updateCLI(output: @escaping @Sendable (String) -> Void) async throws {
+        throw CLIUpdateError.unavailable
+    }
+}
+
+enum CLIUpdatePhase: Equatable {
+    case idle
+    case running
+    case updated(SemanticVersion)
+    case failed(DMErrorState)
+    case needsManualUpdate
+}
+
 struct CLIVersionReading: Equatable, Sendable {
     let output: String
     let method: CLIInstallMethod
@@ -60,14 +90,15 @@ struct UpdateDependencies {
     var cliVersion: @Sendable () async -> CLIVersionReading?
     var installer: any AppUpdateInstalling
     var homebrew: any HomebrewUpgrading
+    var cliUpdater: any CLIUpdating = UnavailableCLIUpdater()
     var currentAppURL: URL
     var relaunchTimeout: TimeInterval = 10
     var relaunch: @MainActor (URL) throws -> Void
 }
 
 /// Looks for a newer Devmachine.app and a newer devmachine CLI, and replaces
-/// the app when the person asks. It never touches the CLI, its configuration,
-/// packages or machines: for the CLI it only shows the command to run.
+/// either when the person asks. For the CLI it runs only `update --cli-only`,
+/// which replaces the binary and never its configuration, packages or machines.
 @MainActor
 final class UpdateController: ObservableObject {
     @Published private(set) var availability: UpdateAvailability?
@@ -78,6 +109,8 @@ final class UpdateController: ObservableObject {
     @Published private(set) var homebrewOutput: [String] = []
     @Published private(set) var installMethod: AppInstallMethod?
     @Published private(set) var cliNotice: CLIUpdateNotice?
+    @Published private(set) var cliPhase: CLIUpdatePhase = .idle
+    @Published private(set) var cliOutput: [String] = []
     @Published private var dismissedVersion: SemanticVersion?
     @Published var showsDialog = false
 
@@ -181,6 +214,59 @@ final class UpdateController: ObservableObject {
             }
         }
         cliNotice = await cli
+        if case .updated = cliPhase, cliNotice != nil { cliPhase = .idle }
+    }
+
+    /// A CLI older than `--cli-only` would need plain `update`, which moves
+    /// the packages pin and syncs; the app never runs that.
+    var canUpdateCLIInApp: Bool {
+        guard let notice = cliNotice, cliPhase != .needsManualUpdate else { return false }
+        return CLISelfUpdate.supportsCLIOnly(notice.installed)
+    }
+
+    func updateCLI() async {
+        guard let notice = cliNotice, cliPhase != .running else { return }
+        guard canUpdateCLIInApp else {
+            cliPhase = .needsManualUpdate
+            return
+        }
+        cliOutput = []
+        cliPhase = .running
+        let sink = ProcessOutputSink { [weak self] lines in
+            if (self?.cliOutput.count ?? 0) < lines.count { self?.cliOutput = lines }
+        }
+        do {
+            try await dependencies.cliUpdater.updateCLI(output: sink.receive)
+            cliOutput = sink.snapshot
+            let reading = await dependencies.cliVersion()
+            guard let version = reading.flatMap({
+                CLISelfUpdate.confirmedVersion(versionOutput: $0.output, expected: notice.latest)
+            }) else {
+                let found = reading.flatMap { SemanticVersion.first(in: $0.output) }?.description ?? "no version"
+                cliPhase = .failed(DMErrorState(
+                    title: "The CLI did not change",
+                    cause: "devmachine version still says \(found), not \(notice.latest).",
+                    details: cliDetails(fallback: reading?.output ?? "")))
+                return
+            }
+            cliNotice = nil
+            cliPhase = .updated(version)
+        } catch {
+            cliOutput = sink.snapshot
+            if CLISelfUpdate.isUnknownFlag(cliOutput) {
+                cliPhase = .needsManualUpdate
+                return
+            }
+            cliPhase = .failed(DMErrorState(
+                title: "The CLI was not updated",
+                cause: CLISelfUpdate.failureCause(cliOutput) ?? error.localizedDescription,
+                details: cliDetails(fallback: error.localizedDescription)))
+        }
+    }
+
+    private func cliDetails(fallback: String) -> String {
+        let output = cliOutput.suffix(40).joined(separator: "\n")
+        return output.isEmpty ? fallback : output
     }
 
     func skipThisVersion() {
@@ -234,7 +320,7 @@ final class UpdateController: ObservableObject {
 
     private func installWithHomebrew(brew: String) async {
         phase = .upgradingWithHomebrew
-        let sink = HomebrewOutputSink { [weak self] lines in
+        let sink = ProcessOutputSink { [weak self] lines in
             if (self?.homebrewOutput.count ?? 0) < lines.count { self?.homebrewOutput = lines }
         }
         do {
@@ -319,10 +405,10 @@ final class UpdateController: ObservableObject {
     }
 }
 
-/// Lines from brew arrive on its reading thread. Each one updates the view
+/// Lines from brew or the CLI arrive on the reading thread. Each one updates the view
 /// with the whole list so far, so the order never depends on which main-actor
 /// hop lands first.
-private final class HomebrewOutputSink: @unchecked Sendable {
+private final class ProcessOutputSink: @unchecked Sendable {
     private let deliver: @MainActor ([String]) -> Void
     private let lock = NSLock()
     private var lines: [String] = []
