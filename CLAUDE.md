@@ -94,8 +94,16 @@ writing any UI, look there first. The order is fixed:
 
 What is there:
 - Tokens (`DMTokens.swift`): `DMRadius.*` for every corner radius, `DMHitSize.*`
-  for icon click areas, `Color.dm*` (incl. `dmSelection`, `dmStroke`, `dmActive`).
-  No number literals for radii in views.
+  for icon click areas, `DMSpace`, `DMControlHeight`, `DMIconSize`, `DMRowInset`,
+  `DMSectionInset`, `DMCardWidth`, `DMPaneWidth`, all in points at 100%;
+  `Color.dm*` (incl. `dmSelection`, `dmStroke`, `dmActive`). No number literals
+  for radii in views.
+- Metrics (`DMMetrics.swift`): the app's `rem`. One rem is the 13-point body
+  size times Settings → Appearance → text size (`uiFontScale`), and every token
+  comes back scaled from `@Environment(\.dmMetrics) private var m`:
+  `m.space.md`, `m.control.small`, `m.radius.row`, `m.card.banner`,
+  `m.pt(7)` for a one-off point value, `m.rem(1.5)`. At 100% each token is
+  exactly the old point value, so the default look never moves.
 - Buttons (`DMButton.swift`): `DMButton` / `.buttonStyle(.dm(_:size:))` for every
   labelled button. Variants: `.primary` (the one action of a sheet or page),
   `.outline` (the action beside it, Cancel), `.danger` / `.dangerOutline` (ends or
@@ -130,6 +138,16 @@ What is there:
   second level), `FlowLayout`.
 
 Rules:
+- **No fixed points in components; use tokens.** A padding, frame, stack
+  spacing, radius or width in `Components/` comes from `DMMetrics`, so a bigger
+  text size grows the box with the text instead of spilling out of it.
+  `DMFixedPointsGuardTests` fails on a new literal (0 and 1-point hairlines
+  are allowed). A component parameter is in points at 100%, like a `.dm(_:)`
+  font size, and the component scales it: never pass it `m.…`. Screens use
+  `m.…` too; a `static` helper with no environment reads `DMMetrics.current`.
+  `DMComponentsFitTests` draws each component at 80/100/130/160% and fails when
+  it spills out of its frame or stops growing with the text: add a new
+  component there.
 - Never hand-roll `.buttonStyle(.plain)` + `Image` + `.foregroundStyle` +
   `.frame` + `.contentShape` for an icon button: that is `DMIconButton`.
   `.buttonStyle(.plain)` stays only for a button whose label is a whole row or
