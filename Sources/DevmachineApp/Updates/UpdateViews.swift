@@ -312,7 +312,7 @@ struct UpdateDialog: View {
     }
 }
 
-private struct ProcessOutputView: View {
+struct ProcessOutputView: View {
     @Environment(\.dmMetrics) private var m
     let lines: [String]
 

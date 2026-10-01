@@ -233,6 +233,14 @@ final class DemoSnapshotsTests: XCTestCase {
         }
     }
 
+    func testTheMachineReadyWalkIsItsOwnSet() {
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "machine-ready"]).map(\.id), [
+            "ready-home", "ready-running", "ready-failed", "ready-done", "ready-old-cli", "ready-outdated",
+            "install-cli", "install-cli-running", "install-cli-failed",
+        ])
+        XCTAssertEqual(Set(DemoSnapshots.machineReadyScreens.map(\.fileName)).count, 9)
+    }
+
     func testTheFileViewerWalkIsItsOwnSet() {
         XCTAssertEqual(DemoSnapshots.fileViewerScreens.map(\.fileName), ["40-file-viewer.png"])
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "file-viewer"]).map(\.id),

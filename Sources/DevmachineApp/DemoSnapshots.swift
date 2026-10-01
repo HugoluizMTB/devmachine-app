@@ -192,6 +192,22 @@ enum DemoSnapshots {
         Screen(id: "cli-update-old", fileName: "64-cli-update-old.png", settleNanoseconds: 200_000_000),
     ]
 
+    /// The machine readiness walk (`DEVMACHINE_DEMO_WALK=machine-ready`): a
+    /// machine without devmachine-app on Home and in the sidebar, Prepare
+    /// running, failed and done on fake scripts, the old-CLI and outdated
+    /// cards, a workspace with no SSH alias, and onboarding's Install CLI.
+    static let machineReadyScreens: [Screen] = [
+        Screen(id: "ready-home", fileName: "70-ready-home.png", settleNanoseconds: 700_000_000),
+        Screen(id: "ready-running", fileName: "71-ready-running.png", settleNanoseconds: 1_500_000_000),
+        Screen(id: "ready-failed", fileName: "72-ready-failed.png", settleNanoseconds: 500_000_000),
+        Screen(id: "ready-done", fileName: "73-ready-done.png", settleNanoseconds: 500_000_000),
+        Screen(id: "ready-old-cli", fileName: "74-ready-old-cli.png", settleNanoseconds: 300_000_000),
+        Screen(id: "ready-outdated", fileName: "75-ready-outdated.png", settleNanoseconds: 300_000_000),
+        Screen(id: "install-cli", fileName: "76-install-cli.png", settleNanoseconds: 300_000_000),
+        Screen(id: "install-cli-running", fileName: "77-install-cli-running.png", settleNanoseconds: 1_200_000_000),
+        Screen(id: "install-cli-failed", fileName: "78-install-cli-failed.png", settleNanoseconds: 300_000_000),
+    ]
+
     /// The file viewer walk (`DEVMACHINE_DEMO_WALK=file-viewer`): a Swift file
     /// in the viewer, highlighted. It is also the check that a packaged app
     /// finds the highlighter's script inside its own bundle.
@@ -260,6 +276,7 @@ enum DemoSnapshots {
         case "file-transfer": return fileTransferScreens
         case "sizing": return sizingScreens
         case "preview-browser": return previewBrowserScreens
+        case "machine-ready": return machineReadyScreens
         default: return screens
         }
     }
@@ -359,6 +376,10 @@ enum DemoSnapshots {
             case "cli-update-available", "cli-update-running", "cli-update-updated", "cli-update-failed",
                  "cli-update-old":
                 view = await cliUpdateView(screen.id)
+            case "ready-old-cli", "ready-outdated":
+                view = readinessCardView(screen.id, model: environment.model)
+            case "install-cli", "install-cli-running", "install-cli-failed":
+                view = await installCLIView(screen.id, environment: environment)
             #endif
             default:
                 window.displayIfNeeded()
@@ -438,6 +459,17 @@ enum DemoSnapshots {
             DemoData.typedAtPrompt = [dropKind: dropPrompt]
             PaneUploadStore.shared.dropTarget = dropKind
         #if DEBUG
+        case "ready-home":
+            DemoMachineReady.seed(MachineReadinessStore.shared, model: model)
+        case "ready-running":
+            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, script: .prepareSlow)
+            Task { await MachineReadinessStore.shared.prepare(DemoMachineReady.machine) }
+        case "ready-failed":
+            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, script: .prepareFails)
+            await MachineReadinessStore.shared.prepare(DemoMachineReady.machine)
+        case "ready-done":
+            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, script: .prepareSucceeds)
+            await MachineReadinessStore.shared.prepare(DemoMachineReady.machine)
         case "preview-browser":
             if let directory = targetDirectory {
                 await DemoPreviewBrowserCheck.run(
@@ -607,6 +639,39 @@ enum DemoSnapshots {
         }
         return standaloneView(
             await DemoUpdateToasts.toastStack(state, model: model), fittingSize: NSSize(width: 400, height: 300))
+    }
+
+    private static func readinessCardView(_ id: String, model: AppModel) -> NSView {
+        let store = MachineReadinessStore.shared
+        let outdated = id == "ready-outdated"
+        DemoMachineReady.seed(store, model: model, cliVersion: outdated ? "0.7.24" : "0.7.23", outdated: outdated)
+        return standaloneView(
+            DemoMachineReady.card(store, model: model, machine: outdated ? "backup" : DemoMachineReady.machine),
+            fittingSize: NSSize(width: 568, height: 400))
+    }
+
+    private static func installCLIView(_ id: String, environment: Environment) async -> NSView {
+        let installer: CLIInstallModel
+        switch id {
+        case "install-cli-running":
+            installer = DemoMachineReady.installer(.installSlow)
+            Task { await installer.install() }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        case "install-cli-failed":
+            installer = DemoMachineReady.installer(.installFails)
+            await installer.install()
+        default:
+            installer = DemoMachineReady.installer(nil)
+        }
+        let page = OnboardingPage(
+            demoDetection: OnboardingDetection(
+                homebrewFound: true, cliFound: false, adminMachine: nil, missingPackageMachines: [],
+                agents: [DetectedAgent(kind: .claude, executablePath: "/opt/homebrew/bin/claude")]),
+            installer: installer)
+            .environmentObject(environment.wallpaperStore)
+        let view = standaloneView(page, fittingSize: NSSize(width: 1100, height: 760), autosize: false)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        return view
     }
 
     private static func cliUpdateView(_ id: String) async -> NSView {

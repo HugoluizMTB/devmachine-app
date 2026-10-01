@@ -65,6 +65,38 @@ header and the context panel.
   popover. The machine then goes straight to ssh for 30 minutes, or until
   "Try mosh again".
 
+## Machine readiness
+
+The app runs its stats, logs and session context on each machine through the
+`devmachine-app` package. It checks every configured machine at launch, when
+the CLI's configuration folder changes (a machine or workspace added, a sync
+recorded in `packages.lock`), when you come back to the app, and when a call
+into the package fails because it is missing or too old. The configuration
+says whether a machine asks for the package; the lock says whether a sync
+applied it. A read that fails says nothing, so no card shows.
+
+A machine without it gets a card on Home and in the sidebar: "<machine> isn't
+ready for the app yet" and **Prepare**. Prepare runs, in the background with
+its log on the card, `devmachine packages add devmachine-app --machine <m>
+--yes` when the configuration does not ask for it yet, then `devmachine sync
+--machine <m> --tags devmachine-app --yes`, which applies only that package
+and nothing else waiting in the configuration. It needs CLI 0.7.24 or newer,
+the first whose tagged sync records only what it applied in the lock; an older
+CLI gets the commands to copy and a link to update the CLI. A package from an
+older release than the app needs is not fixed by a button: the packages pin is
+shared by every machine, so the card explains it and shows `devmachine
+packages pin` and `devmachine sync --machine <m>`.
+
+A workspace whose sessions cannot be listed says why in the sidebar instead of
+showing an empty list: no SSH alias yet (with `devmachine aliases --write`),
+no tmux on the machine, a refused login, or a machine that does not answer.
+
+When the CLI is missing, onboarding's **Install CLI** installs it in the
+background with its log: `brew install mydevmachine/tap/devmachine` when this
+Mac has Homebrew, otherwise the installer from
+`https://mydevmachine.sh/install.sh`, which puts it in `~/.local/bin` without
+a password. The command to copy stays beside the button.
+
 ## Updates
 
 The app checks the latest release of `mydevmachine/app-releases` 30 seconds

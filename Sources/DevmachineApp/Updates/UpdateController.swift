@@ -408,7 +408,7 @@ final class UpdateController: ObservableObject {
 /// Lines from brew or the CLI arrive on the reading thread. Each one updates the view
 /// with the whole list so far, so the order never depends on which main-actor
 /// hop lands first.
-private final class ProcessOutputSink: @unchecked Sendable {
+final class ProcessOutputSink: @unchecked Sendable {
     private let deliver: @MainActor ([String]) -> Void
     private let lock = NSLock()
     private var lines: [String] = []

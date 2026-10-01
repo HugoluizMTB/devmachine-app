@@ -21,61 +21,6 @@ private final class ScriptedRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
-final class PackageGateCheckerTests: XCTestCase {
-    func testOKWhenThePackageIsInstalledOnTheAdminMachine() {
-        let runner = ScriptedRunner(byCommand: [
-            "machines": (#"[{"name":"acme"},{"name":"mac","self":true}]"#, "", 0),
-            "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
-        ])
-        let state = PackageGateChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
-        XCTAssertEqual(state, .ok)
-    }
-
-    func testMissingWhenThePackageIsNotInThePackagesList() {
-        let runner = ScriptedRunner(byCommand: [
-            "machines": (#"[{"name":"acme"},{"name":"mac","self":true}]"#, "", 0),
-            "list": (#"{"packages":[{"name":"base","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
-        ])
-        let state = PackageGateChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
-        XCTAssertEqual(state, .missing(machines: ["acme"]))
-    }
-
-    func testMissingWhenThePackageIsInstalledOnADifferentMachine() {
-        let runner = ScriptedRunner(byCommand: [
-            "machines": (#"[{"name":"acme"},{"name":"mac","self":true}]"#, "", 0),
-            "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine mac"]}]}"#, "", 0),
-        ])
-        let state = PackageGateChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
-        XCTAssertEqual(state, .missing(machines: ["acme"]))
-    }
-
-    func testListsEveryMachineMissingThePackageWhenThereAreSeveral() {
-        let runner = ScriptedRunner(byCommand: [
-            "machines": (#"[{"name":"acme"},{"name":"beta"},{"name":"gamma"},{"name":"mac","self":true}]"#, "", 0),
-            "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine beta"]}]}"#, "", 0),
-        ])
-        let state = PackageGateChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
-        XCTAssertEqual(state, .missing(machines: ["acme", "gamma"]))
-    }
-
-    func testFailsOpenWhenPackagesListItselfFails() {
-        let runner = ScriptedRunner(byCommand: [
-            "machines": (#"[{"name":"acme"},{"name":"mac","self":true}]"#, "", 0),
-            "list": ("", "connection refused", 1),
-        ])
-        let state = PackageGateChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
-        XCTAssertEqual(state, .ok)
-    }
-
-    func testFailsOpenWhenNoAdminMachineIsConfigured() {
-        let runner = ScriptedRunner(byCommand: [
-            "machines": (#"[{"name":"mac","self":true}]"#, "", 0),
-        ])
-        let state = PackageGateChecker.check(cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
-        XCTAssertEqual(state, .ok)
-    }
-}
-
 final class CaddyAvailabilityCheckerTests: XCTestCase {
     func testTrueWhenANonSelfMachineHasCaddyDirectly() {
         let runner = ScriptedRunner(byCommand: [

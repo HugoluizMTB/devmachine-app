@@ -125,7 +125,7 @@ struct OnboardingDetection: Equatable, Sendable {
     var cliFound: Bool
     var adminMachine: String?
     /// Configured (non-self) machines that do not have `devmachine-app` yet —
-    /// empty once every machine has it, same as `PackageGateChecker`.
+    /// empty once every machine has it.
     var missingPackageMachines: [String]
     var agents: [DetectedAgent]
 
@@ -150,7 +150,7 @@ enum OnboardingDetector {
         if let instance = try? cli() {
             cliFound = true
             adminMachine = try? instance.resolveAdminMachine()
-            // Fails open, same as `PackageGateChecker`: a `packages` read that
+            // Fails open, same as the machine readiness check: a `packages` read that
             // itself fails (offline, too old) leaves nothing "missing" rather
             // than blocking onboarding on a flaky CLI.
             if let machines = try? instance.nonSelfMachines(), !machines.isEmpty,

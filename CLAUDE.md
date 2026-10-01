@@ -537,6 +537,25 @@ Rules:
 - A session's Context warms its workspace (`WorkspaceMachineData.warm`), so
   Publish a port… and Preview open with something to show.
 
+## Machine readiness
+- **A machine missing `devmachine-app` gets a card, never a gate over the
+  whole window** (`MachineReadinessStore`). Declared comes from `packages
+  list`, applied from `packages.lock` in the CLI's config folder
+  (`PackagesLock`), and a failed package call (`PackageCallReports`, posted by
+  `DevmachineCLI`) overrides both until the lock changes. Anything unread
+  fails open: no card.
+- **Prepare syncs with `--tags devmachine-app` only** and only on CLI 0.7.24+
+  (`MachinePrepare.minimumCLIVersion`). A plain sync would apply every change
+  waiting in the configuration behind a button that says Prepare, and an older
+  CLI's tagged sync wrote the whole plan into the lock. Never move the
+  packages pin from the app: it is shared by every machine.
+- **A session list never fails silently** (`SessionListProblem`): ssh looking
+  the alias itself up as a hostname means no Host entry, exit 127 means no
+  tmux. Neither stops the sweep or pauses polling; both show in the sidebar
+  with the fix.
+- The CLI's config folder is watched (`ConfigDirectoryWatcher`), so a machine
+  or workspace added in a terminal shows up without a restart.
+
 ## Publishing feedback
 - `expose add` / `expose rm` run with `--format json` (CLI 0.7.21+): the
   result (`applied`, `status`, `note`) and the exact stderr drive

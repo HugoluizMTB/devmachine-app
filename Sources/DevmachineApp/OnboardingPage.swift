@@ -19,9 +19,20 @@ struct OnboardingPage: View {
     var demoDetection: OnboardingDetection?
 
     @StateObject private var runner = OnboardingRunner()
+    @StateObject private var installer: CLIInstallModel
     @State private var detection: OnboardingDetection = .empty
     @State private var path: ChosenPath?
     @State private var didFinish = false
+
+    init(
+        initialMachine: String? = nil, onFinished: @escaping () -> Void = {},
+        demoDetection: OnboardingDetection? = nil, installer: CLIInstallModel? = nil
+    ) {
+        self.initialMachine = initialMachine
+        self.onFinished = onFinished
+        self.demoDetection = demoDetection
+        _installer = StateObject(wrappedValue: installer ?? CLIInstallModel())
+    }
 
     private enum ChosenPath: Equatable {
         case terminal
@@ -35,6 +46,9 @@ struct OnboardingPage: View {
                 header
                 if !detection.homebrewFound {
                     homebrewBanner
+                }
+                if path == nil, !detection.cliFound || installer.phase == .installed {
+                    installCLICard
                 }
                 if detection.isComplete {
                     successCard
@@ -53,6 +67,9 @@ struct OnboardingPage: View {
         .task { await refreshDetection() }
         .onChange(of: runner.statuses) { _, _ in
             Task { await refreshDetection() }
+        }
+        .onChange(of: installer.phase) { _, phase in
+            if phase == .installed { Task { await refreshDetection() } }
         }
         .onChange(of: detection) { _, _ in
             // A step just finished (e.g. `devmachine setup` registered the
@@ -108,6 +125,43 @@ struct OnboardingPage: View {
             DMCommandBlock(OnboardingPlan.homebrewInstallLine)
             DMButton("brew.sh", variant: .link) {
                 NSWorkspace.shared.open(URL(string: "https://brew.sh")!)
+            }
+        }
+        .padding(m.space.xl)
+        .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
+    }
+
+    // MARK: - Install the CLI
+
+    private var installCLICard: some View {
+        VStack(alignment: .leading, spacing: m.space.md) {
+            Text(verbatim: OnboardingInstallContent.title(installer.phase))
+                .font(.dm(13, weight: .semibold))
+                .foregroundStyle(.white)
+            switch installer.phase {
+            case .idle:
+                Text(verbatim: OnboardingInstallContent.lead(installer.plan))
+                    .font(.dm(11.5))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+                DMButton(OnboardingInstallContent.buttonTitle, systemImage: "arrow.down.circle") {
+                    Task { await installer.install() }
+                }
+                Text(verbatim: OnboardingInstallContent.copyLead)
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.55))
+                DMCommandBlock(installer.plan.copyCommand)
+            case .running:
+                ProcessOutputView(lines: installer.output)
+            case .installed:
+                ProcessOutputView(lines: installer.output)
+            case let .failed(error):
+                DMErrorStateView(state: error, retry: { Task { await installer.install() } })
+                    .frame(maxWidth: .infinity)
+                Text(verbatim: OnboardingInstallContent.copyLead)
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.55))
+                DMCommandBlock(installer.plan.copyCommand)
             }
         }
         .padding(m.space.xl)

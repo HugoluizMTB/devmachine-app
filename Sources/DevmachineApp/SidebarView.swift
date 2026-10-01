@@ -10,6 +10,7 @@ struct SidebarView: View {
     @EnvironmentObject var savedCommands: RecentCommandStore
     @Environment(\.openWindow) private var openWindow
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
+    @ObservedObject private var readiness = MachineReadinessStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -42,10 +43,21 @@ struct SidebarView: View {
                     filesButton: !ws.isLocal,
                     extraTopSpacing: index > 0
                 )
+                if let machine = readinessCardMachine(for: ws) {
+                    MachineReadinessCard(store: readiness, machine: machine, compact: true)
+                        .dmSurface(Color.dmBand, radius: DMRadius.panel)
+                        .padding(.horizontal, m.space.md)
+                        .padding(.vertical, m.space.xs)
+                }
                 if ws.isLocal {
                     ForEach(model.localSessions) { s in
                         localSessionRow(session: s)
                     }
+                } else if let problem = model.sessionProblems[ws.alias],
+                          (model.sessionsByAlias[ws.alias] ?? []).isEmpty {
+                    SessionProblemView(
+                        presentation: problem.presentation(workspace: ws.name),
+                        retry: { model.refresh(alias: ws.alias) })
                 } else if model.showsSessionSkeleton(alias: ws.alias) {
                     SidebarSkeleton.sessionRows(count: 2, seed: index)
                         .transition(.opacity)
@@ -57,6 +69,16 @@ struct SidebarView: View {
             }
         }
         .padding(.vertical, m.space.sm)
+    }
+
+    /// A machine that needs Prepare gets its card once, under the first of
+    /// its workspaces the sidebar shows.
+    private func readinessCardMachine(for workspace: Workspace) -> String? {
+        guard !workspace.isLocal, let machine = readiness.machine(forWorkspace: workspace.name),
+              readiness.state(for: machine).needsAttention || readiness.jobs[machine] != nil
+        else { return nil }
+        let first = model.visibleWorkspaces.first { readiness.machine(forWorkspace: $0.name) == machine }
+        return first?.alias == workspace.alias ? machine : nil
     }
 
     private var footerRow: some View {

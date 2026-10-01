@@ -5,14 +5,19 @@ import SwiftUI
 /// that takes them all.
 struct DMCommandBlock: View {
     let lines: [String]
+    /// A narrow place (the sidebar) wraps a long command instead of cutting
+    /// its middle out, which would hide the part that matters.
+    var wraps = false
     @Environment(\.dmMetrics) private var m
 
-    init(_ lines: [String]) {
+    init(_ lines: [String], wraps: Bool = false) {
         self.lines = lines
+        self.wraps = wraps
     }
 
-    init(_ command: String) {
+    init(_ command: String, wraps: Bool = false) {
         self.lines = [command]
+        self.wraps = wraps
     }
 
     var body: some View {
@@ -22,8 +27,9 @@ struct DMCommandBlock: View {
                     Text(verbatim: line)
                         .font(.dm(11.5, design: .monospaced))
                         .foregroundStyle(Color.dmRowText)
-                        .lineLimit(1)
+                        .lineLimit(wraps ? nil : 1)
                         .truncationMode(.middle)
+                        .fixedSize(horizontal: false, vertical: wraps)
                 }
             }
             .textSelection(.enabled)

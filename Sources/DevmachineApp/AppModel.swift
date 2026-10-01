@@ -376,10 +376,9 @@ final class AppModel: ObservableObject {
     /// admin machine, base domain, and workspace aliases Setup shows
     /// read-only instead of asking the person to type them.
     @Published private(set) var detected: CLIDetectedSettings = .empty
-    /// Gates the main UI the same way `cliMissing` does, once the CLI itself
-    /// is found: stats, Caddy logs and subdomain logs all need the
-    /// `devmachine-app` package on the admin machine.
-    @Published private(set) var packageGate: PackageGateState = .ok
+    /// Why a workspace's session list could not be read, shown in its place
+    /// instead of an empty list. Cleared by the next list that answers.
+    @Published private(set) var sessionProblems: [String: SessionProblem] = [:]
     /// Whether the sidebar's Subdomains icon has anything to show for: at
     /// least one configured machine has Caddy. Starts `true` so the icon does
     /// not flash away before the first check answers.
@@ -1303,7 +1302,6 @@ final class AppModel: ObservableObject {
     private func seedDemoState() {
         cliMissing = false
         settings = .empty
-        packageGate = .ok
         hasCaddyMachine = true
         activePage = nil
         guard !DemoMode.holdsLoading else { return }
@@ -1356,6 +1354,57 @@ final class AppModel: ObservableObject {
         }
     }
 
+    #if DEBUG
+    func seedDemoSessionProblem(_ problem: SessionProblem?, alias: String) {
+        sessionProblems[alias] = problem
+        if problem != nil { sessionsByAlias[alias] = [] }
+    }
+    #endif
+
+    /// The CLI's configuration changed while the app was open: a machine or
+    /// workspace added, an alias written. The workspace list and aliases are
+    /// read again, off the main thread, and a new workspace is polled at once.
+    func reloadConfiguration() {
+        guard let settings, hasLoadedWorkspaces, !DemoMode.isActive else { return }
+        let source = services.workspaceSource
+        Task {
+            let detected = await Task.detached {
+                CLIAutoDetect.detect(cli: { try DevmachineCLI.resolve() })
+            }.value
+            var settingsWithAliases = self.settings ?? settings
+            settingsWithAliases.workspaceAliases = detected.workspaceAliases
+            let resolved = settingsWithAliases
+            let next = await Task.detached {
+                (try? source.workspaces(resolveAlias: { resolved.hostAlias(forWorkspace: $0) })) ?? []
+            }.value
+            if self.detected != detected { self.detected = detected }
+            if self.settings != settingsWithAliases { self.settings = settingsWithAliases }
+            guard !next.isEmpty, next != self.workspaces else { return }
+            let known = Set(self.workspaces.map(\.alias))
+            self.workspaces = next
+            for workspace in next where !known.contains(workspace.alias) {
+                self.sessionProblems[workspace.alias] = nil
+                self.refresh(alias: workspace.alias)
+            }
+        }
+        Task {
+            let hasCaddy = await Task.detached {
+                CaddyAvailabilityChecker.check(cli: { try DevmachineCLI.resolve() })
+            }.value
+            if let hasCaddy { self.hasCaddyMachine = hasCaddy }
+        }
+    }
+
+    /// A machine was just prepared: its workspaces are listed again now
+    /// rather than at the next sweep.
+    func refreshWorkspaces(onMachine machine: String) {
+        let readiness = MachineReadinessStore.shared
+        for workspace in visibleWorkspaces where readiness.machine(forWorkspace: workspace.name) == machine {
+            refresh(alias: workspace.alias)
+        }
+        syncContext()
+    }
+
     /// The last session list each workspace answered, drawn at launch so the
     /// sidebar is full before the first sweep. The sweep replaces it within
     /// seconds, one workspace at a time.
@@ -1367,16 +1416,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Runs at launch (`loadWorkspaces`) and from the package gate page's
-    /// "Check again" button. Fails open: a `packages` read that itself fails
-    /// leaves the gate as it was rather than blocking the app on a flaky CLI.
+    /// Runs at launch (`loadWorkspaces`) and whenever the CLI's
+    /// configuration changes. Both checks fail open: a read that itself fails
+    /// leaves things as they were rather than blocking the app on a flaky CLI.
     func checkPackageGate() {
-        Task {
-            let state = await Task.detached {
-                PackageGateChecker.check(cli: { try DevmachineCLI.resolve() })
-            }.value
-            self.packageGate = state
-        }
+        MachineReadinessStore.shared.requestCheck()
         Task {
             let hasCaddy = await Task.detached {
                 CaddyAvailabilityChecker.check(cli: { try DevmachineCLI.resolve() })
@@ -1421,6 +1465,10 @@ final class AppModel: ObservableObject {
                 if stopped == .unreachable {
                     for ws in unreached where !self.offlineAliases.contains(ws.alias) {
                         self.offlineAliases.insert(ws.alias)
+                    }
+                    for ws in unreached where self.sessionProblems[ws.alias] == nil {
+                        self.sessionProblems[ws.alias] = .unreachable(
+                            detail: "Not asked: an earlier workspace on the same host could not be reached.")
                     }
                 }
                 for ws in unreached { self.markAnswered(ws.alias) }
@@ -1470,9 +1518,19 @@ final class AppModel: ObservableObject {
             if offlineAliases.contains(alias) {
                 offlineAliases.remove(alias)
             }
+            if sessionProblems[alias] != nil { sessionProblems[alias] = nil }
             syncContext()
             return nil
         case .failure(let error):
+            let problem = SessionProblem(error)
+            if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
+            // One workspace's own problem (no alias, no tmux): the host may be
+            // fine, and every other workspace on it still polls.
+            if error is SessionListError {
+                offlineAliases.remove(alias)
+                syncContext()
+                return nil
+            }
             let failure = (error as? SessionStoreError)?.failure
             // Red means the host does not answer. A login this Mac cannot sign
             // — a locked agent after waking — says nothing about the host, and

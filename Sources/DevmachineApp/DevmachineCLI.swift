@@ -75,6 +75,24 @@ struct CLIConfigShow: Decodable, Equatable, Sendable {
     let machines: [CLIConfigMachine]
     let workspaces: [CLIConfigWorkspace]
     let domain: String
+
+    enum CodingKeys: String, CodingKey {
+        case machines, workspaces, domain
+    }
+
+    init(machines: [CLIConfigMachine], workspaces: [CLIConfigWorkspace], domain: String) {
+        self.machines = machines
+        self.workspaces = workspaces
+        self.domain = domain
+    }
+
+    /// The CLI leaves out `domain` and `workspaces` when none is set.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        machines = try c.decodeIfPresent([CLIConfigMachine].self, forKey: .machines) ?? []
+        workspaces = try c.decodeIfPresent([CLIConfigWorkspace].self, forKey: .workspaces) ?? []
+        domain = try c.decodeIfPresent(String.self, forKey: .domain) ?? ""
+    }
 }
 
 /// One entry of `devmachine --format json aliases` — the exact ssh host
@@ -91,6 +109,44 @@ private struct CLIAliasList: Decodable {
     let aliases: [CLIAlias]
 }
 
+/// `aliases` plus whether the CLI writes them into the SSH configuration.
+/// With `sshAliases` false nothing was ever written, so `ssh <alias>` has no
+/// Host entry to find.
+struct CLIAliasListing: Decodable, Equatable, Sendable {
+    let aliases: [CLIAlias]
+    let sshAliases: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case aliases
+        case sshAliases = "ssh_aliases"
+    }
+}
+
+/// Every failed call into the `devmachine-app` package is announced here, so
+/// the machine readiness check hears about a missing or old package from
+/// whichever feature met it first.
+enum PackageCallReports {
+    static let notification = Notification.Name("DevmachinePackageCallFailed")
+
+    struct Report: Equatable, Sendable {
+        let machine: String?
+        let workspace: String?
+        let detail: String
+    }
+
+    static func post(machine: String? = nil, workspace: String? = nil, detail: String) {
+        var info: [String: String] = ["detail": detail]
+        info["machine"] = machine
+        info["workspace"] = workspace
+        NotificationCenter.default.post(name: notification, object: nil, userInfo: info)
+    }
+
+    static func report(from notification: Notification) -> Report? {
+        guard let info = notification.userInfo as? [String: String], let detail = info["detail"] else { return nil }
+        return Report(machine: info["machine"], workspace: info["workspace"], detail: detail)
+    }
+}
+
 /// One entry of `packages list`: `installedOn` reads like `"machine devmachine"`
 /// or `"workspace acme"`.
 struct CLIPackage: Codable, Equatable, Sendable {
@@ -101,6 +157,21 @@ struct CLIPackage: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case name, scope
         case installedOn = "installed_on"
+    }
+
+    init(name: String, scope: String, installedOn: [String]) {
+        self.name = name
+        self.scope = scope
+        self.installedOn = installedOn
+    }
+
+    /// A package the configuration asks for that no recipe provides comes
+    /// back with no scope; one such row must not fail the whole list.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        scope = try c.decodeIfPresent(String.self, forKey: .scope) ?? ""
+        installedOn = try c.decodeIfPresent([String].self, forKey: .installedOn) ?? []
     }
 
     func isInstalled(onMachine machine: String) -> Bool {
@@ -196,6 +267,7 @@ struct DevmachineCLI: Sendable {
         let paths = [injected].compactMap { $0 } + [
             "/opt/homebrew/bin/devmachine",
             "/usr/local/bin/devmachine",
+            CLIInstallPlan.installerBinary(home: NSHomeDirectory()),
         ]
         guard let executable = paths.first(where: exists) else {
             throw DevmachineCLIError.executableNotFound(paths)
@@ -378,6 +450,16 @@ struct DevmachineCLI: Sendable {
         return try JSONDecoder().decode(CLIAliasList.self, from: Data(result.stdout.utf8)).aliases
     }
 
+    func aliasListing() throws -> CLIAliasListing {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "aliases"],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLIAliasListing.self, from: Data(result.stdout.utf8))
+    }
+
     /// Every package the CLI knows about, and which machine or workspace has
     /// it — used to check whether a machine has `devmachine-app` before the
     /// app relies on it for stats or Caddy logs.
@@ -431,7 +513,7 @@ struct DevmachineCLI: Sendable {
             args: ["run", "--machine", machine, "--package", package, "--"] + args,
             environment: environment()
         )
-        try requireSuccess(result)
+        try requireSuccess(result, reportingAs: package == MachinePrepare.package ? (machine, nil) : nil)
         return result.stdout
     }
 
@@ -503,7 +585,7 @@ struct DevmachineCLI: Sendable {
             ],
             environment: environment()
         )
-        try requireSuccess(result)
+        try requireSuccess(result, reportingAs: (nil, workspace))
         return result.stdout
     }
 
@@ -517,7 +599,7 @@ struct DevmachineCLI: Sendable {
             ],
             environment: environment()
         )
-        try requireSuccess(result)
+        try requireSuccess(result, reportingAs: (machine, nil))
         return result.stdout
     }
 
@@ -533,9 +615,15 @@ struct DevmachineCLI: Sendable {
         return environment
     }
 
-    private func requireSuccess(_ result: (stdout: String, stderr: String, exitCode: Int32)) throws {
+    private func requireSuccess(
+        _ result: (stdout: String, stderr: String, exitCode: Int32),
+        reportingAs package: (machine: String?, workspace: String?)? = nil
+    ) throws {
         guard result.exitCode == 0 else {
             let detail = result.stderr.isEmpty ? result.stdout : result.stderr
+            if let package {
+                PackageCallReports.post(machine: package.machine, workspace: package.workspace, detail: detail)
+            }
             throw DevmachineCLIError.commandFailed(detail.isEmpty ? "Devmachine CLI failed." : detail)
         }
     }

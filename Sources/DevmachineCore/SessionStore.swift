@@ -16,6 +16,10 @@ public struct SessionStore: Sendable {
             args: RemoteCommands.sshBaseArgs(alias: workspace.alias) + [RemoteCommands.listSessions],
             environment: RemoteCommands.sshEnvironment()
         )
+        if let problem = SessionListProblem.classify(
+            alias: workspace.alias, exitCode: result.exitCode, stderr: result.stderr) {
+            throw SessionListError(problem: problem, stderr: result.stderr)
+        }
         if let failure = SSHFailure.classify(exitCode: result.exitCode, stderr: result.stderr) {
             throw SessionStoreError(failure: failure, stderr: result.stderr)
         }
@@ -46,4 +50,38 @@ public enum SSHFailure: Equatable, Sendable {
 public struct SessionStoreError: Error, Equatable {
     public let failure: SSHFailure
     public let stderr: String
+
+    public init(failure: SSHFailure, stderr: String) {
+        self.failure = failure
+        self.stderr = stderr
+    }
+}
+
+/// A session list that failed for one workspace only, so it never stops the
+/// sweep or pauses polling the way an ssh-level failure does.
+public enum SessionListProblem: Equatable, Sendable {
+    /// ssh has no Host entry for the alias: it tried to look the alias up
+    /// as a hostname. An entry names its real host or a proxy, never itself.
+    case aliasMissing(alias: String)
+    /// The login worked and the shell has no tmux (exit 127).
+    case tmuxMissing
+
+    public static func classify(alias: String, exitCode: Int32, stderr: String) -> SessionListProblem? {
+        if exitCode == 255,
+           stderr.lowercased().contains("could not resolve hostname \(alias.lowercased()):") {
+            return .aliasMissing(alias: alias)
+        }
+        if exitCode == 127 { return .tmuxMissing }
+        return nil
+    }
+}
+
+public struct SessionListError: Error, Equatable {
+    public let problem: SessionListProblem
+    public let stderr: String
+
+    public init(problem: SessionListProblem, stderr: String) {
+        self.problem = problem
+        self.stderr = stderr
+    }
 }

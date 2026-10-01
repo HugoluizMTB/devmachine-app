@@ -20,16 +20,14 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Onboarding owns the whole window, the same way Setup does:
-            // nothing else starts (no sweep, no stats, no context) until
-            // Homebrew, the CLI, a configured machine and the devmachine-app
-            // package are all in place.
+            // Onboarding owns the whole window while the CLI is missing: nothing
+            // else starts (no sweep, no stats, no context) until it is found.
+            // A machine without the devmachine-app package does not block the
+            // app; that machine gets its own Prepare card instead.
             if model.cliMissing {
                 OnboardingPage(onFinished: {
                     model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
                 })
-            } else if settingsStore.isConfigured, case let .missing(machines) = model.packageGate {
-                OnboardingPage(initialMachine: machines.first, onFinished: { model.checkPackageGate() })
             } else if model.activePage == .setup {
                 // `DemoSnapshots.setupInitialSection` only ever differs from
                 // `.connection` while the website's screenshot walk owns the

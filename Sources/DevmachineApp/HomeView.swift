@@ -70,6 +70,7 @@ struct HomeView: View {
     @EnvironmentObject var usage: HarnessUsageStore
     @EnvironmentObject var stats: StatsStore
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
+    @ObservedObject private var readiness = MachineReadinessStore.shared
 
     private var totalSessions: Int {
         model.sessionCount
@@ -200,8 +201,18 @@ struct HomeView: View {
         .dmGlass(radius: DMRadius.card, stroke: .white.opacity(0.15))
     }
 
-    @ViewBuilder
     private var machinesSection: some View {
+        VStack(alignment: .leading, spacing: m.pt(14)) {
+            ForEach(readiness.machinesNeedingAttention, id: \.self) { machine in
+                MachineReadinessCard(store: readiness, machine: machine)
+                    .dmGlass(radius: DMRadius.panel, stroke: .white.opacity(0.15))
+            }
+            machineCards
+        }
+    }
+
+    @ViewBuilder
+    private var machineCards: some View {
         if !stats.machines.isEmpty {
             VStack(alignment: .leading, spacing: m.space.md) {
                 Text("MACHINES")

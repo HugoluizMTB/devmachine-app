@@ -66,6 +66,18 @@ struct DevmachineApp: App {
                 .onAppear {
                     let stats = statsStore
                     caddyStore.statsSnapshot = { stats.state(for: $0)?.snapshot }
+                    let readiness = MachineReadinessStore.shared
+                    readiness.onConfigurationChanged = { [weak model] in
+                        model?.reloadConfiguration()
+                        stats.loadMachines()
+                    }
+                    readiness.onPrepared = { [weak model] machine in
+                        model?.refreshWorkspaces(onMachine: machine)
+                        stats.refresh()
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    MachineReadinessStore.shared.requestCheckIfStale()
                 }
                 .onAppear {
                     DemoSnapshots.runIfNeeded(DemoSnapshots.Environment(
