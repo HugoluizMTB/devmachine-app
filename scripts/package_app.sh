@@ -21,6 +21,19 @@ cp wallpaper.jpg "$APP/Contents/Resources/wallpaper.jpg"
 cp Resources/wallpapers.json "$APP/Contents/Resources/wallpapers.json"
 cp -R Resources/HarnessIcons "$APP/Contents/Resources/HarnessIcons"
 
+# SwiftPM resource bundles left out of the app are found only on the Mac that
+# built it, through the build path baked into the binary.
+BIN="$(swift build -c release --show-bin-path)"
+for bundle in "$BIN"/*.bundle; do
+  cp -R "$bundle" "$APP/Contents/Resources/"
+done
+for name in HighlightSwift_HighlightSwift.bundle SwiftTerm_SwiftTerm.bundle; do
+  if [ ! -d "$APP/Contents/Resources/$name" ]; then
+    echo "missing resource bundle: $name" >&2
+    exit 1
+  fi
+done
+
 # icon: PNGs -> iconset -> icns
 ICONSET="build/AppIcon.iconset"
 mkdir -p "$ICONSET"

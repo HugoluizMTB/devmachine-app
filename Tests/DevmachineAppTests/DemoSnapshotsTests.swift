@@ -215,4 +215,15 @@ final class DemoSnapshotsTests: XCTestCase {
             XCTAssertEqual(DemoSnapshots.chrome(for: screen.id), .panel)
         }
     }
+
+    func testTheFileViewerWalkIsItsOwnSet() {
+        XCTAssertEqual(DemoSnapshots.fileViewerScreens.map(\.fileName), ["40-file-viewer.png"])
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "file-viewer"]).map(\.id),
+                       DemoSnapshots.fileViewerScreens.map(\.id))
+        XCTAssertEqual(DemoSnapshots.chrome(for: "file-viewer"), .panel)
+        let data = Data(DemoSnapshots.fileViewerCode.utf8)
+        let preview = FilePreviewReader.parse(
+            "\(data.count)\u{1e}" + data.base64EncodedString(), path: DemoSnapshots.fileViewerPath)
+        XCTAssertEqual(preview?.kind, .code(language: "swift"))
+    }
 }

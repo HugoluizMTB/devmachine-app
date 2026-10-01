@@ -64,7 +64,8 @@ enum DemoSnapshots {
         switch screenID {
         case "pull-requests", "publish-port", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
              "worktree-remove", "worktrees-merged", "worktree-foreign",
-             "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
+             "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
+             "file-viewer":
             return .panel
         default:
             return .window
@@ -180,12 +181,35 @@ enum DemoSnapshots {
         Screen(id: "update-toast-installed", fileName: "39-update-toast-installed.png", settleNanoseconds: 200_000_000),
     ]
 
+    /// The file viewer walk (`DEVMACHINE_DEMO_WALK=file-viewer`): a Swift file
+    /// in the viewer, highlighted. It is also the check that a packaged app
+    /// finds the highlighter's script inside its own bundle.
+    static let fileViewerScreens: [Screen] = [
+        Screen(id: "file-viewer", fileName: "40-file-viewer.png", settleNanoseconds: 200_000_000),
+    ]
+
+    static let fileViewerPath = "/home/acme/dash/Sources/Greeter.swift"
+
+    static let fileViewerCode = """
+        import Foundation
+
+        struct Greeter {
+            let name: String
+
+            func greet() -> String {
+                "Hello, \\(name)"
+            }
+        }
+
+        """
+
     static func walk(environment: [String: String] = ProcessInfo.processInfo.environment) -> [Screen] {
         if DemoMode.holdsLoading { return skeletonScreens }
         switch environment["DEVMACHINE_DEMO_WALK"] {
         case "worktrees": return worktreeScreens
         case "harness-icons": return harnessIconScreens
         case "update-toast": return updateToastScreens
+        case "file-viewer": return fileViewerScreens
         default: return screens
         }
     }
@@ -272,6 +296,8 @@ enum DemoSnapshots {
                 view = standaloneView(mergedWorktreesSheet, fittingSize: NSSize(width: 420, height: 360))
             case "worktree-foreign":
                 view = standaloneView(foreignWorktreeSheet, fittingSize: NSSize(width: 460, height: 560))
+            case "file-viewer":
+                view = await fileViewerView(model: environment.model)
             #if DEBUG
             case "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
                 view = await updateToastView(screen.id, model: environment.model)
@@ -440,6 +466,22 @@ enum DemoSnapshots {
             .background(Color.dmSidebarBg)
     }
 
+    private static func fileViewerView(model: AppModel) async -> NSView {
+        let data = Data(fileViewerCode.utf8)
+        let runner = DemoFileRunner(stdout: "\(data.count)\u{1e}" + data.base64EncodedString())
+        let store = FileViewerStore(
+            host: HostRunner(remote: RemoteService(runner: runner), local: DemoMode.runner))
+        store.open(.remote(alias: acmeAlias, session: "dash"), path: fileViewerPath)
+        for _ in 0..<50 where store.preview == nil {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let view = standaloneView(
+            FileViewerView().environmentObject(store).environmentObject(model),
+            fittingSize: NSSize(width: 620, height: 360), autosize: false)
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        return view
+    }
+
     #if DEBUG
     private static func updateToastView(_ id: String, model: AppModel) async -> NSView {
         let saved = DMFont.scale
@@ -538,5 +580,18 @@ enum DemoSnapshots {
         image.draw(in: NSRect(origin: .zero, size: size))
         NSGraphicsContext.restoreGraphicsState()
         return flattened
+    }
+}
+
+private struct DemoFileRunner: CommandRunner {
+    let stdout: String
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        stdout
+    }
+
+    func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        (stdout, "", 0)
     }
 }

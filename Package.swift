@@ -14,7 +14,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", revision: "9fc2d2fc627f291727e82d5449ec22df76320671"),
-        .package(url: "https://github.com/appstefan/HighlightSwift.git", from: "1.1.0"),
+        .package(path: "Packages/HighlightSwift"),
         .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0")
     ],
     targets: [
@@ -37,6 +37,10 @@ let package = Package(
         .testTarget(
             name: "HarnessUsageKitTests",
             dependencies: ["HarnessUsageKit"]
+        ),
+        .testTarget(
+            name: "HighlightSwiftTests",
+            dependencies: [.product(name: "HighlightSwift", package: "HighlightSwift")]
         ),
         .testTarget(
             name: "DevmachineAppTests",
