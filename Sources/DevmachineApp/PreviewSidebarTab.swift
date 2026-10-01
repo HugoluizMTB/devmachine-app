@@ -135,6 +135,10 @@ struct PreviewSidebarTab: View {
             trailing: {
                 HStack(spacing: m.space.sm) {
                     if refreshes {
+                        DMAgeLabel(
+                            since: targets.refreshedAt[place.key],
+                            staleAfter: CachePolicy.standard.ttl(for: .ports),
+                            isRefreshing: targets.isRefreshing(place))
                         DMIconButton(systemImage: "arrow.clockwise", size: 10, weight: .semibold) { load(force: true) }
                             .help("Look again")
                     }
@@ -214,10 +218,7 @@ struct PreviewSidebarTab: View {
     }
 
     private func load(force: Bool) {
-        let cached = Dictionary(uniqueKeysWithValues: stats.machines.compactMap { machine in
-            stats.state(for: machine.name)?.snapshot.map { (machine.name, $0) }
-        })
-        targets.load(place, cachedStats: cached, force: force)
+        targets.load(place, stats: stats, force: force)
     }
 
     private func takePendingFocus() {

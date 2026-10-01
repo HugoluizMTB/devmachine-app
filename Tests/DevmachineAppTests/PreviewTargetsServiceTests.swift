@@ -19,64 +19,119 @@ private final class ScriptedRunner: CommandRunner, @unchecked Sendable {
     var calls: [[String]] { lock.withLock { storedCalls } }
 }
 
+private final class ExposureCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    private var sites: [ExposedSite]
+
+    init(_ sites: [ExposedSite]) { self.sites = sites }
+
+    func list() -> ExposureListing {
+        lock.lock()
+        defer { lock.unlock() }
+        calls += 1
+        return ExposureListing(sites: sites, warning: nil)
+    }
+
+    func set(_ sites: [ExposedSite]) { lock.withLock { self.sites = sites } }
+    var count: Int { lock.withLock { calls } }
+}
+
 final class PreviewTargetsServiceTests: XCTestCase {
-    private static let workspaces = #"{"workspaces":[{"name":"acme","machine":"main","user":"acme","packages":[]}]}"#
-    private static let sites = #"[{"host":"app.acme.example.com","port":3000,"workspace":"acme","status":"published"}]"#
-    private static let stats = """
-    {"collected_at":"2026-09-30T12:00:00Z","memory":{"total_bytes":1,"used_bytes":1,"available_bytes":1},
-     "swap":{"total_bytes":0,"used_bytes":0},"disk":{"path":"/","used_bytes":1,"available_bytes":1,"used_percent":1},
-     "load":{"load1":0,"load5":0,"load15":0},"docker":{"available":false,"containers":[]},"users":[],
-     "ports":[{"port":5173,"owner":"acme"},{"port":4000,"owner":"beta"}],"errors":[]}
-    """
-
-    private func cliRunner() -> ScriptedRunner {
-        ScriptedRunner { args in
-            if args.contains("workspaces") { return Self.workspaces }
-            if args.contains("expose") { return Self.sites }
-            if args.contains("stats") { return Self.stats }
-            return ""
-        }
-    }
-
-    func testARemoteWorkspaceReadsItsMachinesSitesAndPorts() throws {
-        let runner = cliRunner()
-        let service = PreviewTargetsService(
-            cli: DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner),
-            localRunner: ScriptedRunner { _ in "" })
-
-        let targets = try service.targets(for: .workspace("acme"), cachedStats: [:])
-
-        XCTAssertEqual(targets.map(\.kind), [.site(host: "app.acme.example.com"), .port(5173)])
-        XCTAssertTrue(runner.calls.contains { $0.contains("--machine") && $0.contains("main") && $0.contains("expose") })
-    }
-
-    func testTheStatsAlreadyReadForTheMachineAreReused() throws {
-        let runner = cliRunner()
-        let service = PreviewTargetsService(
-            cli: DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner),
-            localRunner: ScriptedRunner { _ in "" })
-        let cached = try XCTUnwrap(StatsParser.parse(Self.stats))
-
-        _ = try service.targets(for: .workspace("acme"), cachedStats: ["main": cached])
-
-        XCTAssertFalse(runner.calls.contains { $0.contains("stats") })
-    }
-
-    func testAnUnknownWorkspaceIsAnError() {
-        let service = PreviewTargetsService(
-            cli: DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: cliRunner()),
-            localRunner: ScriptedRunner { _ in "" })
-
-        XCTAssertThrowsError(try service.targets(for: .workspace("beta"), cachedStats: [:]))
-    }
-
     func testThisMacListsWhatItListensOn() throws {
         let local = ScriptedRunner { _ in "p1\ncnode\nn*:5173\n" }
-        let service = PreviewTargetsService(cli: nil, localRunner: local)
+        let service = PreviewTargetsService(localRunner: local)
 
-        let targets = try service.targets(for: .thisMac, cachedStats: [:])
+        let targets = try service.localTargets()
 
         XCTAssertEqual(targets.map(\.kind), [.port(5173)])
         XCTAssertEqual(local.calls.first?.first, "/usr/sbin/lsof")
+    }
+}
+
+@MainActor
+final class PreviewTargetsStoreTests: XCTestCase {
+    private let acme = CLIWorkspace(name: "acme", machine: "main", user: "acme", packages: [])
+    private let site = ExposedSite(host: "app.acme.example.com", port: 3000, workspace: "acme", status: .published)
+
+    private func makeStore(cache: DataCache, exposures: ExposureCounter, workspaces: [CLIWorkspace]? = nil) -> PreviewTargetsStore {
+        let list = workspaces ?? [acme]
+        let data = WorkspaceMachineData(
+            cache: cache, listWorkspaces: { list }, listExposures: { _ in exposures.list() })
+        return PreviewTargetsStore(service: PreviewTargetsService(localRunner: ScriptedRunner { _ in "" }), data: data)
+    }
+
+    func testAWorkspaceDrawsFromTheCacheAndThePollersPortsWithoutAsking() {
+        let cache = DataCache()
+        cache.put(MachineDataKeys.workspaces, [acme])
+        cache.put(MachineDataKeys.sites("main"), ExposureListing(sites: [site], warning: nil))
+        let stats = FakePortStats()
+        stats.states["main"] = MachineStatsState(snapshot: portsSnapshot([5173], owner: "acme"), refreshedAt: Date())
+        let exposures = ExposureCounter([site])
+        let store = makeStore(cache: cache, exposures: exposures)
+
+        store.load(.workspace("acme"), stats: stats)
+
+        guard case let .loaded(targets) = store.phase(for: .workspace("acme")) else { return XCTFail("not loaded") }
+        XCTAssertEqual(targets.map(\.kind), [.site(host: "app.acme.example.com"), .port(5173)])
+        XCTAssertFalse(store.isRefreshing(.workspace("acme")))
+        XCTAssertEqual(exposures.count, 0)
+        XCTAssertTrue(stats.freshCalls.isEmpty)
+    }
+
+    func testWithNothingCachedItLoadsThenShowsTheList() async throws {
+        let stats = FakePortStats()
+        stats.fresh = portsSnapshot([5173], owner: "acme")
+        let exposures = ExposureCounter([site])
+        let store = makeStore(cache: DataCache(), exposures: exposures)
+
+        store.load(.workspace("acme"), stats: stats)
+        XCTAssertEqual(store.phase(for: .workspace("acme")), .loading)
+
+        try await eventuallyTrue { if case .loaded = store.phase(for: .workspace("acme")) { return true }; return false }
+        guard case let .loaded(targets) = store.phase(for: .workspace("acme")) else { return XCTFail("not loaded") }
+        XCTAssertEqual(targets.map(\.kind), [.site(host: "app.acme.example.com"), .port(5173)])
+        XCTAssertEqual(exposures.count, 1)
+    }
+
+    func testAnUnknownWorkspaceFails() async throws {
+        let store = makeStore(cache: DataCache(), exposures: ExposureCounter([]), workspaces: [])
+
+        store.load(.workspace("beta"), stats: FakePortStats())
+
+        try await eventuallyTrue { if case .failed = store.phase(for: .workspace("beta")) { return true }; return false }
+    }
+
+    func testANewListingInTheCacheReachesTheOpenPreviewAtOnce() {
+        let cache = DataCache()
+        cache.put(MachineDataKeys.workspaces, [acme])
+        cache.put(MachineDataKeys.sites("main"), ExposureListing(sites: [], warning: nil))
+        let stats = FakePortStats()
+        stats.states["main"] = MachineStatsState(snapshot: portsSnapshot([]), refreshedAt: Date())
+        let store = makeStore(cache: cache, exposures: ExposureCounter([]))
+        store.load(.workspace("acme"), stats: stats)
+
+        cache.put(MachineDataKeys.sites("main"), ExposureListing(sites: [site], warning: nil))
+
+        guard case let .loaded(targets) = store.phase(for: .workspace("acme")) else { return XCTFail("not loaded") }
+        XCTAssertEqual(targets.map(\.kind), [.site(host: "app.acme.example.com")])
+    }
+
+    func testRefreshReadsTheSitesAgainAndAsksThePollerForNewPorts() async throws {
+        let cache = DataCache()
+        cache.put(MachineDataKeys.workspaces, [acme])
+        cache.put(MachineDataKeys.sites("main"), ExposureListing(sites: [], warning: nil))
+        let stats = FakePortStats()
+        stats.states["main"] = MachineStatsState(snapshot: portsSnapshot([]), refreshedAt: Date())
+        let exposures = ExposureCounter([site])
+        let store = makeStore(cache: cache, exposures: exposures)
+
+        store.load(.workspace("acme"), stats: stats, force: true)
+
+        try await eventuallyTrue { !store.isRefreshing(.workspace("acme")) }
+        XCTAssertEqual(exposures.count, 1)
+        XCTAssertEqual(stats.freshCalls, ["main"])
+        guard case let .loaded(targets) = store.phase(for: .workspace("acme")) else { return XCTFail("not loaded") }
+        XCTAssertEqual(targets.map(\.kind), [.site(host: "app.acme.example.com")])
     }
 }
