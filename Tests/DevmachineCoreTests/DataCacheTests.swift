@@ -72,6 +72,24 @@ final class DataCacheTests: XCTestCase {
         XCTAssertEqual(second.cached(sites)?.fetchedAt, clock.now)
     }
 
+    func testAnUnchangedAnswerRewritesTheFileOnlyNowAndThen() {
+        let clock = Clock()
+        let file = CacheFile(fileURL: fileURL)
+        let cache = makeCache(clock: clock, file: file)
+        cache.put(sites, [Item(id: "a", value: 1)])
+        let written = clock.now
+
+        clock.advance(5)
+        cache.put(sites, [Item(id: "a", value: 1)])
+        cache.waitForPendingWrites()
+        XCTAssertEqual(file.load().first?.fetchedAt, written)
+
+        clock.advance(30)
+        cache.put(sites, [Item(id: "a", value: 1)])
+        cache.waitForPendingWrites()
+        XCTAssertEqual(file.load().first?.fetchedAt, clock.now)
+    }
+
     func testACorruptFileIsIgnored() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data("{ not json".utf8).write(to: fileURL)

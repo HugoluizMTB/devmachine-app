@@ -24,7 +24,11 @@ enum ContextLoadStatus: Equatable, Sendable {
 final class ContextStore: ObservableObject {
     @Published var state: ContextState? = nil
     @Published private(set) var status: ContextLoadStatus = .idle
+    /// Set while the context on screen came from the cache: a session seen
+    /// before shows its last context at once, and this says how old it is.
+    @Published private(set) var stateReadAt: Date?
     private let facade: ContextFacade
+    private let cache: DataCache
     private var timer: Timer?
     private var current: CommandTarget?
     private var harnesses: Set<HarnessID> = []
@@ -32,8 +36,9 @@ final class ContextStore: ObservableObject {
     private var inFlight: Set<String> = []
     private var generation = UUID()
 
-    init(services: DevmachineServices = DevmachineServices()) {
+    init(services: DevmachineServices = DevmachineServices(), cache: DataCache = DataCache()) {
         self.facade = ContextFacade(source: services.contextSource)
+        self.cache = cache
     }
 
     var isPolling: Bool { timer != nil }
@@ -49,8 +54,14 @@ final class ContextStore: ObservableObject {
         self.harnesses = harnesses
         self.settings = settings
         generation = UUID()
-        clearState()
-        setStatus(.loading)
+        if let cached = cache.cached(MachineDataKeys.context(target.key)) {
+            if state != cached.value { state = cached.value }
+            stateReadAt = cached.fetchedAt
+            setStatus(.loaded)
+        } else {
+            clearState()
+            setStatus(.loading)
+        }
         poll()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
@@ -99,20 +110,29 @@ final class ContextStore: ObservableObject {
                     return
                 }
                 guard self.current == target else { return }
-                self.publish(result)
+                self.publish(result, for: target)
             }
         }
     }
 
     /// A failed refresh keeps the last context on screen: it is still the
     /// best there is, and the panel says it is stale.
-    private func publish(_ result: Result<ContextState?, Error>) {
+    private func publish(_ result: Result<ContextState?, Error>, for target: CommandTarget) {
         switch result {
         case .success(let parsed):
             // Assign only on a real change: the poll repeats every 5s and
             // a write to a @Published re-renders even for equal data.
             if state != parsed {
                 state = parsed
+            }
+            if let parsed {
+                cache.put(MachineDataKeys.context(target.key), parsed)
+            }
+            // Only a context drawn from the cache has an age worth showing;
+            // a live poll is as new as it gets, and republishing its time
+            // every 5s would re-render the panel for nothing.
+            if stateReadAt != nil {
+                stateReadAt = nil
             }
             setStatus(parsed == nil ? .empty : .loaded)
         case .failure(let error):
@@ -129,6 +149,9 @@ final class ContextStore: ObservableObject {
     private func clearState() {
         if state != nil {
             state = nil
+        }
+        if stateReadAt != nil {
+            stateReadAt = nil
         }
     }
 }

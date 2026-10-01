@@ -6,7 +6,7 @@ import HarnessUsageKit
 @main
 struct DevmachineApp: App {
     private let harnessSettingsFacade: HarnessSettingsFacade
-    @StateObject private var model = AppModel()
+    @StateObject private var model = AppModel(cache: .shared)
     @StateObject private var prStore = PRStore()
     @StateObject private var filesStore = FilesStore()
     @StateObject private var caddyStore = CaddyStore(cache: .shared)

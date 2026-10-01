@@ -1039,6 +1039,23 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testCachedSessionsDrawAtLaunchThenTheSweepReplacesThem() async throws {
+        let workspace = Workspace(name: "acme", alias: "acme-devmachine")
+        let cache = DataCache()
+        cache.put(MachineDataKeys.sessions(workspace.alias), [TmuxSession(name: "cached", windows: 1, harnesses: [])])
+        let model = AppModel(services: fixtureServices(
+            workspaces: [workspace], sessions: [TmuxSession(name: "dash", windows: 1, harnesses: [])]), cache: cache)
+        model.settings = .empty
+
+        model.loadWorkspaces()
+
+        XCTAssertEqual(model.sessionsByAlias[workspace.alias]?.map(\.name), ["cached"])
+        XCTAssertFalse(model.showsSessionSkeleton(alias: workspace.alias))
+        try await waitUntil { model.sessionsByAlias[workspace.alias]?.map(\.name) == ["dash"] }
+        XCTAssertEqual(cache.cached(MachineDataKeys.sessions(workspace.alias))?.value.map(\.name), ["dash"])
+    }
+
+    @MainActor
     func testARefreshAfterSessionsArrivedNeverBringsTheSkeletonBack() async throws {
         let workspace = Workspace(name: "acme", alias: "acme-devmachine")
         let model = AppModel(services: fixtureServices(

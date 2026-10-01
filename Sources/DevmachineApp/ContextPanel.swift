@@ -124,6 +124,11 @@ struct ContextPanel: View {
             // An overlay, not a row above the list: a failed poll every 5s on a
             // flaky link would otherwise push the whole list down and back.
             .overlay(alignment: .bottom) { staleBanner }
+            .overlay(alignment: .topTrailing) {
+                DMAgeLabel(since: store.stateReadAt, staleAfter: 30)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
+            }
             .transition(.opacity)
         } else {
             contextStatus

@@ -148,6 +148,10 @@ public final class DataCache {
     private var inFlight: [String: Task<any Sendable, Error>] = [:]
     private var background: [UUID: Task<Void, Never>] = [:]
     private var observers: [@MainActor (CacheEntryID) -> Void] = []
+    private var lastPersist: Date?
+    /// A poll that keeps answering the same thing only moves the age; the
+    /// file is rewritten for that at most this often.
+    private let unchangedPersistInterval: TimeInterval = 30
     private let writeQueue = DispatchQueue(label: "app.devmachine.datacache.write")
 
     public init(file: CacheFile? = nil, policy: CachePolicy = .standard, now: @escaping @MainActor () -> Date = { Date() }) {
@@ -290,10 +294,13 @@ public final class DataCache {
         }
         slots[key.id] = slot
         prune(key.kind)
-        if previous != value {
+        let changed = previous != value
+        if changed {
             for observer in observers { observer(key.entry) }
         }
-        persist()
+        if changed || lastPersist.map({ now().timeIntervalSince($0) >= unchangedPersistInterval }) ?? true {
+            persist()
+        }
     }
 
     private func cachedValueIgnoringShape<V: Decodable>(_ key: CacheKey<V>) -> V? {
@@ -331,6 +338,7 @@ public final class DataCache {
 
     private func persist() {
         guard let file else { return }
+        lastPersist = now()
         let entries = slots.values.compactMap { slot -> CacheFileEntry? in
             guard let payload = slot.payload else { return nil }
             return CacheFileEntry(kind: slot.kind.rawValue, scope: slot.scope, fetchedAt: slot.fetchedAt, payload: payload)

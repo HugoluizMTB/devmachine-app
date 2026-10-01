@@ -29,6 +29,43 @@ final class ContextStoreTests: XCTestCase {
         XCTAssertEqual(source.calls, [remote])
     }
 
+    func testASessionReadBeforeShowsItsContextAtOnceWhileItReadsAgain() async throws {
+        let cache = DataCache()
+        let first = ContextStore(services: fixtureServices(context: FixtureContextSource(state: state)), cache: cache)
+        first.start(remote)
+        try await waitUntil { first.state != nil }
+        first.stop()
+
+        let source = FixtureContextSource(state: state, blocked: true)
+        let store = ContextStore(services: fixtureServices(context: source), cache: cache)
+        defer { store.stop() }
+        store.start(remote)
+
+        XCTAssertEqual(store.state, state)
+        XCTAssertFalse(store.showsSkeleton)
+        XCTAssertEqual(store.status, .loaded)
+        XCTAssertNotNil(store.stateReadAt)
+        try await waitUntil { source.calls.count == 1 }
+        source.gate?.signal()
+        try await waitUntil { store.stateReadAt == nil }
+    }
+
+    func testSwitchingBackToASessionNeverBlanksItsContext() async throws {
+        let other = ContextState(cwd: "/Users/alice/dev/beta", isClaude: true, updatedAt: "now", plan: nil, prs: [], links: [])
+        let source = FixtureContextSource(state: state)
+        let store = ContextStore(services: fixtureServices(context: source), cache: DataCache())
+        defer { store.stop() }
+        store.start(remote)
+        try await waitUntil { store.state == state }
+        source.state = other
+        store.start(local)
+        try await waitUntil { store.state == other }
+
+        store.start(remote)
+
+        XCTAssertEqual(store.state, state)
+    }
+
     func testPollWithSameStateDoesNotRepublish() async throws {
         let source = FixtureContextSource(state: state)
         let store = ContextStore(services: fixtureServices(context: source))

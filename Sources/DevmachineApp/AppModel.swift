@@ -446,6 +446,7 @@ final class AppModel: ObservableObject {
         }
     }
     let context: ContextStore
+    let cache: DataCache
 
     private let store: SessionStore
     private let services: DevmachineServices
@@ -502,8 +503,10 @@ final class AppModel: ObservableObject {
         cliAvailabilityCheck: @escaping @Sendable () -> Bool = {
             (try? DevmachineCLI.resolve()) != nil
         },
-        defaults: UserDefaults = AppModel.defaultDefaults()
+        defaults: UserDefaults = AppModel.defaultDefaults(),
+        cache: DataCache = DataCache()
     ) {
+        self.cache = cache
         self.store = store
         self.defaults = defaults
         self.addedLocalSessions = AppModel.readLocalSessions(from: defaults)
@@ -512,7 +515,7 @@ final class AppModel: ObservableObject {
             store: store, localRunner: localRunner, zmxPath: zmxPath,
             facade: SessionHarnessFacade(registry: harnessSettingsFacade.registry)))
         self.services = services
-        self.context = ContextStore(services: services)
+        self.context = ContextStore(services: services, cache: cache)
         self.harnessSettingsFacade = harnessSettingsFacade
         self.sessionHarnessFacade = SessionHarnessFacade(registry: harnessSettingsFacade.registry)
         self.localRunner = localRunner
@@ -1337,6 +1340,7 @@ final class AppModel: ObservableObject {
         workspaces = (try? services.workspaceSource.workspaces(
             resolveAlias: { settingsWithAliases.hostAlias(forWorkspace: $0) })) ?? []
         hasLoadedWorkspaces = true
+        showCachedSessions()
         refreshAll()
         checkPackageGate()
         // A slow sweep of every workspace so an offline one comes back on its
@@ -1349,6 +1353,17 @@ final class AppModel: ObservableObject {
         localScanTimer?.invalidate()
         localScanTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.scanLocalSessions() }
+        }
+    }
+
+    /// The last session list each workspace answered, drawn at launch so the
+    /// sidebar is full before the first sweep. The sweep replaces it within
+    /// seconds, one workspace at a time.
+    private func showCachedSessions() {
+        for workspace in visibleWorkspaces where sessionsByAlias[workspace.alias] == nil {
+            guard let cached = cache.cached(MachineDataKeys.sessions(workspace.alias)) else { continue }
+            sessionsByAlias[workspace.alias] = cached.value
+            markAnswered(workspace.alias)
         }
     }
 
@@ -1451,6 +1466,7 @@ final class AppModel: ObservableObject {
                 sessionsByAlias[alias] = result
                 dropMissingSessions(alias: alias, present: result)
             }
+            cache.put(MachineDataKeys.sessions(alias), result)
             if offlineAliases.contains(alias) {
                 offlineAliases.remove(alias)
             }

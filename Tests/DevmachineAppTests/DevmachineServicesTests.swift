@@ -77,13 +77,18 @@ final class FixtureContextSource: ContextSource, @unchecked Sendable {
     private let lock = NSLock()
     private var targets: [CommandTarget] = []
     private var error: Error?
-    let state: ContextState?
+    private var storedState: ContextState?
     let gate: DispatchSemaphore?
 
     init(state: ContextState? = nil, failure: Error? = nil, blocked: Bool = false) {
-        self.state = state
+        storedState = state
         error = failure
         gate = blocked ? DispatchSemaphore(value: 0) : nil
+    }
+
+    var state: ContextState? {
+        get { lock.lock(); defer { lock.unlock() }; return storedState }
+        set { lock.lock(); storedState = newValue; lock.unlock() }
     }
 
     var failure: Error? {
