@@ -203,6 +203,27 @@ enum DemoSnapshots {
 
         """
 
+    /// The sizing walk (`DEVMACHINE_DEMO_WALK=sizing`): the screens a text
+    /// size change touches most, run once per `DEVMACHINE_DEMO_UI_SCALE`.
+    static let sizingScreens: [Screen] = [
+        Screen(id: "sessions", fileName: "40-sidebar.png", settleNanoseconds: 900_000_000),
+        Screen(id: "session-claude", fileName: "41-context-panel.png", settleNanoseconds: 700_000_000),
+        Screen(id: "session-defaults", fileName: "42-settings-harnesses.png", settleNanoseconds: 500_000_000),
+        Screen(id: "subdomains-sites", fileName: "43-subdomains.png", settleNanoseconds: 700_000_000),
+        Screen(id: "stats", fileName: "44-stats.png", settleNanoseconds: 700_000_000),
+        Screen(id: "update-toast", fileName: "45-update-toast.png", settleNanoseconds: 200_000_000),
+        Screen(id: "publish-port", fileName: "46-add-subdomain.png", settleNanoseconds: 400_000_000),
+        Screen(id: "command-palette", fileName: "47-command-palette.png", settleNanoseconds: 600_000_000),
+    ]
+
+    /// `DEVMACHINE_DEMO_UI_SCALE=1.6` captures a walk at that text size.
+    static func uiScale(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Double? {
+        guard let raw = environment["DEVMACHINE_DEMO_UI_SCALE"], let value = Double(raw) else { return nil }
+        return Appearance.clampUIFontScale(value)
+    }
+
     static func walk(environment: [String: String] = ProcessInfo.processInfo.environment) -> [Screen] {
         if DemoMode.holdsLoading { return skeletonScreens }
         switch environment["DEVMACHINE_DEMO_WALK"] {
@@ -210,6 +231,7 @@ enum DemoSnapshots {
         case "harness-icons": return harnessIconScreens
         case "update-toast": return updateToastScreens
         case "file-viewer": return fileViewerScreens
+        case "sizing": return sizingScreens
         default: return screens
         }
     }
@@ -250,6 +272,7 @@ enum DemoSnapshots {
         // crisper for a screenshot than that ambient wash.
         var settings = environment.settingsStore.settings ?? .empty
         settings.terminalOpacity = 1
+        if let scale = uiScale() { settings.uiFontScale = scale }
         environment.settingsStore.settings = settings
         environment.model.settings = settings
 
@@ -486,7 +509,7 @@ enum DemoSnapshots {
     private static func updateToastView(_ id: String, model: AppModel) async -> NSView {
         let saved = DMFont.scale
         defer { DMFont.scale = saved }
-        DMFont.scale = id == "update-toast" ? 1 : Appearance.uiFontScaleRange.upperBound
+        DMFont.scale = id == "update-toast" ? uiScale() ?? 1 : Appearance.uiFontScaleRange.upperBound
         let state: DemoUpdateToasts.State
         switch id {
         case "update-toast-relaunching": state = .relaunching

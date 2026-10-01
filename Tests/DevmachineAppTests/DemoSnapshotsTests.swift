@@ -197,6 +197,23 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(DemoSnapshots.walk(environment: [:]).map(\.id), DemoSnapshots.screens.map(\.id))
     }
 
+    func testTheSizingWalkCapturesEveryScreenATextSizeChangeTouches() {
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "sizing"]).map(\.id), [
+            "sessions", "session-claude", "session-defaults", "subdomains-sites", "stats",
+            "update-toast", "publish-port", "command-palette",
+        ])
+        let names = DemoSnapshots.sizingScreens.map(\.fileName)
+        XCTAssertEqual(Set(names).count, names.count)
+        XCTAssertTrue(names.allSatisfy { $0.hasPrefix("4") })
+    }
+
+    func testTheTextSizeOfAWalkComesFromTheEnvironmentAndStaysInRange() {
+        XCTAssertNil(DemoSnapshots.uiScale(environment: [:]))
+        XCTAssertNil(DemoSnapshots.uiScale(environment: ["DEVMACHINE_DEMO_UI_SCALE": "big"]))
+        XCTAssertEqual(DemoSnapshots.uiScale(environment: ["DEVMACHINE_DEMO_UI_SCALE": "1.6"]), 1.6)
+        XCTAssertEqual(DemoSnapshots.uiScale(environment: ["DEVMACHINE_DEMO_UI_SCALE": "3"]), 1.6)
+    }
+
     func testTheHarnessIconWalkCapturesTheSidebarOnItsOwn() {
         XCTAssertEqual(DemoSnapshots.harnessIconScreens.map(\.fileName), ["35-sidebar-harness-icons.png"])
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "harness-icons"]).map(\.id),
