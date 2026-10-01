@@ -27,12 +27,13 @@ extension PRStateKind {
 struct DMPRStateIcon: View {
     let state: PRStateKind
     var size: CGFloat = 12
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
         Image(systemName: state.symbol)
             .font(.dm(size, weight: .semibold))
             .foregroundStyle(state.color)
-            .frame(width: size + 4)
+            .frame(width: m.pt(size + 4))
             .accessibilityLabel(Text(state.accessibilityLabel))
     }
 }

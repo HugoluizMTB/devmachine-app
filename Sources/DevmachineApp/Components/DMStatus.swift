@@ -13,10 +13,11 @@ struct DMStatusView: View {
     /// Pages center the state in all the room they have; a list that sits
     /// under a header keeps it near the top.
     var fillsHeight = true
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
         content
-            .padding(24)
+            .padding(m.space.xxl)
             .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil)
     }
 
@@ -24,14 +25,14 @@ struct DMStatusView: View {
     private var content: some View {
         switch kind {
         case .loading(let text):
-            VStack(spacing: 8) {
+            VStack(spacing: m.space.md) {
                 ProgressView()
                 caption(text)
             }
         case .empty(let systemImage, let text):
-            VStack(spacing: 8) {
+            VStack(spacing: m.space.md) {
                 Image(systemName: systemImage)
-                    .font(.title)
+                    .font(.dm(22))
                     .foregroundStyle(.secondary)
                 caption(text)
             }
@@ -56,9 +57,10 @@ struct DMBanner<Trailing: View>: View {
     var tint: Color = .orange
     var lineLimit: Int?
     @ViewBuilder var trailing: () -> Trailing
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: m.space.md) {
             Image(systemName: systemImage)
                 .foregroundStyle(tint)
             Text(message)
@@ -70,7 +72,7 @@ struct DMBanner<Trailing: View>: View {
             Spacer()
             trailing()
         }
-        .padding(10)
+        .padding(m.row.horizontal)
         .background(tint.opacity(0.12))
     }
 }

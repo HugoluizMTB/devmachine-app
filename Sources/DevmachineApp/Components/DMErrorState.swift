@@ -47,6 +47,7 @@ struct DMErrorStateView: View {
 
     @State private var copied = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dmMetrics) private var m
 
     static func disclosureTitle(expanded: Bool) -> String { expanded ? "Hide details" : "Show details" }
     static func disclosureValue(expanded: Bool) -> String { expanded ? "Expanded" : "Collapsed" }
@@ -55,12 +56,12 @@ struct DMErrorStateView: View {
     private static let longDetailsCharacters = 600
 
     var body: some View {
-        VStack(spacing: 12) {
-            VStack(spacing: 5) {
+        VStack(spacing: m.space.lg) {
+            VStack(spacing: m.pt(5)) {
                 Image(systemName: state.systemImage)
-                    .font(.dm(20, weight: .light))
+                    .font(.dm(DMIconSize.lg, weight: .light))
                     .foregroundStyle(Color.dmMuted)
-                    .padding(.bottom, 3)
+                    .padding(.bottom, m.pt(3))
                     .accessibilityHidden(true)
                 Text(verbatim: state.title)
                     .font(.dm(13, weight: .semibold))
@@ -76,8 +77,8 @@ struct DMErrorStateView: View {
             .accessibilityElement(children: .combine)
 
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) { actions }
-                VStack(spacing: 4) { actions }
+                HStack(spacing: m.space.sm) { actions }
+                VStack(spacing: m.space.xs) { actions }
             }
 
             if expanded {
@@ -85,7 +86,7 @@ struct DMErrorStateView: View {
                     .transition(.opacity)
             }
         }
-        .frame(maxWidth: 440)
+        .frame(maxWidth: m.card.errorState)
     }
 
     @ViewBuilder
@@ -119,21 +120,21 @@ struct DMErrorStateView: View {
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
-            .padding(.trailing, 26)
+            .padding(m.pt(10))
+            .padding(.trailing, m.pt(26))
         Group {
             if isLong {
                 ScrollView { text }
-                    .frame(height: 150)
+                    .frame(height: m.pt(150))
             } else {
                 text
             }
         }
-        .background(Color.dmBand, in: RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
+        .background(Color.dmBand, in: RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
         .overlay(alignment: .topTrailing) {
             DMButton(icon: copied ? "checkmark" : "doc.on.doc", label: copied ? "Copied" : "Copy error",
                      size: .small, action: copy)
-                .padding(4)
+                .padding(m.space.xs)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: "Error details"))

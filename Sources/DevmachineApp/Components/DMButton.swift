@@ -20,18 +20,31 @@ enum DMButtonSize: CaseIterable {
         let radius: CGFloat
     }
 
+    private static let regularIconGap: CGFloat = 5
+
+    /// The sizes at 100%. `fontSize` and `iconSize` are `.dm(_:)` sizes, which
+    /// scale on their own.
     var metrics: Metrics {
         switch self {
         case .small:
-            Metrics(height: 22, fontSize: 11, iconSize: 9.5, horizontalPadding: 8, spacing: 4,
-                    radius: DMRadius.row)
+            Metrics(height: DMControlHeight.small, fontSize: 11, iconSize: DMIconSize.xs,
+                    horizontalPadding: DMSpace.md, spacing: DMSpace.xs, radius: DMRadius.row)
         case .regular:
-            Metrics(height: 28, fontSize: 12.5, iconSize: 11, horizontalPadding: 12, spacing: 5,
-                    radius: DMRadius.control)
+            Metrics(height: DMControlHeight.regular, fontSize: 12.5, iconSize: DMIconSize.sm,
+                    horizontalPadding: DMSpace.lg, spacing: Self.regularIconGap, radius: DMRadius.control)
         case .large:
-            Metrics(height: 34, fontSize: 14, iconSize: 12.5, horizontalPadding: 16, spacing: 6,
-                    radius: DMRadius.tile)
+            Metrics(height: DMControlHeight.large, fontSize: 14, iconSize: DMIconSize.md,
+                    horizontalPadding: DMSpace.xl, spacing: DMSpace.sm, radius: DMRadius.tile)
         }
+    }
+
+    /// The box sizes at `m`; the font sizes stay as they are for `.dm(_:)`.
+    func metrics(in m: DMMetrics) -> Metrics {
+        let base = metrics
+        return Metrics(
+            height: m.pt(base.height), fontSize: base.fontSize, iconSize: base.iconSize,
+            horizontalPadding: m.pt(base.horizontalPadding), spacing: m.pt(base.spacing),
+            radius: m.pt(base.radius))
     }
 }
 
@@ -128,10 +141,11 @@ private struct DMButtonBody: View {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.isFocused) private var isFocused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dmMetrics) private var m
     @State private var hovering = false
 
     var body: some View {
-        let metrics = style.size.metrics
+        let metrics = style.size.metrics(in: m)
         let look = DMButtonAppearance(
             variant: style.variant,
             isEnabled: isEnabled || style.isLoading,
@@ -151,7 +165,7 @@ private struct DMButtonBody: View {
                 if style.isLoading {
                     ProgressView()
                         .controlSize(.small)
-                        .scaleEffect(metrics.height / 34)
+                        .scaleEffect(metrics.height / DMControlHeight.large)
                         .accessibilityHidden(true)
                 }
             }
@@ -171,7 +185,7 @@ private struct DMButtonBody: View {
             }
             .overlay {
                 if isFocused || style.simulated == .focused {
-                    shape.inset(by: -2.5).strokeBorder(Color.accentColor.opacity(0.85), lineWidth: 2)
+                    shape.inset(by: -m.pt(2.5)).strokeBorder(Color.accentColor.opacity(0.85), lineWidth: 2)
                 }
             }
             .contentShape(shape)

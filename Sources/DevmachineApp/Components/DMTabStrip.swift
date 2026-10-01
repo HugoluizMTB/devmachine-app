@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Horizontal pill tab bar shared by the menubar popover and the context panel.
 /// `grouped` sets the pills in one tinted track, a segmented control for a
-/// second level of tabs under a first.
+/// second level of tabs under a first. Sizes are points at 100%.
 struct DMTabStrip<Tab: Hashable>: View {
     let tabs: [Tab]
     @Binding var selection: Tab
@@ -14,14 +14,15 @@ struct DMTabStrip<Tab: Hashable>: View {
     var cornerRadius: CGFloat = DMRadius.control
     var spacing: CGFloat = 6
     var grouped = false
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
         HStack(spacing: 0) {
             buttons
-                .padding(grouped ? 3 : 0)
+                .padding(grouped ? m.pt(3) : 0)
                 .background {
                     if grouped {
-                        RoundedRectangle(cornerRadius: cornerRadius + 3, style: .continuous)
+                        RoundedRectangle(cornerRadius: m.pt(cornerRadius + 3), style: .continuous)
                             .fill(Color.dmHover)
                     }
                 }
@@ -31,7 +32,7 @@ struct DMTabStrip<Tab: Hashable>: View {
     }
 
     private var buttons: some View {
-        HStack(spacing: spacing) {
+        HStack(spacing: m.pt(spacing)) {
             ForEach(tabs, id: \.self) { tab in
                 DMTabButton(
                     title: title(tab),
@@ -58,6 +59,7 @@ private struct DMTabButton: View {
     let verticalPadding: CGFloat
     let cornerRadius: CGFloat
     let action: () -> Void
+    @Environment(\.dmMetrics) private var m
     @State private var hovering = false
 
     var body: some View {
@@ -65,10 +67,10 @@ private struct DMTabButton: View {
             label
                 .font(.dm(fontSize, weight: selected ? .semibold : .regular))
                 .foregroundStyle(selected ? Color.dmRowText : Color.dmMuted)
-                .padding(.vertical, verticalPadding)
-                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, m.pt(verticalPadding))
+                .padding(.horizontal, m.pt(horizontalPadding))
                 .background(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    RoundedRectangle(cornerRadius: m.pt(cornerRadius), style: .continuous)
                         .fill(backgroundFill)
                 )
         }

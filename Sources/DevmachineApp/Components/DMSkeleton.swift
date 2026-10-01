@@ -22,7 +22,8 @@ struct DMSkeleton<Content: View>: View {
 }
 
 /// How wide a skeleton bar is: all the room on offer, a share of it, or a
-/// fixed size for something that never stretches (an icon, a count).
+/// fixed size for something that never stretches (an icon, a count), in
+/// points at 100%.
 enum DMSkeletonWidth: Equatable {
     case fill
     case fraction(CGFloat)
@@ -34,20 +35,22 @@ enum DMSkeletonWidth: Equatable {
     }
 }
 
-/// One rounded bar.
+/// One rounded bar. `height` and `radius` are points at 100%.
 struct DMSkeletonBlock: View {
     var width: DMSkeletonWidth = .fill
     var height: CGFloat
     var radius: CGFloat = DMRadius.terminal
     var alignment: HorizontalAlignment = .leading
     @Environment(\.dmSkeletonMask) private var isMask
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
+        let height = m.pt(height)
         switch width {
         case .fill:
             bar.frame(maxWidth: .infinity).frame(height: height)
         case .fixed(let points):
-            bar.frame(width: points, height: height)
+            bar.frame(width: m.pt(points), height: height)
         case .fraction(let share):
             Color.clear
                 .frame(maxWidth: .infinity)
@@ -62,7 +65,7 @@ struct DMSkeletonBlock: View {
     }
 
     private var bar: some View {
-        RoundedRectangle(cornerRadius: radius, style: .continuous)
+        RoundedRectangle(cornerRadius: m.pt(radius), style: .continuous)
             .fill(isMask ? Color.black : Color.dmSkeleton)
     }
 }
@@ -74,6 +77,7 @@ struct DMSkeletonText: View {
     var weight: Font.Weight = .regular
     var width: DMSkeletonWidth = .fill
     var alignment: HorizontalAlignment = .leading
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
         Text(verbatim: " ")
@@ -83,28 +87,30 @@ struct DMSkeletonText: View {
             .frame(maxWidth: fixedWidth == nil ? .infinity : nil)
             .overlay(alignment: Alignment(horizontal: alignment, vertical: .center)) {
                 DMSkeletonBlock(
-                    width: width, height: (DMFont.size(size) * 0.72).rounded(), radius: 3,
+                    width: width, height: m.base((DMFont.size(size) * 0.72).rounded()), radius: 3,
                     alignment: alignment)
             }
     }
 
     private var fixedWidth: CGFloat? {
-        if case .fixed(let points) = width { return points }
+        if case .fixed(let points) = width { return m.pt(points) }
         return nil
     }
 }
 
 /// Repeats a placeholder row as many times as the height on offer holds, so a
 /// tall window is not half empty and a short one does not overflow.
+/// `rowHeight` is points at 100%.
 struct DMSkeletonRows<Row: View>: View {
     let rowHeight: CGFloat
     var minimum = 2
     var maximum = 40
     @ViewBuilder var row: (Int) -> Row
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
         GeometryReader { proxy in
-            let fits = Int(proxy.size.height / max(rowHeight, 1))
+            let fits = Int(proxy.size.height / max(m.pt(rowHeight), 1))
             let count = min(max(fits, minimum), maximum)
             VStack(spacing: 0) {
                 ForEach(0..<count, id: \.self) { index in

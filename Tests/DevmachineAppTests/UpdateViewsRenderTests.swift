@@ -100,30 +100,35 @@ final class UpdateViewsRenderTests: XCTestCase {
         let saved = DMFont.scale
         defer { DMFont.scale = saved }
 
-        for scale in [Appearance.uiFontScaleRange.lowerBound, 1, 1.3, Appearance.uiFontScaleRange.upperBound] {
+        for scale in DMFitCheck.scales {
             DMFont.scale = scale
-            let frame = laidOutFrame(
-                UpdateBannerActions(showNotes: {}, later: {}, update: {}), width: UpdateBanner.contentWidth)
+            let width = DMMetrics(scale: scale).card.banner
+            let frame = laidOutFrame(UpdateBannerActions(showNotes: {}, later: {}, update: {}), width: width)
             XCTAssertGreaterThan(frame.width, 0, "scale \(scale)")
             XCTAssertGreaterThanOrEqual(frame.minX, 0, "scale \(scale)")
-            XCTAssertLessThanOrEqual(frame.maxX, UpdateBanner.contentWidth, "scale \(scale)")
+            XCTAssertLessThanOrEqual(frame.maxX, width, "scale \(scale)")
         }
     }
 
-    func testTheBannerActionsShareOneRowUntilTheTextGrows() {
+    func testTheCardGrowsWithTheTextSoTheActionsKeepOneRow() {
         let saved = DMFont.scale
         defer { DMFont.scale = saved }
-        let rowHeight = DMButtonSize.small.metrics.height
 
-        DMFont.scale = 1
-        let regular = laidOutFrame(
-            UpdateBannerActions(showNotes: {}, later: {}, update: {}), width: UpdateBanner.contentWidth)
-        XCTAssertEqual(regular.height, rowHeight)
+        for scale in DMFitCheck.scales {
+            DMFont.scale = scale
+            let m = DMMetrics(scale: scale)
+            let frame = laidOutFrame(
+                UpdateBannerActions(showNotes: {}, later: {}, update: {}), width: m.card.banner)
+            XCTAssertEqual(frame.height, m.control.small, "scale \(scale)")
+        }
+    }
 
-        DMFont.scale = Appearance.uiFontScaleRange.upperBound
-        let large = laidOutFrame(
-            UpdateBannerActions(showNotes: {}, later: {}, update: {}), width: UpdateBanner.contentWidth)
-        XCTAssertGreaterThan(large.height, rowHeight * 2)
+    func testTheWholeToastFitsAtEveryTextSize() async {
+        let updates = await controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"))
+        let model = AppModel(store: SessionStore(runner: SilentRunner()))
+        DMFitCheck.assertFits("update toast") {
+            UpdateBanner().environmentObject(updates).environmentObject(model)
+        }
     }
 
     /// Where `content` lands inside a card `width` points wide, laid out by a
@@ -131,6 +136,7 @@ final class UpdateViewsRenderTests: XCTestCase {
     private func laidOutFrame(_ content: some View, width: CGFloat) -> CGRect {
         let box = FrameBox()
         let card = content
+            .environment(\.dmMetrics, .current)
             .background(GeometryReader { proxy in
                 Color.clear.onAppear { box.frame = proxy.frame(in: .named("card")) }
             })

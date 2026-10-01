@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// A magnifying glass and a borderless field, with room for trailing
-/// controls (a count, a clear button, a close button).
+/// controls (a count, a clear button, a close button). Sizes are points at 100%.
 struct DMSearchField<Trailing: View>: View {
     let prompt: String
     @Binding var text: String
@@ -13,9 +13,10 @@ struct DMSearchField<Trailing: View>: View {
     var textColor: Color?
     var fieldWidth: CGFloat?
     @ViewBuilder var trailing: () -> Trailing
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        HStack(spacing: spacing) {
+        HStack(spacing: m.pt(spacing)) {
             Image(systemName: "magnifyingglass")
                 .font(.dm(iconSize))
                 .foregroundStyle(iconColor)
@@ -23,7 +24,7 @@ struct DMSearchField<Trailing: View>: View {
                 .textFieldStyle(.plain)
                 .font(.dm(fontSize))
                 .modifier(DMInheritableTint(tint: textColor))
-                .frame(width: fieldWidth)
+                .frame(width: fieldWidth.map(m.pt))
                 .modifier(DMOptionalFocus(focus: focus))
             trailing()
         }
@@ -58,12 +59,20 @@ private struct DMOptionalFocus: ViewModifier {
 extension View {
     /// A text field on a dark translucent surface: the Settings page's inputs.
     func dmField() -> some View {
-        self
+        modifier(DMFieldModifier())
+    }
+}
+
+private struct DMFieldModifier: ViewModifier {
+    @Environment(\.dmMetrics) private var m
+
+    func body(content: Content) -> some View {
+        content
             .textFieldStyle(.plain)
-            .font(.dm(13))
+            .font(.dm(DMMetrics.baseFontSize))
             .foregroundStyle(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, m.row.horizontal)
+            .padding(.vertical, m.row.vertical)
             .dmSurface(Color.dmSelection, radius: DMRadius.row, style: .continuous)
     }
 }

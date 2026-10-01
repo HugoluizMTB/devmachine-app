@@ -2,7 +2,7 @@ import SwiftUI
 
 /// A bare SF Symbol that acts as a button: refresh, close, add, the sidebar
 /// footer. `size` nil keeps the font the button inherits, `tint` nil keeps the
-/// inherited colour. `fillsWidth` takes every point across and only the
+/// inherited colour. `hitSize` is in points at 100% (`DMHitSize`). `fillsWidth` takes every point across and only the
 /// height of `hitSize`.
 struct DMIconButtonStyle: ButtonStyle {
     var size: CGFloat?
@@ -20,13 +20,15 @@ private struct DMIconButtonBody: View {
     let style: DMIconButtonStyle
     let configuration: ButtonStyleConfiguration
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
+        let hitSize = style.hitSize.map(m.size)
         configuration.label
             .modifier(DMInheritableFont(size: style.size, weight: style.weight))
             .modifier(DMInheritableTint(tint: style.tint))
-            .frame(width: style.fillsWidth ? nil : style.hitSize?.width,
-                   height: style.hitSize?.height)
+            .frame(width: style.fillsWidth ? nil : hitSize?.width,
+                   height: hitSize?.height)
             .frame(maxWidth: style.fillsWidth ? .infinity : nil)
             .contentShape(Rectangle())
             .opacity(isEnabled ? (configuration.isPressed ? 0.6 : 1) : 0.35)
@@ -93,14 +95,15 @@ struct DMChipButtonStyle: ButtonStyle {
 
 private struct DMChipButtonBody: View {
     let configuration: ButtonStyleConfiguration
+    @Environment(\.dmMetrics) private var m
     @State private var hovering = false
 
     var body: some View {
         configuration.label
             .foregroundStyle(Color.dmRowText)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(hovering ? Color.dmHover : Color.clear, in: RoundedRectangle(cornerRadius: DMRadius.keyCap))
+            .padding(.horizontal, m.space.md)
+            .padding(.vertical, m.space.xs)
+            .background(hovering ? Color.dmHover : Color.clear, in: RoundedRectangle(cornerRadius: m.radius.keyCap))
             .contentShape(Rectangle())
             .opacity(configuration.isPressed ? 0.7 : 1)
             .onHover { hovering = $0 }

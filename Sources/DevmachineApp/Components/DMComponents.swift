@@ -1,34 +1,36 @@
 import SwiftUI
 
 /// Rounded selection/hover background shared by list rows across the app.
+/// `cornerRadius` is points at 100%.
 struct DMRowBackground: View {
     let selected: Bool
     var hovering: Bool = false
     var cornerRadius: CGFloat = DMRadius.row
     var style: RoundedCornerStyle = .circular
     var selectedColor: Color = .dmSelection
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: style)
+        RoundedRectangle(cornerRadius: m.pt(cornerRadius), style: style)
             .fill(selected ? selectedColor : (hovering ? Color.dmHover : .clear))
     }
 }
 
 /// A leading-glyph, title, optional-trailing list row with selection/hover background.
-/// Mirrors `SidebarView`'s session/footer rows exactly.
+/// Mirrors `SidebarView`'s session/footer rows exactly. Sizes are points at 100%.
 struct DMRow: View {
     /// No glyph at all when nil: a row that is fine has nothing to say, and a
     /// column of dots down the sidebar says nothing while looking like an alarm.
     var systemImage: String?
     var iconColor: Color = .dmMuted
-    var iconSize: CGFloat = 7
+    var iconSize: CGFloat = DMIconSize.dot
     /// Drawn in place of `systemImage` when the glyph needs more than a name
     /// and a colour, such as a spoken label.
     var leading: AnyView?
     let title: String
     var titleColor: Color = .dmRowText
     var selected: Bool = false
-    var outerHorizontalPadding: CGFloat = 6
+    var outerHorizontalPadding: CGFloat = DMRowInset.outer
     /// Pushes trailing to the right and makes the background fill the full width.
     /// List rows (default). The ops footer passes false to hug the text.
     var fillWidth: Bool = true
@@ -36,10 +38,11 @@ struct DMRow: View {
     /// Shown before `trailing`, and only while the pointer is on the row.
     var trailingHover: AnyView?
     var tap: (() -> Void)?
+    @Environment(\.dmMetrics) private var m
     @State private var hovering = false
 
     var body: some View {
-        let content = HStack(spacing: 8) {
+        let content = HStack(spacing: m.space.md) {
             if let leading {
                 leading
             } else if let systemImage {
@@ -48,17 +51,17 @@ struct DMRow: View {
                     .foregroundStyle(iconColor)
             }
             Text(title)
-                .font(.dm(13))
+                .font(.dm(DMMetrics.baseFontSize))
                 .foregroundStyle(titleColor)
                 .lineLimit(1)
             if fillWidth { Spacer() }
             if hovering, let trailingHover { trailingHover }
             if let trailing { trailing }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, m.row.horizontal)
+        .padding(.vertical, m.row.vertical)
         .background(DMRowBackground(selected: selected, hovering: hovering))
-        .padding(.horizontal, outerHorizontalPadding)
+        .padding(.horizontal, m.pt(outerHorizontalPadding))
         .contentShape(Rectangle())
         // Hover on the whole row shape, not on the background: children (text,
         // count) sit on top and would otherwise steal the hover from the background.
@@ -91,12 +94,13 @@ struct DMHairline: View {
 struct DMTableRow<Content: View>: View {
     let index: Int
     @ViewBuilder var content: () -> Content
+    @Environment(\.dmMetrics) private var m
     @State private var hovering = false
 
     var body: some View {
         content()
             .background(
-                RoundedRectangle(cornerRadius: DMRadius.row, style: .continuous)
+                RoundedRectangle(cornerRadius: m.radius.row, style: .continuous)
                     .fill(fill))
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
@@ -110,30 +114,32 @@ struct DMTableRow<Content: View>: View {
 
 /// Uppercase-ish muted section title + optional trailing (count/button) + content below.
 /// Mirrors `SidebarView`'s group headers/top bar and `ContextPanel`'s sections.
+/// Spacing and padding are points at 100% (`DMSectionInset`).
 struct DMSection<Label: View, Trailing: View, Content: View>: View {
-    var headerSpacing: CGFloat = 4
+    var headerSpacing: CGFloat = DMSpace.xs
     var contentSpacing: CGFloat = 0
     var padding: EdgeInsets
     @ViewBuilder var label: () -> Label
     @ViewBuilder var trailing: () -> Trailing
     @ViewBuilder var content: () -> Content
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        VStack(alignment: .leading, spacing: contentSpacing) {
-            HStack(spacing: headerSpacing) {
+        VStack(alignment: .leading, spacing: m.pt(contentSpacing)) {
+            HStack(spacing: m.pt(headerSpacing)) {
                 label()
                 Spacer()
                 trailing()
             }
             content()
         }
-        .padding(padding)
+        .padding(m.insets(padding))
     }
 }
 
 extension DMSection where Trailing == EmptyView {
     init(
-        headerSpacing: CGFloat = 4,
+        headerSpacing: CGFloat = DMSpace.xs,
         contentSpacing: CGFloat = 0,
         padding: EdgeInsets,
         @ViewBuilder label: @escaping () -> Label,
@@ -152,7 +158,7 @@ extension DMSection where Trailing == EmptyView {
 
 extension DMSection where Content == EmptyView {
     init(
-        headerSpacing: CGFloat = 4,
+        headerSpacing: CGFloat = DMSpace.xs,
         padding: EdgeInsets,
         @ViewBuilder label: @escaping () -> Label,
         @ViewBuilder trailing: @escaping () -> Trailing
@@ -192,26 +198,29 @@ struct DMSectionValue: View {
 }
 
 /// Small capsule label, e.g. CI status or a source badge. Mirrors `ContextPanel`'s pills.
+/// Paddings are points at 100%.
 struct DMPill: View {
     let text: String
     let color: Color
     var font: Font = .dm(10, weight: .semibold)
     var backgroundOpacity: Double = 0.15
-    var horizontalPadding: CGFloat = 6
+    var horizontalPadding: CGFloat = DMSpace.sm
     var verticalPadding: CGFloat = 1
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
         Text(text)
             .font(font)
             .foregroundStyle(color)
             .lineLimit(1)
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
+            .padding(.horizontal, m.pt(horizontalPadding))
+            .padding(.vertical, m.pt(verticalPadding))
             .background(color.opacity(backgroundOpacity), in: Capsule())
     }
 }
 
 /// Thin rounded progress bar, e.g. plan done/total. Mirrors `ContextPanel.progressBar`.
+/// `barHeight` and `cornerRadius` are points at 100%.
 struct DMProgressBar: View {
     let done: Int
     let total: Int
@@ -219,6 +228,7 @@ struct DMProgressBar: View {
     var trackColor: Color = .dmDivider
     var barHeight: CGFloat = 5
     var cornerRadius: CGFloat = 3
+    @Environment(\.dmMetrics) private var m
 
     /// How full the bar is, from 0 to 1. A zero or negative total reads as
     /// "nothing to do", not as division by zero.
@@ -231,16 +241,16 @@ struct DMProgressBar: View {
         // The fill is scaled, not measured: a `GeometryReader` here reported the
         // width of a container the bar was not drawn in, so the track spanned
         // the window while the fill stopped at the sidebar's edge.
-        RoundedRectangle(cornerRadius: cornerRadius)
+        RoundedRectangle(cornerRadius: m.pt(cornerRadius))
             .fill(trackColor)
             .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: cornerRadius)
+                RoundedRectangle(cornerRadius: m.pt(cornerRadius))
                     .fill(fillColor)
                     .scaleEffect(
                         x: Self.fraction(done: done, total: total), y: 1, anchor: .leading)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: barHeight)
+            .frame(height: m.pt(barHeight))
     }
 }
 
@@ -248,9 +258,10 @@ struct DMProgressBar: View {
 struct DMStatBubble: View {
     let value: String
     let label: String
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: m.pt(3)) {
             Text(verbatim: value)
                 .font(.dm(24, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
@@ -262,8 +273,8 @@ struct DMStatBubble: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .padding(.horizontal, 16)
+        .padding(.vertical, m.pt(14))
+        .padding(.horizontal, m.space.xl)
         .dmGlass(radius: DMRadius.bubble, stroke: .white.opacity(0.15))
     }
 }
@@ -272,20 +283,17 @@ struct DMStatBubble: View {
 struct DMToastCard: View {
     let task: BGTask
 
-    /// The card is as wide as its bar, and no wider. The `Spacer` that pushes
-    /// the count to the right would otherwise take every point on offer, and the
-    /// card stretched to the window's edge with a short bar sitting in it.
-    static let width: CGFloat = 220
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            HStack(spacing: m.row.horizontal) {
                 Text(task.label)
                     .font(.dm(12, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Spacer(minLength: 6)
+                Spacer(minLength: m.space.sm)
                 if task.completed >= task.total {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -302,9 +310,12 @@ struct DMToastCard: View {
             // stopped short.
             DMProgressBar(done: task.completed, total: task.total, fillColor: .accentColor)
         }
-        .frame(width: DMToastCard.width, alignment: .leading)
-        .padding(12)
+        // The card is as wide as its bar, and no wider. The `Spacer` that pushes
+        // the count to the right would otherwise take every point on offer, and the
+        // card stretched to the window's edge with a short bar sitting in it.
+        .frame(width: m.card.toast, alignment: .leading)
+        .padding(m.space.lg)
         .dmGlass(radius: DMRadius.toast)
-        .shadow(radius: 10, y: 3)
+        .shadow(radius: m.pt(10), y: m.pt(3))
     }
 }

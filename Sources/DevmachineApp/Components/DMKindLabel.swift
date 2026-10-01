@@ -8,14 +8,15 @@ struct DMKindLabel: View {
     static let fillOpacity: Double = 0.07
 
     let text: String
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
         Text(text)
             .font(.dm(9, weight: .semibold))
             .foregroundStyle(Color(hex: Self.textHex))
             .lineLimit(1)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .padding(.horizontal, m.space.sm)
+            .padding(.vertical, m.space.xxs)
             .background(Color.white.opacity(Self.fillOpacity), in: Capsule())
     }
 }

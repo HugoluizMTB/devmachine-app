@@ -92,20 +92,19 @@ private struct RestartNeededView: View {
 /// The toast that says a new version is out. It never installs on its own:
 /// every path to an install goes through the dialog.
 struct UpdateBanner: View {
-    static let contentWidth: CGFloat = 300
-
     @EnvironmentObject private var updates: UpdateController
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
         if let release = updates.availableRelease {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: m.row.horizontal) {
+                HStack(alignment: .top, spacing: m.row.horizontal) {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.dm(16))
                         .foregroundStyle(Color.accentColor)
                         .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: m.space.xxs) {
                         Text(verbatim: "Devmachine \(release.version?.description ?? release.tagName) "
                             + (updates.isWaitingForRestart ? "is installed" : "is available"))
                             .font(.dm(12, weight: .semibold))
@@ -125,28 +124,30 @@ struct UpdateBanner: View {
                         update: { updates.requestUpdate() })
                 }
             }
-            .frame(width: Self.contentWidth, alignment: .leading)
-            .padding(12)
+            .frame(width: m.card.banner, alignment: .leading)
+            .padding(m.space.lg)
             .dmGlass(radius: DMRadius.toast)
-            .shadow(radius: 10, y: 3)
+            .shadow(radius: m.pt(10), y: m.pt(3))
         }
     }
 }
 
-/// One row while the three buttons fit the card. A larger text size moves the
-/// update button to a full-width row of its own instead of past the edge.
+/// One row while the three buttons fit the card. The card grows with the
+/// text, so this holds at every text size; a longer label moves the update
+/// button to a full-width row of its own instead of past the edge.
 struct UpdateBannerActions: View {
     let showNotes: () -> Void
     let later: () -> Void
     let update: () -> Void
+    @Environment(\.dmMetrics) private var m
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
+            HStack(spacing: m.space.sm) {
                 secondary
                 updateButton(fillsWidth: false)
             }
-            VStack(spacing: 8) {
+            VStack(spacing: m.space.md) {
                 secondary
                 updateButton(fillsWidth: true)
             }
@@ -154,9 +155,9 @@ struct UpdateBannerActions: View {
     }
 
     private var secondary: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: m.space.sm) {
             DMButton("What's new", variant: .link, size: .small, action: showNotes)
-            Spacer(minLength: 6)
+            Spacer(minLength: m.space.sm)
             DMButton("Later", variant: .ghost, size: .small, action: later)
         }
     }

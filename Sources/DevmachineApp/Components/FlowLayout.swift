@@ -1,10 +1,11 @@
 import SwiftUI
 
 /// Lays subviews out left to right and wraps to a new row when the width
-/// runs out, like inline text.
+/// runs out, like inline text. Gaps are in points at 100%; a `Layout` has no
+/// environment, so they scale by the current text size.
 struct FlowLayout: Layout {
-    var spacing: CGFloat = 6
-    var rowSpacing: CGFloat = 6
+    var spacing: CGFloat = DMSpace.sm
+    var rowSpacing: CGFloat = DMSpace.sm
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
@@ -22,6 +23,9 @@ struct FlowLayout: Layout {
     }
 
     private func place(in width: CGFloat, subviews: Subviews) -> (size: CGSize, origins: [CGPoint]) {
+        let m = DMMetrics.current
+        let spacing = m.pt(spacing)
+        let rowSpacing = m.pt(rowSpacing)
         var origins: [CGPoint] = []
         var x: CGFloat = 0
         var y: CGFloat = 0

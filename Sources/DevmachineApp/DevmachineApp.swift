@@ -41,6 +41,10 @@ struct DevmachineApp: App {
         _usageStore = StateObject(wrappedValue: HarnessUsageStore(providers: providers))
     }
 
+    private var metrics: DMMetrics {
+        DMMetrics(scale: settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
+    }
+
     var body: some Scene {
         // Single main window (Window, not WindowGroup) so the menubar "Open"
         // can reliably bring it to front via openWindow(id: "main").
@@ -56,6 +60,7 @@ struct DevmachineApp: App {
                 .environmentObject(usageStore)
                 .environmentObject(settingsStore)
                 .environment(\.harnessSettingsFacade, harnessSettingsFacade)
+                .environment(\.dmMetrics, metrics)
                 .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
                 .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
                 .onAppear {
@@ -159,6 +164,7 @@ struct DevmachineApp: App {
                 .environmentObject(viewerStore)
                 .environmentObject(fileTreeStore)
                 .environmentObject(model)
+                .environment(\.dmMetrics, metrics)
         }
         .defaultSize(width: 520, height: 600)
 
@@ -168,6 +174,7 @@ struct DevmachineApp: App {
                 .environmentObject(usageStore)
                 .environmentObject(model)
                 .environment(\.harnessSettingsFacade, harnessSettingsFacade)
+                .environment(\.dmMetrics, metrics)
         } label: {
             MenuBarLabel(prStore: prStore)
         }

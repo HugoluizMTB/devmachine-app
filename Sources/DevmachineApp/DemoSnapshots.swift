@@ -543,7 +543,7 @@ enum DemoSnapshots {
     private static func standaloneView<V: View>(
         _ view: V, fittingSize: NSSize, autosize: Bool = true, fixedHeight: CGFloat? = nil
     ) -> NSView {
-        let hosting = NSHostingView(rootView: view)
+        let hosting = NSHostingView(rootView: view.environment(\.dmMetrics, .current))
         hosting.frame = NSRect(origin: .zero, size: fittingSize)
         let window = NSWindow(
             contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)

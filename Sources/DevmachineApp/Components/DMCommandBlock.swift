@@ -5,6 +5,7 @@ import SwiftUI
 /// that takes them all.
 struct DMCommandBlock: View {
     let lines: [String]
+    @Environment(\.dmMetrics) private var m
 
     init(_ lines: [String]) {
         self.lines = lines
@@ -16,7 +17,7 @@ struct DMCommandBlock: View {
 
     var body: some View {
         HStack(alignment: lines.count > 1 ? .top : .center) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: m.space.xs) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     Text(verbatim: line)
                         .font(.dm(11.5, design: .monospaced))
@@ -26,11 +27,11 @@ struct DMCommandBlock: View {
                 }
             }
             .textSelection(.enabled)
-            Spacer(minLength: 12)
+            Spacer(minLength: m.space.lg)
             DMCopyButton(text: lines.joined(separator: "\n"))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, m.space.lg)
+        .padding(.vertical, m.space.md)
         .dmSurface(Color.dmSelection, radius: DMRadius.control)
     }
 }
