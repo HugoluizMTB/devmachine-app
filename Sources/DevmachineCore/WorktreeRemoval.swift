@@ -33,6 +33,48 @@ public struct WorktreeLeftover: Equatable, Sendable {
     }
 }
 
+/// What happened to one worktree, and to its branch, in a removal.
+public struct WorktreeRemovalResult: Equatable, Sendable {
+    public enum Outcome: Equatable, Sendable {
+        case removed
+        /// The folder was gone before git got to it; its record is pruned.
+        case alreadyGone
+        case failed(details: String)
+    }
+
+    public enum BranchOutcome: Equatable, Sendable {
+        case notRequested, deleted, alreadyGone
+        case kept(reason: String, details: String)
+    }
+
+    public let path: String
+    public let branch: String?
+    public let outcome: Outcome
+    public let branchOutcome: BranchOutcome
+
+    public init(path: String, branch: String?, outcome: Outcome, branchOutcome: BranchOutcome) {
+        self.path = path
+        self.branch = branch
+        self.outcome = outcome
+        self.branchOutcome = branchOutcome
+    }
+
+    public var isGone: Bool {
+        if case .failed = outcome { return false }
+        return true
+    }
+
+    public var keptBranchReason: String? {
+        if case let .kept(reason, _) = branchOutcome { return reason }
+        return nil
+    }
+
+    public var failureDetails: String? {
+        if case let .failed(details) = outcome { return details }
+        return nil
+    }
+}
+
 /// What a read-only look inside one worktree found, before anything is removed.
 public struct WorktreeCheck: Equatable, Sendable {
     public let path: String
@@ -109,7 +151,7 @@ public enum WorktreeRemoval {
     public enum Force: Equatable, Sendable {
         case none, force, forceTwice
 
-        var flags: String {
+        public var flags: String {
             switch self {
             case .none: return ""
             case .force: return " --force"
@@ -143,6 +185,7 @@ public enum WorktreeRemoval {
 
     private static let recordSeparator: Character = "\u{1e}"
     private static let groupSeparator: Character = "\u{1d}"
+    private static let unitSeparator: Character = "\u{1f}"
 
     public static let foreignFilesShown = 10
 
@@ -257,37 +300,124 @@ public enum WorktreeRemoval {
         }
     }
 
-    /// Runs from the main checkout, since a worktree cannot remove itself.
-    /// `git worktree remove` never deletes the branch; `-d` (never `-D`)
-    /// does, and git itself refuses it when the branch is not merged.
-    public static func removeCommand(_ check: WorktreeCheck, options: Options, mainWorktree: String) -> String? {
-        guard canRemove(check, options: options) else { return nil }
-        var command = "cd \(quote(mainWorktree))"
-            + " && git worktree remove\(force(for: check, options: options).flags) -- \(quote(check.path))"
-            + " && git worktree prune"
-        if options.deleteBranch, canDeleteBranch(check), let branch = check.branch {
-            command += " && git branch -d -- \(quote(branch))"
+    /// One worktree to remove, and the branch to delete after it, if any.
+    public struct RemovalStep: Equatable, Sendable {
+        public let path: String
+        public let branch: String?
+        public let force: Force
+
+        public init(path: String, branch: String?, force: Force) {
+            self.path = path
+            self.branch = branch
+            self.force = force
         }
-        return command
     }
 
-    /// Only clean, merged, unlocked worktrees, never forced. One failure does
-    /// not stop the others, and the exit status still reports it.
-    public static func removeMergedCommand(
-        _ checks: [WorktreeCheck], deleteBranches: Bool, mainWorktree: String
-    ) -> String? {
-        let removable = checks.filter(\.isCleanAndMerged)
-        guard !removable.isEmpty else { return nil }
-        let steps = removable.map { check -> String in
-            var step = "git worktree remove -- \(quote(check.path))"
-            if deleteBranches, canDeleteBranch(check), let branch = check.branch {
-                step += " && git branch -d -- \(quote(branch))"
-            }
-            return "{ \(step); } || rc=1"
+    public static func step(_ check: WorktreeCheck, options: Options) -> RemovalStep? {
+        guard canRemove(check, options: options) else { return nil }
+        let branch = options.deleteBranch && canDeleteBranch(check) ? check.branch : nil
+        return RemovalStep(path: check.path, branch: branch, force: force(for: check, options: options))
+    }
+
+    /// Only clean, merged, unlocked worktrees, never forced.
+    public static func mergedSteps(_ checks: [WorktreeCheck], deleteBranches: Bool) -> [RemovalStep] {
+        checks.filter(\.isCleanAndMerged).compactMap { step($0, options: Options(deleteBranch: deleteBranches)) }
+    }
+
+    /// Runs from the main checkout, since a worktree cannot remove itself,
+    /// one worktree after the other in a single shell. Each step prints its
+    /// own record, so one failure neither stops the rest nor hides what they
+    /// did. A folder that is gone counts whoever removed it: the record is
+    /// pruned and the branch step still runs. `git worktree remove` never
+    /// deletes the branch; `-d` (never `-D`) does, and git refuses it when
+    /// the branch is not merged into its upstream, or HEAD without one.
+    public static func removeCommand(_ steps: [RemovalStep], mainWorktree: String) -> String? {
+        guard !steps.isEmpty else { return nil }
+        let body = steps.map { step -> String in
+            let path = quote(step.path)
+            let branch = step.branch.map {
+                "; o=$(git branch -d -- \(quote($0)) 2>&1); printf '\\037%s\\037%s' \"$?\" \"$o\""
+            } ?? ""
+            return "o=$(git worktree remove\(step.force.flags) -- \(path) 2>&1); printf '%s\\037%s\\037' \"$?\" \"$o\""
+                + "; if [ -e \(path) ]; then printf present"
+                + "; else printf gone; git worktree prune >/dev/null 2>&1\(branch); fi"
+                + "; printf '\\035'"
         }
-        return "cd \(quote(mainWorktree)) || exit 1; rc=0; "
-            + steps.joined(separator: "; ")
-            + "; git worktree prune; exit $rc"
+        return "cd \(quote(mainWorktree)) || exit 1; "
+            + body.joined(separator: "; ")
+            + "; git worktree prune"
+    }
+
+    /// One result per step, in order. A step the output never reached (the
+    /// shell or the connection died) failed with `failure`.
+    public static func parseRemoval(_ output: String, steps: [RemovalStep], failure: String) -> [WorktreeRemovalResult] {
+        let records = output.split(separator: groupSeparator, omittingEmptySubsequences: false).map(String.init)
+        return steps.enumerated().map { index, step in
+            let fields = index < records.count
+                ? records[index].split(separator: unitSeparator, omittingEmptySubsequences: false).map(String.init)
+                : []
+            guard fields.count >= 3, let code = Int32(fields[0].trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return WorktreeRemovalResult(
+                    path: step.path, branch: step.branch,
+                    outcome: .failed(details: failure.isEmpty ? "No answer for this worktree" : failure),
+                    branchOutcome: .notRequested)
+            }
+            let message = fields[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            let isGone = fields[2] == "gone"
+            let outcome: WorktreeRemovalResult.Outcome = code == 0 ? .removed
+                : isGone ? .alreadyGone
+                : .failed(details: message.isEmpty ? "git exited with status \(code)" : message)
+            var branchOutcome = WorktreeRemovalResult.BranchOutcome.notRequested
+            if step.branch != nil, isGone {
+                branchOutcome = fields.count >= 5
+                    ? parseBranch(code: fields[3], message: fields[4].trimmingCharacters(in: .whitespacesAndNewlines))
+                    : .kept(reason: "not deleted", details: failure)
+            }
+            return WorktreeRemovalResult(path: step.path, branch: step.branch, outcome: outcome, branchOutcome: branchOutcome)
+        }
+    }
+
+    private static func parseBranch(code: String, message: String) -> WorktreeRemovalResult.BranchOutcome {
+        if code.trimmingCharacters(in: .whitespacesAndNewlines) == "0" { return .deleted }
+        if message.contains("not found") { return .alreadyGone }
+        return .kept(reason: keptBranchReason(message), details: message)
+    }
+
+    /// git's words for why `-d` refused, made short enough for one line.
+    static func keptBranchReason(_ message: String) -> String {
+        if let marker = message.range(of: "not yet merged to") {
+            let rest = message[marker.upperBound...]
+            if let open = rest.firstIndex(of: "'"),
+               let close = rest[rest.index(after: open)...].firstIndex(of: "'") {
+                var ref = String(rest[rest.index(after: open)..<close])
+                for prefix in ["refs/remotes/", "refs/heads/"] where ref.hasPrefix(prefix) {
+                    ref = String(ref.dropFirst(prefix.count))
+                }
+                return "not merged into \(ref)"
+            }
+        }
+        if message.contains("used by worktree") || message.contains("checked out at") {
+            return "checked out in another worktree"
+        }
+        if message.contains("not fully merged") { return "not fully merged" }
+        let line = message.split(separator: "\n").first.map(String.init) ?? message
+        return line.replacingOccurrences(of: "error: ", with: "")
+    }
+
+    /// "3 removed, 1 branch kept: not merged into main". The reason shows
+    /// only when every kept branch has the same one.
+    public static func summary(_ results: [WorktreeRemovalResult]) -> String {
+        var parts: [String] = []
+        let removed = results.filter(\.isGone).count
+        let failed = results.count - removed
+        if removed > 0 { parts.append("\(removed) removed") }
+        if failed > 0 { parts.append("\(failed) failed") }
+        let reasons = results.compactMap(\.keptBranchReason)
+        if !reasons.isEmpty {
+            let kept = reasons.count == 1 ? "1 branch kept" : "\(reasons.count) branches kept"
+            parts.append(Set(reasons).count == 1 ? "\(kept): \(reasons[0])" : kept)
+        }
+        return parts.joined(separator: ", ")
     }
 
     private static func quote(_ value: String) -> String {

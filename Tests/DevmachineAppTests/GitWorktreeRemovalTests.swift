@@ -81,12 +81,14 @@ final class GitWorktreeRemovalTests: XCTestCase {
         [status, "", "", unmerged, listing].joined(separator: rs)
     }
 
+    private static let removed = ["0", "", "gone", "0", "Deleted branch old"].joined(separator: "\u{1f}") + "\u{1d}"
+
     private let target = CommandTarget.remote(alias: "acme-devmachine", session: "dash")
 
     private func makeStore(
         check: String = checkOutput(status: " M a.swift\n", unmerged: "2\n"),
         checkAll: String = checkOutput(status: "", unmerged: "0\n") + "\u{1d}",
-        remove: ScriptedGitRunner.Reply = ("", "", 0)
+        remove: ScriptedGitRunner.Reply = (removed, "", 0)
     ) -> (GitStore, ScriptedGitRunner) {
         let runner = ScriptedGitRunner(snapshot: Self.snapshot, checkAll: checkAll, check: check, remove: remove)
         return (GitStore(host: HostRunner(remote: RemoteService(runner: runner)), demo: false), runner)
@@ -161,9 +163,10 @@ final class GitWorktreeRemovalTests: XCTestCase {
         try await waitUntil { store.removal == nil }
         try await waitUntil { runner.count("rev-parse --show-toplevel") > reads }
 
-        XCTAssertTrue(runner.commands.contains(
-            "cd '/home/alice/dev/dash' && git worktree remove --force -- '/home/alice/dev/dash-old'"
-                + " && git worktree prune"))
+        let remove = try XCTUnwrap(runner.commands.first { $0.contains("git worktree remove") })
+        XCTAssertTrue(remove.hasPrefix("cd '/home/alice/dev/dash' || exit 1; "))
+        XCTAssertTrue(remove.contains("git worktree remove --force -- '/home/alice/dev/dash-old'"))
+        XCTAssertFalse(remove.contains("git branch"))
     }
 
     func testAFailedRemoveShowsTheExactGitError() async throws {
@@ -196,10 +199,11 @@ final class GitWorktreeRemovalTests: XCTestCase {
         store.requestMergedRemoval()
         store.confirmMergedRemoval(deleteBranches: true)
         try await waitUntil { store.mergedRemoval == nil }
-        XCTAssertTrue(runner.commands.contains {
-            $0.contains("git worktree remove -- '/home/alice/dev/dash-old' && git branch -d -- 'old'")
-                && !$0.contains("--force")
-        })
+        XCTAssertEqual(runner.count("git worktree remove"), 1)
+        let remove = try XCTUnwrap(runner.commands.first { $0.contains("git worktree remove") })
+        XCTAssertTrue(remove.contains("git worktree remove -- '/home/alice/dev/dash-old'"))
+        XCTAssertTrue(remove.contains("git branch -d -- 'old'"))
+        XCTAssertFalse(remove.contains("--force"))
     }
 
     func testDemoModeShowsInventedWorktreesAndRunsNothing() async throws {

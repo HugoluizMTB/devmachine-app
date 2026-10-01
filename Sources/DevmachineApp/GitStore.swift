@@ -35,6 +35,8 @@ struct WorktreeRemovalRequest: Identifiable, Equatable {
     enum Phase: Equatable {
         case checking, ready, removing
         case failed(DMErrorState)
+        /// The worktree is gone; git refused to delete its branch.
+        case removedKeepingBranch(DMErrorState)
     }
 
     enum Kind: Equatable {
@@ -62,12 +64,15 @@ struct WorktreeRemovalRequest: Identifiable, Equatable {
     }
 }
 
-/// Every clean, merged worktree, removed together.
+/// Every clean, merged worktree, removed together. After a run, `checks`
+/// holds only what is still there to try again.
 struct MergedRemovalRequest: Identifiable, Equatable {
     var id: String { "merged" }
-    let checks: [WorktreeCheck]
+    var checks: [WorktreeCheck]
     var isRemoving = false
-    var error: DMErrorState?
+    var results: [WorktreeRemovalResult]?
+
+    var summary: String? { results.map(WorktreeRemoval.summary) }
 }
 
 @MainActor
@@ -109,7 +114,10 @@ final class GitStore: ObservableObject {
         refresh()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+            Task { @MainActor in
+                guard let self, !self.isRemoving else { return }
+                self.refresh()
+            }
         }
     }
 
@@ -141,6 +149,12 @@ final class GitStore: ObservableObject {
     }
 
     // MARK: Removing worktrees
+
+    /// The poll waits while git removes: a read inside a worktree being
+    /// deleted only fails, and the list is read again right after.
+    private var isRemoving: Bool {
+        removal?.phase == .removing || mergedRemoval?.isRemoving == true
+    }
 
     func requestRemoval(_ worktree: GitSnapshot.Worktree) {
         guard let target = current, let snapshot,
@@ -240,19 +254,30 @@ final class GitStore: ObservableObject {
             return
         }
         guard let target = current, let main = snapshot.flatMap(Self.mainWorktree),
-              let command = WorktreeRemoval.removeCommand(check, options: options, mainWorktree: main)
+              let step = WorktreeRemoval.step(check, options: options),
+              let command = WorktreeRemoval.removeCommand([step], mainWorktree: main)
         else { return }
         removal?.phase = .removing
         run(command, on: target) { store, result in
-            if let result, result.exitCode == 0 {
-                if store.removal?.id == request.id { store.removal = nil }
-            } else if store.removal?.id == request.id {
-                store.removal?.phase = .failed(Self.removeError(result, check: check))
-                if Self.isFileAccessFailure(result) {
+            defer { store.reload() }
+            guard store.removal?.id == request.id,
+                  let outcome = WorktreeRemoval.parseRemoval(
+                    result?.stdout ?? "", steps: [step], failure: Self.failureText(result)).first
+            else { return }
+            if let details = outcome.failureDetails {
+                store.removal?.phase = .failed(Self.removeError(details, check: check))
+                if FailureCause(message: details) == .fileAccessDenied {
                     store.checkLeftover(request.id, then: nil)
                 }
+            } else if case let .kept(reason, details) = outcome.branchOutcome, let branch = step.branch {
+                store.removal?.phase = .removedKeepingBranch(DMErrorState(
+                    systemImage: "arrow.triangle.branch",
+                    title: "Worktree removed, branch \(branch) kept",
+                    cause: reason.prefix(1).uppercased() + reason.dropFirst(),
+                    details: details))
+            } else {
+                store.removal = nil
             }
-            store.reload()
         }
     }
 
@@ -339,20 +364,24 @@ final class GitStore: ObservableObject {
             mergedRemoval = nil
             return
         }
+        let steps = WorktreeRemoval.mergedSteps(request.checks, deleteBranches: deleteBranches)
         guard let target = current, let main = snapshot.flatMap(Self.mainWorktree),
-              let command = WorktreeRemoval.removeMergedCommand(
-                request.checks, deleteBranches: deleteBranches, mainWorktree: main)
+              let command = WorktreeRemoval.removeCommand(steps, mainWorktree: main)
         else { return }
         mergedRemoval?.isRemoving = true
-        mergedRemoval?.error = nil
         run(command, on: target) { store, result in
-            if let result, result.exitCode == 0 {
+            defer { store.reload() }
+            guard store.mergedRemoval != nil else { return }
+            let results = WorktreeRemoval.parseRemoval(
+                result?.stdout ?? "", steps: steps, failure: Self.failureText(result))
+            if results.allSatisfy({ $0.isGone && $0.keptBranchReason == nil }) {
                 store.mergedRemoval = nil
-            } else {
-                store.mergedRemoval?.isRemoving = false
-                store.mergedRemoval?.error = Self.errorState("Some worktrees were not removed", result)
+                return
             }
-            store.reload()
+            let failed = Set(results.filter { !$0.isGone }.map(\.path))
+            store.mergedRemoval?.results = results
+            store.mergedRemoval?.checks = request.checks.filter { failed.contains($0.path) }
+            store.mergedRemoval?.isRemoving = false
         }
     }
 
@@ -431,17 +460,19 @@ final class GitStore: ObservableObject {
         snapshot.worktrees.first(where: \.isMain)?.path
     }
 
-    private static func isFileAccessFailure(_ result: Result?) -> Bool {
-        guard let result else { return false }
-        return FailureCause(message: result.stderr) == .fileAccessDenied
+    /// What a removal says about a worktree its output never reached.
+    private static func failureText(_ result: Result?) -> String {
+        guard let result else { return "The command could not start" }
+        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        return stderr.isEmpty ? "git exited with status \(result.exitCode)" : stderr
     }
 
     /// git's "Permission denied" names a file the account cannot delete, not
     /// a login the machine refused, so it says whose account and where.
-    private static func removeError(_ result: Result?, check: WorktreeCheck) -> DMErrorState {
-        let state = errorState("Could not remove the worktree", result)
-        guard isFileAccessFailure(result), let result else { return state }
-        let deniedAt = check.foreignFiles?.paths.first ?? WorktreeRemovalText.deniedPath(result.stderr)
+    private static func removeError(_ details: String, check: WorktreeCheck) -> DMErrorState {
+        let state = DMErrorState(title: "Could not remove the worktree", message: details)
+        guard FailureCause(message: details) == .fileAccessDenied else { return state }
+        let deniedAt = check.foreignFiles?.paths.first ?? WorktreeRemovalText.deniedPath(details)
         return DMErrorState(
             title: state.title,
             cause: WorktreeRemovalText.permissionCause(user: check.foreignFiles?.user, path: deniedAt),

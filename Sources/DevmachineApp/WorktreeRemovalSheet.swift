@@ -109,7 +109,7 @@ struct WorktreeRemovalSheet: View {
             phaseBody
             HStack {
                 Spacer()
-                DMButton("Cancel", variant: .outline, action: onCancel)
+                DMButton(isFinished ? "Done" : "Cancel", variant: .outline, action: onCancel)
                     .keyboardShortcut(.defaultAction)
                     .disabled(request.phase == .removing)
                 primaryButton
@@ -122,6 +122,11 @@ struct WorktreeRemovalSheet: View {
     }
 
     private var isRemoving: Bool { request.phase == .removing }
+
+    private var isFinished: Bool {
+        if case .removedKeepingBranch = request.phase { return true }
+        return false
+    }
 
     @ViewBuilder
     private var primaryButton: some View {
@@ -157,6 +162,9 @@ struct WorktreeRemovalSheet: View {
                     .font(.dm(12))
                     .foregroundStyle(Color.dmMuted)
             }
+        case let .removedKeepingBranch(state):
+            DMErrorStateView(state: state)
+                .frame(maxWidth: .infinity)
         case let .failed(state):
             DMErrorStateView(state: state, startsExpanded: true)
                 .frame(maxWidth: .infinity)
@@ -343,6 +351,7 @@ extension WorktreeRemovalText {
     /// The button beside Cancel. Removing as the admin is never here: it
     /// lives under the files it deletes, behind its own checkbox.
     static func primaryAction(_ request: WorktreeRemovalRequest) -> PrimaryAction? {
+        if case .removedKeepingBranch = request.phase { return nil }
         if let leftover = request.leftover {
             if !leftover.exists { return .prune }
             return leftover.foreignFiles?.count == 0 ? .deleteFolder : nil
@@ -369,66 +378,143 @@ extension WorktreeRemovalText {
 }
 
 /// Every clean, fully merged worktree at once. Nothing here is forced: a
-/// worktree that changed since the check makes git refuse it.
+/// worktree that changed since the check makes git refuse it, and only that
+/// one. After a run the sheet shows what happened to each worktree, and
+/// "Try again" offers only the ones still there.
 struct MergedWorktreesRemovalSheet: View {
     let request: MergedRemovalRequest
     let onRemove: (Bool) -> Void
     let onCancel: () -> Void
     @State private var deleteBranches = false
 
+    private var canRemove: Bool { !request.checks.isEmpty }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(verbatim: "Remove \(WorktreeRemovalText.plural(request.checks.count, "merged worktree"))?")
+            Text(verbatim: WorktreeRemovalText.mergedTitle(request))
                 .font(.headline)
-            Text(verbatim: "Each one has no uncommitted changes and every commit is already in the main branch.")
-                .font(.dm(12))
-                .foregroundStyle(Color.dmMuted)
-                .fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(request.checks, id: \.path) { check in
-                    HStack(spacing: 6) {
-                        Text(verbatim: WorktreeRemovalText.shortPath(check.path))
-                            .font(.dm(11.5, design: .monospaced))
-                            .foregroundStyle(Color.dmRowText)
-                            .lineLimit(1)
-                            .truncationMode(.head)
-                        Spacer(minLength: 4)
-                        if let branch = check.branch {
-                            Text(verbatim: branch)
-                                .font(.dm(11))
-                                .foregroundStyle(Color.dmMuted)
-                                .lineLimit(1)
-                        }
-                    }
-                    .help(check.path)
+            if request.results == nil {
+                Text(verbatim: "Each one has no uncommitted changes and every commit is already in the main branch.")
+                    .font(.dm(12))
+                    .foregroundStyle(Color.dmMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                if let results = request.results {
+                    ForEach(results, id: \.path) { resultRow($0) }
+                } else {
+                    ForEach(request.checks, id: \.path) { checkRow($0) }
                 }
             }
             .padding(10)
             .background(Color.dmBand, in: RoundedRectangle(cornerRadius: DMRadius.tile, style: .continuous))
-            Toggle(isOn: $deleteBranches) {
-                Text(verbatim: request.checks.count == 1 ? "Also delete its branch" : "Also delete their branches")
-            }
-            .toggleStyle(.checkbox)
-            .font(.dm(12))
-            .disabled(request.isRemoving)
-            if let error = request.error {
-                DMErrorStateView(state: error, startsExpanded: true)
-                    .frame(maxWidth: .infinity)
+            if canRemove {
+                Toggle(isOn: $deleteBranches) {
+                    Text(verbatim: request.checks.count == 1 ? "Also delete its branch" : "Also delete their branches")
+                }
+                .toggleStyle(.checkbox)
+                .font(.dm(12))
+                .disabled(request.isRemoving)
             }
             HStack {
                 Spacer()
-                DMButton("Cancel", variant: .outline, action: onCancel)
+                DMButton(request.results == nil ? "Cancel" : "Done", variant: .outline, action: onCancel)
                     .keyboardShortcut(.defaultAction)
                     .disabled(request.isRemoving)
-                DMButton("Remove", variant: .danger, role: .destructive, isLoading: request.isRemoving) {
-                    onRemove(deleteBranches)
+                if canRemove {
+                    DMButton(
+                        request.results == nil ? "Remove" : "Try again", variant: .danger, role: .destructive,
+                        isLoading: request.isRemoving
+                    ) {
+                        onRemove(deleteBranches)
+                    }
+                    .keyboardShortcut(.delete, modifiers: .command)
                 }
-                .keyboardShortcut(.delete, modifiers: .command)
             }
         }
         .padding(20)
         .frame(width: 420)
         .onExitCommand(perform: onCancel)
         .interactiveDismissDisabled(request.isRemoving)
+    }
+
+    private func checkRow(_ check: WorktreeCheck) -> some View {
+        HStack(spacing: 6) {
+            pathText(check.path)
+            Spacer(minLength: 4)
+            if let branch = check.branch {
+                Text(verbatim: branch)
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                    .lineLimit(1)
+            }
+        }
+        .help(check.path)
+    }
+
+    private func resultRow(_ result: WorktreeRemovalResult) -> some View {
+        let status = WorktreeRemovalText.status(result)
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: status.systemImage)
+                    .foregroundStyle(status.isSerious ? Color.red : status.isWarning ? Color.yellow : Color.green)
+                    .font(.dm(11))
+                pathText(result.path)
+                Spacer(minLength: 4)
+                Text(verbatim: status.text)
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                    .lineLimit(1)
+            }
+            if let details = result.failureDetails {
+                Text(verbatim: details)
+                    .font(.dm(10.5, design: .monospaced))
+                    .foregroundStyle(Color.dmMuted)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .help(result.path)
+    }
+
+    private func pathText(_ path: String) -> some View {
+        Text(verbatim: WorktreeRemovalText.shortPath(path))
+            .font(.dm(11.5, design: .monospaced))
+            .foregroundStyle(Color.dmRowText)
+            .lineLimit(1)
+            .truncationMode(.head)
+    }
+}
+
+extension WorktreeRemovalText {
+    static func mergedTitle(_ request: MergedRemovalRequest) -> String {
+        request.summary ?? "Remove \(plural(request.checks.count, "merged worktree"))?"
+    }
+
+    struct Status: Equatable {
+        let systemImage: String
+        let text: String
+        let isWarning: Bool
+        let isSerious: Bool
+    }
+
+    /// One line per worktree after a removal: what happened to the folder,
+    /// then to the branch.
+    static func status(_ result: WorktreeRemovalResult) -> Status {
+        if result.failureDetails != nil {
+            return Status(systemImage: "xmark.circle.fill", text: "Not removed", isWarning: false, isSerious: true)
+        }
+        if let reason = result.keptBranchReason {
+            return Status(
+                systemImage: "exclamationmark.triangle.fill",
+                text: "Removed, branch kept: \(reason)", isWarning: true, isSerious: false)
+        }
+        let removed = result.outcome == .alreadyGone ? "Already gone" : "Removed"
+        switch result.branchOutcome {
+        case .deleted, .alreadyGone:
+            return Status(systemImage: "checkmark.circle.fill", text: removed + ", branch deleted", isWarning: false, isSerious: false)
+        case .notRequested, .kept:
+            return Status(systemImage: "checkmark.circle.fill", text: removed, isWarning: false, isSerious: false)
+        }
     }
 }

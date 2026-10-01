@@ -159,6 +159,147 @@ final class GitWorktreeRemovalIntegrationTests: XCTestCase {
         try await waitUntil { store.mergedWorktrees.isEmpty }
     }
 
+    /// The branch `three` has an upstream that is behind it, so `git branch
+    /// -d` refuses it even though it is merged into main. Every folder is
+    /// still removed.
+    private func makeThreeMergedWorktreesOneWithAStaleUpstream() throws -> [String] {
+        let origin = base + "/origin.git"
+        try git(["init", "-q", "--bare", origin], in: base)
+        try git(["remote", "add", "origin", origin], in: repo)
+        try git(["push", "-q", "-u", "origin", "main"], in: repo)
+        let paths = [base + "/dash-one", base + "/dash two", base + "/dash-three"]
+        try git(["worktree", "add", "-q", "-b", "one", paths[0]], in: repo)
+        try git(["worktree", "add", "-q", "-b", "two", paths[1]], in: repo)
+        try git(["worktree", "add", "-q", "-b", "three", paths[2]], in: repo)
+        try git(["commit", "-q", "--allow-empty", "-m", "pushed"], in: paths[2])
+        try git(["push", "-q", "-u", "origin", "three"], in: paths[2])
+        try git(["commit", "-q", "--allow-empty", "-m", "not pushed"], in: paths[2])
+        try git(["merge", "-q", "--ff-only", "three"], in: repo)
+        return paths
+    }
+
+    func testABranchGitRefusesDoesNotTurnABulkRemovalIntoAFailure() async throws {
+        let paths = try makeThreeMergedWorktreesOneWithAStaleUpstream()
+        let store = GitStore(host: HostRunner(), admin: RefusingAdmin(), demo: false)
+        defer { store.stop() }
+        store.start(.local(session: "dash", path: repo))
+        try await waitUntil { store.mergedWorktrees.count == 3 }
+
+        store.requestMergedRemoval()
+        store.confirmMergedRemoval(deleteBranches: true)
+        try await waitUntil { store.mergedRemoval?.results != nil }
+        try await waitUntil { store.snapshot?.worktrees.count == 1 }
+
+        let request = try XCTUnwrap(store.mergedRemoval)
+        XCTAssertEqual(request.summary, "3 removed, 1 branch kept: not merged into origin/three")
+        let results = try XCTUnwrap(request.results)
+        XCTAssertEqual(Set(results.map(\.path)), Set(paths))
+        XCTAssertTrue(results.allSatisfy(\.isGone))
+        XCTAssertEqual(results.first { $0.path == paths[2] }?.keptBranchReason, "not merged into origin/three")
+        XCTAssertTrue(request.checks.isEmpty)
+        for path in paths { XCTAssertFalse(FileManager.default.fileExists(atPath: path), path) }
+        XCTAssertEqual(try branches().sorted(), ["main", "three"])
+        try await waitUntil { store.mergedWorktrees.isEmpty }
+
+        store.confirmMergedRemoval(deleteBranches: true)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(store.mergedRemoval?.results, results)
+        XCTAssertEqual(store.mergedRemoval?.isRemoving, false)
+    }
+
+    func testWorktreesRemovedElsewhereAfterTheCheckCountAsRemoved() async throws {
+        let paths = [base + "/dash-one", base + "/dash-two", base + "/dash-three"]
+        for (path, branch) in zip(paths, ["one", "two", "three"]) {
+            try git(["worktree", "add", "-q", "-b", branch, path], in: repo)
+        }
+        let store = GitStore(host: HostRunner(), admin: RefusingAdmin(), demo: false)
+        defer { store.stop() }
+        store.start(.local(session: "dash", path: repo))
+        try await waitUntil { store.mergedWorktrees.count == 3 }
+
+        store.requestMergedRemoval()
+        try git(["worktree", "remove", paths[0]], in: repo)
+        try FileManager.default.removeItem(atPath: paths[1])
+        store.confirmMergedRemoval(deleteBranches: false)
+        try await waitUntil { store.mergedRemoval == nil }
+        try await waitUntil { store.snapshot?.worktrees.count == 1 }
+
+        XCTAssertEqual(try branches().sorted(), ["main", "one", "three", "two"])
+        XCTAssertEqual(try git(["worktree", "list", "--porcelain"], in: repo)
+            .split(separator: "\n").filter { $0.hasPrefix("worktree ") }.count, 1)
+    }
+
+    func testAWorktreeGitRefusesFailsAloneWithItsOwnErrorAndIsTheOnlyOneOfferedAgain() async throws {
+        let kept = base + "/dash-busy"
+        try git(["worktree", "add", "-q", "-b", "one", base + "/dash-one"], in: repo)
+        try git(["worktree", "add", "-q", "-b", "busy", kept], in: repo)
+        try git(["worktree", "add", "-q", "-b", "two", base + "/dash-two"], in: repo)
+        let store = GitStore(host: HostRunner(), admin: RefusingAdmin(), demo: false)
+        defer { store.stop() }
+        store.start(.local(session: "dash", path: repo))
+        try await waitUntil { store.mergedWorktrees.count == 3 }
+
+        store.requestMergedRemoval()
+        try "draft".write(toFile: kept + "/notes.txt", atomically: true, encoding: .utf8)
+        store.confirmMergedRemoval(deleteBranches: true)
+        try await waitUntil { store.mergedRemoval?.results != nil }
+
+        let request = try XCTUnwrap(store.mergedRemoval)
+        XCTAssertEqual(request.summary, "2 removed, 1 failed")
+        let failed = try XCTUnwrap(request.results?.first { $0.path == kept })
+        guard case let .failed(details) = failed.outcome else { return XCTFail("\(failed.outcome)") }
+        XCTAssertTrue(details.contains("contains modified or untracked files"), details)
+        XCTAssertEqual(failed.branchOutcome, .notRequested)
+        XCTAssertEqual(request.checks.map(\.path), [kept])
+        XCTAssertEqual(try branches().sorted(), ["busy", "main"])
+
+        try FileManager.default.removeItem(atPath: kept + "/notes.txt")
+        store.confirmMergedRemoval(deleteBranches: true)
+        try await waitUntil { store.mergedRemoval == nil }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: kept))
+        XCTAssertEqual(try branches(), ["main"])
+    }
+
+    func testASingleRemoveWhoseBranchGitRefusesSaysTheWorktreeIsGoneAndTheBranchKept() async throws {
+        let paths = try makeThreeMergedWorktreesOneWithAStaleUpstream()
+        let store = GitStore(host: HostRunner(), admin: RefusingAdmin(), demo: false)
+        defer { store.stop() }
+        store.start(.local(session: "dash", path: repo))
+        try await waitUntil { store.snapshot?.worktrees.count == 4 }
+
+        store.requestRemoval(try XCTUnwrap(store.snapshot?.worktrees.first { $0.path == paths[2] }))
+        try await waitUntil { store.removal?.phase == .ready }
+        store.confirmRemoval(options: .init(deleteBranch: true))
+        try await waitUntil { store.removal?.phase != .removing }
+
+        guard case let .removedKeepingBranch(state) = store.removal?.phase else {
+            return XCTFail("\(String(describing: store.removal?.phase))")
+        }
+        XCTAssertEqual(state.title, "Worktree removed, branch three kept")
+        XCTAssertEqual(state.cause, "Not merged into origin/three")
+        XCTAssertTrue(state.details.contains("not fully merged"), state.details)
+        XCTAssertNil(store.removal?.error)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths[2]))
+        XCTAssertTrue(try branches().contains("three"))
+    }
+
+    func testASingleRemoveOfAFolderAlreadyGoneIsDone() async throws {
+        let gone = base + "/dash-gone"
+        try git(["worktree", "add", "-q", "-b", "gone", gone], in: repo)
+        let store = GitStore(host: HostRunner(), admin: RefusingAdmin(), demo: false)
+        defer { store.stop() }
+        store.start(.local(session: "dash", path: repo))
+        try await waitUntil { store.snapshot?.worktrees.count == 2 }
+
+        store.requestRemoval(try XCTUnwrap(store.snapshot?.worktrees.first { $0.path == gone }))
+        try await waitUntil { store.removal?.phase == .ready }
+        try git(["worktree", "remove", gone], in: repo)
+        store.confirmRemoval(options: .init(deleteBranch: true))
+        try await waitUntil { store.removal == nil }
+        XCTAssertEqual(try branches(), ["main"])
+        try await waitUntil { store.snapshot?.worktrees.count == 1 }
+    }
+
     func testAFileGitCannotDeleteLeavesALeftoverTheNextCheckFindsAndRemoves() async throws {
         let stuck = repo + "/.worktrees/stuck"
         try git(["worktree", "add", "-q", "-b", "stuck", stuck], in: repo)

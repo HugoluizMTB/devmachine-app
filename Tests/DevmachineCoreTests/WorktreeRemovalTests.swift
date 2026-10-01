@@ -79,74 +79,147 @@ final class WorktreeRemovalTests: XCTestCase {
 
     // MARK: Commands
 
-    func testRemoveRunsFromTheMainWorktreeThenPrunes() {
-        let command = WorktreeRemoval.removeCommand(
-            check(), options: .init(), mainWorktree: "/home/alice/dev/dash")
+    private let main = "/home/alice/dev/dash"
+
+    func testOneStepPerWorktreeWithItsForceAndBranch() {
         XCTAssertEqual(
-            command,
-            "cd '/home/alice/dev/dash' && git worktree remove -- '/home/alice/dev/dash-feature'"
-                + " && git worktree prune")
+            WorktreeRemoval.step(check(), options: .init()),
+            .init(path: "/home/alice/dev/dash-feature", branch: nil, force: .none))
+        XCTAssertEqual(
+            WorktreeRemoval.step(check(uncommitted: 2), options: .init(discardChanges: true)),
+            .init(path: "/home/alice/dev/dash-feature", branch: nil, force: .force))
+        XCTAssertEqual(
+            WorktreeRemoval.step(check(unmerged: 2), options: .init(deleteBranch: true))?.branch, nil)
+        XCTAssertEqual(
+            WorktreeRemoval.step(check(isLocked: true), options: .init(removeLocked: true, deleteBranch: true)),
+            .init(path: "/home/alice/dev/dash-feature", branch: "feature", force: .forceTwice))
+        XCTAssertNil(WorktreeRemoval.step(check(uncommitted: 1), options: .init()))
+        XCTAssertNil(WorktreeRemoval.step(check(isLocked: true), options: .init()))
     }
 
-    func testRemoveForcesOnceForDiscardAndTwiceForALock() {
-        let main = "/home/alice/dev/dash"
-        XCTAssertEqual(
-            WorktreeRemoval.removeCommand(check(uncommitted: 2), options: .init(discardChanges: true), mainWorktree: main),
-            "cd '/home/alice/dev/dash' && git worktree remove --force -- '/home/alice/dev/dash-feature'"
-                + " && git worktree prune")
-        XCTAssertEqual(
-            WorktreeRemoval.removeCommand(check(isLocked: true), options: .init(removeLocked: true), mainWorktree: main),
-            "cd '/home/alice/dev/dash' && git worktree remove --force --force -- '/home/alice/dev/dash-feature'"
-                + " && git worktree prune")
-    }
-
-    func testRemoveDeletesTheBranchWithLowercaseDOnly() {
-        let command = WorktreeRemoval.removeCommand(
-            check(), options: .init(deleteBranch: true), mainWorktree: "/home/alice/dev/dash")
-        XCTAssertEqual(
-            command,
-            "cd '/home/alice/dev/dash' && git worktree remove -- '/home/alice/dev/dash-feature'"
-                + " && git worktree prune && git branch -d -- 'feature'")
-        XCTAssertFalse(command?.contains("-D") ?? true)
-    }
-
-    func testRemoveRefusesWhatTheGateRefuses() {
-        let main = "/home/alice/dev/dash"
-        XCTAssertNil(WorktreeRemoval.removeCommand(check(uncommitted: 1), options: .init(), mainWorktree: main))
-        XCTAssertNil(WorktreeRemoval.removeCommand(check(isLocked: true), options: .init(), mainWorktree: main))
-        let unmerged = WorktreeRemoval.removeCommand(
-            check(unmerged: 3), options: .init(deleteBranch: true), mainWorktree: main)
-        XCTAssertEqual(unmerged?.contains("git branch"), false)
-    }
-
-    func testRemoveMergedSkipsAnythingNotCleanAndMergedAndNeverForces() throws {
-        let command = try XCTUnwrap(WorktreeRemoval.removeMergedCommand(
+    func testTheMergedSweepTakesOnlyCleanMergedWorktreesAndNeverForces() {
+        let steps = WorktreeRemoval.mergedSteps(
             [check(path: "/home/alice/dev/dash-a", branch: "a"),
-             check(path: "/home/alice/dev/dash-b", branch: "b", uncommitted: 1)],
-            deleteBranches: true, mainWorktree: "/home/alice/dev/dash"))
+             check(path: "/home/alice/dev/dash-b", branch: "b", uncommitted: 1),
+             check(path: "/home/alice/dev/dash-c", branch: "c")],
+            deleteBranches: true)
+        XCTAssertEqual(steps, [
+            .init(path: "/home/alice/dev/dash-a", branch: "a", force: .none),
+            .init(path: "/home/alice/dev/dash-c", branch: "c", force: .none),
+        ])
         XCTAssertEqual(
-            command,
-            "cd '/home/alice/dev/dash' || exit 1; rc=0"
-                + "; { git worktree remove -- '/home/alice/dev/dash-a' && git branch -d -- 'a'; } || rc=1"
-                + "; git worktree prune; exit $rc")
-        XCTAssertFalse(command.contains("--force"))
-        XCTAssertNil(WorktreeRemoval.removeMergedCommand(
-            [check(uncommitted: 1)], deleteBranches: false, mainWorktree: "/home/alice/dev/dash"))
+            WorktreeRemoval.mergedSteps([check(path: "/home/alice/dev/dash-a", branch: "a")], deleteBranches: false)
+                .map(\.branch),
+            [nil])
+        XCTAssertNil(WorktreeRemoval.removeCommand([], mainWorktree: main))
+    }
+
+    func testRemovalRunsFromTheMainCheckoutOneWorktreeAfterTheOtherThenPrunes() throws {
+        let command = try XCTUnwrap(WorktreeRemoval.removeCommand(
+            [.init(path: "/home/alice/dev/dash-a", branch: "a", force: .none),
+             .init(path: "/home/alice/dev/dash-b", branch: nil, force: .force)],
+            mainWorktree: main))
+        XCTAssertTrue(command.hasPrefix("cd '/home/alice/dev/dash' || exit 1; "))
+        XCTAssertTrue(command.hasSuffix("; git worktree prune"))
+        let a = try XCTUnwrap(command.range(of: "git worktree remove -- '/home/alice/dev/dash-a'"))
+        let branchA = try XCTUnwrap(command.range(of: "git branch -d -- 'a'"))
+        let b = try XCTUnwrap(command.range(of: "git worktree remove --force -- '/home/alice/dev/dash-b'"))
+        XCTAssertLessThan(a.lowerBound, branchA.lowerBound)
+        XCTAssertLessThan(branchA.lowerBound, b.lowerBound)
+        XCTAssertFalse(command.contains(" & "))
+        XCTAssertFalse(command.contains("-D"))
+        XCTAssertFalse(command.contains("&& git branch"))
     }
 
     func testPathsAndBranchesAreQuotedAgainstTheShell() throws {
         let hostile = "/home/alice/dev/it's a $(touch pwned) `x` \"q\""
-        let command = try XCTUnwrap(WorktreeRemoval.removeCommand(
-            check(path: hostile, branch: "da-it's"), options: .init(deleteBranch: true),
-            mainWorktree: "/home/alice/dev/my $HOME"))
-        XCTAssertTrue(command.hasPrefix("cd '/home/alice/dev/my $HOME' && "))
-        XCTAssertTrue(command.contains(
-            "-- '/home/alice/dev/it'\\''s a $(touch pwned) `x` \"q\"'"))
-        XCTAssertTrue(command.hasSuffix("git branch -d -- 'da-it'\\''s'"))
+        let step = try XCTUnwrap(WorktreeRemoval.step(
+            check(path: hostile, branch: "da-it's"), options: .init(deleteBranch: true)))
+        let command = try XCTUnwrap(WorktreeRemoval.removeCommand([step], mainWorktree: "/home/alice/dev/my $HOME"))
+        XCTAssertTrue(command.hasPrefix("cd '/home/alice/dev/my $HOME' || exit 1; "))
+        XCTAssertTrue(command.contains("-- '/home/alice/dev/it'\\''s a $(touch pwned) `x` \"q\"'"))
+        XCTAssertTrue(command.contains("git branch -d -- 'da-it'\\''s'"))
 
         let checkCommand = WorktreeRemoval.checkCommand(path: hostile, mainBranch: "ma'in")
         XCTAssertTrue(checkCommand.hasPrefix("cd '/home/alice/dev/it'\\''s a $(touch pwned) `x` \"q\"' && "))
         XCTAssertTrue(checkCommand.contains("'refs/heads/ma'\\''in..HEAD'"))
+    }
+
+    // MARK: Results
+
+    private let us = "\u{1f}"
+
+    private func record(_ fields: String...) -> String { fields.joined(separator: us) + gs }
+
+    func testEachWorktreeGetsItsOwnResult() {
+        let steps: [WorktreeRemoval.RemovalStep] = [
+            .init(path: "/home/alice/dev/dash-a", branch: "a", force: .none),
+            .init(path: "/home/alice/dev/dash-b", branch: "b", force: .none),
+            .init(path: "/home/alice/dev/dash-c", branch: nil, force: .none),
+            .init(path: "/home/alice/dev/dash-d", branch: "d", force: .none),
+        ]
+        let refused = "warning: not deleting branch 'b' that is not yet merged to\n"
+            + "         'refs/remotes/origin/b', even though it is merged to HEAD\n"
+            + "error: the branch 'b' is not fully merged"
+        let dirty = "fatal: '/home/alice/dev/dash-c' contains modified or untracked files, use --force to delete it"
+        let output = record("0", "", "gone", "0", "Deleted branch a (was 1a2b3c4).")
+            + record("0", "", "gone", "1", refused)
+            + record("128", dirty, "present")
+            + record("128", "fatal: '/home/alice/dev/dash-d' is not a working tree", "gone", "1", "error: branch 'd' not found")
+
+        let results = WorktreeRemoval.parseRemoval(output, steps: steps, failure: "")
+        XCTAssertEqual(results.map(\.path), steps.map(\.path))
+        XCTAssertEqual(results[0].outcome, .removed)
+        XCTAssertEqual(results[0].branchOutcome, .deleted)
+        XCTAssertEqual(results[1].outcome, .removed)
+        XCTAssertEqual(results[1].branchOutcome, .kept(reason: "not merged into origin/b", details: refused))
+        XCTAssertEqual(results[2].outcome, .failed(details: dirty))
+        XCTAssertEqual(results[2].branchOutcome, .notRequested)
+        XCTAssertEqual(results[3].outcome, .alreadyGone)
+        XCTAssertEqual(results[3].branchOutcome, .alreadyGone)
+        XCTAssertEqual(results.map(\.isGone), [true, true, false, true])
+    }
+
+    func testABranchStillCheckedOutOrUnmergedIsKeptWithAPlainReason() {
+        let steps: [WorktreeRemoval.RemovalStep] = [
+            .init(path: "/home/alice/dev/dash-a", branch: "a", force: .none),
+            .init(path: "/home/alice/dev/dash-b", branch: "b", force: .none),
+        ]
+        let output = record("0", "", "gone", "1", "error: cannot delete branch 'a' used by worktree at '/home/alice/dev/x'")
+            + record("0", "", "gone", "1", "error: the branch 'b' is not fully merged\nhint: If you are sure")
+        let results = WorktreeRemoval.parseRemoval(output, steps: steps, failure: "")
+        XCTAssertEqual(results.map(\.keptBranchReason), ["checked out in another worktree", "not fully merged"])
+    }
+
+    func testAWorktreeTheOutputNeverReachedFailsWithTheCommandsError() {
+        let steps: [WorktreeRemoval.RemovalStep] = [
+            .init(path: "/home/alice/dev/dash-a", branch: nil, force: .none),
+            .init(path: "/home/alice/dev/dash-b", branch: nil, force: .none),
+        ]
+        let results = WorktreeRemoval.parseRemoval(
+            record("0", "", "gone"), steps: steps, failure: "ssh: connection closed")
+        XCTAssertEqual(results.map(\.outcome), [.removed, .failed(details: "ssh: connection closed")])
+    }
+
+    func testTheSummaryCountsWhatWasRemovedAndWhyABranchWasKept() {
+        func result(_ outcome: WorktreeRemovalResult.Outcome, _ branch: WorktreeRemovalResult.BranchOutcome)
+            -> WorktreeRemovalResult {
+            WorktreeRemovalResult(path: "/home/alice/dev/x", branch: "x", outcome: outcome, branchOutcome: branch)
+        }
+        XCTAssertEqual(
+            WorktreeRemoval.summary([
+                result(.removed, .deleted), result(.alreadyGone, .alreadyGone), result(.removed, .deleted),
+                result(.removed, .kept(reason: "not merged into main", details: "")),
+            ]),
+            "4 removed, 1 branch kept: not merged into main")
+        XCTAssertEqual(
+            WorktreeRemoval.summary([
+                result(.removed, .kept(reason: "not merged into origin/a", details: "")),
+                result(.removed, .kept(reason: "not fully merged", details: "")),
+                result(.failed(details: "fatal: x"), .notRequested),
+            ]),
+            "2 removed, 1 failed, 2 branches kept")
+        XCTAssertEqual(WorktreeRemoval.summary([result(.removed, .notRequested)]), "1 removed")
     }
 
     // MARK: The check

@@ -171,6 +171,9 @@ final class GitTabTests: XCTestCase {
         let phases: [WorktreeRemovalRequest.Phase] = [
             .checking, .ready, .removing,
             .failed(DMErrorState(title: "Could not remove the worktree", message: "fatal: not a working tree")),
+            .removedKeepingBranch(DMErrorState(
+                title: "Worktree removed, branch feature kept", cause: "Not merged into origin/feature",
+                details: "error: the branch 'feature' is not fully merged")),
         ]
         for phase in phases {
             let sheet = WorktreeRemovalSheet(
@@ -183,6 +186,39 @@ final class GitTabTests: XCTestCase {
             request: MergedRemovalRequest(checks: DemoData.worktreeChecks.filter(\.isCleanAndMerged)),
             onRemove: { _ in }, onCancel: {})
         XCTAssertEqual(try XCTUnwrap(ImageRenderer(content: merged).nsImage).size.width, 420)
+    }
+
+    func testTheMergedSheetAfterARunShowsEachWorktreeAndOffersOnlyWhatIsLeft() throws {
+        let checks = DemoData.worktreeChecks.filter(\.isCleanAndMerged)
+        let results = [
+            WorktreeRemovalResult(path: "/home/alice/dev/dash-a", branch: "a", outcome: .removed, branchOutcome: .deleted),
+            WorktreeRemovalResult(
+                path: "/home/alice/dev/dash-b", branch: "b", outcome: .removed,
+                branchOutcome: .kept(reason: "not merged into origin/b", details: "error: not fully merged")),
+            WorktreeRemovalResult(path: "/home/alice/dev/dash-c", branch: nil, outcome: .alreadyGone, branchOutcome: .notRequested),
+            WorktreeRemovalResult(
+                path: "/home/alice/dev/dash-d", branch: nil,
+                outcome: .failed(details: "fatal: '/home/alice/dev/dash-d' contains modified or untracked files"),
+                branchOutcome: .notRequested),
+        ]
+        var request = MergedRemovalRequest(checks: Array(checks.prefix(1)))
+        XCTAssertEqual(WorktreeRemovalText.mergedTitle(request), "Remove 1 merged worktree?")
+        request.results = results
+        XCTAssertEqual(WorktreeRemovalText.mergedTitle(request), "3 removed, 1 failed, 1 branch kept: not merged into origin/b")
+        XCTAssertEqual(results.map { WorktreeRemovalText.status($0).text }, [
+            "Removed, branch deleted", "Removed, branch kept: not merged into origin/b", "Already gone", "Not removed",
+        ])
+        let sheet = MergedWorktreesRemovalSheet(request: request, onRemove: { _ in }, onCancel: {})
+        XCTAssertEqual(try XCTUnwrap(ImageRenderer(content: sheet).nsImage).size.width, 420)
+    }
+
+    func testAWorktreeRemovedWithItsBranchKeptOffersNothingMore() throws {
+        let worktree = try XCTUnwrap(DemoData.gitSnapshot.worktrees.first { $0.path.hasSuffix("api-webhooks") })
+        let request = WorktreeRemovalRequest(
+            worktree: worktree, check: DemoData.worktreeChecks.first { $0.path == worktree.path },
+            phase: .removedKeepingBranch(DMErrorState(title: "Worktree removed, branch x kept", cause: nil, details: "")))
+        XCTAssertNil(WorktreeRemovalText.primaryAction(request))
+        XCTAssertNil(request.error)
     }
 
     func testTheDemoWorktreesRender() throws {

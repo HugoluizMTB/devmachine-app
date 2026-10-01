@@ -294,6 +294,14 @@ Rules:
   locked needs its own checkbox before `--force` / `--force --force`; a branch
   is deleted only with `-d`, only when merged into the main checkout's branch.
   Paths and branches are single-quoted; the remove runs from the main checkout.
+- **A removal reports per worktree, never one exit code.** Single or "Remove N
+  merged…", one shell runs the worktrees one after the other and prints a
+  record each (`WorktreeRemoval.removeCommand`/`parseRemoval`). `branch -d`
+  refusing (its upstream is behind, even when merged into main) keeps the
+  branch as a warning; the folder is still gone. A folder already gone counts
+  as removed and is pruned, so a second click never fails on it. The batch
+  once failed whole on one refused branch, kept its stale list, and the retry
+  then failed on every folder it had already removed.
 - **"Permission denied" is a refused login only in ssh's own words**
   (`FailureCause.isSSHLoginRefused`: `Permission denied (publickey…)`,
   `…, please try again`, too many auth failures). git and rm say it about a
