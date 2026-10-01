@@ -460,9 +460,9 @@ Rules:
   `window.close()` closes it. `javaScriptCanOpenWindowsAutomatically` stays
   off: WebKit then lets only a click, or a script answering one, open a tab.
 - **A download lands in ~/Downloads, never over a file** (`DownloadName`,
-  `-2`, `-3`, … before the extension), from a `download` link, an
-  `attachment`, or a type WebKit cannot show; a card says where, with
-  Reveal in Finder. A demo build saves to `DEVMACHINE_PREVIEW_DOWNLOADS`.
+  `FileTransfer.freeName`, the Files tab's `-2`, `-3` counter), from a
+  `download` link, an `attachment`, or a type WebKit cannot show; the Files
+  tab's own `TransferNotice` card says where, with Reveal in Finder. A demo build saves to `DEVMACHINE_PREVIEW_DOWNLOADS`.
 - **Browser keys belong to the page that has the keyboard**
   (`PreviewWebKitView.performKeyEquivalent`): ⌘F find, ⌘G / ⇧⌘G next and
   previous, ⌘= / ⌘− zoom, ⌘0 actual size (Home only when the page does not

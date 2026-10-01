@@ -45,7 +45,6 @@ extension PreviewURLPolicy {
 /// name, numbered when the folder already holds one.
 public enum DownloadName {
     static let fallback = "download"
-    static let doubleExtensions: Set<String> = ["tar"]
 
     public static func sanitized(_ suggested: String) -> String {
         let last = suggested.split(whereSeparator: { $0 == "/" || $0 == ":" || $0 == "\\" }).last.map(String.init) ?? ""
@@ -55,33 +54,10 @@ public enum DownloadName {
         return name.isEmpty ? fallback : name
     }
 
+    /// `-2`, `-3` before the extension, the counter the Files tab and the CLI use.
     public static func available(_ suggested: String, in folder: URL, exists: (URL) -> Bool) -> URL {
-        let name = sanitized(suggested)
-        let first = folder.appendingPathComponent(name)
-        guard exists(first) else { return first }
-        let (stem, ext) = split(name)
-        var number = 2
-        while true {
-            let candidate = folder.appendingPathComponent("\(stem)-\(number)\(ext)")
-            if !exists(candidate) { return candidate }
-            number += 1
-        }
-    }
-
-    public static func display(_ url: URL, home: String) -> String {
-        let path = url.path
-        let prefix = home.hasSuffix("/") ? home : home + "/"
-        guard !home.isEmpty, path.hasPrefix(prefix) else { return path }
-        return "~/" + path.dropFirst(prefix.count)
-    }
-
-    private static func split(_ name: String) -> (stem: String, ext: String) {
-        let parts = name.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count > 1 else { return (name, "") }
-        var extCount = 1
-        if parts.count > 2, doubleExtensions.contains(parts[parts.count - 2].lowercased()) { extCount = 2 }
-        let stem = parts.dropLast(extCount).joined(separator: ".")
-        return (stem, "." + parts.suffix(extCount).joined(separator: "."))
+        let name = FileTransfer.freeName(sanitized(suggested)) { exists(folder.appendingPathComponent($0)) }
+        return folder.appendingPathComponent(name)
     }
 }
 

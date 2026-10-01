@@ -80,7 +80,7 @@ struct ContentView: View {
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
                 ForEach(model.activeTasks) { task in
-                    DMToastCard(task: task, onAction: { task.action?.perform() })
+                    DMToastCard(task: task)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
                 TransferNoticeOverlay()

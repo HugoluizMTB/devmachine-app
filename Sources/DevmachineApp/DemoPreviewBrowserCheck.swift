@@ -98,7 +98,8 @@ enum DemoPreviewBrowserCheck {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
         }
         log("blob downloads \(files(in: folder))")
-        log("toasts \(model.activeTasks.map { "\($0.label) [\($0.action?.title ?? "-")]" })")
+        let notice = FileTransferStore.shared.notice
+        log("notice \(notice?.title ?? "none") reveal=\(notice?.reveal?.lastPathComponent ?? "none")")
         _ = await js(page, "const a = document.createElement('a'); a.href = '/attachment'; document.body.append(a); a.click(); return 1")
         try? await Task.sleep(nanoseconds: 1_500_000_000)
         log("attachment downloads \(files(in: folder)) page still \(page.url?.path ?? "nil") failure=\(page.failure ?? "none")")

@@ -148,7 +148,7 @@ final class FileTransferStore: ObservableObject {
         notice = nil
     }
 
-    private func show(_ notice: TransferNotice) {
+    func show(_ notice: TransferNotice) {
         self.notice = notice
         guard !notice.failed else { return }
         let id = notice.id

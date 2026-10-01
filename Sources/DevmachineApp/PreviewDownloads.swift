@@ -17,7 +17,7 @@ final class PreviewDownloader: NSObject, WKDownloadDelegate {
         folder: @escaping @MainActor () -> URL = { PreviewDownloader.downloadsFolder() },
         fileExists: @escaping (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
         finished: @escaping @MainActor (URL) -> Void = { PreviewDownloader.announce($0) },
-        failed: @escaping @MainActor (String) -> Void = { AppModel.shared?.flashToast($0) }
+        failed: @escaping @MainActor (String) -> Void = { PreviewDownloader.announceFailure($0) }
     ) {
         self.folder = folder
         self.fileExists = fileExists
@@ -61,7 +61,7 @@ final class PreviewDownloader: NSObject, WKDownloadDelegate {
     nonisolated func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         MainActor.assumeIsolated {
             if let url = destinations.removeValue(forKey: ObjectIdentifier(download)) { release(url) }
-            failed("Download failed: \(error.localizedDescription)")
+            failed(error.localizedDescription)
         }
     }
 
@@ -76,8 +76,14 @@ final class PreviewDownloader: NSObject, WKDownloadDelegate {
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
     }
 
+    /// The same card a download from the Files tab shows.
     static func announce(_ url: URL) {
-        let shown = DownloadName.display(url, home: FileManager.default.homeDirectoryForCurrentUser.path)
-        AppModel.shared?.flashToast("Saved to \(shown)", action: .reveal(url))
+        FileTransferStore.shared.show(TransferNotice(
+            title: "Saved to \(FileTransfer.displayPath(url.path))", detail: nil, reveal: url, failed: false))
+    }
+
+    static func announceFailure(_ reason: String) {
+        FileTransferStore.shared.show(TransferNotice(
+            title: "Could not download the file", detail: reason, reveal: nil, failed: true))
     }
 }

@@ -100,14 +100,6 @@ final class DownloadNameTests: XCTestCase {
         XCTAssertEqual(DownloadName.sanitized("   "), "download")
         XCTAssertEqual(DownloadName.sanitized(".."), "download")
     }
-
-    func testTheSavedPathIsShownFromTheHomeFolder() {
-        XCTAssertEqual(DownloadName.display(URL(fileURLWithPath: "/Users/alice/Downloads/report.pdf"),
-                                            home: "/Users/alice"), "~/Downloads/report.pdf")
-        XCTAssertEqual(DownloadName.display(URL(fileURLWithPath: "/tmp/x.pdf"), home: "/Users/alice"), "/tmp/x.pdf")
-        XCTAssertEqual(DownloadName.display(URL(fileURLWithPath: "/Users/alicex/y"), home: "/Users/alice"),
-                       "/Users/alicex/y")
-    }
 }
 
 final class PreviewDialogTextTests: XCTestCase {
