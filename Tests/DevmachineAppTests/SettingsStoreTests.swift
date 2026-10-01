@@ -16,7 +16,25 @@ final class SettingsStoreTests: XCTestCase {
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         RemoteCommands.SSHAgentSocketPreference.shared.update(nil)
+        DMFont.scale = 1
         super.tearDown()
+    }
+
+    func testTheAppsStoreSetsTheTextSizeBeforeTheNextRender() {
+        let store = SettingsStore(defaults: defaults, drivesTextSize: true)
+        var settings = sample
+        settings.uiFontScale = 1.4
+        store.settings = settings
+        XCTAssertEqual(DMFont.scale, 1.4)
+        XCTAssertEqual(DMMetrics.current, DMMetrics(scale: 1.4))
+    }
+
+    func testAnyOtherStoreLeavesTheTextSizeAlone() {
+        let store = SettingsStore(defaults: defaults)
+        var settings = sample
+        settings.uiFontScale = 1.4
+        store.settings = settings
+        XCTAssertEqual(DMFont.scale, 1)
     }
 
     private let sample = AppSettings(

@@ -53,7 +53,7 @@ extension EnvironmentValues {
 final class SettingsStore: ObservableObject {
     /// Single instance for the whole app: `TerminalRegistry` is a singleton too
     /// and has no view environment to read the settings from.
-    static let shared = SettingsStore()
+    static let shared = SettingsStore(drivesTextSize: true)
 
     private static let key = "appSettings"
 
@@ -61,14 +61,17 @@ final class SettingsStore: ObservableObject {
         didSet {
             save()
             syncSSHAgentSocketPreference()
+            syncTextSize()
         }
     }
 
     private let defaults: UserDefaults
     private let persists: Bool
+    private let drivesTextSize: Bool
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, drivesTextSize: Bool = false) {
         self.defaults = defaults
+        self.drivesTextSize = drivesTextSize
         persists = !DemoMode.isActive
         guard persists else {
             settings = DemoData.settings
@@ -85,6 +88,14 @@ final class SettingsStore: ObservableObject {
     /// next connection, without threading the setting through by hand.
     private func syncSSHAgentSocketPreference() {
         RemoteCommands.SSHAgentSocketPreference.shared.update(settings?.sshAgentSocket)
+    }
+
+    /// Set here, not from a view's `onChange`, so the tree the new setting
+    /// rebuilds is drawn at the new size: `onChange` runs after that render,
+    /// and a view nothing re-renders kept the old size until hovered.
+    private func syncTextSize() {
+        guard drivesTextSize else { return }
+        DMFont.scale = settings?.uiFontScale ?? Appearance.defaultUIFontScale
     }
 
     var isConfigured: Bool { settings != nil }
