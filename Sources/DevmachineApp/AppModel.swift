@@ -1415,7 +1415,7 @@ final class AppModel: ObservableObject {
     // nine parallel auths against a locked agent are nine denied logins in
     // one second, which is a fail2ban ban of this Mac.
     func refreshAll() {
-        guard Date() >= pollPausedUntil, !sweepInFlight else { return }
+        guard !DemoMode.isActive, Date() >= pollPausedUntil, !sweepInFlight else { return }
         let targets = visibleWorkspaces.filter { !refreshingAliases.contains($0.alias) }
         guard !targets.isEmpty else { return }
         sweepInFlight = true
@@ -1459,7 +1459,7 @@ final class AppModel: ObservableObject {
     }
 
     func refresh(alias: String) {
-        guard Date() >= pollPausedUntil,
+        guard !DemoMode.isActive, Date() >= pollPausedUntil,
               let ws = visibleWorkspaces.first(where: { $0.alias == alias }) else { return }
         // A tick that arrives while the previous ssh for this alias is still
         // running is dropped: a slow host would otherwise stack one blocked
