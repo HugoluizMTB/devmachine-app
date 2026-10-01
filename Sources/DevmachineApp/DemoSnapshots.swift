@@ -188,6 +188,12 @@ enum DemoSnapshots {
         Screen(id: "file-viewer", fileName: "40-file-viewer.png", settleNanoseconds: 200_000_000),
     ]
 
+    /// The browser walk (`DEVMACHINE_DEMO_WALK=preview-browser`): see
+    /// `DemoPreviewBrowserCheck`. Its screen is the page after every check.
+    static let previewBrowserScreens: [Screen] = [
+        Screen(id: "preview-browser", fileName: "41-preview-browser.png", settleNanoseconds: 500_000_000),
+    ]
+
     static let fileViewerPath = "/home/acme/dash/Sources/Greeter.swift"
 
     static let fileViewerCode = """
@@ -241,6 +247,7 @@ enum DemoSnapshots {
         case "file-viewer": return fileViewerScreens
         case "file-transfer": return fileTransferScreens
         case "sizing": return sizingScreens
+        case "preview-browser": return previewBrowserScreens
         default: return screens
         }
     }
@@ -415,6 +422,13 @@ enum DemoSnapshots {
             model.contextTab = .context
             DemoData.typedAtPrompt = [dropKind: dropPrompt]
             PaneUploadStore.shared.dropTarget = dropKind
+        #if DEBUG
+        case "preview-browser":
+            if let directory = targetDirectory {
+                await DemoPreviewBrowserCheck.run(
+                    window: mainWindow, directory: directory, session: previewSession, model: model)
+            }
+        #endif
         case "preview":
             model.clickSession(previewSession)
             model.contextTab = .preview
