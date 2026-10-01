@@ -9,6 +9,7 @@ public enum FailureCause: String, CaseIterable, Sendable {
     case timedOut
     case unreachable
     case missingCommand
+    case hostKeyRejected
 
     public init?(message: String) {
         let lowered = message.lowercased()
@@ -17,6 +18,10 @@ public enum FailureCause: String, CaseIterable, Sendable {
             self = .signInNeeded
         } else if Self.isSSHLoginRefused(message) {
             self = .permissionDenied
+        } else if HostKeyTrust.isHostKeyRejection(message) {
+            // Any SSH connection: a git push from the server to GitHub too,
+            // so it does not say which machine.
+            self = .hostKeyRejected
         } else if mentions(["permission denied", "operation not permitted"]) {
             self = .fileAccessDenied
         } else if mentions(["timed out", "timeout"]) {
@@ -50,6 +55,7 @@ public enum FailureCause: String, CaseIterable, Sendable {
         case .timedOut: "The machine took too long to answer."
         case .unreachable: "The machine can't be reached right now."
         case .missingCommand: "A command it needs isn't installed."
+        case .hostKeyRejected: "An SSH host key wasn't trusted, so the connection stopped before logging in."
         }
     }
 }

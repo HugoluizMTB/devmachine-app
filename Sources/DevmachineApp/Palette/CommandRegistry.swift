@@ -264,6 +264,10 @@ enum CommandRegistry {
                 id: "machine.\(machine).stats", title: "Stats for \(machine)", subtitle: "",
                 category: .machine, systemImage: "chart.bar", keywords: [machine] + statsKeywords,
                 action: .stats(machine: machine))]
+            list.append(PaletteCommand(
+                id: "machine.\(machine).host-key", title: "Check SSH host key for \(machine)", subtitle: "",
+                category: .machine, systemImage: "key", keywords: [machine, "ssh", "host key", "fingerprint", "trust"],
+                action: .hostKey(machine: machine)))
             if context.hasCaddyMachine {
                 list.append(PaletteCommand(
                     id: "machine.\(machine).subdomains", title: "Subdomains on \(machine)",

@@ -3,4 +3,6 @@ enum AppPage: Hashable {
     case stats
     case subdomains
     case stack([SessionRef])
+    /// One machine's SSH host key, after ssh refused it.
+    case hostKey(String)
 }

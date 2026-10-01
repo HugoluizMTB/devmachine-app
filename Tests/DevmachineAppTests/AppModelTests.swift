@@ -1023,6 +1023,27 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testARefusedHostKeyNeitherPausesPollingNorReadsAsOffline() {
+        let model = AppModel(store: SessionStore(runner: HostKeyRejectedRunner()))
+        model.workspaces = [
+            Workspace(name: "acme", alias: "acme-devmachine"),
+            Workspace(name: "beta", alias: "beta-devmachine"),
+        ]
+        model.refreshAll()
+
+        let sweep = expectation(description: "sweep")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { sweep.fulfill() }
+        wait(for: [sweep], timeout: 2)
+
+        // No login was tried, so nothing counts toward a ban: the sweep went
+        // on to every workspace, and each says why it cannot connect.
+        XCTAssertFalse(model.isPollingPaused)
+        XCTAssertTrue(model.offlineAliases.isEmpty)
+        XCTAssertEqual(model.sessionProblems["acme-devmachine"]?.isHostKeyRejected, true)
+        XCTAssertEqual(model.sessionProblems["beta-devmachine"]?.isHostKeyRejected, true)
+    }
+
+    @MainActor
     func testTheSidebarSkeletonShowsUntilTheWorkspacesAreRead() async throws {
         let workspace = Workspace(name: "acme", alias: "acme-devmachine")
         let model = AppModel(services: fixtureServices(
@@ -1617,6 +1638,17 @@ private final class AuthDeniedRunner: CommandRunner, @unchecked Sendable {
     func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32) {
         ("", "alice@acme: Permission denied (publickey).", 255)
+    }
+}
+
+private final class HostKeyRejectedRunner: CommandRunner, @unchecked Sendable {
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        try runCapturing(executable: executable, args: args, environment: environment).stdout
+    }
+
+    func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        ("", "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\nHost key verification failed.", 255)
     }
 }
 

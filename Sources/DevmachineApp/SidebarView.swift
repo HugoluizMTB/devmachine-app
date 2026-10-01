@@ -49,15 +49,24 @@ struct SidebarView: View {
                         .padding(.horizontal, m.space.md)
                         .padding(.vertical, m.space.xs)
                 }
+                if let machine = hostKeyCardMachine(for: ws) {
+                    HostKeySidebarCard(machine: machine)
+                        .dmSurface(Color.dmBand, radius: DMRadius.panel)
+                        .padding(.horizontal, m.space.md)
+                        .padding(.vertical, m.space.xs)
+                }
                 if ws.isLocal {
                     ForEach(model.localSessions) { s in
                         localSessionRow(session: s)
                     }
                 } else if let problem = model.sessionProblems[ws.alias],
+                          !(problem.isHostKeyRejected && hostKeyMachine(for: ws) != nil),
                           (model.sessionsByAlias[ws.alias] ?? []).isEmpty {
+                    // A refused host key with no machine to review it under
+                    // (the configuration unread) still says why.
                     SessionProblemView(
                         presentation: problem.presentation(workspace: ws.name),
-                        retry: { model.refresh(alias: ws.alias) })
+                        retry: { model.retry(alias: ws.alias) })
                 } else if model.showsSessionSkeleton(alias: ws.alias) {
                     SidebarSkeleton.sessionRows(count: 2, seed: index)
                         .transition(.opacity)
@@ -79,6 +88,23 @@ struct SidebarView: View {
         else { return nil }
         let first = model.visibleWorkspaces.first { readiness.machine(forWorkspace: $0.name) == machine }
         return first?.alias == workspace.alias ? machine : nil
+    }
+
+    /// A machine whose host key ssh refused gets one card, under the first
+    /// of its workspaces the sidebar shows, whether or not older sessions
+    /// are still listed: none of them can be opened until it is reviewed.
+    private func hostKeyCardMachine(for workspace: Workspace) -> String? {
+        guard let machine = hostKeyMachine(for: workspace) else { return nil }
+        let first = model.visibleWorkspaces.first { readiness.machine(forWorkspace: $0.name) == machine }
+        return first?.alias == workspace.alias ? machine : nil
+    }
+
+    /// The machine of `workspace` when any workspace on it has a refused
+    /// host key.
+    private func hostKeyMachine(for workspace: Workspace) -> String? {
+        guard !workspace.isLocal, let machine = readiness.machine(forWorkspace: workspace.name) else { return nil }
+        let onMachine = model.visibleWorkspaces.filter { readiness.machine(forWorkspace: $0.name) == machine }
+        return onMachine.contains { model.sessionProblems[$0.alias]?.isHostKeyRejected == true } ? machine : nil
     }
 
     private var footerRow: some View {
