@@ -11,9 +11,9 @@ enum HomeUsageLayout {
         min(max(harnessCount, 1), 2)
     }
 
-    static func width(for harnessCount: Int) -> CGFloat {
+    static func width(for harnessCount: Int, metrics m: DMMetrics = DMMetrics(scale: 1)) -> CGFloat {
         let columns = CGFloat(columnCount(for: harnessCount))
-        return columns * cardWidth + (columns - 1) * spacing
+        return columns * m.pt(cardWidth) + (columns - 1) * m.pt(spacing)
     }
 }
 
@@ -39,21 +39,23 @@ enum HomeLayout {
         var cardsEdge: HorizontalEdge { .leading }
     }
 
-    static var twoMachineCardsWidth: CGFloat { MachineStatsCard.width * 2 + cardSpacing }
+    static func twoMachineCardsWidth(_ m: DMMetrics) -> CGFloat {
+        m.pt(MachineStatsCard.width) * 2 + m.pt(cardSpacing)
+    }
 
-    static func plan(width: CGFloat, harnessCount: Int) -> Plan {
-        let inner = max(0, width - padding * 2)
+    static func plan(width: CGFloat, harnessCount: Int, metrics m: DMMetrics = DMMetrics(scale: 1)) -> Plan {
+        let inner = max(0, width - m.pt(padding) * 2)
         let oneColumn = min(harnessCount, 1)
         let cardsWidth: (Int) -> CGFloat = { columns in
-            max(columns > 0 ? HomeUsageLayout.width(for: columns) : 0, twoMachineCardsWidth)
+            max(columns > 0 ? HomeUsageLayout.width(for: columns, metrics: m) : 0, twoMachineCardsWidth(m))
         }
         var columns = oneColumn
-        if harnessCount >= 2, inner - cardsWidth(2) - gap >= roomyClockWidth {
+        if harnessCount >= 2, inner - cardsWidth(2) - m.pt(gap) >= m.pt(roomyClockWidth) {
             columns = 2
         }
         let cards = cardsWidth(columns)
-        let clockWidth = inner - cards - gap
-        if clockWidth < minClockWidth {
+        let clockWidth = inner - cards - m.pt(gap)
+        if clockWidth < m.pt(minClockWidth) {
             return Plan(stacked: true, usageColumns: oneColumn, cardsWidth: cards, clockSize: clockSize(for: inner))
         }
         return Plan(stacked: false, usageColumns: columns, cardsWidth: cards, clockSize: clockSize(for: clockWidth))
@@ -86,7 +88,7 @@ struct HomeView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let plan = HomeLayout.plan(width: proxy.size.width, harnessCount: usage.states.count)
+            let plan = HomeLayout.plan(width: proxy.size.width, harnessCount: usage.states.count, metrics: m)
             VStack(spacing: m.space.xl) {
                 if plan.stacked {
                     stackedLayout(plan)
@@ -99,7 +101,7 @@ struct HomeView: View {
                         .fixedSize()
                 }
             }
-            .padding(HomeLayout.padding)
+            .padding(m.pt(HomeLayout.padding))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WallpaperBackground())
@@ -113,7 +115,7 @@ struct HomeView: View {
     }
 
     private func sideBySideLayout(_ plan: HomeLayout.Plan) -> some View {
-        HStack(alignment: .top, spacing: HomeLayout.gap) {
+        HStack(alignment: .top, spacing: m.pt(HomeLayout.gap)) {
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: m.pt(14)) {
                     machinesSection
@@ -167,7 +169,7 @@ struct HomeView: View {
             LazyVGrid(
                 columns: Array(
                     repeating: GridItem(
-                        .fixed(HomeUsageLayout.cardWidth), spacing: HomeUsageLayout.spacing, alignment: .top),
+                        .fixed(m.pt(HomeUsageLayout.cardWidth)), spacing: m.pt(HomeUsageLayout.spacing), alignment: .top),
                     count: columns),
                 alignment: .leading,
                 spacing: 14
@@ -196,7 +198,7 @@ struct HomeView: View {
             DMErrorStateView(state: DMErrorState(error), retry: retry)
                 .padding(.vertical, m.space.md)
         }
-        .frame(width: HomeUsageLayout.cardWidth)
+        .frame(width: m.pt(HomeUsageLayout.cardWidth))
         .clipShape(RoundedRectangle(cornerRadius: m.radius.card))
         .dmGlass(radius: DMRadius.card, stroke: .white.opacity(0.15))
     }
@@ -220,7 +222,7 @@ struct HomeView: View {
                     .kerning(0.8)
                     .foregroundStyle(.white.opacity(0.7))
                     .shadow(color: .black.opacity(0.4), radius: 4)
-                FlowLayout(spacing: HomeLayout.cardSpacing, rowSpacing: HomeLayout.cardSpacing) {
+                FlowLayout(spacing: m.pt(HomeLayout.cardSpacing), rowSpacing: m.pt(HomeLayout.cardSpacing)) {
                     ForEach(stats.machines) { machine in
                         MachineStatsCard(
                             machine: machine,

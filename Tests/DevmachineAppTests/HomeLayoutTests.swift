@@ -2,6 +2,15 @@ import XCTest
 @testable import DevmachineApp
 
 final class HomeLayoutTests: XCTestCase {
+    func testALargerTextSizeKeepsTwoMachineCardsSideBySide() {
+        let m = DMMetrics(scale: 1.3)
+        let plan = HomeLayout.plan(width: 1500, harnessCount: 1, metrics: m)
+
+        XCTAssertFalse(plan.stacked)
+        let twoCards = m.pt(MachineStatsCard.width) * 2 + m.pt(HomeLayout.cardSpacing)
+        XCTAssertGreaterThanOrEqual(plan.cardsWidth, twoCards)
+    }
+
     func testA1440WindowPutsMachinesAndUsageInALeftColumnBesideTheClock() {
         let plan = HomeLayout.plan(width: 1174, harnessCount: 2)
 
