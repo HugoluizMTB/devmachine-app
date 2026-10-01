@@ -981,6 +981,19 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testASavedDownloadCardOffersToRevealTheFile() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+        let file = URL(fileURLWithPath: "/Users/alice/Downloads/report.pdf")
+
+        model.flashToast("Saved to ~/Downloads/report.pdf", action: .reveal(file))
+
+        XCTAssertEqual(model.activeTasks.first?.label, "Saved to ~/Downloads/report.pdf")
+        XCTAssertEqual(model.activeTasks.first?.action, .reveal(file))
+        XCTAssertEqual(model.activeTasks.first?.action?.title, "Reveal in Finder")
+        XCTAssertEqual(model.activeTasks.first?.completed, model.activeTasks.first?.total)
+    }
+
+    @MainActor
     func testProgressWithoutATransferIsIgnored() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.advanceTransfer(UUID(), done: 10)

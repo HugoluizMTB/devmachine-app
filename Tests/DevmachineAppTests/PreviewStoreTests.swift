@@ -364,4 +364,36 @@ final class PreviewStoreTests: XCTestCase {
         XCTAssertEqual(previews.tabs.map(\.title), ["localhost:3000"])
         XCTAssertEqual(previews.selectedTabID, previews.tabs[0].id)
     }
+
+    func testAPopupOpensBesideItsOpenerInTheSameSessionAndTakesTheSelection() {
+        let previews = store()
+        let session = SessionRef(alias: "acme-devmachine", name: "web")
+        previews.setOwner(session)
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+        previews.open(PreviewRequest(place: .thisMac, input: .port(4000, path: "")))
+        let opener = previews.tabs[0].id
+        let popup = UUID()
+        previews.setOwner(nil)
+
+        previews.openPopup(popup, from: opener)
+
+        previews.setOwner(session)
+        XCTAssertEqual(previews.tabs.map(\.id), [opener, popup, previews.tabs[2].id])
+        XCTAssertEqual(previews.tabs[1].state, .opened)
+        XCTAssertEqual(previews.tabs[1].owner, session)
+        XCTAssertEqual(previews.selectedTabID, popup)
+    }
+
+    func testClosingAPopupSelectsTheTabBesideIt() {
+        let previews = store()
+        previews.open(PreviewRequest(place: .thisMac, input: .port(3000, path: "")))
+        let opener = previews.tabs[0].id
+        let popup = UUID()
+        previews.openPopup(popup, from: opener)
+
+        previews.close(popup)
+
+        XCTAssertEqual(previews.tabs.map(\.id), [opener])
+        XCTAssertEqual(previews.selectedTabID, opener)
+    }
 }

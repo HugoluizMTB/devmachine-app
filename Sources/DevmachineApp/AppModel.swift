@@ -14,6 +14,25 @@ struct BGTask: Identifiable, Equatable {
     /// Bytes read as "1048576 of 2097152", which says nothing. A job counted in
     /// bytes shows the bar alone.
     var showsCount: Bool = true
+    var action: BGTaskAction? = nil
+}
+
+/// The one button a finished card may carry.
+enum BGTaskAction: Equatable {
+    case reveal(URL)
+
+    var title: String {
+        switch self {
+        case .reveal: return "Reveal in Finder"
+        }
+    }
+
+    @MainActor
+    func perform() {
+        switch self {
+        case let .reveal(url): NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+    }
 }
 
 struct PaletteItem: Identifiable {
@@ -1143,11 +1162,18 @@ final class AppModel: ObservableObject {
         finishTask(beginTask(label: label, total: 1))
     }
 
-    func finishTask(_ id: UUID) {
+    /// A card with a button stays long enough to reach the button.
+    func flashToast(_ label: String, action: BGTaskAction) {
+        let id = beginTask(label: label, total: 1)
+        if let i = activeTasks.firstIndex(where: { $0.id == id }) { activeTasks[i].action = action }
+        finishTask(id, after: 6)
+    }
+
+    func finishTask(_ id: UUID, after seconds: Double = 1.2) {
         if let i = activeTasks.firstIndex(where: { $0.id == id }) {
             activeTasks[i].completed = activeTasks[i].total
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
             self.activeTasks.removeAll { $0.id == id }
         }
     }

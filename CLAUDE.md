@@ -434,6 +434,40 @@ Rules:
   version read from Safari's bundle): WebKit's default lacks `Version/… Safari/…`
   and Google served its page for an old browser. A tab's name follows the page
   (`PreviewTitle`: its title, else its current host).
+- **A `WKWebView` is the engine, not the browser.** Everything Safari's own
+  window does for a page is `PreviewPage`'s job, and a missing delegate
+  method fails silently: a file input did nothing, `alert` vanished,
+  `confirm` was always false. So the page answers file inputs (`NSOpenPanel`),
+  `alert`/`confirm`/`prompt` (sheets naming the asking origin), Basic and
+  Digest logins (a sheet; the credential lives in the non-persistent store's
+  memory for the run, never written or logged), camera and microphone (asked
+  per origin, remembered for the run; `Info.plist` carries both usage strings
+  and the entitlements both device keys, since macOS kills an app that
+  touches either without them), downloads, popups, fullscreen video and Web
+  Inspector (`isInspectable`, right-click → Inspect Element). Every question
+  goes through `PreviewPrompting`, so tests and the `preview-browser` walk
+  answer them without a window.
+- **Only the main frame's own address is limited** (`PreviewURLPolicy.navigation`).
+  Subframes load anything but `file:`; `about:`, `blob:` and `data:` are the
+  page itself (an iframe's `srcdoc`, a generated file) and blocking them
+  broke iframes, downloads and apps. `file:` and `javascript:` in the main
+  frame are refused with a notice; any other scheme (`mailto:`, `tel:`, a
+  meeting app) is offered to the app that opens it, after a yes.
+- **A popup is a tab, with a real web view.** `window.open` and
+  `target="_blank"` get a `WKWebView` built from the configuration WebKit
+  hands over, so `window.opener` works and OAuth or payment popups can post
+  back; the tab opens beside its opener in the same session (`.opened`), and
+  `window.close()` closes it. `javaScriptCanOpenWindowsAutomatically` stays
+  off: WebKit then lets only a click, or a script answering one, open a tab.
+- **A download lands in ~/Downloads, never over a file** (`DownloadName`,
+  `-2`, `-3`, … before the extension), from a `download` link, an
+  `attachment`, or a type WebKit cannot show; a card says where, with
+  Reveal in Finder. A demo build saves to `DEVMACHINE_PREVIEW_DOWNLOADS`.
+- **Browser keys belong to the page that has the keyboard**
+  (`PreviewWebKitView.performKeyEquivalent`): ⌘F find, ⌘G / ⇧⌘G next and
+  previous, ⌘= / ⌘− zoom, ⌘0 actual size (Home only when the page does not
+  have the keyboard). Esc is never taken; it closes the find bar only from
+  inside its field. WebKit's "Open Link in New Window" reads "New Tab".
 
 ## Coding harnesses
 - Multiple harnesses may be enabled globally. Enabling one validates only its

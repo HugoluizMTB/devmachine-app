@@ -26,7 +26,7 @@ struct PreviewPaneView: View {
                     .padding(m.space.xxl)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        case .ready, .page:
+        case .ready, .page, .opened:
             PreviewLoadedView(tab: tab, page: PreviewWebViews.shared.page(for: tab.id))
         }
     }
@@ -50,14 +50,16 @@ private struct PreviewLoadedView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.dmContentBg)
                 }
-                if let blocked = page.blocked {
-                    DMBanner(message: "Blocked a link to \(blocked.absoluteString): previews open web pages only.",
-                             lineLimit: 2) {
-                        DMIconButton(systemImage: "xmark", size: 10, weight: .semibold) { page.dismissBlocked() }
+                if let notice = page.notice {
+                    DMBanner(message: notice, lineLimit: 2) {
+                        DMIconButton(systemImage: "xmark", size: 10, weight: .semibold) { page.dismissNotice() }
                             .help("Dismiss")
                     }
                     .background(Color.dmSidebarBg)
                 }
+            }
+            .overlay(alignment: .topTrailing) {
+                if page.isFinding { PreviewFindBar(page: page) }
             }
         }
         .onAppear { page.show(tab.state) }
@@ -178,5 +180,50 @@ private struct PreviewToolbarRow: View {
         .padding(.horizontal, m.space.md)
         .padding(.vertical, m.space.sm)
         .background(Color.dmContentBg)
+    }
+}
+
+/// ⌘F over a page: WebKit's own find, which highlights the match and
+/// scrolls to it. Enter walks forward, ⇧Enter back; Esc in the field closes
+/// it and hands the keyboard back to the page.
+private struct PreviewFindBar: View {
+    @Environment(\.dmMetrics) private var m
+    @ObservedObject var page: PreviewPage
+    @State private var term = ""
+    @State private var missed = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        DMSearchField(
+            prompt: "Find", text: $term, focus: $focused, spacing: 6,
+            textColor: missed ? Color.red.opacity(0.9) : Color.dmRowText, fieldWidth: 180
+        ) {
+            DMIconButton(systemImage: "chevron.up", size: 10, weight: .semibold, tint: .dmRowText,
+                         hitSize: DMHitSize.regular) { step(forward: false) }
+                .keyboardShortcut(.return, modifiers: .shift)
+                .disabled(term.isEmpty)
+            DMIconButton(systemImage: "chevron.down", size: 10, weight: .semibold, tint: .dmRowText,
+                         hitSize: DMHitSize.regular) { step(forward: true) }
+                .disabled(term.isEmpty)
+            DMIconButton(systemImage: "xmark", size: 10, weight: .semibold, hitSize: DMHitSize.regular) {
+                page.endFind()
+            }
+            .help("Close")
+        }
+        .onSubmit { step(forward: true) }
+        .onExitCommand { page.endFind() }
+        .onChange(of: term) { _, _ in missed = false }
+        .padding(.horizontal, m.space.md)
+        .padding(.vertical, m.space.sm)
+        .dmSurface(Color.dmSidebarBg.opacity(0.96), radius: DMRadius.tile, stroke: .dmDivider, lineWidth: 1)
+        .padding(m.space.lg)
+        .onAppear {
+            term = page.findTerm
+            focused = true
+        }
+    }
+
+    private func step(forward: Bool) {
+        page.find(term, forward: forward) { found in missed = !found }
     }
 }

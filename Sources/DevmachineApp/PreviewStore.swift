@@ -50,6 +50,8 @@ struct PreviewTab: Identifiable, Equatable {
         case failed(String)
         /// A page drawn from a string, for the demo build: nothing is fetched.
         case page(html: String, baseURL: URL)
+        /// A tab another page opened: its web view is already loading.
+        case opened
     }
 
     let id: UUID
@@ -137,6 +139,16 @@ final class PreviewStore: ObservableObject {
         add(PreviewTab(id: UUID(), title: title, request: nil, state: .page(html: html, baseURL: baseURL)))
     }
 
+    /// A page opened a window: the tab goes right after its opener, in the
+    /// opener's session, and takes the selection like a click on a link would.
+    func openPopup(_ id: UUID, from opener: UUID) {
+        let openerTab = allTabs.first { $0.id == opener }
+        let tab = PreviewTab(id: id, title: "New Tab", request: nil, state: .opened, owner: openerTab?.owner ?? owner)
+        let index = allTabs.firstIndex { $0.id == opener }.map { $0 + 1 } ?? allTabs.endIndex
+        allTabs.insert(tab, at: index)
+        selections[tab.owner] = id
+    }
+
     func setOwner(_ owner: SessionRef?) {
         guard owner != self.owner else { return }
         self.owner = owner
@@ -195,7 +207,7 @@ final class PreviewStore: ObservableObject {
         load(request, into: id)
     }
 
-    private func openTab(_ request: PreviewRequest) {
+    func openTab(_ request: PreviewRequest) {
         let id = UUID()
         add(PreviewTab(id: id, title: request.title, request: request, state: .connecting("")))
         load(request, into: id)

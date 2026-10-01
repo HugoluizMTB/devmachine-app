@@ -11,6 +11,8 @@
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSCameraUsageDescription</key><string>A page open in a preview asked for the camera, for example a video call in the app you are building.</string>
+    <key>NSMicrophoneUsageDescription</key><string>A page open in a preview asked for the microphone, for example a video call in the app you are building.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key><true/>

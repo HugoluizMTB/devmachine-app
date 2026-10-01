@@ -282,6 +282,7 @@ struct DMStatBubble: View {
 /// Floating background-task toast. Moved verbatim from `ContentView.ToastCard`.
 struct DMToastCard: View {
     let task: BGTask
+    var onAction: (() -> Void)? = nil
 
     @Environment(\.dmMetrics) private var m
 
@@ -309,6 +310,9 @@ struct DMToastCard: View {
             // ProgressView drew its track across the window while the fill
             // stopped short.
             DMProgressBar(done: task.completed, total: task.total, fillColor: .accentColor)
+            if let action = task.action, let onAction {
+                DMButton(action.title, variant: .link, size: .small, action: onAction)
+            }
         }
         // The card is as wide as its bar, and no wider. The `Spacer` that pushes
         // the count to the right would otherwise take every point on offer, and the

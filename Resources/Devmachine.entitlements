@@ -23,12 +23,18 @@
         signed frameworks/dylibs from the same signing identity — hardened
         runtime's default library validation already allows same-team code.
       - No JIT, no unsigned/writable executable memory, no AppleScript/Apple
-        Events, no microphone/camera/location, no downloaded-executable exec.
+        Events, no location, no downloaded-executable exec.
 
-    So this file exists to be explicit that nothing was skipped, not because
-    a key was needed. If a future dependency needs one of the `com.apple.
-    security.cs.*` relaxations, add it here with the same kind of comment:
-    which binary needs it and why.
+    Camera and microphone are the two keys below. The preview's web view asks
+    for them on a page's behalf (a video call in the app being built), the
+    person answers per site, and macOS then asks once for the app. Without
+    these keys Hardened Runtime refuses the device even after both said yes.
+
+    If a future dependency needs one of the `com.apple.security.cs.*`
+    relaxations, add it here with the same kind of comment: which binary
+    needs it and why.
     -->
+    <key>com.apple.security.device.camera</key><true/>
+    <key>com.apple.security.device.audio-input</key><true/>
 </dict>
 </plist>
