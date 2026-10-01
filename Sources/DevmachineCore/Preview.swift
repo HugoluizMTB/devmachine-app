@@ -41,6 +41,8 @@ public enum PreviewURLPolicy {
         return scheme == "http" || scheme == "https"
     }
 
+    /// An address the app itself is asked to open: typed in the address bar
+    /// or handed over from a link. Only a web page.
     public static func allows(_ url: URL) -> Bool {
         isWeb(url) || url.absoluteString.lowercased() == "about:blank"
     }
