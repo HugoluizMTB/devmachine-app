@@ -76,6 +76,7 @@ final class StatsStore: ObservableObject {
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var loadMachinesTask: Task<Void, Never>?
+    private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
 
     init(
         cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
@@ -182,6 +183,31 @@ final class StatsStore: ObservableObject {
         tick()
     }
 
+    /// The snapshot when it is younger than `maxAge`; else one read through
+    /// the poller's own schedule, shared with any read already running. A
+    /// machine waiting out an error backoff is not asked early: its cached
+    /// snapshot (or nil) comes back at once.
+    func freshSnapshot(_ machine: String, maxAge: TimeInterval) async -> StatsSnapshot? {
+        let current = states[machine]
+        if let refreshedAt = current?.refreshedAt, current?.snapshot != nil,
+           now().timeIntervalSince(refreshedAt) < maxAge {
+            return current?.snapshot
+        }
+        guard !DemoMode.isActive, !isAsleep, schedule.machines.contains(machine) else {
+            return current?.snapshot
+        }
+        if !schedule.isInFlight(machine) {
+            guard current?.errorText == nil else { return current?.snapshot }
+            schedule.makeDue(machine, now: now())
+            tick()
+        }
+        guard schedule.isInFlight(machine) else { return states[machine]?.snapshot }
+        await withCheckedContinuation { continuation in
+            waiters[machine, default: []].append(continuation)
+        }
+        return states[machine]?.snapshot
+    }
+
     func handleSleep() {
         isAsleep = true
     }
@@ -257,6 +283,9 @@ final class StatsStore: ObservableObject {
     }
 
     private func apply(_ result: MachineFetchResult, to machine: String) {
+        defer {
+            for waiter in waiters.removeValue(forKey: machine) ?? [] { waiter.resume() }
+        }
         let finishedAt = now()
         switch result {
         case .success:

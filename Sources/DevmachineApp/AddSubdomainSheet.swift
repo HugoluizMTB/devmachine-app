@@ -45,6 +45,17 @@ struct AddSubdomainForm {
         }
     }
 
+    /// Fresh ports arrived while the sheet is open. The port field follows
+    /// them only while it still holds the old first suggestion, or nothing:
+    /// a port the person typed stays.
+    mutating func updateSuggestions(_ fresh: [PortSuggestion]) {
+        let untouched = port.isEmpty || port == suggestedPorts.first.map { String($0.port) }
+        suggestedPorts = fresh
+        if untouched, let first = fresh.first {
+            port = String(first.port)
+        }
+    }
+
     func request(baseDomain: String) -> SubdomainRequest? {
         guard workspaceNames.contains(selectedWorkspace), let portValue = Int(port) else { return nil }
         let candidate: SubdomainRequest
@@ -65,15 +76,22 @@ struct AddSubdomainSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let settings: AppSettings
+    let suggestedPorts: [PortSuggestion]
+    let portsAsOf: Date?
+    let isRefreshingPorts: Bool
     @State private var form: AddSubdomainForm
     @State private var confirming = false
 
     init(
         settings: AppSettings, workspaces: [Workspace], onMachine: [String]? = nil,
         preselectedWorkspace: String? = nil,
-        suggestedPorts: [PortSuggestion] = [], suggestedLabel: String = ""
+        suggestedPorts: [PortSuggestion] = [], suggestedLabel: String = "",
+        portsAsOf: Date? = nil, isRefreshingPorts: Bool = false
     ) {
         self.settings = settings
+        self.suggestedPorts = suggestedPorts
+        self.portsAsOf = portsAsOf
+        self.isRefreshingPorts = isRefreshingPorts
         _form = State(initialValue: AddSubdomainForm(
             workspaces: workspaces, onMachine: onMachine, preselectedWorkspace: preselectedWorkspace,
             suggestedPorts: suggestedPorts, suggestedLabel: suggestedLabel))
@@ -148,9 +166,17 @@ struct AddSubdomainSheet: View {
             }
 
             VStack(alignment: .leading, spacing: m.space.sm) {
-                Text("Local port")
-                    .font(.dm(11))
-                    .foregroundStyle(Color.dmMuted)
+                HStack(spacing: m.space.sm) {
+                    Text("Local port")
+                        .font(.dm(11))
+                        .foregroundStyle(Color.dmMuted)
+                    Spacer(minLength: 0)
+                    if isRefreshingPorts {
+                        ProgressView().controlSize(.mini)
+                            .accessibilityLabel(Text(verbatim: "Reading ports"))
+                    }
+                    DMAgeLabel(since: portsAsOf, staleAfter: CachePolicy.standard.ttl(for: .ports))
+                }
                 TextField("8080", text: $form.port)
                     .textFieldStyle(.roundedBorder)
                 if !form.suggestedPorts.isEmpty {
@@ -169,6 +195,7 @@ struct AddSubdomainSheet: View {
         .padding(m.pt(20))
         .frame(width: m.card.sheetSmall)
         .background(Color.dmContentBg)
+        .onChange(of: suggestedPorts) { _, fresh in form.updateSuggestions(fresh) }
         .confirmationDialog(
             confirmMessage,
             isPresented: $confirming,

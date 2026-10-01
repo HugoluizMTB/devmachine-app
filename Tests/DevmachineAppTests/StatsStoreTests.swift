@@ -158,6 +158,55 @@ final class StatsStoreTests: XCTestCase {
         makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
     }
 
+    func testAFreshSnapshotIsHandedBackWithoutAnotherRead() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"box"}]"#, snapshotsByMachine: ["box": (goodSnapshot, "", 0)])
+        let store = makeStore(runner)
+        store.start()
+        try await waitUntil { store.snapshot != nil }
+
+        let snapshot = await store.freshSnapshot("box", maxAge: 45)
+
+        XCTAssertNotNil(snapshot)
+        XCTAssertEqual(runner.statsCalls(for: "box"), 1)
+    }
+
+    func testAnOldSnapshotIsReadOnceForEveryoneWhoAsks() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"box"}]"#, snapshotsByMachine: ["box": (goodSnapshot, "", 0)])
+        let store = makeStore(runner)
+        store.start()
+        try await waitUntil { store.snapshot != nil }
+        clock.advance(60)
+
+        async let first = store.freshSnapshot("box", maxAge: 45)
+        async let second = store.freshSnapshot("box", maxAge: 45)
+        let answers = await [first, second]
+
+        XCTAssertTrue(answers.allSatisfy { $0 != nil })
+        XCTAssertEqual(runner.statsCalls(for: "box"), 2)
+        XCTAssertEqual(store.refreshedAt, clock.now)
+    }
+
+    func testAMachineInBackoffIsNotAskedAgainEarly() async throws {
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"box"}]"#, snapshotsByMachine: ["box": ("", "ssh: connect refused", 255)])
+        let store = makeStore(runner)
+        store.start()
+        try await waitUntil { store.errorText != nil }
+
+        let snapshot = await store.freshSnapshot("box", maxAge: 45)
+
+        XCTAssertNil(snapshot)
+        XCTAssertEqual(runner.statsCalls(for: "box"), 1)
+    }
+
+    func testAnUnknownMachineAnswersWithoutWaiting() async {
+        let store = makeStore(MultiMachineRunner(machinesJSON: "[]"))
+        let snapshot = await store.freshSnapshot("nowhere", maxAge: 45)
+        XCTAssertNil(snapshot)
+    }
+
     func testASingleNonSelfMachineShowsNoSwitcher() async throws {
         let runner = MultiMachineRunner(
             machinesJSON: #"[{"name":"self","self":true},{"name":"box","hosts":["203.0.113.10"]}]"#,

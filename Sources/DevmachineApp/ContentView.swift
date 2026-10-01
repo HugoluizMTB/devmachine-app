@@ -97,7 +97,7 @@ struct ContentView: View {
         .onChange(of: model.pendingPublishWorkspace) { _, workspace in
             guard let workspace else { return }
             model.pendingPublishWorkspace = nil
-            quickPublish.start(workspace: workspace)
+            quickPublish.start(workspace: workspace, stats: stats)
         }
         .quickPublishSheet(quickPublish, settings: settingsStore.settings, workspaces: model.visibleWorkspaces)
         .sheet(isPresented: $updates.showsDialog) {

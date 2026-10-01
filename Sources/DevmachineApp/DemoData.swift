@@ -590,7 +590,7 @@ enum DemoData {
 
     // MARK: Publish-a-port suggestions
 
-    static let publishSuggestions = QuickPublishSuggestions(
+    static let publishSuggestions = (
         ports: [
             PortSuggestion(port: 3000, containerName: "web"),
             PortSuggestion(port: 8080, containerName: "api"),

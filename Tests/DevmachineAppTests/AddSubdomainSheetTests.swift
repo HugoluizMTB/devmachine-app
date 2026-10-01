@@ -87,4 +87,34 @@ final class AddSubdomainMachineScopeTests: XCTestCase {
 
         XCTAssertEqual(form.workspaceNames, ["alice", "bob"])
     }
+
+    func testFreshPortsReplaceTheSuggestionWhenThePortWasNotTouched() {
+        var form = AddSubdomainForm(
+            workspaces: [Workspace(name: "alice", alias: "alice-devmachine")],
+            suggestedPorts: [PortSuggestion(port: 3000)])
+
+        form.updateSuggestions([PortSuggestion(port: 5173), PortSuggestion(port: 3000)])
+
+        XCTAssertEqual(form.port, "5173")
+        XCTAssertEqual(form.suggestedPorts.map(\.port), [5173, 3000])
+    }
+
+    func testFreshPortsLeaveATypedPortAlone() {
+        var form = AddSubdomainForm(
+            workspaces: [Workspace(name: "alice", alias: "alice-devmachine")],
+            suggestedPorts: [PortSuggestion(port: 3000)])
+        form.port = "9000"
+
+        form.updateSuggestions([PortSuggestion(port: 5173)])
+
+        XCTAssertEqual(form.port, "9000")
+    }
+
+    func testFirstPortsFillAnEmptyField() {
+        var form = AddSubdomainForm(workspaces: [Workspace(name: "alice", alias: "alice-devmachine")])
+
+        form.updateSuggestions([PortSuggestion(port: 5173)])
+
+        XCTAssertEqual(form.port, "5173")
+    }
 }

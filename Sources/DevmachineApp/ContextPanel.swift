@@ -39,11 +39,17 @@ struct ContextPanel: View {
     @StateObject private var quickPublish = QuickPublishState()
     @EnvironmentObject private var fileTreeStore: FileTreeStore
     @EnvironmentObject private var settingsStore: SettingsStore
+    @EnvironmentObject private var stats: StatsStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             tabBody
+        }
+        .task(id: workspaceName) {
+            if let workspaceName {
+                await WorkspaceMachineData.shared.warm(workspace: workspaceName, stats: stats)
+            }
         }
         .animation(.easeOut(duration: 0.2), value: store.showsSkeleton)
         .background(Color.dmSidebarBg)
@@ -126,7 +132,7 @@ struct ContextPanel: View {
 
     private func publishRow(_ workspaceName: String) -> some View {
         DMButton("Publish a port…", systemImage: "globe", variant: .outline, size: .small) {
-            quickPublish.start(workspace: workspaceName)
+            quickPublish.start(workspace: workspaceName, stats: stats)
         }
         .padding(.horizontal, m.pt(14))
         .padding(.top, m.space.md)
