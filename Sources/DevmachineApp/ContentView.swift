@@ -311,6 +311,7 @@ private struct PageHost: View {
         // while the website's screenshot walk owns the window.
         case .subdomains: SubdomainsView(initialTab: DemoSnapshots.subdomainsInitialTab)
         case .stack(let refs): StackGridView(refs: refs).ignoresSafeArea(edges: .top)
+        case .hostKey(let machine): HostKeyPage(store: HostKeyStore.shared, machine: machine)
         }
     }
 }

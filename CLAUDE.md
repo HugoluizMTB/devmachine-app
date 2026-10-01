@@ -556,6 +556,23 @@ Rules:
 - The CLI's config folder is watched (`ConfigDirectoryWatcher`), so a machine
   or workspace added in a terminal shows up without a restart.
 
+## Host keys
+- **ssh refusing a host key is its own problem** (`SSHFailure.hostKeyRejected`,
+  from ssh's own words on exit 255). No login was tried, so it counts toward
+  no ban: the sweep goes on, polling is not paused, and the workspace is not
+  painted offline. The sidebar shows one `HostKeySidebarCard` per machine,
+  whether or not old sessions are still listed.
+- **Review → `AppPage.hostKey(machine)`.** `HostKeyStore` runs `devmachine
+  machines trust <m> --check --format json` (CLI 0.7.24+; an older CLI
+  refuses a changed key without JSON and gets the update advice). The page
+  shows both fingerprints and the CLI's `verify` command for the machine's
+  own console, never over SSH.
+- **The trust button stays off until the pasted console output holds the
+  exact presented fingerprint** (`HostKeyTrust.confirms`), and the write
+  passes `--expect <fingerprint>`, so the CLI refuses if a second scan meets
+  a different key. It writes only the CLI's local `known_hosts`, never the
+  machine.
+
 ## Publishing feedback
 - `expose add` / `expose rm` run with `--format json` (CLI 0.7.21+): the
   result (`applied`, `status`, `note`) and the exact stderr drive

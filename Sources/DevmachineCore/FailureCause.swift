@@ -9,11 +9,14 @@ public enum FailureCause: String, CaseIterable, Sendable {
     case timedOut
     case unreachable
     case missingCommand
+    case hostKeyRejected
 
     public init?(message: String) {
         let lowered = message.lowercased()
         func mentions(_ needles: [String]) -> Bool { needles.contains { lowered.contains($0) } }
-        if mentions(["auth login", "not logged in", "not signed in", "unauthorized", "bad credentials"]) {
+        if HostKeyTrust.isHostKeyRejection(message) {
+            self = .hostKeyRejected
+        } else if mentions(["auth login", "not logged in", "not signed in", "unauthorized", "bad credentials"]) {
             self = .signInNeeded
         } else if Self.isSSHLoginRefused(message) {
             self = .permissionDenied
@@ -50,6 +53,7 @@ public enum FailureCause: String, CaseIterable, Sendable {
         case .timedOut: "The machine took too long to answer."
         case .unreachable: "The machine can't be reached right now."
         case .missingCommand: "A command it needs isn't installed."
+        case .hostKeyRejected: "The machine answered with an SSH identity this Mac doesn't trust."
         }
     }
 }

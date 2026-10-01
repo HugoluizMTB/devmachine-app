@@ -49,11 +49,18 @@ struct SidebarView: View {
                         .padding(.horizontal, m.space.md)
                         .padding(.vertical, m.space.xs)
                 }
+                if let machine = hostKeyCardMachine(for: ws) {
+                    HostKeySidebarCard(machine: machine)
+                        .dmSurface(Color.dmBand, radius: DMRadius.panel)
+                        .padding(.horizontal, m.space.md)
+                        .padding(.vertical, m.space.xs)
+                }
                 if ws.isLocal {
                     ForEach(model.localSessions) { s in
                         localSessionRow(session: s)
                     }
                 } else if let problem = model.sessionProblems[ws.alias],
+                          !problem.isHostKeyRejected,
                           (model.sessionsByAlias[ws.alias] ?? []).isEmpty {
                     SessionProblemView(
                         presentation: problem.presentation(workspace: ws.name),
@@ -79,6 +86,18 @@ struct SidebarView: View {
         else { return nil }
         let first = model.visibleWorkspaces.first { readiness.machine(forWorkspace: $0.name) == machine }
         return first?.alias == workspace.alias ? machine : nil
+    }
+
+    /// A machine whose host key ssh refused gets one card, under the first
+    /// of its workspaces the sidebar shows, whether or not older sessions
+    /// are still listed: none of them can be opened until it is reviewed.
+    private func hostKeyCardMachine(for workspace: Workspace) -> String? {
+        guard !workspace.isLocal, let machine = readiness.machine(forWorkspace: workspace.name) else { return nil }
+        let onMachine = model.visibleWorkspaces.filter { readiness.machine(forWorkspace: $0.name) == machine }
+        guard onMachine.contains(where: { model.sessionProblems[$0.alias]?.isHostKeyRejected == true }),
+              onMachine.first?.alias == workspace.alias
+        else { return nil }
+        return machine
     }
 
     private var footerRow: some View {

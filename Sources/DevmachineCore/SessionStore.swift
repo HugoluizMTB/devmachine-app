@@ -40,9 +40,13 @@ public struct SessionStore: Sendable {
 public enum SSHFailure: Equatable, Sendable {
     case authDenied
     case unreachable
+    /// The server answered with a key this Mac does not trust. No login was
+    /// tried, so it counts toward no ban, and the host is up.
+    case hostKeyRejected
 
     public static func classify(exitCode: Int32, stderr: String) -> SSHFailure? {
         guard exitCode == 255 else { return nil }
+        if HostKeyTrust.isHostKeyRejection(stderr) { return .hostKeyRejected }
         return FailureCause.isSSHLoginRefused(stderr) ? .authDenied : .unreachable
     }
 }

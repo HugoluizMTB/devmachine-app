@@ -8,6 +8,7 @@ enum SessionProblem: Equatable {
     case tmuxMissing(detail: String)
     case loginRefused(detail: String)
     case unreachable(detail: String)
+    case hostKeyRejected(detail: String)
     case failed(detail: String)
 
     init(_ error: Error) {
@@ -22,10 +23,16 @@ enum SessionProblem: Equatable {
             switch store.failure {
             case .authDenied: self = .loginRefused(detail: store.stderr)
             case .unreachable: self = .unreachable(detail: store.stderr)
+            case .hostKeyRejected: self = .hostKeyRejected(detail: store.stderr)
             }
             return
         }
         self = .failed(detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+    }
+
+    var isHostKeyRejected: Bool {
+        if case .hostKeyRejected = self { return true }
+        return false
     }
 
     /// The command that fixes it, when there is one to run on this Mac.
@@ -56,6 +63,11 @@ enum SessionProblem: Equatable {
             return SessionProblemPresentation(
                 title: "Couldn't list \(workspace)'s sessions",
                 cause: FailureCause(message: detail)?.summary ?? FailureCause.unreachable.summary,
+                commands: [], details: detail)
+        case let .hostKeyRejected(detail):
+            return SessionProblemPresentation(
+                title: "Couldn't connect to \(workspace)",
+                cause: FailureCause.hostKeyRejected.summary + " Review the new key before connecting again.",
                 commands: [], details: detail)
         case let .failed(detail):
             return SessionProblemPresentation(

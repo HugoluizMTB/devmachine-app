@@ -75,6 +75,10 @@ struct DevmachineApp: App {
                         model?.refreshWorkspaces(onMachine: machine)
                         stats.refresh()
                     }
+                    HostKeyStore.shared.onTrusted = { [weak model] machine in
+                        model?.refreshWorkspaces(onMachine: machine)
+                        stats.refresh()
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     MachineReadinessStore.shared.requestCheckIfStale()

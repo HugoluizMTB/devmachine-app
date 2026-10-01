@@ -1532,6 +1532,15 @@ final class AppModel: ObservableObject {
                 return nil
             }
             let failure = (error as? SessionStoreError)?.failure
+            // The host answered with a key this Mac does not trust. No login
+            // was tried, so nothing counts toward a ban, and other machines
+            // have their own keys: the sweep goes on, and the machine's host
+            // key card says what to do.
+            if failure == .hostKeyRejected {
+                offlineAliases.remove(alias)
+                syncContext()
+                return nil
+            }
             // Red means the host does not answer. A login this Mac cannot sign
             // — a locked agent after waking — says nothing about the host, and
             // the sessions on it keep running: the bar already says polling is
