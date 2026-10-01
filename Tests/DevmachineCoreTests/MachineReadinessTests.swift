@@ -60,6 +60,11 @@ final class ReadinessCheckTests: XCTestCase {
         XCTAssertEqual(ReadinessCheck.evaluate(declared: false, applied: false, observed: nil), .notDeclared)
     }
 
+    func testAppliedThroughAnotherPackageIsReady() {
+        XCTAssertEqual(ReadinessCheck.evaluate(declared: false, applied: true, observed: nil), .ready)
+        XCTAssertEqual(ReadinessCheck.evaluate(declared: nil, applied: true, observed: nil), .ready)
+    }
+
     func testDeclaredButNeverSyncedIsNotApplied() {
         XCTAssertEqual(ReadinessCheck.evaluate(declared: true, applied: false, observed: nil), .notApplied)
     }

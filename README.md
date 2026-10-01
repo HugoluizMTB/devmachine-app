@@ -91,6 +91,14 @@ A workspace whose sessions cannot be listed says why in the sidebar instead of
 showing an empty list: no SSH alias yet (with `devmachine aliases --write`),
 no tmux on the machine, a refused login, or a machine that does not answer.
 
+To run the real Prepare against a throwaway `devmachine-accept-*` Lima VM
+whose configuration does not ask for devmachine-app yet:
+
+```
+DEVMACHINE_KEYCHAIN=off DEVMACHINE_CONFIG=<temp config> DEVMACHINE_PREPARE_E2E=<devmachine 0.7.24+> \
+  swift test --filter MachinePrepareEndToEndTests
+```
+
 When the CLI is missing, onboarding's **Install CLI** installs it in the
 background with its log: `brew install mydevmachine/tap/devmachine` when this
 Mac has Homebrew, otherwise the installer from

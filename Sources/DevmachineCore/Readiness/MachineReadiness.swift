@@ -66,7 +66,9 @@ public enum PackageCallFailure: Equatable, Sendable {
 public enum ReadinessCheck {
     /// `declared` comes from `packages list`, `applied` from the lock, and
     /// `observed` from the last call into the package that failed. A nil
-    /// input is one the app could not read.
+    /// input is one the app could not read. The lock wins over the list: a
+    /// package another one pulls in (essentials carries devmachine-app) is
+    /// applied without being listed on the machine.
     public static func evaluate(declared: Bool?, applied: Bool?, observed: PackageCallFailure?) -> MachineReadiness {
         switch observed {
         case let .outdated(detail):
@@ -76,6 +78,7 @@ public enum ReadinessCheck {
         case nil:
             break
         }
+        if applied == true { return .ready }
         guard let declared else { return .unknown }
         guard declared else { return .notDeclared }
         return applied == false ? .notApplied : .ready

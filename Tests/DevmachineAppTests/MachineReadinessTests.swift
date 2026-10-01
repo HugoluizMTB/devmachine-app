@@ -463,6 +463,15 @@ final class MachineReadinessContentTests: XCTestCase {
             "Preparing main…")
     }
 
+    func testTheSidebarLineForEachRun() {
+        XCTAssertEqual(MachineReadinessContent.compactLine(machine: "main", phase: .running), "Preparing main…")
+        XCTAssertEqual(MachineReadinessContent.compactLine(machine: "main", phase: .succeeded), "main is ready")
+        XCTAssertEqual(
+            MachineReadinessContent.compactLine(
+                machine: "main", phase: .failed(DMErrorState(title: "x", cause: nil, details: ""))),
+            "Prepare failed")
+    }
+
     func testCommandsToCopy() {
         XCTAssertEqual(
             MachineReadinessContent.commands(machine: "main", state: .notDeclared, declared: false),

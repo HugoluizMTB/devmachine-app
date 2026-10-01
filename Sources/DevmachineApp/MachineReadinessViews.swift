@@ -26,6 +26,15 @@ enum MachineReadinessContent {
         + "is pinned once for every machine, so the app doesn't move it for you. Run this in a terminal:"
 
     static let updateCLITitle = "Update the CLI first"
+    static let showDetailsTitle = "Show details"
+
+    static func compactLine(machine: String, phase: PreparePhase) -> String {
+        switch phase {
+        case .running: return "Preparing \(machine)…"
+        case .succeeded: return "\(machine) is ready"
+        case .failed: return "Prepare failed"
+        }
+    }
 
     static func commands(machine: String, state: MachineReadiness, declared: Bool) -> [String] {
         if case .outdated = state { return MachinePrepare.outdatedCommands(machine: machine) }
@@ -47,12 +56,43 @@ struct MachineReadinessCard: View {
     private var job: PrepareJob? { store.jobs[machine] }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? m.space.sm : m.space.md) {
-            header
-            content
+        Group {
+            if compact, let job {
+                compactJobLine(job)
+            } else {
+                VStack(alignment: .leading, spacing: compact ? m.space.sm : m.space.md) {
+                    header
+                    content
+                }
+            }
         }
         .padding(compact ? m.space.md : m.space.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The sidebar is too narrow for a log: a running, failed or finished
+    /// Prepare is one line there, and the log stays on Home and in the
+    /// corner card.
+    private func compactJobLine(_ job: PrepareJob) -> some View {
+        HStack(spacing: m.space.sm) {
+            icon
+            Text(verbatim: MachineReadinessContent.compactLine(machine: machine, phase: job.phase))
+                .font(.dm(11.5, weight: .semibold))
+                .foregroundStyle(Color.dmRowText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+            switch job.phase {
+            case .running:
+                EmptyView()
+            case .failed:
+                DMButton(MachineReadinessContent.showDetailsTitle, variant: .link, size: .small) {
+                    model.goHome()
+                }
+            case .succeeded:
+                DMButton(icon: "xmark", label: "Dismiss", size: .small) { store.dismissJob(machine) }
+            }
+        }
     }
 
     private var header: some View {
@@ -76,6 +116,8 @@ struct MachineReadinessCard: View {
             ProgressView().controlSize(.mini)
         case .succeeded:
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .failed where compact:
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         default:
             Image(systemName: "shippingbox").foregroundStyle(Color.dmMuted)
         }
