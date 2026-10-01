@@ -111,6 +111,11 @@ final class PreviewPage: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         configuration.websiteDataStore = dataStore
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         configuration.preferences.isElementFullscreenEnabled = true
+        // `isInspectable` only lists the page in Safari's Develop menu; WebKit adds
+        // "Inspect Element" to the context menu through this private preference.
+        if configuration.preferences.responds(to: NSSelectorFromString("_setDeveloperExtrasEnabled:")) {
+            configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        }
         return configuration
     }
 

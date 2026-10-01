@@ -62,6 +62,11 @@ final class PreviewPageTests: XCTestCase {
 
     private func page() -> PreviewPage { webViews().page(for: UUID()) }
 
+    func testTheContextMenuOffersInspectElement() {
+        let preferences = page().webView.configuration.preferences
+        XCTAssertEqual(preferences.value(forKey: "developerExtrasEnabled") as? Bool, true)
+    }
+
     func testThePageAnswersEveryQuestionABrowserWindowWould() {
         let page = page()
         XCTAssertTrue(page.webView.uiDelegate === page)
