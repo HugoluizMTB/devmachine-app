@@ -45,6 +45,10 @@ private final class FakeSystem: PaletteSystem {
     func open(_ url: URL) { calls.append("open:\(url.absoluteString)") }
     func quit() { calls.append("quit") }
     func chooseFileAndSend(to kind: TerminalKind) { calls.append("send") }
+    func pickScreenColor(onCopy: @escaping @MainActor (String) -> Void) {
+        calls.append("pick-color")
+        onCopy("#1A334D")
+    }
 }
 
 @MainActor
@@ -198,6 +202,12 @@ final class PaletteDispatcherTests: XCTestCase {
             "files:acme-devmachine", "reveal:/Users/alice/notes", "open:https://example.com/docs",
             "send", "quit",
         ])
+    }
+
+    func testPickColorSamplesTheScreenAndSaysWhatWasCopied() {
+        run(.pickColor)
+        XCTAssertEqual(system.calls, ["pick-color"])
+        XCTAssertEqual(model.activeTasks.map(\.label), ["Copied #1A334D"])
     }
 
     func testFindFileOpensTheFileFinder() {

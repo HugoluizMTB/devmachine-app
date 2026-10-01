@@ -146,6 +146,9 @@ struct MenuBarPanel: View {
                 openWindow(id: "main")
                 model.showPage(.subdomains)
             }
+            footerButton("eyedropper", help: "Pick a color") {
+                ScreenColorPicker.pick { hex in model.flashToast("Copied \(hex)") }
+            }
             Spacer()
             footerButton("power", help: "Quit") {
                 NSApplication.shared.terminate(nil)

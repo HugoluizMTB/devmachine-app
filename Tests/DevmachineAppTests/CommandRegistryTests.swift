@@ -183,6 +183,16 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(command?.action, .checkForUpdates)
     }
 
+    func testPickAColorIsAlwaysThereAndFoundByItsKeywords() {
+        let all = commands(context())
+        let command = all.first { $0.id == "action.pick-color" }
+        XCTAssertEqual(command?.title, "Pick a color from the screen")
+        XCTAssertEqual(command?.action, .pickColor)
+        let top = PaletteRanker.sections(all, query: "eyedropper", mru: CommandMRU(ids: []))
+            .first?.commands.first?.id
+        XCTAssertEqual(top, "action.pick-color")
+    }
+
     func testTheCLIUpdateCommandShowsOnlyWhenThereIsOne() {
         XCTAssertNil(commands(context()).first { $0.id == "action.update-cli" })
 

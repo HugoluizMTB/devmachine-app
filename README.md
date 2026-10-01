@@ -40,6 +40,12 @@ cards and the menu-bar Usage tab shows them side by side. Codex account limits
 and activity come from `codex app-server` account reads; they do not start a
 model turn or consume inference tokens.
 
+## Color picker
+
+The eyedropper in the menu bar's footer, or ⌘K → Pick a color from the
+screen, shows the system loupe. Move it anywhere on any screen and click: the
+color under it goes to the clipboard as sRGB hex (`#1A334D`). Esc cancels.
+
 ## Remote terminals
 
 A remote pane uses mosh when it gets through and ssh when it does not.

@@ -46,6 +46,7 @@ private final class NoSystem: PaletteSystem {
     func open(_ url: URL) {}
     func quit() {}
     func chooseFileAndSend(to kind: TerminalKind) {}
+    func pickScreenColor(onCopy: @escaping @MainActor (String) -> Void) {}
 }
 
 @MainActor

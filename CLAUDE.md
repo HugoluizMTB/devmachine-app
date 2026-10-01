@@ -65,6 +65,11 @@ tab bar (`MenuBarTab`), mouse-navigable like pr-menubar. Tabs render inline
 to the active tab. Tab styling should be elegant/custom, not the raw native
 segmented control.
 
+The footer's eyedropper and ⌘K's "Pick a color from the screen" share
+`ScreenColorPicker` (the system `NSColorSampler`); the clipboard text is
+`ScreenColor.hex` (Core), converted to sRGB first so the hex matches what a
+web page or design tool means by it.
+
 ## Reusable structure
 - `DevmachineCore` (library): pure logic, parsers, command builders — unit-tested,
   no UI, no AppKit where avoidable.

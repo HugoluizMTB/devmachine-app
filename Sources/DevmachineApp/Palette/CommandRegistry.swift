@@ -139,6 +139,10 @@ enum CommandRegistry {
                     return context.currentTerminal != nil
                 }),
             Entry(command: PaletteCommand(
+                id: "action.pick-color", title: "Pick a color from the screen", subtitle: "Copies its hex",
+                category: .action, systemImage: "eyedropper",
+                keywords: ["color", "colour", "eyedropper", "picker", "hex", "sample"], action: .pickColor)),
+            Entry(command: PaletteCommand(
                 id: "action.docs", title: "Open docs", subtitle: "mydevmachine.sh", category: .action,
                 systemImage: "book", keywords: ["help", "manual", "documentation", "website"],
                 action: .openURL(docsURL))),

@@ -39,6 +39,7 @@ protocol PaletteSystem {
     func open(_ url: URL)
     func quit()
     func chooseFileAndSend(to kind: TerminalKind)
+    func pickScreenColor(onCopy: @escaping @MainActor (String) -> Void)
 }
 
 @MainActor
@@ -121,6 +122,7 @@ struct PaletteDispatcher {
             model.openSettings(.about)
         case let .preview(request): previews.open(request, inverted: false)
         case .openPreviewField: model.requestPreviewField()
+        case .pickColor: system.pickScreenColor { [model] hex in model.flashToast("Copied \(hex)") }
         case .quit: system.quit()
         }
     }
@@ -150,6 +152,10 @@ struct AppPaletteSystem: PaletteSystem {
     func open(_ url: URL) { NSWorkspace.shared.open(url) }
 
     func quit() { NSApp.terminate(nil) }
+
+    func pickScreenColor(onCopy: @escaping @MainActor (String) -> Void) {
+        DispatchQueue.main.async { ScreenColorPicker.pick(onCopy: onCopy) }
+    }
 
     func chooseFileAndSend(to kind: TerminalKind) {
         DispatchQueue.main.async {

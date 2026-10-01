@@ -58,6 +58,7 @@ enum PaletteAction: Equatable {
     case checkForUpdates
     case preview(PreviewRequest)
     case openPreviewField
+    case pickColor
     case quit
 }
 
