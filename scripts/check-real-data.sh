@@ -10,7 +10,12 @@ if [ ! -s "$PATTERNS" ]; then
   exit 2
 fi
 
-hits=$(git grep -inIE -f "$PATTERNS" -- . | grep -v "2BUA8C4S2C.com.1password" || true)
+# Vendored upstream text, not owner data: theme author credits and a minified keyword.
+VENDORED=(
+  ":!Packages/HighlightSwift/Sources/HighlightSwift/Highlight/HighlightCSS.swift"
+  ":!Packages/HighlightSwift/Sources/HighlightSwift/HighlightJS/highlight.min.js"
+)
+hits=$(git grep -inIE -f "$PATTERNS" -- . "${VENDORED[@]}" | grep -v "2BUA8C4S2C.com.1password" || true)
 if [ -n "$hits" ]; then
   echo "$hits"
   echo "real data found — fix before pushing" >&2
