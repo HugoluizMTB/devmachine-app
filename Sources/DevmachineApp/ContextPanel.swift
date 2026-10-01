@@ -126,8 +126,8 @@ struct ContextPanel: View {
             .overlay(alignment: .bottom) { staleBanner }
             .overlay(alignment: .topTrailing) {
                 DMAgeLabel(since: store.stateReadAt, staleAfter: 30)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 6)
+                    .padding(.horizontal, m.pt(14))
+                    .padding(.top, m.space.sm)
             }
             .transition(.opacity)
         } else {

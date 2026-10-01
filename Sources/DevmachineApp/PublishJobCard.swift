@@ -6,6 +6,7 @@ import DevmachineCore
 /// then the live address, the reason it waits for a sync, or the CLI's own
 /// error with Retry.
 struct PublishJobCard: View {
+    @Environment(\.dmMetrics) private var m
     let job: PublishJob
     let onRetry: () -> Void
     let onDismiss: () -> Void
@@ -58,7 +59,7 @@ struct PublishJobCard: View {
         case .running:
             EmptyView()
         case .live(let url):
-            HStack(spacing: 6) {
+            HStack(spacing: m.space.sm) {
                 DMButton("Open", systemImage: "arrow.up.right.square", variant: .outline, size: .small) {
                     NSWorkspace.shared.open(url)
                 }

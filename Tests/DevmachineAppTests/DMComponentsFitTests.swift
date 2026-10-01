@@ -130,6 +130,15 @@ final class DMComponentsFitTests: XCTestCase {
         DMFitCheck.assertFits("toast") {
             DMToastCard(task: BGTask(id: UUID(), label: "Sending mockup.png", completed: 3, total: 8))
         }
+        DMFitCheck.assertFits("job card") {
+            DMJobCard(title: "Publishing app.example.com…", status: .attention, steps: [
+                DMJobStep(id: "dns", title: "Create the DNS record by hand", state: .attention, detail: "app A 203.0.113.10"),
+                DMJobStep(id: "caddy", title: "Caddy route pending", state: .attention, detail: "box could not be reached"),
+            ])
+        }
+        DMFitCheck.assertFits("age label") {
+            DMAgeLabel(since: Date().addingTimeInterval(-600))
+        }
         DMFitCheck.assertFits("stat bubble", width: 180) {
             DMStatBubble(value: "14.8 / 31 GB", label: "Memory")
         }
