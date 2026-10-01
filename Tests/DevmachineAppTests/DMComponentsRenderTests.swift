@@ -96,6 +96,13 @@ private struct DMComponentsGallery: View {
                 .frame(maxWidth: .infinity)
                 .dmGlass(radius: DMRadius.panel)
             DMProgressBar(done: 3, total: 5)
+            HStack(alignment: .top, spacing: 8) {
+                DMJobCard(title: "Publishing app.example.com…", status: .running, steps: [
+                    DMJobStep(id: "dns", title: "DNS record set", state: .done),
+                    DMJobStep(id: "caddy", title: "Caddy route", state: .running),
+                ])
+                DMAgeLabel(since: Date().addingTimeInterval(-300))
+            }
             DMBanner(message: "Couldn't refresh: ssh: connect to host timed out", lineLimit: 2) {
                 DMIconButton(systemImage: "arrow.clockwise", tint: nil) {}
             }

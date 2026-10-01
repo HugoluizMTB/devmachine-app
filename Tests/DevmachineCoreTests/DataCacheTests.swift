@@ -242,6 +242,39 @@ final class DataCacheTests: XCTestCase {
         XCTAssertNotNil(cache.lastError(sites))
     }
 
+    func testAFailedKeyIsNotAskedAgainUntilItsRetryDelayPasses() async {
+        let clock = Clock()
+        let cache = makeCache(clock: clock)
+        cache.put(sites, [Item(id: "a", value: 1)])
+        clock.advance(120)
+        let counter = FetchCounter()
+        let failing: @Sendable () async throws -> [Item] = { _ = counter.bump(); throw CacheTestError.offline }
+
+        _ = cache.revalidate(sites, fetch: failing) { _ in }
+        await cache.settle()
+        _ = cache.revalidate(sites, fetch: failing) { _ in }
+        await cache.settle()
+        XCTAssertEqual(counter.value, 1)
+
+        clock.advance(CachePolicy.standard.retryAfterFailure + 1)
+        _ = cache.revalidate(sites, fetch: failing) { _ in }
+        await cache.settle()
+        XCTAssertEqual(counter.value, 2)
+    }
+
+    func testAManualRefreshIgnoresTheRetryDelay() async {
+        let cache = makeCache(clock: Clock())
+        let counter = FetchCounter()
+        let failing: @Sendable () async throws -> [Item] = { _ = counter.bump(); throw CacheTestError.offline }
+
+        _ = try? await cache.value(sites, fetch: failing)
+        _ = try? await cache.value(sites, fetch: failing)
+        XCTAssertEqual(counter.value, 1)
+
+        _ = try? await cache.value(sites, force: true, fetch: failing)
+        XCTAssertEqual(counter.value, 2)
+    }
+
     func testInvalidatingAKindMakesItsEntriesStaleButKeepsThem() {
         let clock = Clock()
         let cache = makeCache(clock: clock)

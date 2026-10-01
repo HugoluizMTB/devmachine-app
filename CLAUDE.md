@@ -121,6 +121,10 @@ What is there:
   select and copy. `DMStatusView(.failed)` draws it, so a page gets it for free.
   Never dump an error string straight into a card. Usage cards get it through
   `.harnessUsageErrorView { … }`, since `HarnessUsageKit` cannot import it.
+- Jobs and age (`DMJobCard.swift`, `DMAgeLabel.swift`): `DMJobCard` for a job
+  that runs in named steps and ends in a result to act on (same surface as
+  `DMToastCard`, `.dmToastChrome()`); `DMAgeLabel` says how old cached data
+  is, only once it is old enough to matter.
 - Commands (`DMCommandBlock.swift`): `DMCommandBlock` for shell commands to
   select or copy (one or more lines, one Copy button); `DMCopyButton` alone.
 - Fields (`DMFields.swift`): `DMSearchField` (magnifier + borderless field +
@@ -391,7 +395,8 @@ Rules:
 - The context panel's Preview tab lists the selected workspace's published
   sites and the ports its user listens on (`PreviewTargets`, from `expose list`
   and the stats `ports`); a local session lists what this Mac listens on
-  (`lsof`). Nothing polls it: it reads on show and on Refresh.
+  (`lsof`). Nothing polls it: it draws from the cache on show, reads only
+  what is past its TTL, and reads everything on Refresh.
 - Where a preview or a context-panel link opens is one setting
   (`AppSettings.linkOpening`, default browser); ⌥-click flips it once.
   `PreviewStore` is the only place that decides.
@@ -474,6 +479,37 @@ Rules:
   off 90s → 3m → 5m on errors, paused while the Mac sleeps. The last good snapshot
   per machine lives in `Application Support/Devmachine/stats-cache.json`, so Home
   and Stats draw from it at launch; the skeleton shows only when there is no cache.
+
+## Local-first machine data
+- Everything read from a machine goes through one `DataCache` (Core,
+  `LocalFirst/`), shared as `DataCache.shared`: memory plus
+  `Application Support/Devmachine/machine-cache.json` (memory only under
+  XCTest). Keys live in `MachineDataKeys`: `workspaces`, `sitesContext`,
+  `sites:<machine>`, `dnsProviders:<machine>`, `dnsRecords:<machine>|<provider>|<zone>`,
+  `sessions:<alias>`, `context:<target key>`. TTLs are per kind
+  (`CachePolicy.standard`: ports 45s, sites 60s, DNS 5 min).
+- A view draws the cached value at once and never waits on a fetch when one
+  exists; `revalidate` refreshes in the background only what is stale,
+  invalidated or forced (the Refresh button). One fetch per key at a time;
+  every other caller joins it. A skeleton shows only with no cache at all;
+  an old value shows its age (`DMAgeLabel`).
+- An answer is laid over the list on screen by identity (`StableList`): an
+  equal answer publishes nothing, and a reorder alone keeps the rows still.
+- Ports are the stats poller's: `StatsStore.freshSnapshot` reuses its
+  snapshot, or one read through its schedule (never during a backoff). No
+  view runs its own `stats` ssh.
+- A publish or removal invalidates that machine's `sites` and `dnsRecords`
+  and reads them again; the Preview tab hears it through `DataCache.observe`.
+- A session's Context warms its workspace (`WorkspaceMachineData.warm`), so
+  Publish a port… and Preview open with something to show.
+
+## Publishing feedback
+- `expose add` / `expose rm` run with `--format json` (CLI 0.7.21+): the
+  result (`applied`, `status`, `note`) and the exact stderr drive
+  `PublishProgress` (Core). The card (`PublishJobCard` on `DMJobCard`) sits
+  in the corner stack: steps, then Live with Open/Copy, Saved with the
+  reason, or `DMErrorStateView` with the CLI's stderr and Retry. An older CLI
+  without JSON reads as Saved, saying it cannot tell.
 
 ## Tests never spawn ssh
 `~/.ssh/config` maps `*-devmachine` to the real host, so a fixture alias such as

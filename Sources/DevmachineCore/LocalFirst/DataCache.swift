@@ -16,10 +16,14 @@ public enum CacheKind: String, Codable, Sendable, CaseIterable {
 public struct CachePolicy: Sendable {
     public var ttls: [CacheKind: TimeInterval]
     public var limits: [CacheKind: Int]
+    /// A machine that did not answer is not asked again, except by hand,
+    /// before this: switching sessions would otherwise retry it every time.
+    public var retryAfterFailure: TimeInterval
 
-    public init(ttls: [CacheKind: TimeInterval], limits: [CacheKind: Int]) {
+    public init(ttls: [CacheKind: TimeInterval], limits: [CacheKind: Int], retryAfterFailure: TimeInterval = 30) {
         self.ttls = ttls
         self.limits = limits
+        self.retryAfterFailure = retryAfterFailure
     }
 
     /// Ports move when a dev server starts, sites when someone publishes,
@@ -146,6 +150,7 @@ public final class DataCache {
     private let now: @MainActor () -> Date
     private var slots: [String: Slot] = [:]
     private var inFlight: [String: Task<any Sendable, Error>] = [:]
+    private var failures: [String: (at: Date, error: Error)] = [:]
     private var background: [UUID: Task<Void, Never>] = [:]
     private var observers: [@MainActor (CacheEntryID) -> Void] = []
     private var lastPersist: Date?
@@ -191,6 +196,12 @@ public final class DataCache {
 
     public func count(of kind: CacheKind) -> Int { slots.values.filter { $0.kind == kind }.count }
 
+    private func recentFailure<V>(_ key: CacheKey<V>) -> Error? {
+        guard let failure = failures[key.id],
+              now().timeIntervalSince(failure.at) < policy.retryAfterFailure else { return nil }
+        return failure.error
+    }
+
     private func isFresh(_ slot: Slot) -> Bool {
         !slot.invalidated && now().timeIntervalSince(slot.fetchedAt) < policy.ttl(for: slot.kind)
     }
@@ -204,6 +215,10 @@ public final class DataCache {
         _ key: CacheKey<V>, force: Bool = false, fetch: @escaping @Sendable () async throws -> V
     ) async throws -> V {
         if !force, isFresh(key), let cached = cached(key) { return cached.value }
+        if !force, let failure = recentFailure(key) {
+            if let cached = cached(key) { return cached.value }
+            throw failure
+        }
         return try await refresh(key, fetch: fetch).value
     }
 
@@ -219,6 +234,7 @@ public final class DataCache {
     ) -> Cached<V>? {
         let current = cached(key)
         guard force || !isFresh(key) else { return current }
+        if !force, recentFailure(key) != nil, inFlight[key.id] == nil { return current }
         let before = current?.value
         let running = startFetch(key, fetch: fetch)
         let id = UUID()
@@ -251,10 +267,12 @@ public final class DataCache {
             defer { self.inFlight[id] = nil }
             do {
                 let value = try await fetch()
+                self.failures[id] = nil
                 self.put(key, value)
                 return value
             } catch {
                 self.slots[id]?.error = Self.describe(error)
+                self.failures[id] = (self.now(), error)
                 throw error
             }
         }
@@ -309,14 +327,20 @@ public final class DataCache {
     }
 
     public func invalidate(_ kind: CacheKind, scope: String? = nil) {
-        for (id, slot) in slots where slot.kind == kind && (scope == nil || slot.scope == scope) {
-            slots[id]?.invalidated = true
-        }
+        invalidate { $0.kind == kind && (scope == nil || $0.scope == scope) }
     }
 
     public func invalidate(_ kind: CacheKind, scopePrefix: String) {
-        for (id, slot) in slots where slot.kind == kind && slot.scope.hasPrefix(scopePrefix) {
+        invalidate { $0.kind == kind && $0.scope.hasPrefix(scopePrefix) }
+    }
+
+    private func invalidate(where matches: (CacheEntryID) -> Bool) {
+        for (id, slot) in slots where matches(CacheEntryID(kind: slot.kind, scope: slot.scope)) {
             slots[id]?.invalidated = true
+        }
+        for id in failures.keys {
+            guard let colon = id.firstIndex(of: ":"), let kind = CacheKind(rawValue: String(id[..<colon])) else { continue }
+            if matches(CacheEntryID(kind: kind, scope: String(id[id.index(after: colon)...]))) { failures[id] = nil }
         }
     }
 

@@ -64,9 +64,9 @@ struct PublishJobCard: View {
                 }
                 DMCopyButton(text: url.absoluteString)
             }
-        case .removed:
+        case .removed, .saved:
             EmptyView()
-        case .saved(let reason):
+        case .saved(let reason) where !progress.steps.contains { $0.detail == reason }:
             Text(verbatim: reason)
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
