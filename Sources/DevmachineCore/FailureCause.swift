@@ -14,12 +14,14 @@ public enum FailureCause: String, CaseIterable, Sendable {
     public init?(message: String) {
         let lowered = message.lowercased()
         func mentions(_ needles: [String]) -> Bool { needles.contains { lowered.contains($0) } }
-        if HostKeyTrust.isHostKeyRejection(message) {
-            self = .hostKeyRejected
-        } else if mentions(["auth login", "not logged in", "not signed in", "unauthorized", "bad credentials"]) {
+        if mentions(["auth login", "not logged in", "not signed in", "unauthorized", "bad credentials"]) {
             self = .signInNeeded
         } else if Self.isSSHLoginRefused(message) {
             self = .permissionDenied
+        } else if HostKeyTrust.isHostKeyRejection(message) {
+            // Any SSH connection: a git push from the server to GitHub too,
+            // so it does not say which machine.
+            self = .hostKeyRejected
         } else if mentions(["permission denied", "operation not permitted"]) {
             self = .fileAccessDenied
         } else if mentions(["timed out", "timeout"]) {
@@ -53,7 +55,7 @@ public enum FailureCause: String, CaseIterable, Sendable {
         case .timedOut: "The machine took too long to answer."
         case .unreachable: "The machine can't be reached right now."
         case .missingCommand: "A command it needs isn't installed."
-        case .hostKeyRejected: "The machine answered with an SSH identity this Mac doesn't trust."
+        case .hostKeyRejected: "An SSH host key wasn't trusted, so the connection stopped before logging in."
         }
     }
 }

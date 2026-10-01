@@ -988,6 +988,14 @@ final class AppModel: ObservableObject {
     }
 
     func clickSession(_ ref: SessionRef) {
+        // A session on a machine whose host key ssh refused cannot open: the
+        // click goes to the review instead of a terminal stuck on ssh's banner.
+        if sessionProblems[ref.alias]?.isHostKeyRejected == true,
+           let workspace = visibleWorkspaces.first(where: { $0.alias == ref.alias }),
+           let machine = MachineReadinessStore.shared.machine(forWorkspace: workspace.name) {
+            showPage(.hostKey(machine))
+            return
+        }
         // re-clicking the open session (no multi-select) goes back home
         if selection == .session(alias: ref.alias, name: ref.name), selectedSessions == [ref], activePage == nil {
             selection = nil
@@ -1397,6 +1405,25 @@ final class AppModel: ObservableObject {
 
     /// A machine was just prepared: its workspaces are listed again now
     /// rather than at the next sweep.
+    /// The machine's host key was trusted, or already matched: its
+    /// workspaces stop showing the refusal and are read again at once.
+    func hostKeyResolved(onMachine machine: String) {
+        let readiness = MachineReadinessStore.shared
+        for workspace in visibleWorkspaces where readiness.machine(forWorkspace: workspace.name) == machine {
+            if sessionProblems[workspace.alias]?.isHostKeyRejected == true {
+                sessionProblems[workspace.alias] = nil
+            }
+        }
+        refreshWorkspaces(onMachine: machine)
+    }
+
+    /// Clears a refused host key for one workspace and reads it again: the
+    /// sidebar's Try again, when no machine card covers it.
+    func retry(alias: String) {
+        if sessionProblems[alias]?.isHostKeyRejected == true { sessionProblems[alias] = nil }
+        refresh(alias: alias)
+    }
+
     func refreshWorkspaces(onMachine machine: String) {
         let readiness = MachineReadinessStore.shared
         for workspace in visibleWorkspaces where readiness.machine(forWorkspace: workspace.name) == machine {
@@ -1483,6 +1510,10 @@ final class AppModel: ObservableObject {
     func refresh(alias: String) {
         guard !DemoMode.isActive, Date() >= pollPausedUntil,
               let ws = visibleWorkspaces.first(where: { $0.alias == alias }) else { return }
+        // A refused host key fails the same way until someone reviews it: the
+        // 5s selection poll leaves it to the 60s sweep instead of a handshake
+        // every tick. Retry and a trust clear the problem first.
+        guard sessionProblems[alias]?.isHostKeyRejected != true else { return }
         // A tick that arrives while the previous ssh for this alias is still
         // running is dropped: a slow host would otherwise stack one blocked
         // process per 5s tick.

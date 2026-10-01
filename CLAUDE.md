@@ -561,10 +561,15 @@ Rules:
   from ssh's own words on exit 255). No login was tried, so it counts toward
   no ban: the sweep goes on, polling is not paused, and the workspace is not
   painted offline. The sidebar shows one `HostKeySidebarCard` per machine,
-  whether or not old sessions are still listed.
+  whether or not old sessions are still listed, and a click on one of those
+  sessions opens the review. The 5s selection poll skips the alias; the 60s
+  sweep still tries it. Only ssh's abort line ("Host key verification
+  failed") counts: the CHANGED banner alone can precede a real login.
 - **Review → `AppPage.hostKey(machine)`.** `HostKeyStore` runs `devmachine
   machines trust <m> --check --format json` (CLI 0.7.24+; an older CLI
-  refuses a changed key without JSON and gets the update advice). The page
+  refuses a changed key without JSON and gets the update advice) on every
+  visit, never from a remembered answer: a Lima VM writes a new key on every
+  restart. The page
   shows both fingerprints and the CLI's `verify` command for the machine's
   own console, never over SSH.
 - **The trust button stays off until the pasted console output holds the

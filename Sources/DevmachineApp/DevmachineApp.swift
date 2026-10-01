@@ -76,7 +76,7 @@ struct DevmachineApp: App {
                         stats.refresh()
                     }
                     HostKeyStore.shared.onTrusted = { [weak model] machine in
-                        model?.refreshWorkspaces(onMachine: machine)
+                        model?.hostKeyResolved(onMachine: machine)
                         stats.refresh()
                     }
                 }

@@ -83,12 +83,12 @@ public enum HostKeyTrust {
         return words.contains { $0 == report.presentedFingerprint }
     }
 
-    /// ssh's own words when it refuses the key a server presented, changed
-    /// or not yet trusted, before any login is tried.
+    /// ssh's own words when it aborts on the key a server presented, changed
+    /// or not yet trusted, before any login is tried. The "REMOTE HOST
+    /// IDENTIFICATION HAS CHANGED" banner alone is not enough: without strict
+    /// checking ssh prints it and logs in anyway.
     public static func isHostKeyRejection(_ message: String) -> Bool {
-        let lowered = message.lowercased()
-        return lowered.contains("host key verification failed")
-            || lowered.contains("remote host identification has changed")
+        message.lowercased().contains("host key verification failed")
     }
 
     /// A CLI older than `minimumCLIVersion` answers `trust --check` on a

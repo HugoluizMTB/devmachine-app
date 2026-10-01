@@ -46,8 +46,9 @@ public enum SSHFailure: Equatable, Sendable {
 
     public static func classify(exitCode: Int32, stderr: String) -> SSHFailure? {
         guard exitCode == 255 else { return nil }
-        if HostKeyTrust.isHostKeyRejection(stderr) { return .hostKeyRejected }
-        return FailureCause.isSSHLoginRefused(stderr) ? .authDenied : .unreachable
+        // A refused login wins: it counts toward a ban whatever came before.
+        if FailureCause.isSSHLoginRefused(stderr) { return .authDenied }
+        return HostKeyTrust.isHostKeyRejection(stderr) ? .hostKeyRejected : .unreachable
     }
 }
 

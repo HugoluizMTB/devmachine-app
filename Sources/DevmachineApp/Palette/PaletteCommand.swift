@@ -39,6 +39,7 @@ enum PaletteAction: Equatable {
     case workspaceHome(alias: String)
     case revealInFinder(path: String)
     case stats(machine: String)
+    case hostKey(machine: String)
     case subdomains(machine: String)
     case addSubdomain(machine: String?)
     case sendFile(TerminalKind)

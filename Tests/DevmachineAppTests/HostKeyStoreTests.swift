@@ -90,6 +90,44 @@ final class HostKeyStoreTests: XCTestCase {
         XCTAssertTrue(trusted.isEmpty)
     }
 
+    @MainActor
+    func testALateCheckNeverOverwritesANewerOne() async throws {
+        let runner = OrderedHostKeyRunner()
+        let store = HostKeyStore(runner: runner)
+        let first = Task { await store.check("box") }
+        try await waitUntil { runner.waiting == 1 }
+        let second = Task { await store.check("box") }
+        try await waitUntil { runner.waiting == 2 }
+        // The newer check answers first, then the older one.
+        runner.answer(1, CLIOutput(stdout: Self.changed, stderr: "", exitCode: 0))
+        await second.value
+        runner.answer(0, CLIOutput(stdout: "", stderr: "error: stale", exitCode: 1))
+        await first.value
+        guard case .review = store.phase(for: "box") else {
+            return XCTFail("phase = \(String(describing: store.phase(for: "box")))")
+        }
+    }
+
+    @MainActor
+    func testDismissKeepsATrustThatIsStillRunning() async throws {
+        let runner = OrderedHostKeyRunner()
+        let store = HostKeyStore(runner: runner)
+        let report = try HostKeyReport.parse(Self.changed)
+        let trust = Task { await store.trust("box", report: report, pasted: "SHA256:new") }
+        try await waitUntil { runner.waiting == 1 }
+        store.dismiss("box")
+        XCTAssertEqual(store.phase(for: "box"), .trusting(report))
+        runner.answer(0, CLIOutput(stdout: "{}", stderr: "", exitCode: 0))
+        await trust.value
+        XCTAssertEqual(store.phase(for: "box"), .trusted)
+    }
+
+    @MainActor
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<200 where !condition() { try await Task.sleep(nanoseconds: 5_000_000) }
+        XCTAssertTrue(condition())
+    }
+
     func testAHostKeyRefusalReadsAsItsOwnProblem() {
         let stderr = "Host key verification failed."
         let problem = SessionProblem(SessionStoreError(failure: .hostKeyRejected, stderr: stderr))
@@ -97,9 +135,7 @@ final class HostKeyStoreTests: XCTestCase {
         let presentation = problem.presentation(workspace: "acme")
         XCTAssertEqual(presentation.title, "Couldn't connect to acme")
         XCTAssertEqual(presentation.details, stderr)
-        XCTAssertEqual(
-            presentation.cause,
-            FailureCause.hostKeyRejected.summary + " Review the new key before connecting again.")
+        XCTAssertEqual(presentation.cause, SessionProblem.hostKeyCause)
     }
 }
 
@@ -117,5 +153,28 @@ private final class FakeHostKeyRunner: HostKeyRunning, @unchecked Sendable {
             recorded.append(arguments)
             return outputs.isEmpty ? CLIOutput(stdout: "", stderr: "unexpected call", exitCode: 1) : outputs.removeFirst()
         }
+    }
+}
+
+/// Holds every call until the test answers it, so calls can end out of order.
+private final class OrderedHostKeyRunner: HostKeyRunning, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [Int: CheckedContinuation<CLIOutput, Never>] = [:]
+    private var count = 0
+
+    var waiting: Int { lock.withLock { count } }
+
+    func run(_ arguments: [String]) async throws -> CLIOutput {
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                continuations[count] = continuation
+                count += 1
+            }
+        }
+    }
+
+    func answer(_ index: Int, _ output: CLIOutput) {
+        let continuation = lock.withLock { continuations.removeValue(forKey: index) }
+        continuation?.resume(returning: output)
     }
 }

@@ -94,7 +94,7 @@ final class HostKeyTrustTests: XCTestCase {
 
     func testOnlySSHsOwnHostKeyWordsReadAsAHostKeyRejection() {
         for message in [
-            "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @",
+            "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\nHost key verification failed.",
             "Host key verification failed.",
             "No ED25519 host key is known for acme-devmachine and you have requested strict checking.\nHost key verification failed.",
         ] {
@@ -106,6 +106,12 @@ final class HostKeyTrustTests: XCTestCase {
             SSHFailure.classify(exitCode: 255, stderr: "ssh: connect to host 203.0.113.10 port 22: Connection refused"),
             .unreachable)
         XCTAssertNil(SSHFailure.classify(exitCode: 1, stderr: "Host key verification failed."))
+        // Without strict checking ssh prints the banner and still tries to
+        // log in: that refusal counts toward a ban, so it stays a refusal.
+        let loggedInAnyway = "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n"
+            + "alice@203.0.113.10: Permission denied (publickey)."
+        XCTAssertFalse(HostKeyTrust.isHostKeyRejection(loggedInAnyway))
+        XCTAssertEqual(SSHFailure.classify(exitCode: 255, stderr: loggedInAnyway), .authDenied)
     }
 
     func testAnOlderCLIRefusesTheChangedKeyWithoutJSON() {
@@ -119,6 +125,6 @@ final class HostKeyTrustTests: XCTestCase {
         XCTAssertEqual(FailureCause(message: "Host key verification failed."), .hostKeyRejected)
         XCTAssertEqual(
             FailureCause.hostKeyRejected.summary,
-            "The machine answered with an SSH identity this Mac doesn't trust.")
+            "An SSH host key wasn't trusted, so the connection stopped before logging in.")
     }
 }

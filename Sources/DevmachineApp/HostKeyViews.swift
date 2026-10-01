@@ -41,7 +41,14 @@ enum HostKeyContent {
         + "or the key was fixed in a terminal. Try connecting again."
 
     static let olderCLIBody = "Your devmachine CLI can't read a changed key from here yet (it needs "
-        + "\(HostKeyTrust.minimumCLIVersion) or newer). Update the CLI first, or run this in a terminal:"
+        + "\(HostKeyTrust.minimumCLIVersion) or newer). Update the CLI first, or run this in a terminal to see "
+        + "both fingerprints, then compare the new one on the machine's console before replacing it:"
+
+    /// An older CLI reports a changed key only with `--replace` beside
+    /// `--check`; it still writes nothing.
+    static func olderCLICommand(machine: String) -> String {
+        "devmachine machines trust \(machine) --check --replace"
+    }
     static let updateCLITitle = "Update the CLI first"
 }
 
@@ -97,10 +104,9 @@ struct HostKeyPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.dmContentBg)
-        .task(id: machine) {
-            if store.phase(for: machine) == nil { await store.check(machine) }
-        }
+        .task(id: machine) { await store.check(machine) }
         .onChange(of: machine) { _, _ in pasted = "" }
+        .onDisappear { store.dismiss(machine) }
     }
 
     @ViewBuilder
@@ -122,7 +128,7 @@ struct HostKeyPage: View {
             paragraph(HostKeyContent.matchingBody)
             HStack(spacing: m.space.sm) {
                 DMButton("Connect again", size: .small) {
-                    model.refreshWorkspaces(onMachine: machine)
+                    model.hostKeyResolved(onMachine: machine)
                     close()
                 }
                 DMButton("Check again", variant: .outline, size: .small) { Task { await store.check(machine) } }
@@ -131,7 +137,7 @@ struct HostKeyPage: View {
             header(HostKeyContent.title(machine: machine, status: .changed))
             paragraph(HostKeyContent.explanation)
             paragraph(HostKeyContent.olderCLIBody)
-            DMCommandBlock(["devmachine machines trust \(machine) --check"], wraps: true)
+            DMCommandBlock([HostKeyContent.olderCLICommand(machine: machine)], wraps: true)
             DMButton(HostKeyContent.updateCLITitle, variant: .link, size: .small) { model.openSettings(.about) }
         case let .failed(error):
             DMErrorStateView(state: error, retry: { Task { await store.check(machine) } })
@@ -170,7 +176,12 @@ struct HostKeyPage: View {
                 Task { await store.trust(machine, report: report, pasted: pasted) }
             }
             .disabled(!HostKeyTrust.confirms(pasted, report: report) || isTrusting)
-            DMButton("Cancel", variant: .outline, size: .small) { close() }
+            DMButton("Check again", variant: .outline, size: .small) {
+                pasted = ""
+                Task { await store.check(machine) }
+            }
+            .disabled(isTrusting)
+            DMButton("Cancel", variant: .ghost, size: .small) { close() }
                 .disabled(isTrusting)
         }
     }
@@ -181,23 +192,29 @@ struct HostKeyPage: View {
             if let current = report.currentFingerprint {
                 row("Trusted key", [report.currentKeyType, current].compactMap { $0 }.joined(separator: "  "))
             }
-            row("Presented key", "\(report.keyType)  \(report.presentedFingerprint)")
+            // Not selectable: copying it from here into the field below would
+            // skip the console check it stands for.
+            row("Presented key", "\(report.keyType)  \(report.presentedFingerprint)", selectable: false)
         }
         .padding(m.space.md)
         .frame(maxWidth: .infinity, alignment: .leading)
         .dmSurface(Color.dmBand, radius: DMRadius.panel)
     }
 
-    private func row(_ label: String, _ value: String) -> some View {
+    private func row(_ label: String, _ value: String, selectable: Bool = true) -> some View {
         GridRow {
             Text(verbatim: label)
                 .font(.dm(11.5))
                 .foregroundStyle(Color.dmMuted)
-            Text(verbatim: value)
+            let text = Text(verbatim: value)
                 .font(.system(size: m.pt(11.5), design: .monospaced))
                 .foregroundStyle(Color.dmRowText)
-                .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+            if selectable {
+                text.textSelection(.enabled)
+            } else {
+                text.textSelection(.disabled)
+            }
         }
     }
 

@@ -30,6 +30,9 @@ enum SessionProblem: Equatable {
         self = .failed(detail: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
     }
 
+    static let hostKeyCause = "The machine answered with an SSH identity this Mac doesn't trust. "
+        + "Review the new key before connecting again."
+
     var isHostKeyRejected: Bool {
         if case .hostKeyRejected = self { return true }
         return false
@@ -67,7 +70,7 @@ enum SessionProblem: Equatable {
         case let .hostKeyRejected(detail):
             return SessionProblemPresentation(
                 title: "Couldn't connect to \(workspace)",
-                cause: FailureCause.hostKeyRejected.summary + " Review the new key before connecting again.",
+                cause: Self.hostKeyCause,
                 commands: [], details: detail)
         case let .failed(detail):
             return SessionProblemPresentation(
