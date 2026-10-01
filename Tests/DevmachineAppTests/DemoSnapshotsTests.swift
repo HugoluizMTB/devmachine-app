@@ -202,4 +202,17 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "harness-icons"]).map(\.id),
                        DemoSnapshots.harnessIconScreens.map(\.id))
     }
+
+    func testTheUpdateToastWalkIsItsOwnSet() {
+        let names = DemoSnapshots.updateToastScreens.map(\.fileName)
+        XCTAssertEqual(names, [
+            "36-update-toast.png", "37-update-toast-large-text.png",
+            "38-update-toast-relaunching.png", "39-update-toast-installed.png",
+        ])
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "update-toast"]).map(\.id),
+                       DemoSnapshots.updateToastScreens.map(\.id))
+        for screen in DemoSnapshots.updateToastScreens {
+            XCTAssertEqual(DemoSnapshots.chrome(for: screen.id), .panel)
+        }
+    }
 }

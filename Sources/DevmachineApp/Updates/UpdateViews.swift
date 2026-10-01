@@ -92,6 +92,8 @@ private struct RestartNeededView: View {
 /// The toast that says a new version is out. It never installs on its own:
 /// every path to an install goes through the dialog.
 struct UpdateBanner: View {
+    static let contentWidth: CGFloat = 300
+
     @EnvironmentObject private var updates: UpdateController
     @EnvironmentObject private var model: AppModel
 
@@ -117,19 +119,50 @@ struct UpdateBanner: View {
                 } else if updates.phase.isBusy {
                     UpdateProgressView(phase: updates.phase)
                 } else {
-                    HStack(spacing: 6) {
-                        DMButton("What's new", variant: .link, size: .small) { model.openSettings(.about) }
-                        Spacer(minLength: 6)
-                        DMButton("Later", variant: .ghost, size: .small) { updates.later() }
-                        DMButton("Update and Relaunch", size: .small) { updates.requestUpdate() }
-                    }
+                    UpdateBannerActions(
+                        showNotes: { model.openSettings(.about) },
+                        later: { updates.later() },
+                        update: { updates.requestUpdate() })
                 }
             }
-            .frame(width: 300, alignment: .leading)
+            .frame(width: Self.contentWidth, alignment: .leading)
             .padding(12)
             .dmGlass(radius: DMRadius.toast)
             .shadow(radius: 10, y: 3)
         }
+    }
+}
+
+/// One row while the three buttons fit the card. A larger text size moves the
+/// update button to a full-width row of its own instead of past the edge.
+struct UpdateBannerActions: View {
+    let showNotes: () -> Void
+    let later: () -> Void
+    let update: () -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                secondary
+                updateButton(fillsWidth: false)
+            }
+            VStack(spacing: 8) {
+                secondary
+                updateButton(fillsWidth: true)
+            }
+        }
+    }
+
+    private var secondary: some View {
+        HStack(spacing: 6) {
+            DMButton("What's new", variant: .link, size: .small, action: showNotes)
+            Spacer(minLength: 6)
+            DMButton("Later", variant: .ghost, size: .small, action: later)
+        }
+    }
+
+    private func updateButton(fillsWidth: Bool) -> some View {
+        DMButton("Update and Relaunch", size: .small, fillsWidth: fillsWidth, action: update)
     }
 }
 

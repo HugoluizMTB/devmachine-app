@@ -24,9 +24,10 @@ private struct NoInstall: AppUpdateInstalling, HomebrewUpgrading {
 
 @MainActor
 final class UpdateViewsRenderTests: XCTestCase {
-    private var suite: String!
+    private var suite: String?
 
     override func tearDown() async throws {
+        guard let suite else { return }
         UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
     }
 
@@ -94,4 +95,61 @@ final class UpdateViewsRenderTests: XCTestCase {
                 .frame(width: 640).padding(24).background(Color.black.opacity(0.8)),
             name: "about-restart")
     }
+
+    func testTheBannerActionsStayInsideTheCardAtEveryTextSize() {
+        let saved = DMFont.scale
+        defer { DMFont.scale = saved }
+
+        for scale in [Appearance.uiFontScaleRange.lowerBound, 1, 1.3, Appearance.uiFontScaleRange.upperBound] {
+            DMFont.scale = scale
+            let frame = laidOutFrame(
+                UpdateBannerActions(showNotes: {}, later: {}, update: {}), width: UpdateBanner.contentWidth)
+            XCTAssertGreaterThan(frame.width, 0, "scale \(scale)")
+            XCTAssertGreaterThanOrEqual(frame.minX, 0, "scale \(scale)")
+            XCTAssertLessThanOrEqual(frame.maxX, UpdateBanner.contentWidth, "scale \(scale)")
+        }
+    }
+
+    func testTheBannerActionsShareOneRowUntilTheTextGrows() {
+        let saved = DMFont.scale
+        defer { DMFont.scale = saved }
+        let rowHeight = DMButtonSize.small.metrics.height
+
+        DMFont.scale = 1
+        let regular = laidOutFrame(
+            UpdateBannerActions(showNotes: {}, later: {}, update: {}), width: UpdateBanner.contentWidth)
+        XCTAssertEqual(regular.height, rowHeight)
+
+        DMFont.scale = Appearance.uiFontScaleRange.upperBound
+        let large = laidOutFrame(
+            UpdateBannerActions(showNotes: {}, later: {}, update: {}), width: UpdateBanner.contentWidth)
+        XCTAssertGreaterThan(large.height, rowHeight * 2)
+    }
+
+    /// Where `content` lands inside a card `width` points wide, laid out by a
+    /// real hosting view in a window that is never shown.
+    private func laidOutFrame(_ content: some View, width: CGFloat) -> CGRect {
+        let box = FrameBox()
+        let card = content
+            .background(GeometryReader { proxy in
+                Color.clear.onAppear { box.frame = proxy.frame(in: .named("card")) }
+            })
+            .frame(width: width, alignment: .leading)
+            .coordinateSpace(.named("card"))
+        let hosting = NSHostingView(rootView: card)
+        hosting.frame = NSRect(x: 0, y: 0, width: width, height: 200)
+        let window = NSWindow(
+            contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        window.contentView = nil
+        return box.frame
+    }
+}
+
+@MainActor
+private final class FrameBox {
+    var frame = CGRect.zero
 }

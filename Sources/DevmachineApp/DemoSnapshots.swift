@@ -63,7 +63,8 @@ enum DemoSnapshots {
     static func chrome(for screenID: String) -> SnapshotChrome.Kind {
         switch screenID {
         case "pull-requests", "publish-port", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
-             "worktree-remove", "worktrees-merged", "worktree-foreign":
+             "worktree-remove", "worktrees-merged", "worktree-foreign",
+             "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
             return .panel
         default:
             return .window
@@ -170,11 +171,21 @@ enum DemoSnapshots {
         Screen(id: "sidebar-harness-icons", fileName: "35-sidebar-harness-icons.png", settleNanoseconds: 900_000_000),
     ]
 
+    /// The update toast walk (`DEVMACHINE_DEMO_WALK=update-toast`): the update
+    /// banner above a job card, at the default text size and at the largest.
+    static let updateToastScreens: [Screen] = [
+        Screen(id: "update-toast", fileName: "36-update-toast.png", settleNanoseconds: 200_000_000),
+        Screen(id: "update-toast-large-text", fileName: "37-update-toast-large-text.png", settleNanoseconds: 200_000_000),
+        Screen(id: "update-toast-relaunching", fileName: "38-update-toast-relaunching.png", settleNanoseconds: 200_000_000),
+        Screen(id: "update-toast-installed", fileName: "39-update-toast-installed.png", settleNanoseconds: 200_000_000),
+    ]
+
     static func walk(environment: [String: String] = ProcessInfo.processInfo.environment) -> [Screen] {
         if DemoMode.holdsLoading { return skeletonScreens }
         switch environment["DEVMACHINE_DEMO_WALK"] {
         case "worktrees": return worktreeScreens
         case "harness-icons": return harnessIconScreens
+        case "update-toast": return updateToastScreens
         default: return screens
         }
     }
@@ -261,6 +272,10 @@ enum DemoSnapshots {
                 view = standaloneView(mergedWorktreesSheet, fittingSize: NSSize(width: 420, height: 360))
             case "worktree-foreign":
                 view = standaloneView(foreignWorktreeSheet, fittingSize: NSSize(width: 460, height: 560))
+            #if DEBUG
+            case "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
+                view = await updateToastView(screen.id, model: environment.model)
+            #endif
             default:
                 window.displayIfNeeded()
                 view = window.contentView ?? NSView()
@@ -424,6 +439,22 @@ enum DemoSnapshots {
             onRemove: { _ in }, onCancel: {})
             .background(Color.dmSidebarBg)
     }
+
+    #if DEBUG
+    private static func updateToastView(_ id: String, model: AppModel) async -> NSView {
+        let saved = DMFont.scale
+        defer { DMFont.scale = saved }
+        DMFont.scale = id == "update-toast" ? 1 : Appearance.uiFontScaleRange.upperBound
+        let state: DemoUpdateToasts.State
+        switch id {
+        case "update-toast-relaunching": state = .relaunching
+        case "update-toast-installed": state = .installed
+        default: state = .available
+        }
+        return standaloneView(
+            await DemoUpdateToasts.toastStack(state, model: model), fittingSize: NSSize(width: 400, height: 300))
+    }
+    #endif
 
     // MARK: - AppKit plumbing
 
