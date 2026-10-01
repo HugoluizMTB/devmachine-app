@@ -18,6 +18,36 @@ struct MachineSitesState: Equatable, Sendable {
     /// Set for a machine with nothing to publish from (this Mac, or a server
     /// without caddy): a plain explanation in place of a raw CLI error.
     var notSetUpMessage: String?
+    /// When the rows on screen were read, from the cache or a fresh fetch.
+    var refreshedAt: Date?
+    /// A refresh that failed while cached rows stay on screen.
+    var refreshError: String?
+}
+
+/// One publish or removal the person started, shown as a card until it is
+/// dismissed. The request is kept so Retry runs the same command again.
+struct PublishJob: Identifiable, Equatable {
+    enum Request: Equatable {
+        case publish(workspace: String, port: Int, host: String)
+        case remove(host: String, machine: String)
+
+        var host: String {
+            switch self {
+            case .publish(_, _, let host), .remove(let host, _): return host
+            }
+        }
+
+        var action: PublishProgress.Action {
+            switch self {
+            case .publish: return .publish
+            case .remove: return .remove
+            }
+        }
+    }
+
+    let id: UUID
+    let request: Request
+    var progress: PublishProgress
 }
 
 /// Remembers which machine the Subdomains page last showed, across
@@ -47,11 +77,8 @@ final class CaddyStore: ObservableObject {
     @Published private(set) var isLoadingMachines = false
     @Published private(set) var machinesError: String?
     @Published var domain: String = ""
-    @Published var task: BGTask?
-    @Published var addError: String?
-
+    @Published private(set) var jobs: [PublishJob] = []
     @Published var removingHost: String?
-    @Published var removeError: String?
 
     /// The selected server's installed DNS providers — the tab strip's own
     /// list, separate from each tab's records.
@@ -63,28 +90,26 @@ final class CaddyStore: ObservableObject {
     @Published var dnsErrorByProvider: [String: String] = [:]
     @Published var dnsLoadingProviders: Set<String> = []
 
+    /// The stats `StatsStore` already polls, by machine: the rows' owners
+    /// come from there instead of a second stats read per machine.
+    var statsSnapshot: @MainActor (String) -> StatsSnapshot? = { _ in nil }
+    /// How long a finished card stays before it leaves on its own. Saved
+    /// and failed cards stay until dismissed: they ask for something.
+    var liveCardLifetime: TimeInterval = 20
+    var removedCardLifetime: TimeInterval = 6
+
     private var context = SitesContext()
     private let service: CaddyService
     private let selection: SitesMachineSelection
-    private nonisolated(unsafe) var refreshTask: Task<Void, Never>?
-    private nonisolated(unsafe) var siteTasks: [String: Task<Void, Never>] = [:]
-    private nonisolated(unsafe) var addTask: Task<Void, Never>?
-    private nonisolated(unsafe) var removeTask: Task<Void, Never>?
-    private nonisolated(unsafe) var dnsProvidersTask: Task<Void, Never>?
-    private nonisolated(unsafe) var dnsRecordTasks: [String: Task<Void, Never>] = [:]
+    let cache: DataCache
 
-    init(service: CaddyService = CaddyService(), selection: SitesMachineSelection = SitesMachineSelection()) {
+    init(
+        service: CaddyService = CaddyService(), selection: SitesMachineSelection = SitesMachineSelection(),
+        cache: DataCache = DataCache()
+    ) {
         self.service = service
         self.selection = selection
-    }
-
-    deinit {
-        refreshTask?.cancel()
-        for task in siteTasks.values { task.cancel() }
-        addTask?.cancel()
-        removeTask?.cancel()
-        dnsProvidersTask?.cancel()
-        for task in dnsRecordTasks.values { task.cancel() }
+        self.cache = cache
     }
 
     // MARK: - The selected machine
@@ -132,7 +157,7 @@ final class CaddyStore: ObservableObject {
         selection.machineName = name
         resetDNS()
         loadDNSProviders()
-        if sitesByMachine[name] == nil, let machine = machines.first(where: { $0.name == name }) {
+        if let machine = machines.first(where: { $0.name == name }) {
             loadSites(machine)
         }
     }
@@ -159,7 +184,18 @@ final class CaddyStore: ObservableObject {
 
     // MARK: - Loading
 
+    /// Opening the page: what is cached draws at once, and only what is
+    /// older than its TTL is read again in the background.
+    func appear() {
+        refresh(force: false)
+    }
+
+    /// The Refresh button reads everything again, whatever its age.
     func refresh() {
+        refresh(force: true)
+    }
+
+    func refresh(force: Bool) {
         if DemoMode.holdsLoading {
             dnsProviders = DemoData.dnsProviders
             isLoadingMachines = true
@@ -172,91 +208,136 @@ final class CaddyStore: ObservableObject {
             dnsProviders = DemoData.dnsProviders
             return
         }
-        refreshTask?.cancel()
-        isLoadingMachines = true
-        machinesError = nil
+        let key = MachineDataKeys.sitesContext
         let service = self.service
-
-        refreshTask = Task {
-            do {
-                let (machines, context) = try await Task.detached {
-                    (try service.machines(), service.context())
-                }.value
-                guard !Task.isCancelled else { return }
-                self.apply(machines: machines, context: context)
-            } catch {
-                guard !Task.isCancelled else { return }
+        machinesError = nil
+        let cached = cache.revalidate(key, force: force, fetch: {
+            let machines = try service.machines()
+            let context = service.context()
+            return SitesContextSnapshot(
+                machines: machines, domain: context.domain, workspaces: context.workspaces,
+                installedPackages: context.installedPackages)
+        }, onUpdate: { [weak self] update in
+            guard let self else { return }
+            self.isLoadingMachines = false
+            self.cache.put(MachineDataKeys.workspaces, update.cached.value.workspaces)
+            if update.changed || self.machines.isEmpty {
+                self.apply(update.cached.value, force: force)
+            }
+        }, onError: { [weak self] error in
+            guard let self else { return }
+            self.isLoadingMachines = false
+            if self.machines.isEmpty {
                 self.machinesError = PackageGateMessage.friendly(for: error)
             }
-            if !Task.isCancelled { self.isLoadingMachines = false }
+        })
+        if let cached {
+            apply(cached.value, force: force)
         }
+        isLoadingMachines = cache.isRefreshing(key)
     }
 
     /// Reloads one machine only — the retry on its own error.
     func reload(machine name: String) {
         guard let machine = machines.first(where: { $0.name == name }) else { return refresh() }
-        loadSites(machine)
+        loadSites(machine, force: true)
     }
 
-    private func apply(machines: [CLIMachine], context: SitesContext) {
-        self.machines = machines
-        self.context = context
-        domain = context.domain
-        sitesByMachine = sitesByMachine.filter { name, _ in machines.contains { $0.name == name } }
+    private func apply(_ snapshot: SitesContextSnapshot, force: Bool) {
+        if machines != snapshot.machines { machines = snapshot.machines }
+        context = snapshot.context
+        if domain != snapshot.domain { domain = snapshot.domain }
+        sitesByMachine = sitesByMachine.filter { name, _ in snapshot.machines.contains { $0.name == name } }
 
         let previous = selectedMachine
         let remembered = selection.machineName
-        selectedMachine = machines.first { $0.name == remembered }?.name
+        let chosen = machines.first { $0.name == remembered }?.name
+            ?? (previous.flatMap { name in machines.first { $0.name == name }?.name })
             ?? machines.first { !$0.isSelf }?.name
             ?? machines.first?.name
+        if chosen != selectedMachine { selectedMachine = chosen }
         if previous != selectedMachine { resetDNS() }
-
-        for machine in machines { loadSites(machine) }
-        loadDNSProviders()
+        loadAll(force: force)
     }
 
-    private func loadSites(_ machine: CLIMachine) {
-        let name = machine.name
-        siteTasks[name]?.cancel()
-        update(name) { $0.isLoading = true }
-        let service = self.service
-        let context = self.context
+    private func loadAll(force: Bool) {
+        for machine in machines { loadSites(machine, force: force) }
+        loadDNSProviders(force: force)
+    }
 
-        siteTasks[name] = Task {
-            let result = await Task.detached { Result { try service.sites(on: machine, context: context) } }.value
-            guard !Task.isCancelled else { return }
-            self.update(name) { state in
+    private func loadSites(_ machine: CLIMachine, force: Bool = false) {
+        let name = machine.name
+        if let answer = service.preflight(machine, context: context) {
+            update(name) { state in
                 state.isLoading = false
                 state.hasLoaded = true
-                switch result {
-                case .success(.sites(let rows)):
-                    state.rows = rows
-                    state.errorText = nil
-                    state.notSetUpMessage = nil
-                case .success(.notSetUp(let message)):
+                if case .notSetUp(let message) = answer {
                     state.rows = []
                     state.errorText = nil
                     state.notSetUpMessage = message
-                case .failure(let error):
-                    state.errorText = PackageGateMessage.friendly(for: error)
                 }
             }
-            self.siteTasks[name] = nil
+            return
+        }
+        let key = MachineDataKeys.sites(name)
+        let service = self.service
+        let cached = cache.revalidate(key, force: force, fetch: {
+            try service.listing(on: name)
+        }, onUpdate: { [weak self] update in
+            guard let self else { return }
+            self.show(update.cached, on: machine)
+            self.update(name) { $0.isLoading = false }
+        }, onError: { [weak self] error in
+            guard let self else { return }
+            let message = PackageGateMessage.friendly(for: error)
+            self.update(name) { state in
+                state.isLoading = false
+                state.hasLoaded = true
+                if state.refreshedAt == nil {
+                    state.errorText = message
+                } else {
+                    state.refreshError = message
+                }
+            }
+        })
+        if let cached { show(cached, on: machine) }
+        let refreshing = cache.isRefreshing(key)
+        if sitesByMachine[name]?.isLoading != refreshing {
+            update(name) { $0.isLoading = refreshing }
+        }
+    }
+
+    /// Lays a listing over the rows on screen by host, so a refresh that
+    /// changed one site moves only that row.
+    private func show(_ cached: Cached<ExposureListing>, on machine: CLIMachine) {
+        let result = CaddyService.result(
+            for: machine, listing: cached.value, context: context, snapshot: statsSnapshot(machine.name))
+        update(machine.name) { state in
+            state.hasLoaded = true
+            state.refreshedAt = cached.fetchedAt
+            state.refreshError = nil
+            state.errorText = nil
+            switch result {
+            case .sites(let rows):
+                let merge = StableList.merge(old: state.rows, new: rows)
+                if merge.changed || state.rows.isEmpty != rows.isEmpty { state.rows = merge.list }
+                state.notSetUpMessage = nil
+            case .notSetUp(let message):
+                state.rows = []
+                state.notSetUpMessage = message
+            }
         }
     }
 
     private func update(_ machine: String, _ mutate: (inout MachineSitesState) -> Void) {
         var state = sitesByMachine[machine] ?? MachineSitesState()
         mutate(&state)
-        sitesByMachine[machine] = state
+        if sitesByMachine[machine] != state { sitesByMachine[machine] = state }
     }
 
     // MARK: - DNS
 
     private func resetDNS() {
-        dnsProvidersTask?.cancel()
-        for task in dnsRecordTasks.values { task.cancel() }
-        dnsRecordTasks = [:]
         dnsProviders = []
         dnsProvidersError = nil
         isLoadingDNSProviders = false
@@ -265,39 +346,45 @@ final class CaddyStore: ObservableObject {
         dnsLoadingProviders = []
     }
 
-    func loadDNSProviders() {
+    func loadDNSProviders(force: Bool = false) {
         if DemoMode.isActive {
             dnsProviders = dnsMachine == nil ? [] : DemoData.dnsProviders
             isLoadingDNSProviders = false
             return
         }
-        dnsProvidersTask?.cancel()
         guard let machine = dnsMachine else {
             dnsProviders = []
             isLoadingDNSProviders = false
             return
         }
-        isLoadingDNSProviders = true
-        dnsProvidersError = nil
+        let key = MachineDataKeys.dnsProviders(machine)
         let service = self.service
-
-        dnsProvidersTask = Task {
-            do {
-                let names = try await Task.detached { try service.dnsProviderNames(machine: machine) }.value
-                guard !Task.isCancelled, self.dnsMachine == machine else { return }
-                self.dnsProviders = names
-                self.dnsProvidersError = nil
-            } catch {
-                guard !Task.isCancelled, self.dnsMachine == machine else { return }
-                self.dnsProvidersError = PackageGateMessage.friendly(for: error)
-            }
-            if !Task.isCancelled { self.isLoadingDNSProviders = false }
+        let cached = cache.revalidate(key, force: force, fetch: {
+            try service.dnsProviderNames(machine: machine)
+        }, onUpdate: { [weak self] update in
+            guard let self, self.dnsMachine == machine else { return }
+            if self.dnsProviders != update.cached.value { self.dnsProviders = update.cached.value }
+            self.dnsProvidersError = nil
+            self.isLoadingDNSProviders = false
+            if force { self.reloadLoadedRecords() }
+        }, onError: { [weak self] error in
+            guard let self, self.dnsMachine == machine else { return }
+            self.dnsProvidersError = PackageGateMessage.friendly(for: error)
+            self.isLoadingDNSProviders = false
+        })
+        if let cached {
+            if dnsProviders != cached.value { dnsProviders = cached.value }
+            dnsProvidersError = nil
         }
+        isLoadingDNSProviders = cache.isRefreshing(key)
     }
 
-    /// Loads `provider`'s records for the configured domain, once — a second
-    /// call while the first is still running, or already loaded, is a no-op
-    /// unless `force`.
+    private func reloadLoadedRecords() {
+        for provider in dnsRecordsByProvider.keys { loadRecords(provider: provider, force: true) }
+    }
+
+    /// `provider`'s records for the configured domain: the cached ones draw
+    /// at once, and a stale or `force`d read runs in the background.
     func loadRecords(provider: String, force: Bool = false) {
         if DemoMode.holdsLoading { return }
         if DemoMode.isActive {
@@ -305,100 +392,149 @@ final class CaddyStore: ObservableObject {
             dnsLoadingProviders.remove(provider)
             return
         }
-        guard force || (dnsRecordsByProvider[provider] == nil && dnsRecordTasks[provider] == nil) else { return }
         guard !domain.isEmpty, let machine = dnsMachine else { return }
-        dnsRecordTasks[provider]?.cancel()
-        dnsLoadingProviders.insert(provider)
-        dnsErrorByProvider[provider] = nil
-        let service = self.service
         let domain = self.domain
-
-        dnsRecordTasks[provider] = Task {
-            do {
-                let records = try await Task.detached {
-                    try service.dnsRecords(machine: machine, provider: provider, zone: domain)
-                }.value
-                guard !Task.isCancelled else { return }
-                self.dnsRecordsByProvider[provider] = records
-                self.dnsErrorByProvider[provider] = nil
-            } catch {
-                guard !Task.isCancelled else { return }
+        let key = MachineDataKeys.dnsRecords(machine: machine, provider: provider, zone: domain)
+        let service = self.service
+        let cached = cache.revalidate(key, force: force, fetch: {
+            try service.dnsRecords(machine: machine, provider: provider, zone: domain)
+        }, onUpdate: { [weak self] update in
+            guard let self, self.dnsMachine == machine else { return }
+            self.showRecords(update.cached.value, provider: provider)
+            self.dnsLoadingProviders.remove(provider)
+        }, onError: { [weak self] error in
+            guard let self, self.dnsMachine == machine else { return }
+            if self.dnsRecordsByProvider[provider] == nil {
                 self.dnsErrorByProvider[provider] = PackageGateMessage.friendly(for: error)
             }
             self.dnsLoadingProviders.remove(provider)
-            self.dnsRecordTasks[provider] = nil
+        })
+        if let cached {
+            showRecords(cached.value, provider: provider)
+        }
+        if cache.isRefreshing(key) {
+            dnsLoadingProviders.insert(provider)
         }
     }
 
-    // MARK: - Actions
-
-    /// `expose add` finds the machine from the workspace, so only the list
-    /// that changed is read again.
-    func addSubdomain(_ req: SubdomainRequest, workspace: String, settings: AppSettings) {
-        guard !DemoMode.isActive else {
-            addError = "Demo mode never publishes a real subdomain."
-            return
+    private func showRecords(_ records: [DNSRecordRow], provider: String) {
+        let merge = StableList.merge(old: dnsRecordsByProvider[provider] ?? [], new: records)
+        if dnsRecordsByProvider[provider] == nil || merge.changed {
+            dnsRecordsByProvider[provider] = merge.list
         }
-        addTask?.cancel()
-        addError = nil
-        let runner: AddSubdomainRunner
-        do {
-            runner = AddSubdomainRunner(exposer: try DevmachineCLI.resolve(customSocket: settings.sshAgentSocket))
-        } catch {
-            addError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            return
-        }
-        let taskID = UUID()
-        let total = AddSubdomainRunner.stepCount
-        task = BGTask(id: taskID, label: "Starting…", completed: 0, total: total)
-
-        addTask = Task {
-            let result = await runner.run(workspace: workspace, req) { label, step in
-                Task { @MainActor in
-                    self.task?.label = label
-                    self.task?.completed = step
-                }
-            }
-
-            switch result {
-            case .success:
-                self.task?.completed = total
-                self.reloadMachine(ofWorkspace: workspace)
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                if self.task?.id == taskID { self.task = nil }
-            case .failure(let error):
-                self.addError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                self.task = nil
-            }
-        }
+        dnsErrorByProvider[provider] = nil
     }
 
-    private func reloadMachine(ofWorkspace workspace: String) {
-        if let name = context.workspaces.first(where: { $0.name == workspace })?.machine {
-            reload(machine: name)
-        } else {
-            refresh()
-        }
+    // MARK: - Publishing
+
+    /// `expose add` finds the machine from the workspace. The card in the
+    /// corner follows it from "Publishing…" to the live address.
+    func addSubdomain(_ req: SubdomainRequest, workspace: String) {
+        start(.publish(workspace: workspace, port: req.port, host: req.host))
     }
 
     func remove(host: String) {
         guard let machine = selectedMachine else { return }
-        removeTask?.cancel()
-        removeError = nil
-        removingHost = host
-        let service = self.service
+        start(.remove(host: host, machine: machine))
+    }
 
-        removeTask = Task {
-            do {
-                try await Task.detached { try service.remove(host: host, machine: machine) }.value
-                guard !Task.isCancelled else { return }
-                self.reload(machine: machine)
-            } catch {
-                guard !Task.isCancelled else { return }
-                self.removeError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
-            if !Task.isCancelled { self.removingHost = nil }
+    func retry(_ id: UUID) {
+        guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
+        jobs[index].progress = .running(jobs[index].request.action, host: jobs[index].request.host)
+        run(id)
+    }
+
+    func dismiss(_ id: UUID) {
+        jobs.removeAll { $0.id == id }
+    }
+
+    /// Demo mode and render tests: a card in any state without a CLI.
+    func showJob(_ job: PublishJob) {
+        jobs.removeAll { $0.id == job.id }
+        jobs.append(job)
+    }
+
+    private func start(_ request: PublishJob.Request) {
+        let job = PublishJob(id: UUID(), request: request, progress: .running(request.action, host: request.host))
+        jobs.append(job)
+        run(job.id)
+    }
+
+    private func run(_ id: UUID) {
+        guard let job = jobs.first(where: { $0.id == id }) else { return }
+        let request = job.request
+        if case .remove(let host, _) = request { removingHost = host }
+        guard !DemoMode.isActive else {
+            finish(id, .couldNotStart(request.action, host: request.host,
+                                      message: "Demo mode never publishes a real subdomain."))
+            return
         }
+        let service = self.service
+        Task {
+            let progress = await Task.detached { () -> PublishProgress in
+                do {
+                    switch request {
+                    case let .publish(workspace, port, host):
+                        let output = try service.publish(workspace: workspace, port: port, host: host)
+                        return .finished(.publish, host: host, output: output)
+                    case let .remove(host, machine):
+                        let output = try service.remove(host: host, machine: machine)
+                        return .finished(.remove, host: host, output: output)
+                    }
+                } catch {
+                    let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                    return .couldNotStart(request.action, host: request.host, message: message)
+                }
+            }.value
+            self.finish(id, progress)
+        }
+    }
+
+    private func finish(_ id: UUID, _ progress: PublishProgress) {
+        guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
+        jobs[index].progress = progress
+        let request = jobs[index].request
+        if removingHost == request.host { removingHost = nil }
+        if progress.changedTheMachine { invalidate(after: request) }
+        let lifetime: TimeInterval?
+        switch progress.outcome {
+        case .live: lifetime = liveCardLifetime
+        case .removed: lifetime = removedCardLifetime
+        default: lifetime = nil
+        }
+        if let lifetime {
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(lifetime * 1_000_000_000))
+                if self.jobs.first(where: { $0.id == id })?.progress == progress { self.dismiss(id) }
+            }
+        }
+    }
+
+    /// A publish changes the machine's sites and may write a DNS record: both
+    /// are read again now, and every view on the same keys hears it.
+    private func invalidate(after request: PublishJob.Request) {
+        let machine: String?
+        switch request {
+        case .publish(let workspace, _, _):
+            machine = context.workspaces.first { $0.name == workspace }?.machine
+                ?? cache.cached(MachineDataKeys.workspaces)?.value.first { $0.name == workspace }?.machine
+        case .remove(_, let name):
+            machine = name
+        }
+        guard let machine else {
+            cache.invalidate(.sites)
+            cache.invalidate(.dnsRecords)
+            refresh(force: true)
+            return
+        }
+        cache.invalidate(.sites, scope: machine)
+        cache.invalidate(.dnsRecords, scopePrefix: MachineDataKeys.dnsRecordsPrefix(machine: machine))
+        if let entry = machines.first(where: { $0.name == machine }) {
+            loadSites(entry, force: true)
+        } else {
+            refresh(force: true)
+        }
+        if dnsMachine == machine { reloadLoadedRecords() }
     }
 
     /// The Caddy log tail for one host on the selected machine — read on

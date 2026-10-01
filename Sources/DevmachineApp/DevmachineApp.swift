@@ -9,7 +9,7 @@ struct DevmachineApp: App {
     @StateObject private var model = AppModel()
     @StateObject private var prStore = PRStore()
     @StateObject private var filesStore = FilesStore()
-    @StateObject private var caddyStore = CaddyStore()
+    @StateObject private var caddyStore = CaddyStore(cache: .shared)
     @StateObject private var skillsStore = SkillsStore()
     @StateObject private var recentCommandStore = RecentCommandStore()
     @StateObject private var statsStore = StatsStore()
@@ -63,6 +63,10 @@ struct DevmachineApp: App {
                 .environment(\.dmMetrics, metrics)
                 .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
                 .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
+                .onAppear {
+                    let stats = statsStore
+                    caddyStore.statsSnapshot = { stats.state(for: $0)?.snapshot }
+                }
                 .onAppear {
                     DemoSnapshots.runIfNeeded(DemoSnapshots.Environment(
                         model: model, prStore: prStore, usageStore: usageStore, caddyStore: caddyStore,

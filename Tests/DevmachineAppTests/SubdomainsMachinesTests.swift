@@ -114,7 +114,7 @@ final class SubdomainsMachinesTests: XCTestCase {
         store.remove(host: "old.example.com")
         try await eventually { store.removingHost == nil }
 
-        XCTAssertTrue(runner.calls.contains(["--machine", "box", "expose", "rm", "old.example.com", "--yes"]))
+        XCTAssertTrue(runner.calls.contains(["--machine", "box", "--format", "json", "expose", "rm", "old.example.com", "--yes"]))
     }
 
     func testTheAddSheetOffersOnlyTheSelectedMachinesWorkspaces() async throws {

@@ -176,7 +176,7 @@ struct AddSubdomainSheet: View {
         ) {
             Button("Create", role: .destructive) {
                 if let request {
-                    store.addSubdomain(request, workspace: form.selectedWorkspace, settings: settings)
+                    store.addSubdomain(request, workspace: form.selectedWorkspace)
                 }
                 dismiss()
             }

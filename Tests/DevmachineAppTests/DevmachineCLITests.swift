@@ -60,28 +60,28 @@ final class DevmachineCLITests: XCTestCase {
         XCTAssertThrowsError(try cli.version())
     }
 
-    func testExposeUsesArgumentArrayAndExplicitPublishConsent() throws {
+    func testExposeAsksForJSONWithAnArgumentArrayAndExplicitPublishConsent() throws {
         let runner = CLIRecordingRunner()
         let cli = DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner)
 
-        try cli.expose(workspace: "alice;touch /tmp/no", port: 8080, host: "app.example.com")
+        _ = try cli.exposeAdd(workspace: "alice;touch /tmp/no", port: 8080, host: "app.example.com")
 
         XCTAssertEqual(runner.calls, [.init(
             executable: "/opt/homebrew/bin/devmachine",
             args: [
-                "expose", "add", "alice;touch /tmp/no", "8080",
+                "--format", "json", "expose", "add", "alice;touch /tmp/no", "8080",
                 "--host", "app.example.com", "--publish",
             ]
         )])
     }
 
-    func testExposeReportsCLIStderr() {
-        let runner = CLIRecordingRunner(result: ("", "provider refused the write", 1))
+    func testExposeHandsBackTheWholeOutputEvenWhenItFailed() throws {
+        let runner = CLIRecordingRunner(result: (#"{"status":"pending"}"#, "caddy refused the new file", 1))
 
-        XCTAssertThrowsError(try DevmachineCLI(executable: "/x", runner: runner)
-            .expose(workspace: "alice", port: 8080, host: "app.example.com")) { error in
-            XCTAssertEqual(error.localizedDescription, "provider refused the write")
-        }
+        let output = try DevmachineCLI(executable: "/x", runner: runner)
+            .exposeAdd(workspace: "alice", port: 8080, host: "app.example.com")
+
+        XCTAssertEqual(output, CLIOutput(stdout: #"{"status":"pending"}"#, stderr: "caddy refused the new file", exitCode: 1))
     }
 
     func testListDecodesTheCLIJSONContractForTheNamedMachine() throws {
@@ -105,12 +105,14 @@ final class DevmachineCLITests: XCTestCase {
         XCTAssertTrue(listing.caddyIsMissing)
     }
 
-    func testUnexposeNamesTheMachineAndSkipsTheCLIsOwnPrompt() throws {
+    func testRemoveNamesTheMachineAsksForJSONAndSkipsTheCLIsOwnPrompt() throws {
         let runner = CLIRecordingRunner()
 
-        try DevmachineCLI(executable: "/x", runner: runner).unexpose(host: "old.example.com", machine: "box")
+        _ = try DevmachineCLI(executable: "/x", runner: runner).exposeRemove(host: "old.example.com", machine: "box")
 
-        XCTAssertEqual(runner.calls.first?.args, ["--machine", "box", "expose", "rm", "old.example.com", "--yes"])
+        XCTAssertEqual(
+            runner.calls.first?.args,
+            ["--machine", "box", "--format", "json", "expose", "rm", "old.example.com", "--yes"])
     }
 
     func testDNSProvidersDecodesTheCLIJSONContract() throws {
@@ -167,7 +169,7 @@ final class DevmachineCLITests: XCTestCase {
 
         _ = try cli.context(workspace: "acme", session: "main")
         _ = try cli.context(machine: "mac", project: "/Users/alice/acme")
-        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+        _ = try cli.exposeAdd(workspace: "acme", port: 8080, host: "app.example.com")
 
         XCTAssertEqual(runner.environments.count, 3)
         for environment in runner.environments {
@@ -181,7 +183,7 @@ final class DevmachineCLITests: XCTestCase {
             executable: "/x", runner: runner, customSocket: nil,
             socketFileExists: { $0 == RemoteCommands.onePasswordSocketPath }, processEnvironment: [:])
 
-        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+        _ = try cli.exposeAdd(workspace: "acme", port: 8080, host: "app.example.com")
 
         XCTAssertEqual(runner.environments[0]?["SSH_AUTH_SOCK"], RemoteCommands.onePasswordSocketPath)
     }
@@ -192,7 +194,7 @@ final class DevmachineCLITests: XCTestCase {
             executable: "/x", runner: runner, customSocket: nil,
             socketFileExists: { _ in false }, processEnvironment: ["SSH_AUTH_SOCK": "/tmp/inherited.sock"])
 
-        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+        _ = try cli.exposeAdd(workspace: "acme", port: 8080, host: "app.example.com")
 
         XCTAssertEqual(runner.environments[0]?["SSH_AUTH_SOCK"], "/tmp/inherited.sock")
     }
@@ -203,7 +205,7 @@ final class DevmachineCLITests: XCTestCase {
             executable: "/x", runner: runner, customSocket: nil,
             socketFileExists: { _ in false }, processEnvironment: [:])
 
-        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+        _ = try cli.exposeAdd(workspace: "acme", port: 8080, host: "app.example.com")
 
         XCTAssertNil(runner.environments[0]?["SSH_AUTH_SOCK"])
     }
@@ -214,7 +216,7 @@ final class DevmachineCLITests: XCTestCase {
             executable: "/x", runner: runner, customSocket: "/tmp/custom.sock",
             socketFileExists: { _ in true }, processEnvironment: [:])
 
-        try cli.expose(workspace: "acme", port: 8080, host: "app.example.com")
+        _ = try cli.exposeAdd(workspace: "acme", port: 8080, host: "app.example.com")
 
         XCTAssertEqual(runner.environments[0]?["SSH_AUTH_SOCK"], "/tmp/custom.sock")
     }

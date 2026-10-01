@@ -10,6 +10,7 @@ struct ContentView: View {
     @EnvironmentObject var viewerStore: FileViewerStore
     @EnvironmentObject private var recentCommands: RecentCommandStore
     @EnvironmentObject private var stats: StatsStore
+    @EnvironmentObject private var caddy: CaddyStore
     @EnvironmentObject private var updates: UpdateController
     @State private var dragStartWidth: CGFloat? = nil
     @State private var contextDragStartWidth: CGFloat?
@@ -71,6 +72,13 @@ struct ContentView: View {
                     UpdateBanner()
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+                ForEach(caddy.jobs) { job in
+                    PublishJobCard(
+                        job: job,
+                        onRetry: { caddy.retry(job.id) },
+                        onDismiss: { caddy.dismiss(job.id) })
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
                 ForEach(model.activeTasks) { task in
                     DMToastCard(task: task)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -78,6 +86,7 @@ struct ContentView: View {
             }
             .padding(m.pt(18))
             .animation(.easeInOut(duration: 0.2), value: model.activeTasks)
+            .animation(.easeInOut(duration: 0.2), value: caddy.jobs)
             .animation(.easeInOut(duration: 0.2), value: updates.showsBanner)
         }
         .onAppear {

@@ -93,7 +93,7 @@ private struct CLIAliasList: Decodable {
 
 /// One entry of `packages list`: `installedOn` reads like `"machine devmachine"`
 /// or `"workspace acme"`.
-struct CLIPackage: Decodable, Equatable, Sendable {
+struct CLIPackage: Codable, Equatable, Sendable {
     let name: String
     let scope: String
     let installedOn: [String]
@@ -112,7 +112,7 @@ private struct CLIPackageList: Decodable {
     let packages: [CLIPackage]
 }
 
-struct CLIMachine: Decodable, Equatable, Sendable {
+struct CLIMachine: Codable, Equatable, Sendable {
     let name: String
     let isSelf: Bool
 
@@ -133,7 +133,7 @@ struct CLIMachine: Decodable, Equatable, Sendable {
     }
 }
 
-struct ExposureListing: Equatable, Sendable {
+struct ExposureListing: Codable, Equatable, Sendable {
     let sites: [ExposedSite]
     let warning: String?
 
@@ -200,16 +200,19 @@ struct DevmachineCLI: Sendable {
         return DevmachineCLI(executable: executable, runner: runner, customSocket: customSocket)
     }
 
-    func expose(workspace: String, port: Int, host: String) throws {
+    /// Publishes a workspace's port. The CLI applies the route on Caddy at
+    /// once and says how it went in JSON (0.7.21 and newer); the whole output
+    /// comes back, because a failed apply still printed what it recorded.
+    func exposeAdd(workspace: String, port: Int, host: String) throws -> CLIOutput {
         let result = try runner.runCapturing(
             executable: executable,
             args: [
-                "expose", "add", workspace, String(port),
+                "--format", "json", "expose", "add", workspace, String(port),
                 "--host", host, "--publish",
             ],
             environment: environment()
         )
-        try requireSuccess(result)
+        return CLIOutput(stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode)
     }
 
     /// What `machine`'s Caddy publishes. `expose list` acts on one machine
@@ -228,15 +231,15 @@ struct DevmachineCLI: Sendable {
         return ExposureListing(sites: sites, warning: warning.isEmpty ? nil : warning)
     }
 
-    /// Stops publishing a site at the next sync. `--yes` skips the CLI's own
-    /// confirmation prompt: the app already asked before calling this.
-    func unexpose(host: String, machine: String) throws {
+    /// Stops publishing a site, on Caddy at once when the machine answers.
+    /// `--yes` skips the CLI's own confirmation prompt: the app already asked.
+    func exposeRemove(host: String, machine: String) throws -> CLIOutput {
         let result = try runner.runCapturing(
             executable: executable,
-            args: ["--machine", machine, "expose", "rm", host, "--yes"],
+            args: ["--machine", machine, "--format", "json", "expose", "rm", host, "--yes"],
             environment: environment()
         )
-        try requireSuccess(result)
+        return CLIOutput(stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode)
     }
 
     /// Every DNS provider installed on `machine`, and the zones it can see —

@@ -49,33 +49,43 @@ struct CaddyService: Sendable {
     }
 
     /// This Mac, and a server without caddy, have nothing to publish from;
-    /// both answer without a connection. The stats read only adds owners to
-    /// rows that carry no workspace, so its failure never fails the list.
-    func sites(on machine: CLIMachine, context: SitesContext) throws -> MachineSitesResult {
+    /// both answer without a connection.
+    func preflight(_ machine: CLIMachine, context: SitesContext) -> MachineSitesResult? {
         if machine.isSelf {
             return .notSetUp(Self.selfMessage(machine.name))
         }
         if context.hasCaddy(onMachine: machine.name) == false {
             return .notSetUp(Self.noCaddyMessage(machine.name))
         }
-        let cli = try resolvedCLI()
-        let listing = try cli.listExposures(machine: machine.name)
-        if listing.sites.isEmpty && listing.caddyIsMissing {
-            return .notSetUp(Self.noCaddyMessage(machine.name))
-        }
+        return nil
+    }
 
-        var ports: [PortOwner] = []
-        var containers: [ContainerStat] = []
-        if let output = try? cli.run(machine: machine.name, package: "devmachine-app", args: ["stats"]),
-           let parsed = StatsParser.parse(output) {
-            ports = parsed.ports
-            containers = parsed.containers
+    /// `expose list` for one machine: the one ssh the Subdomains page and
+    /// the Preview tab share through the cache.
+    func listing(on machine: String) throws -> ExposureListing {
+        try resolvedCLI().listExposures(machine: machine)
+    }
+
+    /// The rows for a listing. Owners come from the stats the app already
+    /// polls (`StatsStore`), never from a second stats read here: they only
+    /// add names to rows that carry no workspace.
+    static func result(
+        for machine: CLIMachine, listing: ExposureListing, context: SitesContext, snapshot: StatsSnapshot?
+    ) -> MachineSitesResult {
+        if listing.sites.isEmpty && listing.caddyIsMissing {
+            return .notSetUp(noCaddyMessage(machine.name))
         }
         let workspaceUsers = context.workspaces
             .filter { $0.machine == machine.name }
             .map { WorkspaceUser(workspace: $0.name, user: $0.user) }
         return .sites(SubdomainRowBuilder.rows(
-            sites: listing.sites, ports: ports, workspaceUsers: workspaceUsers, containers: containers))
+            sites: listing.sites, ports: snapshot?.ports ?? [], workspaceUsers: workspaceUsers,
+            containers: snapshot?.containers ?? []))
+    }
+
+    func sites(on machine: CLIMachine, context: SitesContext, snapshot: StatsSnapshot? = nil) throws -> MachineSitesResult {
+        if let answer = preflight(machine, context: context) { return answer }
+        return Self.result(for: machine, listing: try listing(on: machine.name), context: context, snapshot: snapshot)
     }
 
     static func selfMessage(_ machine: String) -> String {
@@ -97,8 +107,12 @@ struct CaddyService: Sendable {
         try resolvedCLI().dnsList(machine: machine, provider: provider, zone: zone)
     }
 
-    func remove(host: String, machine: String) throws {
-        try resolvedCLI().unexpose(host: host, machine: machine)
+    func publish(workspace: String, port: Int, host: String) throws -> CLIOutput {
+        try resolvedCLI().exposeAdd(workspace: workspace, port: port, host: host)
+    }
+
+    func remove(host: String, machine: String) throws -> CLIOutput {
+        try resolvedCLI().exposeRemove(host: host, machine: machine)
     }
 
     /// `matching` filters the tail to lines mentioning that host — the

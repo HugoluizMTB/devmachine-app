@@ -216,11 +216,12 @@ public final class DataCache {
         let current = cached(key)
         guard force || !isFresh(key) else { return current }
         let before = current?.value
+        let running = startFetch(key, fetch: fetch)
         let id = UUID()
         background[id] = Task {
             defer { self.background[id] = nil }
             do {
-                let fresh = try await self.refresh(key, fetch: fetch)
+                let fresh = try await self.await(running, key)
                 onUpdate(CacheUpdate(cached: fresh, changed: fresh.value != before))
             } catch {
                 onError?(error)
@@ -232,28 +233,36 @@ public final class DataCache {
     private func refresh<V>(
         _ key: CacheKey<V>, fetch: @escaping @Sendable () async throws -> V
     ) async throws -> Cached<V> {
+        try await self.await(startFetch(key, fetch: fetch), key)
+    }
+
+    /// Starts the key's fetch now, so `isRefreshing` is true from this call
+    /// on, or hands back the one already running.
+    private func startFetch<V>(
+        _ key: CacheKey<V>, fetch: @escaping @Sendable () async throws -> V
+    ) -> Task<any Sendable, Error> {
         let id = key.id
-        let task: Task<any Sendable, Error>
-        if let running = inFlight[id] {
-            task = running
-        } else {
-            task = Task {
-                defer { self.inFlight[id] = nil }
-                do {
-                    let value = try await fetch()
-                    self.put(key, value)
-                    return value
-                } catch {
-                    self.slots[id]?.error = Self.describe(error)
-                    throw error
-                }
+        if let running = inFlight[id] { return running }
+        let task = Task<any Sendable, Error> {
+            defer { self.inFlight[id] = nil }
+            do {
+                let value = try await fetch()
+                self.put(key, value)
+                return value
+            } catch {
+                self.slots[id]?.error = Self.describe(error)
+                throw error
             }
-            inFlight[id] = task
         }
+        inFlight[id] = task
+        return task
+    }
+
+    private func await<V>(_ task: Task<any Sendable, Error>, _ key: CacheKey<V>) async throws -> Cached<V> {
         guard let value = try await task.value as? V else {
-            throw CacheError.typeMismatch(id)
+            throw CacheError.typeMismatch(key.id)
         }
-        return Cached(value: value, fetchedAt: slots[id]?.fetchedAt ?? now(), isStale: false)
+        return Cached(value: value, fetchedAt: slots[key.id]?.fetchedAt ?? now(), isStale: false)
     }
 
     /// Waits until every background fetch has answered. Tests use it; the

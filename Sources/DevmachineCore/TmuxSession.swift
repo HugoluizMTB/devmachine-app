@@ -1,6 +1,6 @@
 import Foundation
 
-public struct TmuxSession: Equatable, Identifiable, Sendable {
+public struct TmuxSession: Codable, Equatable, Identifiable, Sendable {
     public let name: String
     public let windows: Int
     public let harnesses: Set<HarnessID>

@@ -55,19 +55,13 @@ struct SubdomainsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.dmContentBg)
         .onAppear {
-            if store.machines.isEmpty { store.refresh() }
+            store.appear()
             openRequestedAdd()
         }
         .onChange(of: model.pendingAddSubdomain) { _, _ in openRequestedAdd() }
         .onChange(of: store.dnsProviders) {
             if case .provider(let name) = selectedTab, !store.dnsProviders.contains(name) {
                 selectedTab = .sites
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if let task = store.task {
-                DMToastCard(task: task)
-                    .padding(m.pt(18))
             }
         }
         .sheet(isPresented: $showAdd) {
@@ -111,6 +105,7 @@ struct SubdomainsView: View {
 
             Spacer()
 
+            DMAgeLabel(since: store.selectedState?.refreshedAt, staleAfter: CachePolicy.standard.ttl(for: .sites))
             if (store.isLoading && !store.showsSitesSkeleton) || store.isLoadingDNSProviders {
                 ProgressView().controlSize(.small)
             }
@@ -219,14 +214,10 @@ struct SubdomainsView: View {
             DMStatusView(kind: .empty(systemImage: "globe", text: emptySitesText))
         } else {
             VStack(spacing: 0) {
-                if let addError = store.addError {
-                    DMBanner(message: addError) {
-                        DMIconButton(systemImage: "xmark", size: DMMetrics.baseFontSize, tint: nil) { store.addError = nil }
-                    }
-                }
-                if let removeError = store.removeError {
-                    DMBanner(message: removeError) {
-                        DMIconButton(systemImage: "xmark", size: DMMetrics.baseFontSize, tint: nil) { store.removeError = nil }
+                if let refreshError = store.selectedState?.refreshError {
+                    DMBanner(message: "Couldn't refresh: \(refreshError)", lineLimit: 2) {
+                        DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { retrySelectedMachine() }
+                            .help("Try again")
                     }
                 }
                 VStack(spacing: 0) {

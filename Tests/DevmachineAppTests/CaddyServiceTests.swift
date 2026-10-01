@@ -89,8 +89,10 @@ final class MultiMachineCLIRunner: CommandRunner, @unchecked Sendable {
             return (#"{"providers":[{"name":"Cloudflare","zones":["example.com"]}]}"#, "", 0)
         case ["--machine", "box", "--format", "json", "dns", "list", "example.com", "--dns-provider", "Cloudflare"]:
             return (#"{"zone":"example.com","provider":"Cloudflare","records":[{"name":"app","type":"A","value":"203.0.113.10","ttl":300}]}"#, "", 0)
-        case ["--machine", "box", "expose", "rm", "old.example.com", "--yes"]:
-            return ("", "", 0)
+        case ["--machine", "box", "--format", "json", "expose", "rm", "old.example.com", "--yes"]:
+            return (#"{"host":"old.example.com","workspace":"alice","applied":true,"status":"removed"}"#, "", 0)
+        case ["--format", "json", "expose", "add", "alice", "8080", "--host", "new.example.com", "--publish"]:
+            return (#"{"host":"new.example.com","port":8080,"workspace":"alice","applied":true,"status":"published"}"#, "", 0)
         default:
             return ("", "unexpected args: \(args)", 1)
         }
@@ -136,18 +138,19 @@ final class CaddyServiceTests: XCTestCase {
         XCTAssertEqual(context.hasCaddy(onMachine: "spare"), false)
     }
 
-    func testSitesAreReadFromTheNamedMachineWithItsOwnStats() throws {
+    func testSitesAreReadFromTheNamedMachineWithTheStatsAlreadyPolled() throws {
         let runner = MultiMachineCLIRunner()
         let service = service(runner)
+        let snapshot = try XCTUnwrap(StatsParser.parse(statsJSON))
 
-        let result = try service.sites(on: box, context: service.context())
+        let result = try service.sites(on: box, context: service.context(), snapshot: snapshot)
 
         guard case .sites(let rows) = result else { return XCTFail("expected sites, got \(result)") }
         XCTAssertEqual(rows.map(\.site.host), ["app.example.com", "old.example.com"])
         XCTAssertEqual(rows[0].workspaceDisplay, "alice")
         XCTAssertEqual(rows[1].workspaceDisplay, "alice")
         XCTAssertTrue(runner.calls.contains(["--machine", "box", "--format", "json", "expose", "list"]))
-        XCTAssertTrue(runner.calls.contains(["run", "--machine", "box", "--package", "devmachine-app", "--", "stats"]))
+        XCTAssertFalse(runner.calls.contains { $0.contains("stats") })
         XCTAssertEqual(runner.callsWithoutATarget, [])
     }
 
@@ -209,9 +212,10 @@ final class CaddyServiceTests: XCTestCase {
     func testRemoveNamesTheSitesMachine() throws {
         let runner = MultiMachineCLIRunner()
 
-        try service(runner).remove(host: "old.example.com", machine: "box")
+        let output = try service(runner).remove(host: "old.example.com", machine: "box")
 
-        XCTAssertEqual(runner.calls.last, ["--machine", "box", "expose", "rm", "old.example.com", "--yes"])
+        XCTAssertEqual(output.exitCode, 0)
+        XCTAssertEqual(runner.calls.last, ["--machine", "box", "--format", "json", "expose", "rm", "old.example.com", "--yes"])
     }
 
     func testLogsAreReadOnTheNamedMachineAndFilteredToTheHost() throws {

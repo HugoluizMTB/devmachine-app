@@ -2,8 +2,8 @@ import Foundation
 
 /// One row `expose list --format json` reports: a site the configuration and
 /// the machine agree, or disagree, about.
-public struct ExposedSite: Decodable, Equatable, Sendable, Identifiable {
-    public enum Status: String, Equatable, Sendable {
+public struct ExposedSite: Codable, Equatable, Sendable, Identifiable {
+    public enum Status: String, Codable, Equatable, Sendable {
         case published, pending, unmanaged, differs, unknown
 
         /// A short word for the status pill.
@@ -51,7 +51,7 @@ public struct ExposedSite: Decodable, Equatable, Sendable, Identifiable {
 
 /// One record `dns list <zone> --format json` reports for an installed
 /// provider's zone.
-public struct DNSRecordRow: Decodable, Equatable, Sendable, Identifiable {
+public struct DNSRecordRow: Codable, Equatable, Sendable, Identifiable {
     public let name: String
     public let type: String
     public let value: String

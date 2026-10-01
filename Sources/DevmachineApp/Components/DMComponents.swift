@@ -314,8 +314,6 @@ struct DMToastCard: View {
         // the count to the right would otherwise take every point on offer, and the
         // card stretched to the window's edge with a short bar sitting in it.
         .frame(width: m.card.toast, alignment: .leading)
-        .padding(m.space.lg)
-        .dmGlass(radius: DMRadius.toast)
-        .shadow(radius: m.pt(10), y: m.pt(3))
+        .dmToastChrome()
     }
 }
