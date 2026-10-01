@@ -596,6 +596,18 @@ Rules:
 `acme-devmachine` logs into the VPS as the Mac user. `ProcessRunner` refuses
 ssh/mosh/mosh-client/scp under XCTest; tests inject a fake `CommandRunner`.
 
+## A test that blocks must let go
+A fake that holds a call (`BlockingRunner`, a semaphore gate) holds one of
+Swift's cooperative threads, and a CI runner has only as many as it has cores
+(3 on `macos-15`). Three held calls left behind stopped every later
+`Task.detached`, and ~80 unrelated tests timed out in the release job while
+passing on a 12-core Mac. `BlockingRunner` opens itself when each test ends;
+a new gate must be released the same way. To check, run the built bundle with
+one thread: `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 xcrun xctest
+.build/debug/DevmachineAppPackageTests.xctest`. (Not through `swift test`:
+SwiftPM itself then hangs.) Only the tests that need two calls in flight at
+once may fail there.
+
 ## Verifying UI
 - Screenshot flow: `./scripts/install.sh` (relaunches), `osascript` to front the app,
   `screencapture -x -R<x,y,w,h>` of the window, downscale with `sips` before reading.
