@@ -390,6 +390,11 @@ Rules:
 - Codex usage reads `account/rateLimits/read` and `account/usage/read` through
   `codex app-server`. It never calls `thread/start` or `turn/start`, so the
   refresh does not start a model turn or consume inference tokens.
+- Sidebar harness icons (Settings → Harnesses, off by default) are files in
+  `Resources/HarnessIcons/<HarnessID>.svg`, loaded by name (`HarnessIconLibrary`):
+  a new harness gets its icon by adding a file. An SVG drawn in `currentColor`
+  takes the row's tint; one with its own colours keeps them. No file → the
+  hover dot stays. The icons come from Orca (MIT, `LICENSE-orca.txt` beside them).
 - The Context / Files / Git panel belongs to every selected session. Unsupported
   provider context shows an empty state while Files and Git remain available.
 

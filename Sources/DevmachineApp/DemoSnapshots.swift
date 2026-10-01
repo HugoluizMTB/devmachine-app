@@ -159,9 +159,19 @@ enum DemoSnapshots {
         Screen(id: "worktree-foreign", fileName: "34-worktree-foreign.png", settleNanoseconds: 400_000_000),
     ]
 
+    /// The harness icon walk (`DEVMACHINE_DEMO_WALK=harness-icons`): acme's
+    /// workspace home with Settings → Harnesses → "Show harness icon" on.
+    static let harnessIconScreens: [Screen] = [
+        Screen(id: "sidebar-harness-icons", fileName: "35-sidebar-harness-icons.png", settleNanoseconds: 900_000_000),
+    ]
+
     static func walk(environment: [String: String] = ProcessInfo.processInfo.environment) -> [Screen] {
         if DemoMode.holdsLoading { return skeletonScreens }
-        return environment["DEVMACHINE_DEMO_WALK"] == "worktrees" ? worktreeScreens : screens
+        switch environment["DEVMACHINE_DEMO_WALK"] {
+        case "worktrees": return worktreeScreens
+        case "harness-icons": return harnessIconScreens
+        default: return screens
+        }
     }
 
     /// `DEVMACHINE_DEMO_HIDDEN=1` draws every window fully transparent and
@@ -279,6 +289,9 @@ enum DemoSnapshots {
         try? await Task.sleep(nanoseconds: 150_000_000)
         switch screen.id {
         case "sessions":
+            model.stackWorkspace(acmeAlias)
+        case "sidebar-harness-icons":
+            environment.settingsStore.settings?.showsHarnessIcons = true
             model.stackWorkspace(acmeAlias)
         case "session-claude":
             // A different workspace/session than the "sessions" grid, not

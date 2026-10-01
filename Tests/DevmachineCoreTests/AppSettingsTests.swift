@@ -429,3 +429,30 @@ final class CopyOnSelectSettingTests: XCTestCase {
         XCTAssertFalse(decoded.copyOnSelect)
     }
 }
+
+final class HarnessIconSettingTests: XCTestCase {
+    func testHarnessIconsAreOffByDefault() {
+        XCTAssertFalse(goodSettings.showsHarnessIcons)
+    }
+
+    func testSettingsSavedBeforeItExistedKeepTheDot() throws {
+        let saved = #"{"opsRepoPath":"/Users/alice/.config/devmachine","hostAlias":"devmachine","publicIP":"203.0.113.7","baseDomain":"example.com","copyOnSelect":false}"#
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(saved.utf8))
+        XCTAssertFalse(decoded.showsHarnessIcons)
+        XCTAssertFalse(decoded.copyOnSelect)
+    }
+
+    func testTurningItOnSurvivesASave() throws {
+        var settings = goodSettings
+        settings.showsHarnessIcons = true
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertTrue(decoded.showsHarnessIcons)
+    }
+
+    func testTheInitializerTakesIt() {
+        let settings = AppSettings(
+            opsRepoPath: "/Users/alice/.config/devmachine", hostAlias: "devmachine",
+            publicIP: "203.0.113.7", baseDomain: "example.com", showsHarnessIcons: true)
+        XCTAssertTrue(settings.showsHarnessIcons)
+    }
+}

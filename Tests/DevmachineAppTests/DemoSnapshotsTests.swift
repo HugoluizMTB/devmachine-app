@@ -189,4 +189,10 @@ final class DemoSnapshotsTests: XCTestCase {
                        DemoSnapshots.worktreeScreens.map(\.id))
         XCTAssertEqual(DemoSnapshots.walk(environment: [:]).map(\.id), DemoSnapshots.screens.map(\.id))
     }
+
+    func testTheHarnessIconWalkCapturesTheSidebarOnItsOwn() {
+        XCTAssertEqual(DemoSnapshots.harnessIconScreens.map(\.fileName), ["35-sidebar-harness-icons.png"])
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "harness-icons"]).map(\.id),
+                       DemoSnapshots.harnessIconScreens.map(\.id))
+    }
 }

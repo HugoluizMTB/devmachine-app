@@ -306,21 +306,32 @@ struct SidebarView: View {
 
     /// Harness badges appear before the client count only under the pointer: a
     /// sidebar full of marks is noise, while hover makes one row easy to check.
+    /// Settings → Harnesses can move a harness's icon before the name instead.
     private func row(
         title: String,
         badges: [HarnessBadgePresentation],
         windows: Int?,
         selected: Bool
     ) -> some View {
-        DMRow(
+        let icons = HarnessIconLibrary.bundled
+        let glyph = SessionRowGlyph(
+            showsHarnessIcons: settingsStore.settings?.showsHarnessIcons ?? false,
+            badges: badges,
+            hasIcon: icons.hasIcon(for:))
+        return DMRow(
+            leading: glyph.reservesLeadingSlot ? AnyView(
+                SidebarHarnessIcon(
+                    icon: glyph.icon.flatMap(icons.icon(for:)),
+                    help: badges.first { $0.id == glyph.icon }?.helpText)
+            ) : nil,
             title: title,
             selected: selected,
             trailing: windows.map { count in
                 AnyView(Text(verbatim: "\(count)").font(.dm(11)).foregroundStyle(Color.dmMuted))
             },
-            trailingHover: badges.isEmpty ? nil : AnyView(
+            trailingHover: glyph.hoverBadges.isEmpty ? nil : AnyView(
                 HStack(spacing: 4) {
-                    ForEach(badges) { badge in
+                    ForEach(glyph.hoverBadges) { badge in
                         Image(systemName: badge.systemImage)
                             .font(.dm(5))
                             .foregroundStyle(badge.color)
@@ -329,6 +340,30 @@ struct SidebarView: View {
                 }
             )
         )
+    }
+}
+
+/// The 14-point slot before a session's name. Empty for a terminal session,
+/// so every name in the list starts at the same place.
+private struct SidebarHarnessIcon: View {
+    let icon: HarnessIcon?
+    let help: String?
+
+    var body: some View {
+        Group {
+            if let icon {
+                Image(nsImage: icon.image)
+                    .renderingMode(icon.isTemplate ? .template : .original)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .foregroundStyle(Color.dmRowText)
+                    .help(help ?? "")
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: 14, height: 14)
     }
 }
 

@@ -104,6 +104,7 @@ struct SetupPage: View {
     @State private var debugLogging = false
     @State private var remoteTerminalMode = RemoteTerminalMode.automatic
     @State private var copyOnSelect = true
+    @State private var showsHarnessIcons = false
     @State private var hiddenWorkspaces: [String] = []
     @State private var enabledHarnesses = AppSettings.empty.enabledHarnesses
     @State private var localSessionProgram = SessionLaunchChoice.terminal
@@ -126,6 +127,7 @@ struct SetupPage: View {
             debugLogging: debugLogging,
             remoteTerminalMode: remoteTerminalMode,
             copyOnSelect: copyOnSelect,
+            showsHarnessIcons: showsHarnessIcons,
             hiddenWorkspaces: hiddenWorkspaces,
             enabledHarnesses: enabledHarnesses,
             localSessionProgram: localSessionProgram,
@@ -467,6 +469,8 @@ struct SetupPage: View {
                     + "installs a CLI or probes a remote workspace.")
             }
 
+            harnessIconToggle
+
             VStack(alignment: .leading, spacing: 10) {
                 settingsHeading("Session defaults")
                 launchChoicePicker(
@@ -677,6 +681,21 @@ struct SetupPage: View {
                 + "workspaces.")
             copyOnSelectToggle
             remoteTerminalPicker
+        }
+    }
+
+    private var harnessIconToggle: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            settingsHeading("Sidebar")
+            Toggle(isOn: $showsHarnessIcons) {
+                Text(verbatim: "Show harness icon in sidebar sessions")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            note("A session running a harness shows its icon before the name. "
+                + "Terminal sessions show none.")
         }
     }
 
@@ -924,6 +943,7 @@ struct SetupPage: View {
             debugLogging = current.debugLogging
             remoteTerminalMode = current.remoteTerminalMode
             copyOnSelect = current.copyOnSelect
+            showsHarnessIcons = current.showsHarnessIcons
             hiddenWorkspaces = current.hiddenWorkspaces
             applyHarnessSettings(current)
         } else {

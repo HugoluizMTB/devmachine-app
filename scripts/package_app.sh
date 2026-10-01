@@ -19,6 +19,7 @@ if [ -n "${DEVMACHINE_APP_VERSION:-}" ]; then
 fi
 cp wallpaper.jpg "$APP/Contents/Resources/wallpaper.jpg"
 cp Resources/wallpapers.json "$APP/Contents/Resources/wallpapers.json"
+cp -R Resources/HarnessIcons "$APP/Contents/Resources/HarnessIcons"
 
 # icon: PNGs -> iconset -> icns
 ICONSET="build/AppIcon.iconset"
