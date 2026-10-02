@@ -199,7 +199,8 @@ enum DemoSnapshots {
     ]
 
     /// The setup flow walk (`DEVMACHINE_DEMO_WALK=setup-flow`): the first-run
-    /// page in each state, then Settings → Connection filled from the CLI and
+    /// page in each state, the server form a newer CLI gets instead of
+    /// `setup`'s terminal, then Settings → Connection filled from the CLI and
     /// with each issue the setup button answers.
     static let setupFlowScreens: [Screen] = [
         Screen(id: "setup-start", fileName: "80-setup-start.png", settleNanoseconds: 300_000_000),
@@ -208,6 +209,8 @@ enum DemoSnapshots {
         Screen(id: "setup-agent", fileName: "83-setup-agent.png", settleNanoseconds: 1_200_000_000),
         Screen(id: "setup-agent-stopped", fileName: "84-setup-agent-stopped.png", settleNanoseconds: 1_200_000_000),
         Screen(id: "setup-ready", fileName: "85-setup-ready.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-connect", fileName: "90-setup-connect.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-connect-review", fileName: "91-setup-connect-review.png", settleNanoseconds: 300_000_000),
         Screen(id: "settings-connection", fileName: "86-settings-connection.png", settleNanoseconds: 500_000_000),
         Screen(id: "settings-needs-setup", fileName: "87-settings-needs-setup.png", settleNanoseconds: 500_000_000),
         Screen(id: "settings-cli-missing", fileName: "88-settings-cli-missing.png", settleNanoseconds: 500_000_000),
@@ -399,7 +402,8 @@ enum DemoSnapshots {
                 // window is already laid out by here, but the view's first
                 // render still shows its `@State` initial value otherwise.
                 try? await Task.sleep(nanoseconds: 300_000_000)
-            case "setup-start", "setup-running", "setup-failed", "setup-agent", "setup-agent-stopped", "setup-ready":
+            case "setup-start", "setup-running", "setup-failed", "setup-agent", "setup-agent-stopped", "setup-ready",
+                 "setup-connect", "setup-connect-review":
                 view = standaloneView(
                     onboardingPage(screen.id, environment), fittingSize: NSSize(width: 1400, height: 860),
                     autosize: false)
@@ -588,7 +592,8 @@ enum DemoSnapshots {
 
     private static func onboardingPage(_ id: String, _ environment: Environment) -> some View {
         let state = DemoSetupFlow.state(for: id)
-        return OnboardingPage(demoFlow: state?.flow, demoPaneKind: state?.pane)
+        return OnboardingPage(
+            demoFlow: state?.flow, demoPaneKind: state?.pane, demoConnect: DemoSetupFlow.connectStage(for: id))
             .environmentObject(environment.wallpaperStore)
     }
 

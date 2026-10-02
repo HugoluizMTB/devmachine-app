@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import DevmachineCore
 
 /// The first-run setup. It owns the whole window until the Mac is ready or
 /// the person skips it: one button runs every step (CLI, `devmachine setup`,
@@ -15,17 +16,20 @@ struct OnboardingPage: View {
     /// whose demo transcript stands in for a program.
     var demoFlow: OnboardingFlow?
     var demoPaneKind: TerminalKind?
+    /// The server form on screen, at this stage, instead of a pane.
+    var demoConnect: MachineWizardStage?
 
     @StateObject private var runner = OnboardingRunner()
 
     init(
         onStart: @escaping () -> Void = {}, onSkip: @escaping () -> Void = {},
-        demoFlow: OnboardingFlow? = nil, demoPaneKind: TerminalKind? = nil
+        demoFlow: OnboardingFlow? = nil, demoPaneKind: TerminalKind? = nil, demoConnect: MachineWizardStage? = nil
     ) {
         self.onStart = onStart
         self.onSkip = onSkip
         self.demoFlow = demoFlow
         self.demoPaneKind = demoPaneKind
+        self.demoConnect = demoConnect
     }
 
     private var flow: OnboardingFlow { runner.flow }
@@ -45,7 +49,8 @@ struct OnboardingPage: View {
         .environment(\.colorScheme, .dark)
         .task {
             if let demoFlow {
-                runner.seedDemo(demoFlow, paneKind: demoPaneKind)
+                runner.seedDemo(demoFlow, paneKind: demoPaneKind, connecting: demoConnect != nil)
+                if let demoConnect { await DemoSetupFlow.fillConnect(runner.connect, stage: demoConnect) }
                 return
             }
             await runner.refresh()
@@ -68,7 +73,11 @@ struct OnboardingPage: View {
         case .complete:
             successCard
         case .running, .checking, .failed:
-            withPane { stepList; stepActions }
+            if runner.connecting {
+                withConnect { stepList; stepActions }
+            } else {
+                withPane { stepList; stepActions }
+            }
         case let .agentRunning(kind):
             withPane { agentCard(kind, running: true) }
         case let .agentStopped(kind):
@@ -84,7 +93,7 @@ struct OnboardingPage: View {
                 .font(.dm(20, weight: .semibold))
                 .foregroundStyle(.white)
             Text("This Mac needs the devmachine CLI, a server it can reach, and the devmachine-app "
-                + "package on that server. Everything runs in a terminal you can watch.")
+                + "package on that server. Every step shows what it runs as it runs.")
                 .font(.dm(12.5))
                 .foregroundStyle(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
@@ -170,6 +179,21 @@ struct OnboardingPage: View {
         }
     }
 
+    /// A CLI that takes every answer as a flag: the Add machine wizard's
+    /// server form stands where the terminal would.
+    private func withConnect<Side: View>(@ViewBuilder side: () -> Side) -> some View {
+        HStack(alignment: .top, spacing: m.space.xl) {
+            OnboardingConnectView(state: runner.connect, onBack: { runner.back() })
+                .padding(m.space.xl)
+                .frame(maxWidth: .infinity, minHeight: m.pt(380), maxHeight: m.pt(560), alignment: .topLeading)
+                .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
+            VStack(alignment: .leading, spacing: m.space.xl) {
+                side()
+            }
+            .frame(width: m.pt(300))
+        }
+    }
+
     private var pane: some View {
         VStack(spacing: 0) {
             if let kind = runner.paneKind {
@@ -205,7 +229,7 @@ struct OnboardingPage: View {
                 Spacer(minLength: 0)
             }
             if status == .running, step.interactive {
-                Text("Answer its questions in the terminal.")
+                Text(runner.connecting ? "Fill in the server on the left." : "Answer its questions in the terminal.")
                     .font(.dm(10.5))
                     .foregroundStyle(.white.opacity(0.6))
             }
@@ -255,7 +279,7 @@ struct OnboardingPage: View {
             .padding(m.space.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
             .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
-        } else {
+        } else if !runner.connecting {
             DMButton("Stop and go back", variant: .ghost, size: .small) { runner.back() }
         }
     }
@@ -336,5 +360,72 @@ struct OnboardingPage: View {
         let server = flow.detection.adminMachine.map { "the server \($0)" } ?? "your server"
         return "The CLI is installed, and \(server) has devmachine-app. "
             + "Settings are filled in from the CLI, so there is nothing to type."
+    }
+}
+
+/// Onboarding's "Connect a server" on a CLI that takes every answer as a
+/// flag: the Add machine wizard's own details, review and run views, for a
+/// server only and the add alone. Its steps then add devmachine-app and sync.
+struct OnboardingConnectView: View {
+    @Environment(\.dmMetrics) private var m
+    @ObservedObject var state: AddMachineModel
+    @ObservedObject private var runner: MachineStepRunner
+    let onBack: () -> Void
+    @State private var confirming = false
+
+    init(state: AddMachineModel, onBack: @escaping () -> Void) {
+        self.state = state
+        self.onBack = onBack
+        _runner = ObservedObject(wrappedValue: state.runner)
+    }
+
+    private var wizard: MachineWizard { state.wizard }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.space.lg) {
+            Text(verbatim: "Connect a server")
+                .font(.dm(15, weight: .semibold))
+                .foregroundStyle(Color.dmRowText)
+            if wizard.stage == .run {
+                AddMachineRunView(state: state, runner: runner, onClose: onBack)
+            } else {
+                ScrollView {
+                    Group {
+                        if wizard.stage == .review {
+                            AddMachineReviewView(wizard: wizard)
+                        } else {
+                            AddMachineDetailsView(state: state)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                footer
+            }
+        }
+        .confirmationDialog(
+            "Connect \(wizard.draft.name.trimmingCharacters(in: .whitespaces))?", isPresented: $confirming
+        ) {
+            Button("Connect server") { Task { await state.create() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(verbatim: AddMachineContent.confirmMessage(wizard.draft))
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: m.space.sm) {
+            DMButton("Back", variant: .outline) {
+                if wizard.canGoBack { state.wizard.back() } else { onBack() }
+            }
+            Spacer()
+            if wizard.stage == .review {
+                DMButton("Connect server", systemImage: "play.fill") { confirming = true }
+                    .keyboardShortcut(.defaultAction)
+            } else {
+                DMButton("Continue") { state.wizard.next() }
+                    .disabled(!wizard.canAdvance)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
     }
 }

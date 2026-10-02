@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import DevmachineCore
 @testable import DevmachineApp
 
 private let claude = DetectedAgent(kind: .claude, executablePath: "/Users/alice/.local/bin/claude")
@@ -19,6 +20,29 @@ private let serverWithoutPackage = detection(adminMachine: "acme", missingPackag
 private let ready = detection(adminMachine: "acme")
 
 final class OnboardingFlowTests: XCTestCase {
+    func testANewCLIConnectsTheServerWithoutATerminal() {
+        var newCLI = cliOnly
+        newCLI.cliVersion = MachineUnattendedAdd.minimumCLIVersion
+        var flow = OnboardingFlow()
+        _ = flow.receive(newCLI)
+
+        XCTAssertEqual(flow.start(), .connectServer)
+        XCTAssertEqual(flow.phase, .running(.runSetup))
+        XCTAssertEqual(flow.stepExited(.runSetup, exitCode: 0), .refreshDetection)
+        XCTAssertEqual(
+            flow.receive(detection(adminMachine: "acme", missingPackageMachines: ["acme"])),
+            .runStep(.addPackage(machine: "acme"), command: OnboardingPlan.addPackageCommand(machine: "acme")))
+    }
+
+    func testAnOlderCLIStillRunsSetupInATerminal() {
+        var oldCLI = cliOnly
+        oldCLI.cliVersion = SemanticVersion(major: 0, minor: 7, patch: 26)
+        var flow = OnboardingFlow()
+        _ = flow.receive(oldCLI)
+
+        XCTAssertEqual(flow.start(), .runStep(.runSetup, command: OnboardingPlan.setupCommand))
+    }
+
     func testNothingCanStartBeforeTheFirstDetection() {
         var flow = OnboardingFlow()
         XCTAssertFalse(flow.hasDetected)

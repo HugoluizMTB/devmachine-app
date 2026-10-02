@@ -587,7 +587,8 @@ Rules:
   the account's PATH and ssh agent. A new pane per step, so an old program's
   exit never answers for the next.
 - **The flow is a pure state machine** (`OnboardingFlow`, driven by
-  `OnboardingRunner`): install CLI → `devmachine setup` → `packages add
+  `OnboardingRunner`): install CLI → `devmachine setup` (or the server form
+  below) → `packages add
   devmachine-app` → `sync` per machine, re-reading the Mac after each step.
   Every step ends done or failed; a step that exits 0 but changes nothing is
   failed too, never re-run in a loop. A sync always follows an add, because
@@ -600,6 +601,20 @@ Rules:
   and its configuration only. Quitting the agent early offers the button
   for the steps still missing. Demo mode reads no CLI or agent and refuses
   every step and agent (`OnboardingDemoTests`).
+- **A CLI that takes every answer as a flag connects the server with no
+  terminal** (`MachineUnattendedAdd.minimumCLIVersion`, read into
+  `OnboardingDetection.cliVersion`): "Connect a server" becomes the
+  `.connectServer` effect, and the Add machine wizard's own views stand
+  where the pane would (`OnboardingConnectView`, an `AddMachineModel` with
+  `connectOnly`: a server only, details then review, no workspace,
+  packages or sync). It runs only `machines add --address … --fingerprint
+  … [--key …|--password-stdin] [--domain …]`, which on a fresh Mac writes
+  what `setup` would; the flow's own steps then add devmachine-app and
+  sync, as before. The form reads the configuration again when it opens;
+  a CLI older than detection said falls back to `setup` in a pane, which
+  stays the path for an older CLI. Back, Close or leaving the page stops a
+  run and drops the password. Demo shots: `90-setup-connect.png`,
+  `91-setup-connect-review.png` in the setup-flow walk.
 - **It ends on "Start using Devmachine"**: `completeOnboarding` reads the CLI
   again, fills the empty Connection fields, saves them and opens Home, with
   no restart. Settings → Connection shows what the CLI reports read-only

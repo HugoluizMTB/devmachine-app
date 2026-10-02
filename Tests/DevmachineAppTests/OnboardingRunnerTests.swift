@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import DevmachineCore
 @testable import DevmachineApp
 
 @MainActor
@@ -44,6 +45,15 @@ private final class AgentQuestions: @unchecked Sendable {
     private var stored: [[DetectedAgent]?] = []
     var values: [[DetectedAgent]?] { lock.withLock { stored } }
     func record(_ value: [DetectedAgent]?) { lock.withLock { stored.append(value) } }
+}
+
+private let serverKey = "SHA256:" + String(repeating: "N", count: 43)
+
+private final class ProcessLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [(arguments: [String], input: Data?)] = []
+    var calls: [(arguments: [String], input: Data?)] { lock.withLock { stored } }
+    func append(_ arguments: [String], _ input: Data?) { lock.withLock { stored.append((arguments, input)) } }
 }
 
 private let claude = DetectedAgent(kind: .claude, executablePath: "/Users/alice/.local/bin/claude")
@@ -206,6 +216,110 @@ final class OnboardingRunnerTests: XCTestCase {
 
         runner.leave()
         XCTAssertTrue(panes.closed.contains(kind))
+    }
+
+    private func connectModel(
+        version: SemanticVersion? = MachineUnattendedAdd.minimumCLIVersion,
+        status: @escaping @MainActor ([String]) -> Int32 = { _ in 0 }, ran: ProcessLog = ProcessLog()
+    ) -> AddMachineModel {
+        let snapshot = MachinesSnapshot(hasConfiguration: false, machines: [], packages: [], cliVersion: version)
+        let hooks = MachineStepRunner.Hooks(
+            executable: { "/opt/homebrew/bin/devmachine" }, isReady: { _ in true }, type: { _, _ in },
+            matchCount: { _, _ in 0 }, writeScript: { _, _ in "/tmp/x.sh" }, isAtPrompt: { _ in nil },
+            runProcess: { arguments, input, _ in
+                ran.append(arguments, input)
+                return status(arguments)
+            },
+            beginTask: { _, _ in nil }, setTask: { _, _ in }, endTask: { _, _ in })
+        return AddMachineModel(
+            machines: MachinesStore(read: { snapshot }, remove: { _ in }),
+            runner: MachineStepRunner(hooks: hooks, pollInterval: 1_000_000),
+            findLima: { nil }, onAdded: {},
+            scanMachine: { address, port in
+                MachineScan(address: address, port: Int(port) ?? 22, keyType: "ssh-ed25519",
+                            fingerprint: serverKey, verify: nil)
+            },
+            connectOnly: true)
+    }
+
+    private func fill(_ model: AddMachineModel) async {
+        model.wizard.draft.name = "acme"
+        model.wizard.draft.address = "203.0.113.10"
+        model.wizard.draft.login = .password
+        model.wizard.draft.password = SecretText("hunter2")
+        model.wizard.draft.domain = "example.com"
+        await model.scan()
+        model.wizard.draft.scanConfirmed = true
+    }
+
+    func testANewCLIConnectsTheServerInTheWizardThenAddsThePackageInAPane() async throws {
+        var start = OnboardingDetection(cliFound: true, adminMachine: nil, missingPackageMachines: [], agents: [])
+        start.cliVersion = MachineUnattendedAdd.minimumCLIVersion
+        let mac = FakeMac(start)
+        let panes = FakePanes()
+        let ran = ProcessLog()
+        let connect = connectModel(ran: ran)
+        let runner = OnboardingRunner(
+            home: "/Users/alice", launcher: panes, detect: { _ in mac.detection }, connect: connect)
+        await runner.refresh()
+
+        runner.start()
+        try await waitFor { runner.connecting && connect.wizard.unattended }
+        XCTAssertTrue(panes.launches.isEmpty, "no terminal for the server")
+        XCTAssertEqual(connect.wizard.stage, .details)
+
+        await fill(connect)
+        connect.wizard.next()
+        XCTAssertEqual(connect.wizard.stage, .review)
+        var added = mac.detection
+        added.adminMachine = "acme"
+        added.missingPackageMachines = ["acme"]
+        mac.detection = added
+        await connect.create()
+
+        XCTAssertEqual(ran.calls.map(\.arguments), [[
+            "machines", "add", "--name", "acme", "--address", "203.0.113.10", "--fingerprint", serverKey,
+            "--password-stdin", "--domain", "example.com", "--yes",
+        ]])
+        XCTAssertEqual(ran.calls.first?.input, Data("hunter2".utf8))
+        XCTAssertEqual(connect.wizard.draft.password.value, "")
+        try await waitFor { panes.launches.count == 1 }
+        XCTAssertFalse(runner.connecting)
+        XCTAssertTrue(panes.launches[0].program.args.contains { $0.contains("packages add devmachine-app --machine acme") })
+    }
+
+    func testAnOlderCLIFoundWhenTheWizardOpensFallsBackToTheTerminal() async throws {
+        var start = OnboardingDetection(cliFound: true, adminMachine: nil, missingPackageMachines: [], agents: [])
+        start.cliVersion = MachineUnattendedAdd.minimumCLIVersion
+        let panes = FakePanes()
+        let runner = OnboardingRunner(
+            home: "/Users/alice", launcher: panes, detect: { [start] _ in start },
+            connect: connectModel(version: SemanticVersion(major: 0, minor: 7, patch: 20)))
+        await runner.refresh()
+
+        runner.start()
+
+        try await waitFor { panes.launches.count == 1 }
+        XCTAssertFalse(runner.connecting)
+        XCTAssertTrue(panes.launches[0].program.args.contains { $0.hasSuffix("devmachine setup") })
+    }
+
+    func testGoingBackFromTheWizardForgetsThePassword() async throws {
+        var start = OnboardingDetection(cliFound: true, adminMachine: nil, missingPackageMachines: [], agents: [])
+        start.cliVersion = MachineUnattendedAdd.minimumCLIVersion
+        let connect = connectModel()
+        let runner = OnboardingRunner(
+            home: "/Users/alice", launcher: FakePanes(), detect: { [start] _ in start }, connect: connect)
+        await runner.refresh()
+        runner.start()
+        try await waitFor { runner.connecting && connect.wizard.unattended }
+        await fill(connect)
+
+        runner.back()
+
+        XCTAssertFalse(runner.connecting)
+        XCTAssertEqual(runner.flow.phase, .start)
+        XCTAssertEqual(connect.wizard.draft.password.value, "")
     }
 
     private func waitFor(_ condition: () -> Bool) async throws {

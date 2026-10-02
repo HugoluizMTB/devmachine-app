@@ -149,7 +149,7 @@ private struct AddMachineKindView: View {
     }
 }
 
-private struct AddMachineDetailsView: View {
+struct AddMachineDetailsView: View {
     @Environment(\.dmMetrics) private var m
     @ObservedObject var state: AddMachineModel
 
@@ -167,9 +167,11 @@ private struct AddMachineDetailsView: View {
             } else {
                 AddMachineNote(text: AddMachineContent.localNote(unattended: unattended))
             }
-            field("First workspace", .workspace,
-                  hint: "Optional. A workspace is one Linux account on the machine, and what the sidebar lists.") {
-                TextField("acme", text: draft.workspace).dmField()
+            if !state.wizard.connectOnly {
+                field("First workspace", .workspace,
+                      hint: "Optional. A workspace is one Linux account on the machine, and what the sidebar lists.") {
+                    TextField("acme", text: draft.workspace).dmField()
+                }
             }
             if unattended, !state.wizard.draft.hasConfiguration, state.wizard.draft.kind == .server {
                 field("Domain", .domain,
@@ -369,7 +371,7 @@ private struct AddMachinePackagesView: View {
     }
 }
 
-private struct AddMachineReviewView: View {
+struct AddMachineReviewView: View {
     @Environment(\.dmMetrics) private var m
     let wizard: MachineWizard
 
@@ -394,12 +396,12 @@ private struct AddMachineReviewView: View {
                     .foregroundStyle(Color.dmMuted)
                 AddMachineAnswers(answers: answers)
             }
-            AddMachineNote(text: AddMachineContent.reviewNote(draft))
+            AddMachineNote(text: AddMachineContent.reviewNote(draft, connectOnly: wizard.connectOnly))
         }
     }
 }
 
-private struct AddMachineRunView: View {
+struct AddMachineRunView: View {
     @Environment(\.dmMetrics) private var m
     @ObservedObject var state: AddMachineModel
     @ObservedObject var runner: MachineStepRunner
@@ -597,7 +599,11 @@ enum AddMachineContent {
         }
     }
 
-    static func reviewNote(_ draft: MachineDraft) -> String {
+    static func reviewNote(_ draft: MachineDraft, connectOnly: Bool = false) -> String {
+        if connectOnly {
+            return "This command changes the server: a key goes in and password login goes off. "
+                + "The next steps add devmachine-app to it and sync."
+        }
         let sync = draft.sync ? " sync then installs the packages." : " Nothing is installed until you run devmachine sync."
         switch draft.kind {
         case .localVM:

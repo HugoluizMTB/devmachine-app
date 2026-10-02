@@ -30,6 +30,10 @@ final class OnboardingRunner: ObservableObject {
     /// The pane on screen: one per step or agent, so an old program's exit
     /// can never be read as the new one's.
     @Published private(set) var paneKind: TerminalKind?
+    /// The server is being connected in the Add machine wizard's form
+    /// (`connect`), not in a pane.
+    @Published private(set) var connecting = false
+    let connect: AddMachineModel
 
     private let home: String
     private let launcher: any OnboardingPaneLaunching
@@ -47,12 +51,15 @@ final class OnboardingRunner: ObservableObject {
         home: String = NSHomeDirectory(),
         launcher: (any OnboardingPaneLaunching)? = nil,
         detect: (@Sendable ([DetectedAgent]?) async -> OnboardingDetection)? = nil,
-        agentPollInterval: UInt64 = 10_000_000_000
+        agentPollInterval: UInt64 = 10_000_000_000,
+        connect: AddMachineModel? = nil
     ) {
+        self.connect = connect ?? AddMachineModel.forOnboarding()
         self.home = home
         self.launcher = launcher ?? TerminalRegistry.shared
         self.detect = detect ?? Self.liveDetect
         self.agentPollInterval = agentPollInterval
+        self.connect.onAdded = { [weak self] in self?.connected() }
     }
 
     /// Demo mode reads no CLI and no agent: it shows a Mac with nothing yet.
@@ -64,9 +71,10 @@ final class OnboardingRunner: ObservableObject {
     }
 
     /// Demo screenshots: a flow in any state, with no program behind it.
-    func seedDemo(_ flow: OnboardingFlow, paneKind: TerminalKind?) {
+    func seedDemo(_ flow: OnboardingFlow, paneKind: TerminalKind?, connecting: Bool = false) {
         self.flow = flow
         self.paneKind = paneKind
+        self.connecting = connecting
     }
 
     func start() { perform(flow.start()) }
@@ -79,6 +87,7 @@ final class OnboardingRunner: ObservableObject {
     func leave() {
         agentWatch?.cancel()
         closePane()
+        endConnect()
     }
 
     /// Reads the Mac again. Calls that arrive while one is in flight are
@@ -123,7 +132,37 @@ final class OnboardingRunner: ObservableObject {
         case .stopPane:
             agentWatch?.cancel()
             closePane()
+            endConnect()
+        case .connectServer:
+            closePane()
+            connecting = true
+            Task { await openConnect() }
         }
+    }
+
+    /// The form is filled in from a fresh read of the configuration. A CLI
+    /// that turns out not to take every answer as a flag runs `setup` in a
+    /// terminal instead.
+    private func openConnect() async {
+        await connect.prepareConnect()
+        guard connecting, flow.phase == .running(.runSetup) else { return }
+        guard connect.wizard.unattended else {
+            connecting = false
+            perform(flow.connectInTerminal())
+            return
+        }
+    }
+
+    private func connected() {
+        guard connecting else { return }
+        connecting = false
+        perform(flow.stepExited(.runSetup, exitCode: 0))
+    }
+
+    private func endConnect() {
+        connect.stop()
+        connect.leavePage()
+        connecting = false
     }
 
     private func launch(_ program: PaneProgram, onExit: @escaping @MainActor (Int32?) -> Void) {

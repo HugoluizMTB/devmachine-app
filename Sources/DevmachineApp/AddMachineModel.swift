@@ -54,6 +54,26 @@ final class AddMachineModel: ObservableObject {
 
     var isRunning: Bool { runner.phase == .running }
 
+    /// Onboarding's "Connect a server": the server form only, and the add
+    /// alone. Demo mode scans no server and reads no agent.
+    static func forOnboarding() -> AddMachineModel {
+        guard DemoMode.isActive else { return AddMachineModel(connectOnly: true) }
+        let machines = MachinesStore(read: { DemoData.noMachinesSnapshot }, remove: { _ in })
+        machines.seedDemo(DemoData.noMachinesSnapshot)
+        return AddMachineModel(
+            machines: machines,
+            scanMachine: { address, port in DemoData.addMachineScan(address: address, port: port) },
+            listAgentKeys: { DemoData.addMachineAgentKeys },
+            connectOnly: true)
+    }
+
+    /// Reads the configuration, then starts a fresh form: whether it is the
+    /// first machine and what the CLI can do decide what the form asks.
+    func prepareConnect() async {
+        await machines.load()
+        startOver()
+    }
+
     /// Try again needs every answer the failed step reads; the password is
     /// forgotten after each run, so a step that reads it asks for it again.
     var canRetry: Bool {

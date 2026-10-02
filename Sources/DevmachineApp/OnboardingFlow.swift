@@ -48,6 +48,9 @@ enum OnboardingEffect: Equatable, Sendable {
     case refreshDetection
     case launchAgent(AgentKind, prompt: String)
     case stopPane
+    /// `runSetup` on a CLI that takes every answer as a flag: the Add
+    /// machine wizard's form connects the server, with no terminal.
+    case connectServer
 }
 
 /// The setup flow as a state machine. Each step is a program of its own and
@@ -126,7 +129,15 @@ struct OnboardingFlow: Equatable, Sendable {
 
     private mutating func run(_ step: OnboardingStepID) -> OnboardingEffect {
         phase = .running(step)
+        if step == .runSetup, detection.connectsWithoutTerminal { return .connectServer }
         return .runStep(step, command: OnboardingPlan.command(for: step))
+    }
+
+    /// The wizard found an older CLI than detection did: `setup` runs in a
+    /// terminal after all.
+    mutating func connectInTerminal() -> OnboardingEffect? {
+        guard phase == .running(.runSetup) else { return nil }
+        return .runStep(.runSetup, command: OnboardingPlan.setupCommand)
     }
 
     /// The one "Set up devmachine" button, also offered after an agent quit.

@@ -22,7 +22,8 @@ enum OnboardingStepID: Hashable, Equatable, Sendable {
 
     /// `runSetup` waits on the person's own answers (server address, then a
     /// fingerprint to check with the provider) — shown above the pane so
-    /// they know to expect it.
+    /// they know to expect it. On a CLI that takes them as flags they go in
+    /// the Add machine wizard's form instead.
     var interactive: Bool { self == .runSetup }
 }
 
@@ -120,6 +121,11 @@ struct OnboardingDetection: Equatable, Sendable {
     /// empty once every machine has it.
     var missingPackageMachines: [String]
     var agents: [DetectedAgent]
+    /// The CLI's version: from `MachineUnattendedAdd.minimumCLIVersion` on,
+    /// the server is connected with no terminal.
+    var cliVersion: SemanticVersion? = nil
+
+    var connectsWithoutTerminal: Bool { MachineUnattendedAdd.isSupported(cliVersion: cliVersion) }
 
     static let empty = OnboardingDetection(
         cliFound: false, adminMachine: nil, missingPackageMachines: [], agents: [])
@@ -135,9 +141,11 @@ enum OnboardingDetector {
         var cliFound = false
         var adminMachine: String?
         var missingPackageMachines: [String] = []
+        var cliVersion: SemanticVersion?
 
         if let instance = try? cli() {
             cliFound = true
+            cliVersion = (try? instance.version()).flatMap { SemanticVersion.first(in: $0) }
             adminMachine = try? instance.resolveAdminMachine()
             // Fails open, same as the machine readiness check: a `packages` read that
             // itself fails (offline, too old) leaves nothing "missing" rather
@@ -153,7 +161,7 @@ enum OnboardingDetector {
 
         return OnboardingDetection(
             cliFound: cliFound, adminMachine: adminMachine,
-            missingPackageMachines: missingPackageMachines, agents: agents())
+            missingPackageMachines: missingPackageMachines, agents: agents(), cliVersion: cliVersion)
     }
 }
 
