@@ -10,11 +10,17 @@ public enum FailureCause: String, CaseIterable, Sendable {
     case unreachable
     case missingCommand
     case hostKeyRejected
+    case cliSocketPathTooLong
 
     public init?(message: String) {
         let lowered = message.lowercased()
         func mentions(_ needles: [String]) -> Bool { needles.contains { lowered.contains($0) } }
-        if mentions(["auth login", "not logged in", "not signed in", "unauthorized", "bad credentials"]) {
+        if mentions(["too long for unix domain socket"]) {
+            // ssh refuses the CLI's connection-sharing socket when the path
+            // under a long home folder passes the OS's 104-byte limit; a
+            // newer CLI keeps that path short.
+            self = .cliSocketPathTooLong
+        } else if mentions(["auth login", "not logged in", "not signed in", "unauthorized", "bad credentials"]) {
             self = .signInNeeded
         } else if Self.isSSHLoginRefused(message) {
             self = .permissionDenied
@@ -56,6 +62,11 @@ public enum FailureCause: String, CaseIterable, Sendable {
         case .unreachable: "The machine can't be reached right now."
         case .missingCommand: "A command it needs isn't installed."
         case .hostKeyRejected: "An SSH host key wasn't trusted, so the connection stopped before logging in."
+        case .cliSocketPathTooLong:
+            "This devmachine CLI cannot connect from this Mac's home folder; update it with devmachine update."
         }
     }
+
+    /// Only a newer CLI fixes it: the error state offers the update.
+    public var needsCLIUpdate: Bool { self == .cliSocketPathTooLong }
 }

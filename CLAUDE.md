@@ -126,6 +126,11 @@ What is there:
   select and copy. `DMStatusView(.failed)` draws it, so a page gets it for free.
   Never dump an error string straight into a card. Usage cards get it through
   `.harnessUsageErrorView { … }`, since `HarnessUsageKit` cannot import it.
+  A cause only a newer CLI fixes (`FailureCause.needsCLIUpdate`: ssh's
+  `unix_listener: … too long for Unix domain socket`, an older CLI's
+  connection socket under a long home folder) adds "Update the CLI", which
+  opens Settings → About through `\.dmOpenCLIUpdate` (set at the root);
+  Stats' banner offers it too.
 - Jobs and age (`DMJobCard.swift`, `DMAgeLabel.swift`): `DMJobCard` for a job
   that runs in named steps and ends in a result to act on (same surface as
   `DMToastCard`, `.dmToastChrome()`); `DMAgeLabel` says how old cached data
@@ -951,11 +956,13 @@ once may fail there.
   list` fails before it exists, and `StatsStore` then checks the file and
   drops its cached cards, so Home never shows machines from an old
   configuration. Any other failed read keeps the cache.
+- `DEVMACHINE_DEMO_ONLY=id,id` captures only those screens of a walk.
 - `DEVMACHINE_DEMO_WALK=machines` captures Settings → Machines, every
   wizard step (key file, password, agent key, scan), a background run in
   each state, the first machine with its domain, the sidebar with no
-  machine (Home with no machine cards), and `legacy-` shots of an older
-  CLI's terminal flow. Demo mode scans no server and reads no agent
+  machine (Home with no machine cards), `legacy-` shots of an older
+  CLI's terminal flow, and `cli-socket-` shots (Home and Stats on a CLI
+  whose socket path is too long). Demo mode scans no server and reads no agent
   (`DemoData.addMachineScan`, `addMachineAgentKeys`) and refuses every run:
   `MachineStepRunner.run`, `MachinesStore.removeMachine` and
   `ProcessPrepareRunner` (Prepare, DNS sync) each refuse before reaching a

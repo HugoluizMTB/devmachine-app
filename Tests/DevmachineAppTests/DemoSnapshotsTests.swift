@@ -195,6 +195,10 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "worktrees"]).map(\.id),
                        DemoSnapshots.worktreeScreens.map(\.id))
         XCTAssertEqual(DemoSnapshots.walk(environment: [:]).map(\.id), DemoSnapshots.screens.map(\.id))
+        XCTAssertEqual(
+            DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "setup-flow", "DEVMACHINE_DEMO_ONLY": "setup-local, setup-review"])
+                .map(\.id),
+            ["setup-local", "setup-review"])
     }
 
     func testTheSizingWalkCapturesEveryScreenATextSizeChangeTouches() {

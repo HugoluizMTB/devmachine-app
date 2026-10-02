@@ -361,6 +361,12 @@ final class StatsStore: ObservableObject {
         states = [:]
         selectedMachine = nil
     }
+
+    /// One machine whose last read failed and left nothing to show.
+    func seedDemoFailure(_ machine: String, error: String) {
+        guard DemoMode.isActive else { return }
+        states[machine] = MachineStatsState(errorText: error, refreshedAt: now())
+    }
     #endif
 
     private func seedDemo() {

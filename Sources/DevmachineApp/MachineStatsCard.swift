@@ -81,7 +81,7 @@ struct MachineStatsCard: View {
             Text(verbatim: FailureCause(message: error)?.summary ?? "Couldn't read this machine.")
                 .font(.dm(10.5))
                 .foregroundStyle(.white.opacity(0.7))
-                .lineLimit(3)
+                .lineLimit(4)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
             DMSkeleton {

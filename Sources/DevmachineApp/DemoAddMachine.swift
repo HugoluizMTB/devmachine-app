@@ -28,7 +28,13 @@ enum DemoAddMachine {
         .init(id: "no-machines-review", fileName: "115-no-machines-review.png", settleNanoseconds: 400_000_000),
         .init(id: "legacy-review", fileName: "116-legacy-review.png", settleNanoseconds: 400_000_000),
         .init(id: "legacy-running", fileName: "117-legacy-running.png", settleNanoseconds: 900_000_000),
+        .init(id: "cli-socket-home", fileName: "118-cli-socket-home.png", settleNanoseconds: 700_000_000),
+        .init(id: "cli-socket-stats", fileName: "119-cli-socket-stats.png", settleNanoseconds: 700_000_000),
     ]
+
+    /// What an older CLI printed for every machine under a long home folder.
+    static let socketPathError = "unix_listener: path \"/Users/alice/Library/Caches/devmachine/cm/"
+        + "4f1c0de7a2b94c3d8e5f6a7b8c9d0e1f.k2j4h6\" too long for Unix domain socket"
 
     static func handles(_ id: String) -> Bool {
         screens.contains { $0.id == id }
@@ -51,6 +57,13 @@ enum DemoAddMachine {
             model.showPage(.setup)
             return
         case "no-machines-home":
+            return
+        case "cli-socket-home", "cli-socket-stats":
+            stats.seedDemoFailure("staging", error: socketPathError)
+            if id == "cli-socket-stats" {
+                stats.select("staging")
+                model.showPage(.stats)
+            }
             return
         default:
             break

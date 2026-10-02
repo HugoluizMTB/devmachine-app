@@ -2,6 +2,7 @@ import XCTest
 import SwiftUI
 import HarnessUsageKit
 @testable import DevmachineApp
+import DevmachineCore
 
 @MainActor
 final class DMErrorStateTests: XCTestCase {
@@ -12,6 +13,17 @@ final class DMErrorStateTests: XCTestCase {
         XCTAssertEqual(state.title, "Couldn't read acme")
         XCTAssertEqual(state.cause, "The machine took too long to answer.")
         XCTAssertEqual(state.details, raw)
+    }
+
+    func testASocketPathTooLongOffersTheCLIUpdate() {
+        let raw = "unix_listener: path \"/Users/alice/Library/Caches/devmachine/cm/0123abcd.ef\" "
+            + "too long for Unix domain socket"
+        let state = DMErrorState(title: "Couldn't read lab", message: raw)
+
+        XCTAssertTrue(state.needsCLIUpdate)
+        XCTAssertEqual(state.cause, FailureCause.cliSocketPathTooLong.summary)
+        XCTAssertEqual(state.details, raw)
+        XCTAssertFalse(DMErrorState(title: "Couldn't read lab", message: "exit status 3").needsCLIUpdate)
     }
 
     func testAnUnknownFailureHasNoCause() {

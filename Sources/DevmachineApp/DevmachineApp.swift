@@ -63,6 +63,7 @@ struct DevmachineApp: App {
                 .environmentObject(settingsStore)
                 .environment(\.harnessSettingsFacade, harnessSettingsFacade)
                 .environment(\.dmMetrics, metrics)
+                .environment(\.dmOpenCLIUpdate, { [model] in model.openSettings(.about) })
                 .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
                 .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
                 .onAppear {

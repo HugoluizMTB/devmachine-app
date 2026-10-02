@@ -316,7 +316,15 @@ enum DemoSnapshots {
         return Appearance.clampUIFontScale(value)
     }
 
+    /// `DEVMACHINE_DEMO_ONLY=id,id` captures only those screens of the walk.
     static func walk(environment: [String: String] = ProcessInfo.processInfo.environment) -> [Screen] {
+        let screens = fullWalk(environment: environment)
+        guard let only = environment["DEVMACHINE_DEMO_ONLY"], !only.isEmpty else { return screens }
+        let ids = Set(only.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+        return screens.filter { ids.contains($0.id) }
+    }
+
+    private static func fullWalk(environment: [String: String]) -> [Screen] {
         if DemoMode.holdsLoading { return skeletonScreens }
         switch environment["DEVMACHINE_DEMO_WALK"] {
         case "worktrees": return worktreeScreens

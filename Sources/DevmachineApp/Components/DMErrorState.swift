@@ -10,16 +10,24 @@ struct DMErrorState: Equatable {
     let title: String
     let cause: String?
     let details: String
+    /// Only a newer devmachine CLI fixes it, so the state offers the update.
+    var needsCLIUpdate = false
 
-    init(systemImage: String = "exclamationmark.triangle", title: String, cause: String?, details: String) {
+    init(
+        systemImage: String = "exclamationmark.triangle", title: String, cause: String?, details: String,
+        needsCLIUpdate: Bool = false
+    ) {
         self.systemImage = systemImage
         self.title = title
         self.cause = cause
         self.details = details
+        self.needsCLIUpdate = needsCLIUpdate
     }
 
     init(title: String, message: String) {
-        self.init(title: title, cause: FailureCause(message: message)?.summary, details: message)
+        let cause = FailureCause(message: message)
+        self.init(
+            title: title, cause: cause?.summary, details: message, needsCLIUpdate: cause?.needsCLIUpdate ?? false)
     }
 
     init(_ usage: HarnessUsageErrorPresentation) {
@@ -46,6 +54,7 @@ struct DMErrorStateView: View {
     }
 
     @State private var copied = false
+    @Environment(\.dmOpenCLIUpdate) private var openCLIUpdate
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dmMetrics) private var m
 
@@ -89,8 +98,13 @@ struct DMErrorStateView: View {
         .frame(maxWidth: m.card.errorState)
     }
 
+    static let updateCLITitle = "Update the CLI"
+
     @ViewBuilder
     private var actions: some View {
+        if state.needsCLIUpdate, let openCLIUpdate {
+            DMButton(Self.updateCLITitle, systemImage: "arrow.down.circle", size: .small, action: openCLIUpdate)
+        }
         if let retry {
             DMButton(retryTitle, systemImage: "arrow.clockwise", variant: .outline, size: .small,
                      action: retry)
@@ -145,5 +159,18 @@ struct DMErrorStateView: View {
         NSPasteboard.general.setString(state.details, forType: .string)
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
+}
+
+private struct DMOpenCLIUpdateKey: EnvironmentKey {
+    static let defaultValue: (@MainActor () -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Where an error that only a newer CLI fixes sends the person: Settings
+    /// → About, which updates the CLI. Nil hides the button.
+    var dmOpenCLIUpdate: (@MainActor () -> Void)? {
+        get { self[DMOpenCLIUpdateKey.self] }
+        set { self[DMOpenCLIUpdateKey.self] = newValue }
     }
 }

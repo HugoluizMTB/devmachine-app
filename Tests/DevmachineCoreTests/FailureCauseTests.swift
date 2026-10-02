@@ -45,6 +45,19 @@ final class FailureCauseTests: XCTestCase {
         XCTAssertNil(SSHFailure.classify(exitCode: 1, stderr: "Permission denied (publickey)."))
     }
 
+    func testASocketPathTooLongAsksForANewerCLI() {
+        let message = """
+            unix_listener: path "/Users/alice/Library/Caches/devmachine/cm/0123456789abcdef0123456789abcdef.a1b2c3" \
+            too long for Unix domain socket
+            Connection closed by 203.0.113.10 port 22
+            """
+        XCTAssertEqual(FailureCause(message: message), .cliSocketPathTooLong)
+        XCTAssertTrue(FailureCause.cliSocketPathTooLong.needsCLIUpdate)
+        XCTAssertTrue(FailureCause.cliSocketPathTooLong.summary.contains("devmachine update"))
+        XCTAssertFalse(FailureCause.unreachable.needsCLIUpdate)
+        XCTAssertEqual(FailureCause(message: "Connection closed by 203.0.113.10 port 22"), .unreachable)
+    }
+
     func testEveryCauseReadsAsOnePlainSentence() {
         for cause in FailureCause.allCases {
             XCTAssertTrue(cause.summary.hasSuffix("."), "\(cause)")

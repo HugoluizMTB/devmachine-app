@@ -15,6 +15,7 @@ private func memSize(_ bytes: Int64) -> String {
 
 struct StatsView: View {
     @Environment(\.dmMetrics) private var m
+    @Environment(\.dmOpenCLIUpdate) private var openCLIUpdate
     @EnvironmentObject var store: StatsStore
     @EnvironmentObject var model: AppModel
 
@@ -132,7 +133,11 @@ struct StatsView: View {
     }
 
     private func errorBanner(_ message: String) -> some View {
-        DMBanner(message: message) {
+        let cause = FailureCause(message: message)
+        return DMBanner(message: cause?.needsCLIUpdate == true ? cause?.summary ?? message : message) {
+            if cause?.needsCLIUpdate == true, let openCLIUpdate {
+                DMButton(DMErrorStateView.updateCLITitle, variant: .outline, size: .small, action: openCLIUpdate)
+            }
             DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { refresh() }
         }
     }
