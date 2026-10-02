@@ -64,6 +64,16 @@ final class TerminalRegistry: NSObject {
         ) { _ in
             MainActor.assumeIsolated { TerminalRegistry.shared.closeAll() }
         }
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { TerminalRegistry.shared.leaveIdleCopyModeOnScreen() }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { TerminalRegistry.shared.leaveIdleCopyModeOnScreen() }
+        }
         installOptionKeyMonitor()
     }
 
@@ -293,6 +303,59 @@ final class TerminalRegistry: NSObject {
         redrawAfterReattach(kind)
     }
 
+    /// Replaces ssh for a command sent to a session's host; tests record here.
+    var hostCommandRunner: ((_ alias: String, _ command: String) -> Void)?
+    private var checkingCopyMode = false
+
+    /// Coming back to the app leaves the panes on screen as they were, so a
+    /// stray wheel-up that put one into tmux's copy mode while you were away
+    /// would keep eating your keys. One ssh per machine, one after the other.
+    func leaveIdleCopyModeOnScreen() {
+        guard !DemoMode.isActive, !checkingCopyMode else { return }
+        var sessionsByAlias: [String: [String]] = [:]
+        for (kind, view) in terminals where view.window != nil && !dead.contains(kind) {
+            guard case let .remote(alias, session) = kind else { continue }
+            sessionsByAlias[alias, default: []].append(session)
+        }
+        let batches = sessionsByAlias.keys.sorted().map { alias in
+            (alias: alias, command: sessionsByAlias[alias, default: []].sorted()
+                .map { RemoteCommands.leaveIdleCopyMode(session: $0) }
+                .joined(separator: "; "))
+        }
+        guard !batches.isEmpty else { return }
+        PaneLog.log("copy mode check machines=\(batches.map(\.alias))")
+        if let hostCommandRunner {
+            for batch in batches { hostCommandRunner(batch.alias, batch.command) }
+            return
+        }
+        checkingCopyMode = true
+        let customSocket = SettingsStore.shared.settings?.sshAgentSocket
+        Task.detached {
+            for batch in batches {
+                Self.runOverSSH(alias: batch.alias, command: batch.command, customSocket: customSocket)
+            }
+            await MainActor.run { TerminalRegistry.shared.checkingCopyMode = false }
+        }
+    }
+
+    private func runOnHost(alias: String, command: String) {
+        if let hostCommandRunner {
+            hostCommandRunner(alias, command)
+            return
+        }
+        let customSocket = SettingsStore.shared.settings?.sshAgentSocket
+        Task.detached {
+            Self.runOverSSH(alias: alias, command: command, customSocket: customSocket)
+        }
+    }
+
+    nonisolated private static func runOverSSH(alias: String, command: String, customSocket: String?) {
+        _ = try? ProcessRunner().run(
+            executable: "/usr/bin/ssh",
+            args: RemoteCommands.sshBaseArgs(alias: alias) + [command],
+            environment: RemoteCommands.sshEnvironment(customSocket: customSocket))
+    }
+
     /// A demo pane has no program behind it to repaint after a resize or a
     /// move between layouts, so its transcript, which starts by clearing the
     /// screen, is drawn again from the top.
@@ -318,14 +381,7 @@ final class TerminalRegistry: NSObject {
         switch kind {
         case let .remote(alias, session):
             PaneLog.log("refresh pane=\(kind)")
-            let customSocket = SettingsStore.shared.settings?.sshAgentSocket
-            Task.detached {
-                _ = try? ProcessRunner().run(
-                    executable: "/usr/bin/ssh",
-                    args: RemoteCommands.sshBaseArgs(alias: alias)
-                        + [RemoteCommands.refreshClient(session: session)],
-                    environment: RemoteCommands.sshEnvironment(customSocket: customSocket))
-            }
+            runOnHost(alias: alias, command: RemoteCommands.returnToSession(session: session))
         case let .local(session, _):
             // No refresh command in the local multiplexer, so the program is
             // asked directly with the window-changed signal — the same one a

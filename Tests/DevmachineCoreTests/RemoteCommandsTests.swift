@@ -235,8 +235,33 @@ extension RemoteCommandsTests {
 }
 
 extension RemoteCommandsTests {
-    func testRefreshAsksTmuxToDrawAgain() {
+    func testRefreshAsksEveryClientOfTheSessionToDrawAgain() {
         XCTAssertEqual(
-            RemoteCommands.refreshClient(session: "main"), "tmux refresh-client -t 'main'")
+            RemoteCommands.refreshClient(session: "main"),
+            "tmux list-clients -t 'main' -F 'refresh-client -t #{client_name}' | tmux source-file -")
+    }
+
+    func testRefreshNeverNamesTheSessionAsTheClient() {
+        XCTAssertFalse(RemoteCommands.refreshClient(session: "main").contains("refresh-client -t 'main'"))
+    }
+
+    func testIdleCopyModeIsLeftOnlyAtTheBottomWithNothingSelected() {
+        XCTAssertEqual(
+            RemoteCommands.leaveIdleCopyMode(session: "main"),
+            "[ \"$(tmux display-message -p -t 'main' '#{pane_mode}:#{scroll_position}:#{selection_present}')\""
+                + " = copy-mode:0:0 ] && tmux send-keys -t 'main' -X cancel")
+    }
+
+    func testAQuoteInTheSessionNameCannotEndTheQuotingOfTheCopyModeCheck() {
+        let command = RemoteCommands.leaveIdleCopyMode(session: "a'b")
+        XCTAssertTrue(command.contains("-p -t 'a'\\''b' "))
+        XCTAssertTrue(command.hasSuffix("tmux send-keys -t 'a'\\''b' -X cancel"))
+    }
+
+    func testReturningToASessionRepaintsItAndLeavesAnIdleCopyMode() {
+        XCTAssertEqual(
+            RemoteCommands.returnToSession(session: "main"),
+            RemoteCommands.refreshClient(session: "main") + "; "
+                + RemoteCommands.leaveIdleCopyMode(session: "main"))
     }
 }
