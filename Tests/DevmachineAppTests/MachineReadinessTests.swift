@@ -345,6 +345,14 @@ final class SessionProblemTests: XCTestCase {
         XCTAssertEqual(problem.presentation(workspace: "acme").title, "tmux isn't installed for acme")
     }
 
+    func testAWorkspaceAwaitingItsSyncSaysWhichCommandCreatesTheAccount() {
+        let problem = SessionProblem.awaitingSync(detail: "beta@203.0.113.7: Permission denied (publickey).")
+        let shown = problem.presentation(workspace: "beta")
+        XCTAssertEqual(shown.title, "beta isn't set up on its machine yet")
+        XCTAssertEqual(shown.commands, ["devmachine sync"])
+        XCTAssertEqual(shown.details, "beta@203.0.113.7: Permission denied (publickey).")
+    }
+
     func testSSHFailuresKeepTheirExactText() {
         let refused = SessionProblem(SessionStoreError(failure: .authDenied, stderr: "Permission denied (publickey)."))
         XCTAssertEqual(refused.presentation(workspace: "acme").details, "Permission denied (publickey).")

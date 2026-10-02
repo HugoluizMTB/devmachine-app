@@ -469,6 +469,9 @@ final class AppModel: ObservableObject {
     private var sweepTimer: Timer? = nil
     private var localScanTimer: Timer? = nil
     private var pollPausedUntil = Date.distantPast
+    // Workspaces that appeared while the app was open and have not logged in
+    // yet: the CLI writes the alias before the sync creates the account.
+    private var awaitingFirstLogin: Set<String> = []
     private let defaults: UserDefaults
 
     /// `swift test` runs unsandboxed on the developer's own Mac, so
@@ -1454,8 +1457,9 @@ final class AppModel: ObservableObject {
     #endif
 
     /// The CLI's configuration changed while the app was open: a machine or
-    /// workspace added, an alias written. The workspace list and aliases are
-    /// read again, off the main thread, and a new workspace is polled at once.
+    /// workspace added, an alias written, a sync finished. The workspace list
+    /// and aliases are read again, off the main thread, and a new workspace is
+    /// polled at once and again after every change until it logs in.
     func reloadConfiguration() {
         guard let settings, hasLoadedWorkspaces, !DemoMode.isActive else { return }
         let source = services.workspaceSource
@@ -1470,12 +1474,17 @@ final class AppModel: ObservableObject {
             }.value
             if self.detected != detected { self.detected = detected }
             if self.settings != settingsWithAliases { self.settings = settingsWithAliases }
-            guard !next.isEmpty, next != self.workspaces else { return }
-            let known = Set(self.workspaces.map(\.alias))
-            self.workspaces = next
-            for workspace in next where !known.contains(workspace.alias) {
-                self.sessionProblems[workspace.alias] = nil
-                self.refresh(alias: workspace.alias)
+            if !next.isEmpty, next != self.workspaces {
+                let known = Set(self.workspaces.map(\.alias))
+                self.workspaces = next
+                for workspace in next where !known.contains(workspace.alias) {
+                    self.awaitingFirstLogin.insert(workspace.alias)
+                    self.sessionProblems[workspace.alias] = nil
+                }
+            }
+            for alias in self.awaitingFirstLogin {
+                if self.sessionProblems[alias]?.isAwaitingSync == true { self.sessionProblems[alias] = nil }
+                self.refresh(alias: alias)
             }
         }
         Task {
@@ -1503,7 +1512,9 @@ final class AppModel: ObservableObject {
     /// Clears a refused host key for one workspace and reads it again: the
     /// sidebar's Try again, when no machine card covers it.
     func retry(alias: String) {
-        if sessionProblems[alias]?.isHostKeyRejected == true { sessionProblems[alias] = nil }
+        if sessionProblems[alias]?.isHostKeyRejected == true || sessionProblems[alias]?.isAwaitingSync == true {
+            sessionProblems[alias] = nil
+        }
         refresh(alias: alias)
     }
 
@@ -1544,7 +1555,9 @@ final class AppModel: ObservableObject {
     // one second, which is a fail2ban ban of this Mac.
     func refreshAll() {
         guard !DemoMode.isActive, Date() >= pollPausedUntil, !sweepInFlight else { return }
-        let targets = visibleWorkspaces.filter { !refreshingAliases.contains($0.alias) }
+        let targets = visibleWorkspaces.filter {
+            !refreshingAliases.contains($0.alias) && sessionProblems[$0.alias]?.isAwaitingSync != true
+        }
         guard !targets.isEmpty else { return }
         sweepInFlight = true
         let sweepTask = beginTask(label: "Connecting workspaces…", total: targets.count)
@@ -1597,6 +1610,9 @@ final class AppModel: ObservableObject {
         // 5s selection poll leaves it to the 60s sweep instead of a handshake
         // every tick. Retry and a trust clear the problem first.
         guard sessionProblems[alias]?.isHostKeyRejected != true else { return }
+        // Each try before the sync is one more denied login toward a ban:
+        // only a configuration change or Try again asks again.
+        guard sessionProblems[alias]?.isAwaitingSync != true else { return }
         // A tick that arrives while the previous ssh for this alias is still
         // running is dropped: a slow host would otherwise stack one blocked
         // process per 5s tick.
@@ -1629,6 +1645,7 @@ final class AppModel: ObservableObject {
                 dropMissingSessions(alias: alias, present: result)
             }
             cache.put(MachineDataKeys.sessions(alias), result)
+            awaitingFirstLogin.remove(alias)
             if offlineAliases.contains(alias) {
                 offlineAliases.remove(alias)
             }
@@ -1636,6 +1653,16 @@ final class AppModel: ObservableObject {
             syncContext()
             return nil
         case .failure(let error):
+            let failure = (error as? SessionStoreError)?.failure
+            // A refused login on a workspace that never logged in is its
+            // missing account, not a locked agent: it pauses nothing.
+            if failure == .authDenied, awaitingFirstLogin.contains(alias) {
+                let problem = SessionProblem.awaitingSync(detail: (error as? SessionStoreError)?.stderr ?? "")
+                if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
+                offlineAliases.remove(alias)
+                syncContext()
+                return nil
+            }
             let problem = SessionProblem(error)
             if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
             // One workspace's own problem (no alias, no tmux): the host may be
@@ -1645,7 +1672,6 @@ final class AppModel: ObservableObject {
                 syncContext()
                 return nil
             }
-            let failure = (error as? SessionStoreError)?.failure
             // The host answered with a key this Mac does not trust. No login
             // was tried, so nothing counts toward a ban, and other machines
             // have their own keys: the sweep goes on, and the machine's host

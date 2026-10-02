@@ -7,6 +7,7 @@ enum SessionProblem: Equatable {
     case aliasMissing(alias: String)
     case tmuxMissing(detail: String)
     case loginRefused(detail: String)
+    case awaitingSync(detail: String)
     case unreachable(detail: String)
     case hostKeyRejected(detail: String)
     case failed(detail: String)
@@ -38,8 +39,14 @@ enum SessionProblem: Equatable {
         return false
     }
 
+    var isAwaitingSync: Bool {
+        if case .awaitingSync = self { return true }
+        return false
+    }
+
     /// The command that fixes it, when there is one to run on this Mac.
     static let writeAliasesCommand = "devmachine aliases --write"
+    static let syncCommand = "devmachine sync"
 
     func presentation(workspace: String) -> SessionProblemPresentation {
         switch self {
@@ -62,6 +69,12 @@ enum SessionProblem: Equatable {
                 title: "Couldn't list \(workspace)'s sessions",
                 cause: FailureCause.permissionDenied.summary + " Unlock your SSH agent, then try again.",
                 commands: [], details: detail)
+        case let .awaitingSync(detail):
+            return SessionProblemPresentation(
+                title: "\(workspace) isn't set up on its machine yet",
+                cause: "The machine refused the login. A new workspace gets its account at its first sync, "
+                    + "and the app connects again when the sync finishes.",
+                commands: [Self.syncCommand], details: detail)
         case let .unreachable(detail):
             return SessionProblemPresentation(
                 title: "Couldn't list \(workspace)'s sessions",
