@@ -172,6 +172,15 @@ final class TerminalRegistry: NSObject {
         programExits[kind] = onExit
     }
 
+    /// How many times `term` appears in the pane's own scrollback, without
+    /// selecting or scrolling — the Add machine wizard polls this for its
+    /// step markers instead of using `find`, which would move the person's
+    /// view every time it checks.
+    func matchCount(_ term: String, in kind: TerminalKind) -> Int {
+        guard let view = terminals[kind] else { return 0 }
+        return view.searchMatchSummary(term).total
+    }
+
     /// The pane is mounted and its process started, so typed text reaches it.
     func isStarted(_ kind: TerminalKind) -> Bool {
         terminals[kind] != nil && !awaitingSize.contains(kind)
