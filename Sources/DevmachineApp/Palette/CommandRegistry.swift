@@ -61,6 +61,10 @@ enum CommandRegistry {
                         name: Workspace.operatorSession, path: operatorSession?.path ?? NSHomeDirectory()))),
                 isAvailable: { _ in operatorSession != nil }),
             Entry(command: PaletteCommand(
+                id: "action.add-machine", title: "Add a machine…", subtitle: "", category: .action,
+                systemImage: "server.rack", keywords: ["server", "vps", "machine", "lima", "local", "setup", "new"],
+                action: .showPage(.addMachine))),
+            Entry(command: PaletteCommand(
                 id: "action.new-session", title: "New session…", subtitle: "", category: .action,
                 systemImage: "plus.rectangle", shortcut: "⌘N", keywords: ["create", "open", "terminal"],
                 action: .newQuickSession)),

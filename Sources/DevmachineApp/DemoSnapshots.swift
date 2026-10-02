@@ -283,6 +283,9 @@ enum DemoSnapshots {
         case "preview-browser": return previewBrowserScreens
         case "machine-ready": return machineReadyScreens
         case "publish-via": return publishViaScreens
+        #if DEBUG
+        case "machines": return DemoAddMachine.screens
+        #endif
         default: return screens
         }
     }
@@ -423,6 +426,12 @@ enum DemoSnapshots {
         PreviewStore.shared.closeAll()
         model.goHome()
         try? await Task.sleep(nanoseconds: 150_000_000)
+        #if DEBUG
+        if DemoAddMachine.handles(screen.id) {
+            await DemoAddMachine.prepare(screen.id, model: model)
+            return
+        }
+        #endif
         switch screen.id {
         case "sessions":
             model.stackWorkspace(acmeAlias)

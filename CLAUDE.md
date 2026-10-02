@@ -693,6 +693,36 @@ once may fail there.
   site whose serving machine cannot reach the port is live with an
   attention step carrying the CLI's note.
 
+## Machines and the Add machine wizard
+- **Settings → Machines lists the CLI's configuration** (`MachinesStore`:
+  `config path`, then `machines list` and `packages list`). Before
+  `config.yml` exists every one of those calls fails, so the store checks
+  the file first and reads "no machine" without calling them. Remove runs
+  `machines rm --yes` behind a confirm and only forgets the machine.
+- **The sidebar offers "Add a machine" above Local only once a read says
+  there is none besides this Mac** (`AddMachinePrompt`). Nothing is gated
+  on a machine: Home and local sessions work with zero, and Public IP and
+  Base domain are optional in Settings; the CLI's own folder passes
+  validation before its `config.yml` exists.
+- **The wizard (`AppPage.addMachine`) only builds `devmachine` commands**
+  (`MachinePlan`, Core) and shows them before Create. A server whose key
+  already logs in is added unattended (`machines add --address
+  --fingerprint --key`); the fingerprint is pasted from the provider's
+  console, never read over the connection being trusted. A password-only
+  server, a Lima machine (`create-local`, then `machines add`) and the very
+  first machine (`setup`) go through the CLI's own questions, because an
+  unattended `add` has no way to take a password; the page lists the
+  answers to type. Packages are `--no-essentials` or `packages add`, then
+  an optional `workspaces new` and `sync`.
+- **The commands run in a local terminal pane** (`MachineStepRunner`), so
+  a password goes straight to the CLI and never through the app. Only
+  `sh <script>` is typed (any login shell, fish included); the script
+  prints a per-step nonce marker the runner finds in the scrollback. A
+  failed step shows `DMErrorStateView`; Try again skips the steps done.
+  Tests inject `MachineStepRunner.Hooks`; nothing types into a real pane.
+- `DEVMACHINE_DEMO_WALK=machines` captures Settings → Machines, every
+  wizard step, a run in each state and the sidebar with no machine.
+
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action
 in the app, behind a confirm, and never from tests. The app delegates publishing

@@ -153,16 +153,21 @@ struct CLIPackage: Codable, Equatable, Sendable {
     let name: String
     let scope: String
     let installedOn: [String]
+    var summary = ""
+    /// `release` for the pinned package release, `local` for the person's own.
+    var source = ""
 
     enum CodingKeys: String, CodingKey {
-        case name, scope
+        case name, scope, summary, source
         case installedOn = "installed_on"
     }
 
-    init(name: String, scope: String, installedOn: [String]) {
+    init(name: String, scope: String, installedOn: [String], summary: String = "", source: String = "") {
         self.name = name
         self.scope = scope
         self.installedOn = installedOn
+        self.summary = summary
+        self.source = source
     }
 
     /// A package the configuration asks for that no recipe provides comes
@@ -172,11 +177,15 @@ struct CLIPackage: Codable, Equatable, Sendable {
         name = try c.decode(String.self, forKey: .name)
         scope = try c.decodeIfPresent(String.self, forKey: .scope) ?? ""
         installedOn = try c.decodeIfPresent([String].self, forKey: .installedOn) ?? []
+        summary = try c.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
     }
 
     func isInstalled(onMachine machine: String) -> Bool {
         installedOn.contains("machine \(machine)")
     }
+
+    var info: PackageInfo { PackageInfo(name: name, scope: scope, summary: summary, source: source) }
 }
 
 private struct CLIPackageList: Decodable {
@@ -401,6 +410,14 @@ struct DevmachineCLI: Sendable {
         )
         try requireSuccess(result)
         return try JSONDecoder().decode([CLIConfigMachine].self, from: Data(result.stdout.utf8))
+    }
+
+    /// `machines rm`: takes the machine out of the configuration and leaves
+    /// the server running. The CLI refuses while a workspace lives on it.
+    func removeMachine(_ name: String) throws {
+        let result = try runner.runCapturing(
+            executable: executable, args: ["machines", "rm", name, "--yes"], environment: environment())
+        try requireSuccess(result)
     }
 
     /// Every configured machine that is not this Mac — the set Stats and the

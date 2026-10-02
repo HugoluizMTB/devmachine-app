@@ -5,4 +5,6 @@ enum AppPage: Hashable {
     case stack([SessionRef])
     /// One machine's SSH host key, after ssh refused it.
     case hostKey(String)
+    /// The Add machine wizard.
+    case addMachine
 }

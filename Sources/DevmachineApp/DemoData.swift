@@ -192,6 +192,7 @@ enum DemoData {
             return testRunTranscript
         case let .local(session, _):
             let lowered = session.lowercased()
+            if session == MachineStepRunner.sessionName { return addMachineTranscript }
             if lowered.contains("claude") { return claudeTranscript }
             if lowered.contains("codex") { return codexTranscript }
             return operatorTranscript

@@ -334,16 +334,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public static func validate(
         _ settings: AppSettings,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
-        cliExecutableFound: Bool = true
+        cliExecutableFound: Bool = true,
+        cliConfigDirectory: String? = nil
     ) -> [SettingsIssue] {
         var issues: [SettingsIssue] = []
 
+        // The CLI's own folder is only written with the first machine, so a
+        // person with no machine yet can still start the app and add one.
+        let isCLIFolder = settings.opsRepoPath == cliConfigDirectory
         if settings.opsRepoPath.isEmpty {
             issues.append(SettingsIssue(field: .opsRepoPath, message: "Choose the devmachine configuration folder."))
-        } else if !fileExists(settings.opsRepoPath) {
+        } else if !isCLIFolder, !fileExists(settings.opsRepoPath) {
             issues.append(SettingsIssue(
                 field: .opsRepoPath, message: "This folder does not exist. \(cliInstallHint)"))
-        } else if !fileExists(settings.opsRepoPath + "/" + opsRepoMarker) {
+        } else if !isCLIFolder, !fileExists(settings.opsRepoPath + "/" + opsRepoMarker) {
             issues.append(SettingsIssue(
                 field: .opsRepoPath, message: "No \(opsRepoMarker) in this folder. \(cliInstallHint)"))
         }
@@ -360,11 +364,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
             issues.append(SettingsIssue(field: .hostAlias, message: "Only letters, digits, dot, dash and underscore."))
         }
 
-        if !matches(settings.publicIP, ipv4Pattern) {
+        // Both are for publishing sites; a person without a server leaves them
+        // empty, and the CLI fills them in once a machine has a domain.
+        if !settings.publicIP.isEmpty, !matches(settings.publicIP, ipv4Pattern) {
             issues.append(SettingsIssue(field: .publicIP, message: "Type the public IPv4 of the host."))
         }
 
-        if !matches(settings.baseDomain, domainPattern) {
+        if !settings.baseDomain.isEmpty, !matches(settings.baseDomain, domainPattern) {
             issues.append(SettingsIssue(field: .baseDomain, message: "Type a lowercase domain, like example.com."))
         }
 

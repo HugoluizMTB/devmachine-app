@@ -312,6 +312,7 @@ private struct PageHost: View {
         case .subdomains: SubdomainsView(initialTab: DemoSnapshots.subdomainsInitialTab)
         case .stack(let refs): StackGridView(refs: refs).ignoresSafeArea(edges: .top)
         case .hostKey(let machine): HostKeyPage(store: HostKeyStore.shared, machine: machine)
+        case .addMachine: AddMachinePage()
         }
     }
 }

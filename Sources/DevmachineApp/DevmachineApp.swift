@@ -70,6 +70,7 @@ struct DevmachineApp: App {
                     readiness.onConfigurationChanged = { [weak model] in
                         model?.reloadConfiguration()
                         stats.loadMachines()
+                        MachinesStore.shared.requestLoad()
                     }
                     readiness.onPrepared = { [weak model] machine in
                         model?.refreshWorkspaces(onMachine: machine)
