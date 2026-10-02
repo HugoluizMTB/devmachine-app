@@ -28,6 +28,30 @@ final class TmuxListParserTests: XCTestCase {
         ])
     }
 
+    func testAPaneMatchesAHarnessOnlyByItsExactProgram() {
+        let out = """
+        agy|1
+        kimi|1
+        pip|1
+        cline|1
+        @@PANES@@
+        agy|agy
+        kimi|kimi-code
+        pip|pip
+        cline|node
+        """
+        let catalog: [HarnessID: Set<String>] = [
+            .pi: ["pi"], .antigravity: ["agy"], .kimi: ["kimi", "kimi-code"], .cline: ["cline", ".cline"]
+        ]
+
+        XCTAssertEqual(TmuxListParser.parse(out, processNames: catalog), [
+            TmuxSession(name: "agy", windows: 1, harnesses: [.antigravity]),
+            TmuxSession(name: "kimi", windows: 1, harnesses: [.kimi]),
+            TmuxSession(name: "pip", windows: 1, harnesses: []),
+            TmuxSession(name: "cline", windows: 1, harnesses: [])
+        ])
+    }
+
     func testIgnoresUnknownCommands() {
         let out = """
         dash|1

@@ -10,6 +10,10 @@ public struct HarnessID: RawRepresentable, Codable, Hashable, Sendable {
     public static let claude = HarnessID(rawValue: "claude")
     public static let codex = HarnessID(rawValue: "codex")
     public static let pi = HarnessID(rawValue: "pi")
+    public static let antigravity = HarnessID(rawValue: "antigravity")
+    public static let opencode = HarnessID(rawValue: "opencode")
+    public static let kimi = HarnessID(rawValue: "kimi")
+    public static let cline = HarnessID(rawValue: "cline")
 }
 
 public enum SessionLaunchChoice: Codable, Equatable, Sendable {

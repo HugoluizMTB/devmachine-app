@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "updated_at": "2026-10-01T14:00:09.900Z",
+  "agent": "lead",
+  "sessionId": "1790863200000_k3x9q",
+  "origin": {
+    "source": "cli",
+    "mode": "user",
+    "sessionId": "1790863200000_k3x9q",
+    "version": "3.0.68"
+  },
+  "messages": [
+    {
+      "id": "msg_Qm7bW2xR",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "<user_input mode=\"act\">Check the status of PR 42</user_input>"
+        }
+      ],
+      "ts": 1790863200150
+    },
+    {
+      "id": "msg_Lp4nV8sT",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "I'll look at https://github.com/acme/widgets/pull/42 with the GitHub CLI."
+        },
+        {
+          "type": "tool_use",
+          "id": "toolu_01AbCdEfGhIjKlMnOp",
+          "name": "run_commands",
+          "input": {
+            "commands": [
+              "gh pr view 42"
+            ]
+          }
+        }
+      ],
+      "ts": 1790863204200,
+      "modelInfo": {
+        "id": "anthropic/claude-sonnet-4.5",
+        "provider": "cline"
+      },
+      "metrics": {
+        "inputTokens": 9120,
+        "outputTokens": 64,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "cost": 0.0283
+      }
+    },
+    {
+      "id": "msg_Zr9cY1uK",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_01AbCdEfGhIjKlMnOp",
+          "name": "run_commands",
+          "content": [
+            {
+              "query": "gh pr view 42",
+              "result": "title:\tAdd widget export\nstate:\tOPEN\nauthor:\talice\nurl:\thttps://github.com/acme/widgets/pull/42\n",
+              "success": true
+            }
+          ],
+          "is_error": false
+        }
+      ],
+      "ts": 1790863206900
+    },
+    {
+      "id": "msg_Hd2fJ6aP",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "PR https://github.com/acme/widgets/pull/42 (Add widget export) is open and authored by alice."
+        }
+      ],
+      "ts": 1790863209800,
+      "modelInfo": {
+        "id": "anthropic/claude-sonnet-4.5",
+        "provider": "cline"
+      },
+      "metrics": {
+        "inputTokens": 9310,
+        "outputTokens": 41,
+        "cacheReadTokens": 9050,
+        "cacheWriteTokens": 0,
+        "cost": 0.0041
+      }
+    }
+  ]
+}

@@ -10,28 +10,38 @@ public struct NativeContextEngine: Sendable {
     private let resolver: ContextGitHubResolver
     private let githubHosts: [String]
     private let roots: ContextRoots
+    private let processNames: [HarnessID: Set<String>]
 
+    /// `processNames` maps each harness to the programs it runs as, so a
+    /// pane command names its harness exactly.
     public init(
         runner: any CommandRunner = ProcessRunner(),
         fileManager: FileManager = .default,
         resolver: ContextGitHubResolver = ContextGitHubResolver(),
         githubHosts: [String] = ContextGitHubConfig.allHosts(),
-        roots: ContextRoots = ContextRoots()
+        roots: ContextRoots = ContextRoots(),
+        processNames: [HarnessID: Set<String>] = [:]
     ) {
         self.runner = runner
         self.fileManager = fileManager
         self.resolver = resolver
         self.githubHosts = githubHosts
         self.roots = roots
+        self.processNames = processNames
     }
 
+    /// `harnesses` are the ones already seen running in the session; their
+    /// transcripts win over a newer one another harness wrote here.
     public func buildContext(
-        cwd: String, paneCommand: String? = nil, resolvePRs: Bool = true, now: Date = Date()
+        cwd: String, paneCommand: String? = nil, harnesses: Set<HarnessID> = [],
+        resolvePRs: Bool = true, now: Date = Date()
     ) -> ContextEngineResult {
         let project = URL(fileURLWithPath: cwd)
         guard let detection = ContextHarnessDetection.detect(
-            project: project, paneCommand: paneCommand, roots: roots, fileManager: fileManager
-        ), let primary = detection.transcripts.first
+            project: project, paneCommand: paneCommand, harnesses: harnesses, roots: roots,
+            processNames: processNames, fileManager: fileManager
+        ), let primary = detection.transcripts.first,
+            let reader = roots.readers.first(where: { $0.harness == detection.harness })
         else {
             return emptyResult(cwd: project.path, now: now)
         }
@@ -41,12 +51,11 @@ public struct NativeContextEngine: Sendable {
         var primaryPass: ContextHarnessPass?
 
         for (index, file) in detection.transcripts.enumerated() {
-            let events = ContextJSONLReader.events(at: file.path)
-            let pass = harnessPass(detection.harness, events: events)
+            let pass = reader.pass(for: file)
             refs.merge(contextExtractRefs(blobs: pass.blobs, defaultRepo: repo, githubHosts: githubHosts))
             if index == 0 { primaryPass = pass }
         }
-        let pass = primaryPass ?? harnessPass(detection.harness, events: ContextJSONLReader.events(at: primary.path))
+        let pass = primaryPass ?? reader.pass(for: primary)
 
         let githubRefs = refs.github.values.sorted { $0.repo + "#\($0.num)" < $1.repo + "#\($1.num)" }
         let prs: [ContextEngineResult.PR]
@@ -69,15 +78,6 @@ public struct NativeContextEngine: Sendable {
             cwd: project.path, harness: detection.harness, updatedAt: isoNow(now), plan: plan, prs: prs,
             links: mappedLinks, agents: pass.agents, monitors: pass.monitors, shells: pass.shells
         )
-    }
-
-    private func harnessPass(_ harness: HarnessID, events: [[String: Any]]) -> ContextHarnessPass {
-        switch harness {
-        case .claude: return ClaudeHarness.extract(events: events)
-        case .codex: return CodexHarness.extract(events: events)
-        case .pi: return PiHarness.extract(events: events)
-        default: return ContextHarnessPass()
-        }
     }
 
     private func unresolvedPR(_ ref: ContextGitHubRef) -> ContextGitHubPR {

@@ -155,7 +155,7 @@ final class ContextStoreTests: XCTestCase {
         let store = ContextStore(services: fixtureServices(context: source))
         store.start(remote)
         try await waitUntil { store.state != nil }
-        store.start(local, harnesses: [.codex])
+        store.start(local, harnesses: [HarnessID(rawValue: "aider")])
         XCTAssertNil(store.state)
         XCTAssertFalse(store.isPolling)
         XCTAssertEqual(source.calls, [remote])

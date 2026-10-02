@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "session_id": "1790863200000_k3x9q",
+  "source": "cli",
+  "pid": 48211,
+  "started_at": "2026-10-01T14:00:00.000Z",
+  "status": "idle",
+  "interactive": true,
+  "provider": "cline",
+  "model": "anthropic/claude-sonnet-4.5",
+  "cwd": "/Users/alice/dev/widgets",
+  "workspace_root": "/Users/alice/dev/widgets",
+  "enable_tools": true,
+  "enable_spawn": true,
+  "enable_teams": false,
+  "prompt": "Check the status of PR 42",
+  "metadata": {
+    "sessionHistoryOrigin": {
+      "mode": "user",
+      "version": "3.0.68"
+    },
+    "title": "Check the status of PR 42"
+  },
+  "messages_path": "/Users/alice/.cline/data/sessions/1790863200000_k3x9q/1790863200000_k3x9q.messages.json"
+}
