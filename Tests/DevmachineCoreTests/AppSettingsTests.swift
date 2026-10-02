@@ -382,6 +382,22 @@ extension AppSettingsTests {
         XCTAssertEqual(issues.map(\.remedy), [.installCLI])
     }
 
+    func testTheCLIsOwnFolderStillNeedsTheCLIItself() {
+        var settings = goodSettings
+        settings.opsRepoPath = "/Users/alice/.config/devmachine"
+        let issues = AppSettings.validate(
+            settings, fileExists: existing(), cliExecutableFound: false,
+            cliConfigDirectory: "/Users/alice/.config/devmachine")
+        XCTAssertEqual(issues.map(\.remedy), [.installCLI])
+    }
+
+    func testAnotherFolderWithoutConfigYmlStillOffersTheSetup() {
+        let issues = AppSettings.validate(
+            goodSettings, fileExists: existing("/Users/alice/.config/devmachine"),
+            cliConfigDirectory: "/Users/alice/.config/devmachine-other")
+        XCTAssertEqual(issues.map(\.remedy), [.runSetup])
+    }
+
     func testAnIssueTheAppCannotFixCarriesNoRemedy() {
         var settings = goodSettings
         settings.publicIP = "not an ip"
