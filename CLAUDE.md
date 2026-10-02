@@ -42,6 +42,11 @@ When the owner asks for a feature or "a page", he wants something that loads
 - Selecting a session or the ops shell clears `activePage` (back to the terminal).
 - Sidebar / menubar entries for pages (Stats, Subdomains, …) SET `activePage`;
   they do NOT `openWindow`.
+- **Settings is a page too** (`AppPage.setup`, `SetupPage` in `PageHost`), with
+  the sidebar beside it, never a window or a full-window card: ⌘,, the
+  sidebar's gear, the palette, menus and every remedy button set it. The Add
+  machine wizard opened from Settings → Machines closes back there
+  (`AppModel.closeAddMachine`); opened from anywhere else it just closes.
 - Create a new `Window` ONLY when the owner explicitly asks for a separate window.
   Existing exception: the **Files** window is contextual per-workspace (opened
   from the sidebar folder button) and stays a window for now.

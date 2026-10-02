@@ -29,7 +29,7 @@ struct AddMachinePage: View {
 
     private func close() {
         state.close()
-        if model.activePage == .addMachine { model.activePage = nil }
+        model.closeAddMachine()
     }
 }
 

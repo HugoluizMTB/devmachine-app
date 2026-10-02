@@ -872,6 +872,34 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.activePage)
     }
 
+    func testAddAMachineFromSettingsReturnsToSettingsOnMachines() {
+        let model = AppModel(services: fixtureServices())
+        model.openSettings(.machines)
+        model.requestedSettingsSection = nil
+        model.showPage(.addMachine)
+        XCTAssertEqual(model.activePage, .addMachine)
+
+        model.closeAddMachine()
+        XCTAssertEqual(model.activePage, .setup)
+        XCTAssertEqual(model.requestedSettingsSection, .machines)
+    }
+
+    func testAddAMachineFromAnywhereElseClosesToWhereItWas() {
+        let model = AppModel(services: fixtureServices())
+        model.showPage(.stats)
+        model.showPage(.addMachine)
+        model.closeAddMachine()
+        XCTAssertNil(model.activePage)
+        XCTAssertNil(model.requestedSettingsSection)
+
+        model.openSettings(.machines)
+        model.showPage(.addMachine)
+        model.showPage(.stats)
+        model.showPage(.addMachine)
+        model.closeAddMachine()
+        XCTAssertNil(model.activePage)
+    }
+
     func testFreshNavigationAfterGoingBackDiscardsForwardHistory() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         let first = SessionRef(alias: "acme-devmachine", name: "first")

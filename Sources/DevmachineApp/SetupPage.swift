@@ -195,30 +195,27 @@ struct SetupPage: View {
         _section = State(initialValue: initialSection)
     }
 
+    /// A central page like any other, with the sidebar beside it: Settings →
+    /// Machines → Add a machine stays one place instead of a window over the app.
     var body: some View {
-        ZStack {
-            WallpaperBackground(style: .photo, choice: wallpaper)
-            card
-                .frame(maxWidth: m.pt(940), maxHeight: m.pt(640))
-                .padding(m.space.xxl)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea()
-        .onAppear {
-            load()
-            openRequestedSection()
-        }
-        .task {
-            // The CLI may have been installed or set up since launch.
-            await model.refreshDetected()
-            fillFromDetected()
-        }
-        .task {
-            let facade = harnessSettingsFacade
-            await Task.detached { facade.refreshAvailability() }.value
-            cliAvailabilityRead += 1
-        }
-        .onChange(of: model.requestedSettingsSection) { _, _ in openRequestedSection() }
+        card
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.dmContentBg)
+            .onAppear {
+                load()
+                openRequestedSection()
+            }
+            .task {
+                // The CLI may have been installed or set up since launch.
+                await model.refreshDetected()
+                fillFromDetected()
+            }
+            .task {
+                let facade = harnessSettingsFacade
+                await Task.detached { facade.refreshAvailability() }.value
+                cliAvailabilityRead += 1
+            }
+            .onChange(of: model.requestedSettingsSection) { _, _ in openRequestedSection() }
     }
 
     private func openRequestedSection() {
@@ -230,20 +227,14 @@ struct SetupPage: View {
     private var card: some View {
         HStack(spacing: 0) {
             rail
-                .background(
-                    Color.dmBand,
-                    in: UnevenRoundedRectangle(
-                        topLeadingRadius: DMRadius.panel, bottomLeadingRadius: DMRadius.panel,
-                        style: .continuous))
+                .background(Color.dmBand)
             VStack(spacing: 0) {
                 sectionBody
                 footer
             }
+            .frame(maxWidth: m.pt(880), maxHeight: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.14))
-        .background(
-            Color.black.opacity(0.35),
-            in: RoundedRectangle(cornerRadius: m.radius.panel, style: .continuous))
         .environment(\.colorScheme, .dark)
     }
 

@@ -357,6 +357,9 @@ final class AppModel: ObservableObject {
     }
     @Published var activePage: AppPage? = nil {
         didSet {
+            if activePage == .addMachine, oldValue != .addMachine {
+                addMachineOpenedFromSettings = oldValue == .setup
+            }
             syncContext()
             recordNavigation()
             // Coming back from a page leaves the pane exactly as it was, so the
@@ -367,9 +370,8 @@ final class AppModel: ObservableObject {
         }
     }
     /// True while the devmachine CLI executable is not found on disk. The gate
-    /// page owns the whole window while this is true, the same way `.setup`
-    /// does — no background service (session sweep, stats, context) is started
-    /// until this clears.
+    /// page owns the whole window while this is true — no background service
+    /// (session sweep, stats, context) is started until this clears.
     @Published private(set) var cliMissing = false
     /// The first-run setup owns the window: no CLI, or no saved settings
     /// yet, and the person has not skipped it (`launchRoute`).
@@ -1077,6 +1079,19 @@ final class AppModel: ObservableObject {
     func openSettings(_ section: SettingsSection) {
         requestedSettingsSection = section
         activePage = .setup
+    }
+
+    /// The wizard opened from Settings → Machines goes back there, so Settings
+    /// and the wizard read as one place; from anywhere else it just closes.
+    private var addMachineOpenedFromSettings = false
+
+    func closeAddMachine() {
+        guard activePage == .addMachine else { return }
+        if addMachineOpenedFromSettings {
+            openSettings(.machines)
+        } else {
+            activePage = nil
+        }
     }
 
     func requestPublish(workspace: String) {
