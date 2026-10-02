@@ -73,8 +73,6 @@ final class HarnessRegistryTests: XCTestCase {
     }
 
     func testALocalSessionIsDetectedByTheNativeChildTheLauncherStarts() {
-        var settings = AppSettings.empty
-        settings.enabledHarnesses = [.claude, .pi, .kimi, .cline, .opencode]
         let sessions = [
             ZmxSession(name: "a", pid: 10, clients: 1, directory: nil),
             ZmxSession(name: "b", pid: 20, clients: 1, directory: nil),
@@ -88,7 +86,7 @@ final class HarnessRegistryTests: XCTestCase {
         ]
 
         let detected = SessionHarnessFacade(registry: .builtIn).detect(
-            sessions: sessions, entries: entries, settings: settings)
+            sessions: sessions, entries: entries)
 
         XCTAssertEqual(detected, ["a": [.cline], "b": [.kimi], "c": []])
     }

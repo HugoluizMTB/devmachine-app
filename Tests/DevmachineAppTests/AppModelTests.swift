@@ -178,7 +178,7 @@ final class AppModelTests: XCTestCase {
         }
     }
 
-    func testRemoteRefreshDetectsOnlyProcessesFromActiveHarnessAdapters() async throws {
+    func testRemoteRefreshDetectsEveryHarnessWhetherOrNotItIsEnabled() async throws {
         let runner = HarnessProcessRunner(remoteListing: """
         dash|1
         @@PANES@@
@@ -194,8 +194,51 @@ final class AppModelTests: XCTestCase {
         model.refresh(alias: "acme-devmachine")
 
         try await waitUntil { model.sessionsByAlias["acme-devmachine"] != nil }
-        XCTAssertEqual(model.sessionsByAlias["acme-devmachine"]?.first?.harnesses, [.codex])
+        XCTAssertEqual(model.sessionsByAlias["acme-devmachine"]?.first?.harnesses, [.claude, .codex])
         XCTAssertEqual(runner.callCount(for: "/usr/bin/ssh"), 1)
+    }
+
+    func testARemoteOpencodeSessionIsBadgedWithOnlyClaudeEnabled() async throws {
+        let runner = HarnessProcessRunner(remoteListing: """
+        dash|1
+        @@PANES@@
+        dash|opencode
+        """)
+        let model = AppModel(store: SessionStore(runner: runner))
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude])
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+
+        model.refresh(alias: "acme-devmachine")
+
+        try await waitUntil { model.sessionsByAlias["acme-devmachine"] != nil }
+        let session = try XCTUnwrap(model.sessionsByAlias["acme-devmachine"]?.first)
+        XCTAssertEqual(session.harnesses, [.opencode])
+        XCTAssertEqual(model.badges(for: session).map(\.id), [.opencode])
+    }
+
+    func testALocalOpencodeSessionIsBadgedWithOnlyClaudeEnabled() async throws {
+        let runner = HarnessProcessRunner(
+            zmxListing: "name=acme\tpid=100\tclients=1\tcwd=/Users/alice/dev/acme",
+            processListing: """
+             100 1 -zsh
+             200 100 node
+             300 200 /Users/alice/.opencode/bin/opencode
+            """)
+        let model = AppModel(
+            store: SessionStore(runner: HarnessProcessRunner()),
+            localRunner: runner,
+            sessionCommandSender: RecordingSessionCommandSender(),
+            zmxPath: "/fixtures/zmx")
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude])
+
+        model.scanLocalSessions()
+
+        try await waitUntil { model.localSessionHarnesses["acme"] != nil }
+        XCTAssertEqual(model.localSessionHarnesses["acme"], [.opencode])
     }
 
     func testLocalScanUsesOneProcessSnapshotForAllHarnessesAndSessions() async throws {

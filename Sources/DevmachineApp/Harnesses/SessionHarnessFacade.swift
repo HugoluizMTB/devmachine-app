@@ -16,20 +16,18 @@ struct SessionHarnessFacade: Sendable {
         self.registry = registry
     }
 
-    func processNames(for settings: AppSettings) -> [HarnessID: Set<String>] {
-        var catalog: [HarnessID: Set<String>] = [:]
-        for adapter in registry.adapters where settings.enabledHarnesses.contains(adapter.id) {
-            catalog[adapter.id, default: []].formUnion(adapter.processNames)
-        }
-        return catalog
+    /// Every registered harness is detected, enabled or not: enabling one
+    /// only adds it to the launch choices, and a harness that runs only on a
+    /// remote host has no CLI here to enable.
+    var processNames: [HarnessID: Set<String>] {
+        registry.processNames
     }
 
     func detect(
         sessions: [ZmxSession],
-        entries: [ProcessTree.Entry],
-        settings: AppSettings
+        entries: [ProcessTree.Entry]
     ) -> [String: Set<HarnessID>] {
-        let catalog = processNames(for: settings)
+        let catalog = processNames
         let recognizedPrograms = Set(catalog.values.flatMap { $0 })
         let programsByRoot = ProcessTree.matchingPrograms(
             recognizedPrograms, roots: sessions.map(\.pid), in: entries)

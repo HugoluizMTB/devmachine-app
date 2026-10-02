@@ -575,8 +575,8 @@ struct SetupPage: View {
                         }
                     }
                 }
-                note("Turning a harness on checks only this Mac. The app never "
-                    + "installs a CLI or probes a remote workspace.")
+                note("Turning a harness on only adds it to the launch choices, and needs its CLI on this Mac. "
+                    + "Every harness is recognized in a session either way, here or on a server.")
             }
 
             harnessIconToggle
