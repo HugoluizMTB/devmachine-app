@@ -260,6 +260,14 @@ Rules:
   window name `[tmux]` in the status line, not the program's. Only copy mode at
   scroll 0 with no selection is left; scrolled up, someone is reading. Not focus
   reporting: the hosts run `focus-events off` and mosh drops `?1004`.
+  The activation/wake check logs in, so it is rationed
+  (`CopyModeCheckSchedule`): tmux runs one server per account, so each
+  workspace alias with a pane on screen needs its own login (one login per
+  machine cannot reach another account's tmux without root); what is
+  limited is when. One ssh at a time, aliases grouped by machine, each
+  machine at most once per 5 minutes, nothing while polling is paused or
+  the sweep runs, and the first ssh-level failure ends the round and pauses
+  polling through `AppModel.noteSSHFailure`, the sweep's own backoff.
 - **A process starts only after its pane has the size it will be drawn at**
   (`viewDidSize`). Started earlier it learns a placeholder geometry, and a program
   that repaints only what changed never corrects it.

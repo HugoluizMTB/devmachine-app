@@ -1666,6 +1666,23 @@ final class AppModel: ObservableObject {
     /// True while a failure is holding the sweep back.
     var isPollingPaused: Bool { Date() < pollPausedUntil }
 
+    /// True while the sweep logs into each workspace in turn.
+    var isSweeping: Bool { sweepInFlight }
+
+    /// The machine a workspace alias lives on, as the configuration says.
+    func machine(forAlias alias: String) -> String? {
+        guard let workspace = workspaces.first(where: { $0.alias == alias }) else { return nil }
+        return MachineReadinessStore.shared.machine(forWorkspace: workspace.name)
+    }
+
+    /// An ssh made outside the sweep (the copy mode check) failed the way
+    /// that pauses polling: the same backoff applies, so nothing else logs
+    /// in again at once.
+    func noteSSHFailure(_ failure: SSHFailure) {
+        guard failure != .hostKeyRejected else { return }
+        pausePolling(after: failure)
+    }
+
     /// Sleeping made every ssh fail at once, which paused the sweep and turned
     /// the whole sidebar red. Waking is the evidence that the pause no longer
     /// applies, so it is lifted and the sweep runs at once instead of leaving

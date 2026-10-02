@@ -345,36 +345,87 @@ final class TerminalRegistry: NSObject {
     /// Replaces ssh for a command sent to a session's host; tests record here.
     var hostCommandRunner: ((_ alias: String, _ command: String) -> Void)?
     private var checkingCopyMode = false
+    var copyModeSchedule = CopyModeCheckSchedule()
+
+    /// What the copy mode check asks of the rest of the app; tests stand in.
+    struct CopyModeContext {
+        var isPollingPaused: () -> Bool
+        var isSweeping: () -> Bool
+        var machine: (String) -> String?
+        var now: () -> Date
+        /// An ssh-level failure feeds the sweep's own backoff.
+        var report: (SSHFailure) -> Void
+        /// Runs one check over ssh and says how it failed, if it did.
+        var run: @Sendable (_ alias: String, _ command: String) -> SSHFailure?
+
+        @MainActor static var live: CopyModeContext {
+            let customSocket = SettingsStore.shared.settings?.sshAgentSocket
+            return CopyModeContext(
+                isPollingPaused: { AppModel.shared?.isPollingPaused ?? false },
+                isSweeping: { AppModel.shared?.isSweeping ?? false },
+                machine: { AppModel.shared?.machine(forAlias: $0) },
+                now: { Date() },
+                report: { AppModel.shared?.noteSSHFailure($0) },
+                run: { alias, command in
+                    TerminalRegistry.runCheckOverSSH(alias: alias, command: command, customSocket: customSocket)
+                })
+        }
+    }
+
+    var copyModeContext: CopyModeContext?
 
     /// Coming back to the app leaves the panes on screen as they were, so a
     /// stray wheel-up that put one into tmux's copy mode while you were away
-    /// would keep eating your keys. One ssh per machine, one after the other.
+    /// would keep eating your keys. Each account with a pane on screen needs
+    /// its own login (tmux runs a server per account), so how often is what
+    /// is limited (`CopyModeCheckSchedule`): one ssh at a time, at most once
+    /// per machine every 5 minutes, never while polling is paused or the
+    /// sweep runs, and the first ssh-level failure stops the round and
+    /// pauses polling like the sweep's own.
     func leaveIdleCopyModeOnScreen() {
         guard !DemoMode.isActive, !checkingCopyMode else { return }
-        var sessionsByAlias: [String: [String]] = [:]
+        let context = copyModeContext ?? .live
+        var panes: [(alias: String, session: String)] = []
         for (kind, view) in terminals where view.window != nil && !dead.contains(kind) {
             guard case let .remote(alias, session) = kind else { continue }
-            sessionsByAlias[alias, default: []].append(session)
+            panes.append((alias, session))
         }
-        let batches = sessionsByAlias.keys.sorted().map { alias in
-            (alias: alias, command: sessionsByAlias[alias, default: []].sorted()
-                .map { RemoteCommands.leaveIdleCopyMode(session: $0) }
-                .joined(separator: "; "))
-        }
-        guard !batches.isEmpty else { return }
-        PaneLog.log("copy mode check machines=\(batches.map(\.alias))")
-        if let hostCommandRunner {
-            for batch in batches { hostCommandRunner(batch.alias, batch.command) }
-            return
-        }
+        guard !panes.isEmpty else { return }
+        let checks = copyModeSchedule.due(
+            panes: panes, machine: context.machine, now: context.now(),
+            paused: context.isPollingPaused(), sweeping: context.isSweeping())
+        guard !checks.isEmpty else { return }
+        PaneLog.log("copy mode check aliases=\(checks.map(\.alias))")
         checkingCopyMode = true
-        let customSocket = SettingsStore.shared.settings?.sshAgentSocket
-        Task.detached {
-            for batch in batches {
-                Self.runOverSSH(alias: batch.alias, command: batch.command, customSocket: customSocket)
-            }
-            await MainActor.run { TerminalRegistry.shared.checkingCopyMode = false }
+        let run = context.run
+        let report = context.report
+        Task { @MainActor in
+            let failure = await Task.detached { () -> SSHFailure? in
+                var skipped: Set<String> = []
+                for check in checks where !skipped.contains(check.machine) {
+                    switch run(check.alias, check.command) {
+                    case nil:
+                        continue
+                    case .hostKeyRejected?:
+                        skipped.insert(check.machine)
+                    case let failure?:
+                        return failure
+                    }
+                }
+                return nil
+            }.value
+            if let failure { report(failure) }
+            checkingCopyMode = false
         }
+    }
+
+    nonisolated static func runCheckOverSSH(alias: String, command: String, customSocket: String?) -> SSHFailure? {
+        guard let result = try? ProcessRunner().runCapturing(
+            executable: "/usr/bin/ssh",
+            args: RemoteCommands.sshBaseArgs(alias: alias) + [command],
+            environment: RemoteCommands.sshEnvironment(customSocket: customSocket))
+        else { return nil }
+        return SSHFailure.classify(exitCode: result.exitCode, stderr: result.stderr)
     }
 
     private func runOnHost(alias: String, command: String) {

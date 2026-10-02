@@ -1006,6 +1006,17 @@ final class AppModelTests: XCTestCase {
 
 
     @MainActor
+    func testAFailedLoginOutsideTheSweepPausesPollingTheSameWay() {
+        let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
+
+        model.noteSSHFailure(.hostKeyRejected)
+        XCTAssertFalse(model.isPollingPaused, "a refused host key tried no login")
+
+        model.noteSSHFailure(.authDenied)
+        XCTAssertTrue(model.isPollingPaused)
+    }
+
+    @MainActor
     func testALockedAgentIsNotAWorkspaceBeingOffline() {
         let model = AppModel(store: SessionStore(runner: AuthDeniedRunner()))
         model.workspaces = [
