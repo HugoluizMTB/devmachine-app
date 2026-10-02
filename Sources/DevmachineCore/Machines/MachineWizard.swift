@@ -21,13 +21,19 @@ public struct MachineWizard: Equatable, Sendable {
     public var draft = MachineDraft()
     public let existingMachines: [String]
     public let limaFound: Bool
+    /// The CLI takes every answer as a flag (`MachineUnattendedAdd`): the
+    /// whole run happens without a terminal.
+    public let unattended: Bool
 
-    public init(existingMachines: [String], limaFound: Bool) {
+    public init(existingMachines: [String], limaFound: Bool, unattended: Bool = false) {
         self.existingMachines = existingMachines
         self.limaFound = limaFound
+        self.unattended = unattended
     }
 
-    public var problems: [MachineDraftProblem] { draft.problems(existingMachines: existingMachines) }
+    public var problems: [MachineDraftProblem] {
+        draft.problems(existingMachines: existingMachines, unattended: unattended)
+    }
 
     public func canChoose(_ kind: MachineKind) -> Bool {
         kind == .server || limaFound
@@ -67,7 +73,11 @@ public struct MachineWizard: Equatable, Sendable {
         self.stage = stage
     }
 
-    public var plan: [MachinePlanStep] { MachinePlan.steps(for: draft) }
+    public var plan: [MachinePlanStep] { MachinePlan.steps(for: draft, unattended: unattended) }
+
+    public var terminalAnswers: [MachinePlan.Answer] {
+        MachinePlan.terminalAnswers(for: draft, unattended: unattended)
+    }
 
     public func isSelected(_ package: String) -> Bool {
         package == MachinePackageCatalog.essentials ? draft.essentials : draft.packages.contains(package)
@@ -92,12 +102,20 @@ public struct PackageInfo: Equatable, Sendable {
     public let scope: String
     public let summary: String
     public let source: String
+    /// The operating systems it runs on; empty is any (CLI 0.7.27+).
+    public let platforms: [String]
+    /// The packages it brings in first: for `essentials`, what it is made of.
+    public let needs: [String]
 
-    public init(name: String, scope: String, summary: String, source: String) {
+    public init(
+        name: String, scope: String, summary: String, source: String, platforms: [String] = [], needs: [String] = []
+    ) {
         self.name = name
         self.scope = scope
         self.summary = summary
         self.source = source
+        self.platforms = platforms
+        self.needs = needs
     }
 }
 
@@ -108,37 +126,49 @@ public struct MachinePackageCard: Equatable, Sendable, Identifiable {
     public let isRecommended: Bool
     /// A package from the person's own folder, not the release.
     public let isYours: Bool
+    /// What `essentials` is made of; empty for any other package.
+    public let contains: [String]
 
     public var id: String { name }
 
-    public init(name: String, summary: String, isRecommended: Bool, isYours: Bool) {
+    public init(name: String, summary: String, isRecommended: Bool, isYours: Bool, contains: [String] = []) {
         self.name = name
         self.summary = summary
         self.isRecommended = isRecommended
         self.isYours = isYours
+        self.contains = contains
     }
 }
 
 public enum MachinePackageCatalog {
     public static let essentials = "essentials"
+    /// A server is always Linux, and so is a Lima machine on this Mac.
+    public static let linux = "linux"
 
-    /// Machine packages only (a workspace package goes on a workspace), with
-    /// essentials first and the rest by name.
-    public static func cards(from packages: [PackageInfo]) -> [MachinePackageCard] {
+    /// Machine packages only (a workspace package goes on a workspace) that
+    /// run on `platform`, with essentials first and the rest by name.
+    public static func cards(from packages: [PackageInfo], platform: String = linux) -> [MachinePackageCard] {
         packages
-            .filter { $0.scope == "machine" }
+            .filter { $0.scope == "machine" && runs($0, on: platform) }
             .map { package in
                 let summary = package.summary.trimmingCharacters(in: .whitespacesAndNewlines)
                 return MachinePackageCard(
                     name: package.name,
                     summary: summary.isEmpty ? "No description." : summary,
                     isRecommended: package.name == essentials,
-                    isYours: package.source == "local")
+                    isYours: package.source == "local",
+                    contains: package.name == essentials ? package.needs : [])
             }
             .sorted { lhs, rhs in
                 if lhs.isRecommended != rhs.isRecommended { return lhs.isRecommended }
                 return lhs.name < rhs.name
             }
+    }
+
+    /// No platform listed means any: a package written before the field
+    /// existed runs wherever it ran before.
+    public static func runs(_ package: PackageInfo, on platform: String) -> Bool {
+        package.platforms.isEmpty || package.platforms.contains(platform)
     }
 }
 

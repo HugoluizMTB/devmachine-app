@@ -8,6 +8,8 @@ struct DMChoiceCard: View {
     var detail: String
     /// A quiet tag after the title (RECOMMENDED, YOURS).
     var badge: String?
+    /// A second, smaller line under the detail (what a package contains).
+    var note: String?
     let selected: Bool
     /// A checkbox when several can be on, a radio mark when only one.
     var multiple = false
@@ -36,6 +38,12 @@ struct DMChoiceCard: View {
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let note {
+                        Text(verbatim: note)
+                            .font(.dm(10.5))
+                            .foregroundStyle(Color.dmMuted.opacity(0.8))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: mark)

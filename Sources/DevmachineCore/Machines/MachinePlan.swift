@@ -17,6 +17,21 @@ public struct MachinePlanStep: Equatable, Sendable, Identifiable {
     /// The CLI asks its own questions in the terminal (a password, a
     /// fingerprint to confirm): the person answers there.
     public let asksInTerminal: Bool
+    /// What the step reads on stdin. Only its kind lives here: the value is
+    /// handed over by whoever runs it, so it is never in `arguments` or `id`.
+    public let input: Input?
+
+    public enum Input: Equatable, Sendable {
+        case password
+    }
+
+    public init(kind: Kind, title: String, arguments: [String], asksInTerminal: Bool, input: Input? = nil) {
+        self.kind = kind
+        self.title = title
+        self.arguments = arguments
+        self.asksInTerminal = asksInTerminal
+        self.input = input
+    }
 
     public var id: String { arguments.joined(separator: " ") }
 
@@ -44,15 +59,21 @@ public enum MachinePlan {
         }
     }
 
-    public static func steps(for draft: MachineDraft) -> [MachinePlanStep] {
+    /// `unattended` is a CLI that takes every answer as a flag
+    /// (`MachineUnattendedAdd`): nothing then asks in a terminal.
+    public static func steps(for draft: MachineDraft, unattended: Bool = false) -> [MachinePlanStep] {
         let name = draft.trimmedName
         var steps: [MachinePlanStep] = []
-        if draft.kind == .localVM {
-            steps.append(MachinePlanStep(
-                kind: .createLocal, title: "Create \(name) on this Mac",
-                arguments: ["machines", "create-local", name], asksInTerminal: false))
+        if unattended {
+            steps.append(draft.kind == .localVM ? createLocalAndAddStep(for: draft) : unattendedAddStep(for: draft))
+        } else {
+            if draft.kind == .localVM {
+                steps.append(MachinePlanStep(
+                    kind: .createLocal, title: "Create \(name) on this Mac",
+                    arguments: ["machines", "create-local", name], asksInTerminal: false))
+            }
+            steps.append(addStep(for: draft))
         }
-        steps.append(addStep(for: draft))
         for package in draft.packages {
             steps.append(MachinePlanStep(
                 kind: .addPackage(package), title: "Add \(package)",
@@ -76,9 +97,43 @@ public enum MachinePlan {
     /// for a password: a server that takes only one, and every local
     /// machine, goes through the CLI's own questions instead. So does the
     /// first machine of all, which only `setup` can write.
-    public static func asksInTerminal(_ draft: MachineDraft) -> Bool {
-        !draft.hasConfiguration || draft.kind == .localVM || draft.login == .password
+    public static func asksInTerminal(_ draft: MachineDraft, unattended: Bool = false) -> Bool {
+        guard !unattended else { return false }
+        return !draft.hasConfiguration || draft.kind == .localVM || draft.login == .password
             || draft.expectedFingerprint == nil
+    }
+
+    /// `create-local --add` makes the VM and adds it with its public
+    /// password, trusting the key it presents on this Mac's loopback.
+    private static func createLocalAndAddStep(for draft: MachineDraft) -> MachinePlanStep {
+        let essentials = draft.essentials ? [] : ["--no-essentials"]
+        return MachinePlanStep(
+            kind: .createLocal, title: "Create \(draft.trimmedName) on this Mac and connect it",
+            arguments: ["machines", "create-local", draft.trimmedName, "--add"] + essentials, asksInTerminal: false)
+    }
+
+    /// Every answer as a flag. The password is read from stdin; the domain
+    /// only goes with the first machine, the one that writes `config.yml`.
+    private static func unattendedAddStep(for draft: MachineDraft) -> MachinePlanStep {
+        var arguments = ["machines", "add", "--name", draft.trimmedName, "--address", draft.trimmedAddress,
+                         "--fingerprint", draft.fingerprintToTrust ?? ""]
+        if draft.trimmedUser != MachineDraft.defaultUser { arguments += ["--user", draft.trimmedUser] }
+        if draft.trimmedPort != MachineDraft.defaultPort { arguments += ["--port", draft.trimmedPort] }
+        var input: MachinePlanStep.Input?
+        switch draft.login {
+        case .key where draft.keySource == .agent:
+            arguments += ["--key", "agent:\(draft.agentKey)"]
+        case .key:
+            if !draft.trimmedKeyFile.isEmpty { arguments += ["--key", draft.trimmedKeyFile] }
+        case .password:
+            arguments.append("--password-stdin")
+            input = .password
+        }
+        if !draft.hasConfiguration, !draft.trimmedDomain.isEmpty { arguments += ["--domain", draft.trimmedDomain] }
+        if !draft.essentials { arguments.append("--no-essentials") }
+        return MachinePlanStep(
+            kind: .addMachine, title: "Connect \(draft.trimmedName)", arguments: arguments + ["--yes"],
+            asksInTerminal: false, input: input)
     }
 
     private static func addStep(for draft: MachineDraft) -> MachinePlanStep {
@@ -100,8 +155,8 @@ public enum MachinePlan {
 
     /// What to type when `machines add` or `setup` asks, in the order they
     /// ask. Empty when nothing is asked.
-    public static func terminalAnswers(for draft: MachineDraft) -> [Answer] {
-        guard asksInTerminal(draft) else { return [] }
+    public static func terminalAnswers(for draft: MachineDraft, unattended: Bool = false) -> [Answer] {
+        guard asksInTerminal(draft, unattended: unattended) else { return [] }
         let local = draft.kind == .localVM
         var answers = [
             Answer(question: "machine name", answer: draft.trimmedName),

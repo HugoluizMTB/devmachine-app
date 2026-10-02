@@ -764,10 +764,15 @@ once may fail there.
 
 ## Machines and the Add machine wizard
 - **Settings → Machines lists the CLI's configuration** (`MachinesStore`:
-  `config path`, then `machines list` and `packages list`). Before
-  `config.yml` exists every one of those calls fails, so the store checks
-  the file first and reads "no machine" without calling them. Remove runs
-  `machines rm --yes` behind a confirm and only forgets the machine.
+  `config path`, `version`, then `machines list` and `packages list`). A
+  machine's packages are its own `packages` from `machines list` (CLI
+  0.7.27+), else the `installed_on` of `packages list`. Before `config.yml`
+  exists an older CLI fails every one of those calls, so the store checks
+  the file first and reads "no machine" without calling them; a CLI with
+  `MachineUnattendedAdd` lists the latest release's packages then, for the
+  first machine (a failure there is no error: essentials is still offered).
+  Remove runs `machines rm --yes` behind a confirm and only forgets the
+  machine.
 - **The sidebar offers "Add a machine" above Local only once a read says
   there is none besides this Mac** (`AddMachinePrompt`). Nothing is gated
   on a machine: Home and local sessions work with zero. One rule in
@@ -781,28 +786,56 @@ once may fail there.
   Mac that landed on Settings had nowhere to go. Demo shot:
   `89-settings-no-machine.png` in the setup-flow walk.
 - **The wizard (`AppPage.addMachine`) only builds `devmachine` commands**
-  (`MachinePlan`, Core) and shows them before Create. A server whose key
-  already logs in is added unattended (`machines add --address
-  --fingerprint --key`); the fingerprint is pasted from the provider's
-  console, never read over the connection being trusted. A password-only
-  server, a Lima machine (`create-local`, then `machines add`) and the very
-  first machine (`setup`) go through the CLI's own questions, because an
-  unattended `add` has no way to take a password; the page lists the
-  answers to type. Packages are `--no-essentials` or `packages add`, then
-  an optional `workspaces new` and `sync`.
-- **The commands run in a local terminal pane** (`MachineStepRunner`), so
-  a password goes straight to the CLI and never through the app. Only
-  `sh <script>` is typed (any login shell, fish included); the script
-  prints a per-step nonce marker the runner finds in the scrollback. A
-  failed step shows `DMErrorStateView`; Try again skips the steps done.
-  Tests inject `MachineStepRunner.Hooks`; nothing types into a real pane.
+  (`MachinePlan`, Core) and shows them before Create. Packages are
+  `--no-essentials` or `packages add`, then an optional `workspaces new` and
+  `sync`. Package cards are machine packages whose `platforms` hold `linux`
+  or are empty (any): a server and a Lima machine are both Linux, so a
+  `[macos]` package is never offered. Essentials says what it contains,
+  from its `needs`.
+- **CLI 0.7.27+ adds with no terminal at all**
+  (`MachineUnattendedAdd.minimumCLIVersion`, read from `version` into the
+  `MachinesSnapshot`). Every answer is a flag: `machines add --address
+  --fingerprint` with `--key <file>`, `--key agent:SHA256:…` (keys listed
+  with `ssh-add -l` against the socket the app hands the CLI) or
+  `--password-stdin`; `--domain` only for the first machine, which `add`
+  then writes the configuration for, as `setup` would; a Lima machine is
+  one `create-local <name> --add`. The steps run in the background
+  (`MachineStepRunner`, `runProcess`), output shown as it comes; `add` writes
+  the machine only once its key is proved, so Try again simply runs the
+  failed step again.
+- **The password is a `SecretText`**: in a `SecureField`, on the add's
+  stdin and nowhere else. The step carries only `input: .password`, never
+  the value, so it is in no argument, step id, display line or log;
+  printing the draft shows dots. It is written to the pipe before the
+  process starts (no SIGPIPE if the CLI exits first) and dropped once the
+  run succeeds.
+- **The fingerprint is read before anything trusts it** (`machines scan
+  --format json`, logs in nowhere, writes nothing): the wizard shows the
+  presented key beside the CLI's `verify` command for the provider's
+  console. `--fingerprint` is the console output pasted, or the scan once
+  the person ticks that the console shows the same key; a paste that
+  disagrees with the scan trusts nothing. A scan of another address or
+  port counts for nothing.
+- **An older CLI keeps the terminal flow.** A server whose key already
+  logs in is added unattended; a password-only server, a Lima machine
+  (`create-local`, then `machines add`) and the very first machine (`setup`)
+  go through the CLI's own questions, and the page lists the answers to
+  type. The commands run in a local terminal pane (`MachineStepRunner`), so
+  a password goes straight to the CLI. Only `sh <script>` is typed (any
+  login shell, fish included); the script prints a per-step nonce marker
+  the runner finds in the scrollback. A failed step shows
+  `DMErrorStateView`; Try again skips the steps done. Tests inject
+  `MachineStepRunner.Hooks`; nothing types into a real pane or starts a CLI.
 - **No `config.yml` means no machine, not an unread list**: `machines
   list` fails before it exists, and `StatsStore` then checks the file and
   drops its cached cards, so Home never shows machines from an old
   configuration. Any other failed read keeps the cache.
 - `DEVMACHINE_DEMO_WALK=machines` captures Settings → Machines, every
-  wizard step, a run in each state and the sidebar with no machine (Home
-  with no machine cards).
+  wizard step (key file, password, agent key, scan), a background run in
+  each state, the first machine with its domain, the sidebar with no
+  machine (Home with no machine cards), and `legacy-` shots of an older
+  CLI's terminal flow. Demo mode scans no server and reads no agent
+  (`DemoData.addMachineScan`, `addMachineAgentKeys`) and refuses every run.
 
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action

@@ -268,17 +268,22 @@ struct ProcessCLIUpdater: CLIUpdating {
 }
 
 /// stdout and stderr share one pipe, so the lines keep the order they were
-/// written in. stdin is closed, so a prompt fails instead of waiting forever.
+/// written in. stdin is closed, so a prompt fails instead of waiting forever;
+/// `input`, when given, is written to it first and then it is closed.
 enum StreamingProcess {
     static func run(
-        executable: String, arguments: [String], environment: [String: String],
+        executable: String, arguments: [String], environment: [String: String], input: Data? = nil,
         output: @escaping @Sendable (String) -> Void
     ) async throws -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.environment = environment
-        process.standardInput = FileHandle.nullDevice
+        if let input {
+            process.standardInput = try filledPipe(input)
+        } else {
+            process.standardInput = FileHandle.nullDevice
+        }
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
@@ -307,6 +312,22 @@ enum StreamingProcess {
         lines.flush()
         return status
     }
+
+    /// Written before the process starts, while this side still holds the
+    /// read end: a child that exits without reading can then never answer
+    /// the write with SIGPIPE, which would end the app.
+    private static func filledPipe(_ input: Data) throws -> Pipe {
+        guard input.count <= maxInput else {
+            throw DevmachineCLIError.commandFailed("The input for the command is too large.")
+        }
+        let pipe = Pipe()
+        try pipe.fileHandleForWriting.write(contentsOf: input)
+        try pipe.fileHandleForWriting.close()
+        return pipe
+    }
+
+    /// Below the 16 KB a macOS pipe buffers, so the write never blocks.
+    static let maxInput = 8 * 1024
 }
 
 private final class LineSplitter: @unchecked Sendable {

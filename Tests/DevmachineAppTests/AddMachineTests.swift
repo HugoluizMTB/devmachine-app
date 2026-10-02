@@ -15,6 +15,9 @@ private final class FakeTerminal {
     var printed: [String] = []
     var tasks: [(String, Int)] = []
     var ended: [Bool] = []
+    /// Background runs: each command's arguments and what it got on stdin.
+    var processes: [(arguments: [String], input: Data?)] = []
+    var processStatus: ([String]) -> Int32 = { _ in 0 }
 
     var hooks: MachineStepRunner.Hooks {
         MachineStepRunner.Hooks(
@@ -28,6 +31,12 @@ private final class FakeTerminal {
                 let fails = self.failing.contains { script.contains($0) }
                 self.printed.append(fails ? TerminalStepMarker.fail(nonce: nonce) : TerminalStepMarker.ok(nonce: nonce))
                 return path
+            },
+            runProcess: { arguments, input, output in
+                self.processes.append((arguments, input))
+                let status = self.processStatus(arguments)
+                output(status == 0 ? "ok: \(arguments[0])" : "Error: \(arguments[0]) refused")
+                return status
             },
             beginTask: { label, total in
                 self.tasks.append((label, total))
@@ -137,6 +146,73 @@ final class MachineStepRunnerTests: XCTestCase {
 }
 
 @MainActor
+final class MachineStepRunnerBackgroundTests: XCTestCase {
+    private let fingerprint = "SHA256:" + String(repeating: "K", count: 43)
+
+    private func passwordPlan() -> [MachinePlanStep] {
+        var draft = MachineDraft()
+        draft.name = "backup"
+        draft.address = "203.0.113.20"
+        draft.fingerprint = fingerprint
+        draft.login = .password
+        draft.packages = ["docker"]
+        return MachinePlan.steps(for: draft, unattended: true)
+    }
+
+    func testANewCLIRunsEveryStepWithoutATerminalAndThePasswordGoesOnlyToStdin() async {
+        let terminal = FakeTerminal()
+        let runner = MachineStepRunner(hooks: terminal.hooks, pollInterval: 1_000_000)
+        let steps = passwordPlan()
+
+        await runner.run(steps, inTerminal: false, password: SecretText("hunter2"))
+
+        XCTAssertEqual(runner.phase, .succeeded)
+        XCTAssertTrue(runner.inBackground)
+        XCTAssertEqual(terminal.typed, [])
+        XCTAssertEqual(terminal.processes.map(\.arguments), steps.map(\.arguments))
+        XCTAssertEqual(terminal.processes[0].input, Data("hunter2".utf8))
+        XCTAssertNil(terminal.processes[1].input)
+        XCTAssertFalse(terminal.processes.flatMap(\.arguments).contains { $0.contains("hunter2") })
+        XCTAssertFalse(runner.lines.contains { $0.contains("hunter2") })
+        XCTAssertEqual(runner.lines.first, "$ " + steps[0].displayLine)
+        XCTAssertEqual(terminal.ended, [true])
+    }
+
+    func testAFailedCommandSaysTheCLIsOwnCauseAndARetryRunsItAgain() async {
+        let terminal = FakeTerminal()
+        terminal.processStatus = { $0.starts(with: ["machines", "add"]) ? 1 : 0 }
+        let runner = MachineStepRunner(hooks: terminal.hooks, pollInterval: 1_000_000)
+        let steps = passwordPlan()
+
+        await runner.run(steps, inTerminal: false, password: SecretText("wrong"))
+
+        XCTAssertEqual(runner.phase, .failed(step: steps[0].id))
+        XCTAssertEqual(runner.problem, "machines refused")
+        XCTAssertEqual(steps.map { runner.status(of: $0) }, [.failed, .waiting, .waiting])
+
+        terminal.processStatus = { _ in 0 }
+        await runner.run(steps, inTerminal: false, password: SecretText("right"))
+
+        XCTAssertEqual(runner.phase, .succeeded)
+        XCTAssertEqual(terminal.processes.map(\.arguments), [steps[0].arguments] + steps.map(\.arguments))
+        XCTAssertEqual(terminal.processes[1].input, Data("right".utf8))
+    }
+
+    func testACommandThatCannotStartFailsTheStep() async {
+        struct NoCLI: Error, LocalizedError { var errorDescription: String? { "no CLI" } }
+        var hooks = FakeTerminal().hooks
+        hooks.runProcess = { _, _, _ in throw NoCLI() }
+        let runner = MachineStepRunner(hooks: hooks, pollInterval: 1_000_000)
+        let steps = passwordPlan()
+
+        await runner.run(steps, inTerminal: false)
+
+        XCTAssertEqual(runner.phase, .failed(step: steps[0].id))
+        XCTAssertEqual(runner.problem, "no CLI")
+    }
+}
+
+@MainActor
 final class AddMachineModelTests: XCTestCase {
     private func store(_ snapshot: MachinesSnapshot) async -> MachinesStore {
         let store = MachinesStore(read: { snapshot }, remove: { _ in })
@@ -201,6 +277,98 @@ final class AddMachineModelTests: XCTestCase {
 
         XCTAssertEqual(model.wizard.stage, .kind)
         XCTAssertEqual(model.wizard.draft.name, "")
+    }
+
+    private var newCLISnapshot: MachinesSnapshot {
+        MachinesSnapshot(
+            hasConfiguration: false, machines: [], packages: [], cliVersion: MachineUnattendedAdd.minimumCLIVersion)
+    }
+
+    func testANewCLIMakesTheWizardAddWithoutATerminal() async {
+        let model = AddMachineModel(
+            machines: await store(newCLISnapshot), runner: MachineStepRunner(hooks: FakeTerminal().hooks),
+            findLima: { nil }, onAdded: {})
+        XCTAssertTrue(model.wizard.unattended)
+
+        let old = AddMachineModel(
+            machines: await store(.none), runner: MachineStepRunner(hooks: FakeTerminal().hooks),
+            findLima: { nil }, onAdded: {})
+        XCTAssertFalse(old.wizard.unattended)
+    }
+
+    func testAPasswordServerIsAddedInTheBackgroundAndThePasswordIsForgottenAfter() async {
+        let terminal = FakeTerminal()
+        let fingerprint = "SHA256:" + String(repeating: "L", count: 43)
+        var added = 0
+        let model = AddMachineModel(
+            machines: await store(newCLISnapshot),
+            runner: MachineStepRunner(hooks: terminal.hooks, pollInterval: 1_000_000),
+            findLima: { nil }, onAdded: { added += 1 },
+            scanMachine: { address, port in
+                MachineScan(address: address, port: Int(port) ?? 22, keyType: "ssh-ed25519",
+                            fingerprint: fingerprint, verify: nil)
+            })
+        model.wizard.choose(.server)
+        model.wizard.draft.name = "backup"
+        model.wizard.draft.address = "203.0.113.20"
+        model.wizard.draft.login = .password
+        model.wizard.draft.password = SecretText("hunter2")
+        await model.scan()
+        XCTAssertFalse(model.wizard.canAdvance)
+        model.wizard.draft.scanConfirmed = true
+        model.wizard.next()
+        model.wizard.next()
+
+        await model.create()
+
+        XCTAssertEqual(model.runner.phase, .succeeded)
+        XCTAssertEqual(terminal.typed, [])
+        XCTAssertEqual(terminal.processes.first?.arguments, [
+            "machines", "add", "--name", "backup", "--address", "203.0.113.20", "--fingerprint", fingerprint,
+            "--password-stdin", "--yes",
+        ])
+        XCTAssertEqual(terminal.processes.first?.input, Data("hunter2".utf8))
+        XCTAssertEqual(model.wizard.draft.password.value, "")
+        XCTAssertEqual(added, 1)
+    }
+
+    func testAScanThatFailsSaysWhyAndTrustsNothing() async {
+        struct Refused: Error, LocalizedError { var errorDescription: String? { "connection refused" } }
+        let model = AddMachineModel(
+            machines: await store(newCLISnapshot), runner: MachineStepRunner(hooks: FakeTerminal().hooks),
+            findLima: { nil }, onAdded: {}, scanMachine: { _, _ in throw Refused() })
+        model.wizard.choose(.server)
+        model.wizard.draft.address = "203.0.113.20"
+
+        await model.scan()
+
+        XCTAssertEqual(model.scanError, "connection refused")
+        XCTAssertNil(model.wizard.draft.scan)
+        XCTAssertFalse(model.scanning)
+    }
+
+    func testASingleAgentKeyIsChosenForThePerson() async {
+        let key = AgentKey(fingerprint: "SHA256:" + String(repeating: "M", count: 43), comment: "alice", type: "ED25519")
+        let model = AddMachineModel(
+            machines: await store(newCLISnapshot), runner: MachineStepRunner(hooks: FakeTerminal().hooks),
+            findLima: { nil }, onAdded: {}, listAgentKeys: { [key] })
+
+        await model.loadAgentKeys()
+
+        XCTAssertEqual(model.agentKeys, [key])
+        XCTAssertEqual(model.wizard.draft.agentKey, key.fingerprint)
+    }
+
+    func testAnAgentThatDoesNotAnswerSaysSo() async {
+        struct NoAgent: Error, LocalizedError { var errorDescription: String? { "no agent" } }
+        let model = AddMachineModel(
+            machines: await store(newCLISnapshot), runner: MachineStepRunner(hooks: FakeTerminal().hooks),
+            findLima: { nil }, onAdded: {}, listAgentKeys: { throw NoAgent() })
+
+        await model.loadAgentKeys()
+
+        XCTAssertEqual(model.agentKeys, [])
+        XCTAssertEqual(model.agentKeysError, "no agent")
     }
 
     func testOpeningThePageKeepsAnswersNotRunYet() async {
@@ -313,5 +481,113 @@ final class MachinesReaderTests: XCTestCase {
         XCTAssertEqual(snapshot.machines.first?.workspaces, ["acme"])
         XCTAssertEqual(
             MachinePackageCatalog.cards(from: snapshot.packages.map(\.info)).map(\.name), ["essentials", "docker"])
+    }
+}
+
+/// A CLI that adds without a terminal: reports its version, each
+/// machine's own packages, and packages with platforms and needs. Records
+/// every call.
+private final class NewCLIRunner: CommandRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [[String]] = []
+    var calls: [[String]] { lock.withLock { recorded } }
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        lock.withLock { recorded.append(args) }
+        switch args {
+        case ["version"]:
+            return "devmachine 0.7.27\n"
+        case ["--format", "json", "config", "path"]:
+            return #"{"path":"/Users/alice/.config/devmachine","source":"default"}"#
+        case ["--format", "json", "packages", "list"]:
+            return #"""
+            {"release":"v17","packages":[
+              {"name":"essentials","scope":"machine","source":"release","summary":"Most machines want it.",
+               "platforms":["linux"],"needs":["base","git"],"installed_on":[]},
+              {"name":"homebrew-apps","scope":"machine","source":"release","summary":"Casks.",
+               "platforms":["macos"],"needs":[],"installed_on":[]}
+            ]}
+            """#
+        case ["--format", "json", "machines", "list"]:
+            return #"[{"name":"main","hosts":["203.0.113.10"],"admin_user":"root","port":22,"workspaces":[],"packages":["essentials","docker"]}]"#
+        default:
+            throw DevmachineCLIError.commandFailed("unexpected \(args)")
+        }
+    }
+}
+
+final class MachinesReaderNewCLITests: XCTestCase {
+    func testWithNoConfigurationANewCLIStillListsTheLatestReleaseForTheFirstMachine() throws {
+        let runner = NewCLIRunner()
+        let cli = DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner)
+
+        let snapshot = try MachinesReader.read(cli: cli, fileExists: { _ in false })
+
+        XCTAssertFalse(snapshot.hasConfiguration)
+        XCTAssertEqual(snapshot.machines, [])
+        XCTAssertTrue(snapshot.addsWithoutTerminal)
+        XCTAssertEqual(snapshot.packages.first?.needs, ["base", "git"])
+        XCTAssertEqual(
+            MachinePackageCatalog.cards(from: snapshot.packages.map(\.info)).map(\.name), ["essentials"])
+        XCTAssertFalse(runner.calls.contains(["--format", "json", "machines", "list"]))
+    }
+
+    func testEachMachinesPackagesComeFromItsOwnList() throws {
+        let cli = DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: NewCLIRunner())
+
+        let snapshot = try MachinesReader.read(
+            cli: cli, fileExists: { $0 == "/Users/alice/.config/devmachine/config.yml" })
+
+        XCTAssertEqual(snapshot.machines.first?.packages, ["essentials", "docker"])
+        XCTAssertEqual(snapshot.cliVersion, SemanticVersion(major: 0, minor: 7, patch: 27))
+    }
+}
+
+/// Answers `machines scan` and `ssh-add -l` like the real tools.
+private struct ScanRunner: CommandRunner {
+    let fingerprint: String
+    var agentExit: Int32 = 0
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        try runCapturing(executable: executable, args: args, environment: environment).stdout
+    }
+
+    func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        if executable == AgentKeyList.executable {
+            XCTAssertEqual(args, ["-l", "-E", "sha256"])
+            XCTAssertNotNil(environment?["SSH_AUTH_SOCK"])
+            switch agentExit {
+            case 0: return ("256 \(fingerprint) alice@example.com (ED25519)\n", "", 0)
+            case 1: return ("The agent has no identities.\n", "", 1)
+            default: return ("", "Could not open a connection to your authentication agent.\n", 2)
+            }
+        }
+        XCTAssertEqual(args, ["--format", "json", "machines", "scan", "--address", "203.0.113.20", "--port", "2222"])
+        return (#"{"address":"203.0.113.20","port":2222,"key_type":"ssh-ed25519","fingerprint":"\#(fingerprint)"}"#, "", 0)
+    }
+}
+
+final class DevmachineCLIMachineTrustTests: XCTestCase {
+    private let fingerprint = "SHA256:" + String(repeating: "N", count: 43)
+
+    private func cli(agentExit: Int32 = 0) -> DevmachineCLI {
+        DevmachineCLI(
+            executable: "/opt/homebrew/bin/devmachine",
+            runner: ScanRunner(fingerprint: fingerprint, agentExit: agentExit),
+            customSocket: "/Users/alice/agent.sock", socketFileExists: { _ in true }, processEnvironment: [:])
+    }
+
+    func testAScanIsReadForTheAddressAndPortAsked() throws {
+        let scan = try cli().scanMachine(address: "203.0.113.20", port: "2222")
+        XCTAssertEqual(scan.fingerprint, fingerprint)
+        XCTAssertNil(scan.verify)
+        XCTAssertEqual(scan.target, "203.0.113.20:2222")
+    }
+
+    func testTheAgentsKeysAreListedThroughTheAppsSocket() throws {
+        XCTAssertEqual(try cli().agentKeys().map(\.fingerprint), [fingerprint])
+        XCTAssertEqual(try cli(agentExit: 1).agentKeys(), [])
+        XCTAssertThrowsError(try cli(agentExit: 2).agentKeys())
     }
 }

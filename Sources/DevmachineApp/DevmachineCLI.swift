@@ -38,9 +38,12 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
     let port: Int
     let workspaces: [String]
     let isSelf: Bool
+    /// The machine's own packages from `config.yml` (CLI 0.7.27+); nil from
+    /// an older CLI, which leaves the field out.
+    var packages: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case name, hosts, workspaces, port
+        case name, hosts, workspaces, port, packages
         case adminUser = "admin_user"
         case isSelf = "self"
     }
@@ -53,6 +56,7 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
         port = try c.decodeIfPresent(Int.self, forKey: .port) ?? 0
         workspaces = try c.decodeIfPresent([String].self, forKey: .workspaces) ?? []
         isSelf = try c.decodeIfPresent(Bool.self, forKey: .isSelf) ?? false
+        packages = try c.decodeIfPresent([String].self, forKey: .packages)
     }
 }
 
@@ -152,15 +156,19 @@ struct CLIPackage: Codable, Equatable, Sendable {
     var kind: String?
     var category: String?
     var credentials: [PackageCredential]?
+    /// `platforms` (empty is any) and `needs` come from CLI 0.7.27 on.
+    var platforms: [String] = []
+    var needs: [String] = []
 
     enum CodingKeys: String, CodingKey {
-        case name, scope, summary, source, kind, category, credentials
+        case name, scope, summary, source, kind, category, credentials, platforms, needs
         case installedOn = "installed_on"
     }
 
     init(
         name: String, scope: String, installedOn: [String], summary: String? = nil, source: String = "",
-        kind: String? = nil, category: String? = nil, credentials: [PackageCredential]? = nil
+        kind: String? = nil, category: String? = nil, credentials: [PackageCredential]? = nil,
+        platforms: [String] = [], needs: [String] = []
     ) {
         self.name = name
         self.scope = scope
@@ -170,6 +178,8 @@ struct CLIPackage: Codable, Equatable, Sendable {
         self.kind = kind
         self.category = category
         self.credentials = credentials
+        self.platforms = platforms
+        self.needs = needs
     }
 
     /// A package the configuration asks for that no recipe provides comes
@@ -184,6 +194,8 @@ struct CLIPackage: Codable, Equatable, Sendable {
         kind = try c.decodeIfPresent(String.self, forKey: .kind)
         category = try c.decodeIfPresent(String.self, forKey: .category)
         credentials = try c.decodeIfPresent([PackageCredential].self, forKey: .credentials)
+        platforms = try c.decodeIfPresent([String].self, forKey: .platforms) ?? []
+        needs = try c.decodeIfPresent([String].self, forKey: .needs) ?? []
     }
 
     /// The name its token is stored under with `secrets set`.
@@ -204,7 +216,9 @@ struct CLIPackage: Codable, Equatable, Sendable {
         installedOn.contains("machine \(machine)")
     }
 
-    var info: PackageInfo { PackageInfo(name: name, scope: scope, summary: summary ?? "", source: source) }
+    var info: PackageInfo {
+        PackageInfo(name: name, scope: scope, summary: summary ?? "", source: source, platforms: platforms, needs: needs)
+    }
 }
 
 private struct CLIPackageList: Decodable {
@@ -493,6 +507,32 @@ struct DevmachineCLI: Sendable {
         )
         try requireSuccess(result)
         return try JSONDecoder().decode(CLIConfigPath.self, from: Data(result.stdout.utf8))
+    }
+
+    /// The host key a server presents, read without logging in or writing
+    /// anything (CLI 0.7.27+): what the wizard shows before anything trusts it.
+    func scanMachine(address: String, port: String) throws -> MachineScan {
+        let result = try runner.runCapturing(
+            executable: executable, args: MachineScan.arguments(address: address, port: port),
+            environment: environment())
+        try requireSuccess(result)
+        guard let scan = MachineScan.parse(result.stdout) else {
+            throw DevmachineCLIError.commandFailed("The CLI gave no fingerprint for \(address).")
+        }
+        return scan.asked(address: address, port: port)
+    }
+
+    /// The keys the SSH agent the CLI is handed holds, so a key chosen here
+    /// is one `machines add --key agent:` can find. `ssh-add` exits 1 with
+    /// no key and 2 when there is no agent to ask.
+    func agentKeys() throws -> [AgentKey] {
+        let result = try runner.runCapturing(
+            executable: AgentKeyList.executable, args: AgentKeyList.arguments, environment: environment())
+        guard result.exitCode == 0 || result.exitCode == 1 else {
+            let detail = result.stderr.isEmpty ? result.stdout : result.stderr
+            throw DevmachineCLIError.commandFailed(detail.isEmpty ? "The SSH agent did not answer." : detail)
+        }
+        return AgentKeyList.parse(result.stdout)
     }
 
     func version() throws -> String {

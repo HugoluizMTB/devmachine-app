@@ -81,7 +81,7 @@ struct AddMachinePage: View {
         case .kind: AddMachineKindView(state: state)
         case .details: AddMachineDetailsView(state: state)
         case .packages: AddMachinePackagesView(state: state, cards: machines.packageCards)
-        case .review: AddMachineReviewView(draft: draft, plan: wizard.plan)
+        case .review: AddMachineReviewView(wizard: wizard)
         case .run: EmptyView()
         }
     }
@@ -154,6 +154,7 @@ private struct AddMachineDetailsView: View {
 
     private var draft: Binding<MachineDraft> { $state.wizard.draft }
     private var problems: [MachineDraftProblem] { state.wizard.problems }
+    private var unattended: Bool { state.wizard.unattended }
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
@@ -163,16 +164,24 @@ private struct AddMachineDetailsView: View {
             if state.wizard.draft.kind == .server {
                 serverFields
             } else {
-                AddMachineNote(text: "Lima creates the machine with root and the password devmachine, "
-                    + "public on purpose: it holds nothing real. The next step adds it like a server you bought.")
+                AddMachineNote(text: AddMachineContent.localNote(unattended: unattended))
             }
             field("First workspace", .workspace,
                   hint: "Optional. A workspace is one Linux account on the machine, and what the sidebar lists.") {
                 TextField("acme", text: draft.workspace).dmField()
             }
+            if unattended, !state.wizard.draft.hasConfiguration, state.wizard.draft.kind == .server {
+                field("Domain", .domain,
+                      hint: "Optional. Published sites get names under it, like app.example.com.") {
+                    TextField("example.com", text: draft.domain).dmField()
+                }
+            }
             if !state.wizard.draft.hasConfiguration {
-                AddMachineNote(text: "This is your first machine, so devmachine setup adds it. "
-                    + "It asks its questions in the terminal on the last step; the answers to give are shown there.")
+                AddMachineNote(text: unattended
+                    ? "This is your first machine, so adding it also writes devmachine's configuration, "
+                        + "as devmachine setup would. Nothing asks in a terminal."
+                    : "This is your first machine, so devmachine setup adds it. "
+                        + "It asks its questions in the terminal on the last step; the answers to give are shown there.")
             }
         }
     }
@@ -198,17 +207,48 @@ private struct AddMachineDetailsView: View {
                 title: { $0 == .key ? "With an SSH key" : "Only with a password" },
                 fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
         }
-        if state.wizard.draft.login == .key {
-            field("Key file", .keyFile,
-                  hint: "The private key you gave your provider for this server, like ~/.ssh/id_ed25519. "
-                    + "No key on it yet? Choose \"Only with a password\".") {
-                TextField("~/.ssh/id_ed25519", text: draft.keyFile).dmField()
+        if unattended {
+            if state.wizard.draft.login == .key {
+                keyChoice
+            } else {
+                field("Password", .password,
+                      hint: "Goes to the CLI on its standard input, once, to install a key; then password login "
+                        + "is turned off. It is never saved, logged or put in a command line.") {
+                    SecureField("The root password from your provider", text: draft.password.value).dmField()
+                }
             }
+            AddMachineScanView(state: state)
+        } else if state.wizard.draft.login == .key {
+            keyFileField
             fingerprintField
         } else {
             AddMachineNote(text: "The CLI asks for the password in the terminal on the last step, "
                 + "uses it once to install a key, then turns password login off. The app never sees it.")
             fingerprintField
+        }
+    }
+
+    private var keyFileField: some View {
+        field("Key file", .keyFile,
+              hint: "The private key you gave your provider for this server, like ~/.ssh/id_ed25519. "
+                + "No key on it yet? Choose \"Only with a password\".") {
+            TextField("~/.ssh/id_ed25519", text: draft.keyFile).dmField()
+        }
+    }
+
+    @ViewBuilder
+    private var keyChoice: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            label("Which key?")
+            DMTabStrip(
+                tabs: ServerKeySource.allCases, selection: draft.keySource,
+                title: { $0 == .file ? "A key file" : "A key in the SSH agent" },
+                fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
+        }
+        if state.wizard.draft.keySource == .file {
+            keyFileField
+        } else {
+            AddMachineAgentKeysView(state: state)
         }
     }
 
@@ -302,6 +342,7 @@ private struct AddMachinePackagesView: View {
                     DMChoiceCard(
                         title: card.name, detail: card.summary,
                         badge: card.isRecommended ? "RECOMMENDED" : (card.isYours ? "YOURS" : nil),
+                        note: card.contains.isEmpty ? nil : "Contains " + card.contains.joined(separator: ", ") + ".",
                         selected: state.wizard.isSelected(card.name), multiple: true
                     ) { state.wizard.togglePackage(card.name) }
                 }
@@ -329,16 +370,23 @@ private struct AddMachinePackagesView: View {
 
 private struct AddMachineReviewView: View {
     @Environment(\.dmMetrics) private var m
-    let draft: MachineDraft
-    let plan: [MachinePlanStep]
+    let wizard: MachineWizard
+
+    private var draft: MachineDraft { wizard.draft }
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
-            Text(verbatim: "These commands run in order, in a terminal on the next step.")
+            Text(verbatim: wizard.unattended
+                ? "These commands run in order on the next step, here, with no terminal."
+                : "These commands run in order, in a terminal on the next step.")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
-            DMCommandBlock(plan.map(\.displayLine), wraps: true)
-            let answers = MachinePlan.terminalAnswers(for: draft)
+            DMCommandBlock(wizard.plan.map(\.displayLine), wraps: true)
+            if wizard.plan.contains(where: { $0.input == .password }) {
+                AddMachineNote(text: "The password goes to the CLI on its standard input. "
+                    + "It is never in a command line, a file or a log.")
+            }
+            let answers = wizard.terminalAnswers
             if !answers.isEmpty {
                 Text(verbatim: "The CLI asks some questions itself. Answer them in the terminal:")
                     .font(.dm(12))
@@ -358,14 +406,19 @@ private struct AddMachineRunView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: m.space.xl) {
-            TerminalPaneView(kind: runner.terminalKind)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .dmSurface(Color.black, radius: DMRadius.panel)
+            if state.wizard.unattended {
+                ProcessOutputView(lines: runner.lines, fills: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                TerminalPaneView(kind: runner.terminalKind)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .dmSurface(Color.black, radius: DMRadius.panel)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: m.space.lg) {
                     outcome
                     steps
-                    let answers = MachinePlan.terminalAnswers(for: state.wizard.draft)
+                    let answers = state.wizard.terminalAnswers
                     if !answers.isEmpty, runner.phase != .succeeded {
                         Text(verbatim: "When the terminal asks")
                             .font(.dm(11, weight: .semibold))
@@ -403,16 +456,24 @@ private struct AddMachineRunView: View {
                 state: DMErrorState(
                     title: "Could not add \(state.wizard.draft.name)",
                     cause: runner.problem,
-                    details: state.wizard.plan.first { $0.id == step }?.displayLine ?? step),
+                    details: failureDetails(step)),
                 retry: { Task { await state.retry() } })
             DMButton("Close", variant: .outline, size: .small, action: onClose)
                 .frame(maxWidth: .infinity)
         case .running, .idle:
-            Text(verbatim: "Watch the terminal. A step that asks something waits for you there.")
+            Text(verbatim: state.wizard.unattended
+                ? "Each command's output shows on the left as it runs. Nothing here asks a question."
+                : "Watch the terminal. A step that asks something waits for you there.")
                 .font(.dm(11.5))
                 .foregroundStyle(Color.dmMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func failureDetails(_ step: String) -> String {
+        let line = state.wizard.plan.first { $0.id == step }?.displayLine ?? step
+        guard state.wizard.unattended, !runner.lines.isEmpty else { return line }
+        return runner.lines.suffix(30).joined(separator: "\n")
     }
 
     private var steps: some View {
@@ -500,6 +561,14 @@ enum AddMachineContent {
         summary: "What a new machine starts with: base tools, git, a firewall, SSH without passwords, "
             + "Caddy, and what this app reads from a machine.",
         isRecommended: true, isYours: false)
+
+    static func localNote(unattended: Bool) -> String {
+        unattended
+            ? "Lima creates the machine with root and the password devmachine, public on purpose: it holds "
+                + "nothing real. devmachine then connects it with that password and turns password login off."
+            : "Lima creates the machine with root and the password devmachine, "
+                + "public on purpose: it holds nothing real. The next step adds it like a server you bought."
+    }
 
     static func confirmMessage(_ draft: MachineDraft) -> String {
         switch draft.kind {

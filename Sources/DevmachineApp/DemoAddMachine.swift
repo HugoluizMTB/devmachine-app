@@ -4,7 +4,9 @@ import Foundation
 
 /// Debug builds only. Settings → Machines, the sidebar with no machine, and
 /// every step of the Add machine wizard, for `DEVMACHINE_DEMO_WALK=machines`.
-/// The run screens are seeded states: nothing is typed and no CLI runs.
+/// The run screens are seeded states: nothing is typed and no CLI runs. The
+/// `legacy-` screens are a CLI older than `MachineUnattendedAdd`, which
+/// still adds through a terminal.
 @MainActor
 enum DemoAddMachine {
     static let screens: [DemoSnapshots.Screen] = [
@@ -12,16 +14,20 @@ enum DemoAddMachine {
         .init(id: "add-machine-kind", fileName: "101-add-machine-kind.png", settleNanoseconds: 400_000_000),
         .init(id: "add-machine-details", fileName: "102-add-machine-details.png", settleNanoseconds: 400_000_000),
         .init(id: "add-machine-password", fileName: "103-add-machine-password.png", settleNanoseconds: 400_000_000),
-        .init(id: "add-machine-packages", fileName: "104-add-machine-packages.png", settleNanoseconds: 400_000_000),
-        .init(id: "add-machine-review", fileName: "105-add-machine-review.png", settleNanoseconds: 400_000_000),
-        .init(id: "add-machine-local-review", fileName: "106-add-machine-local-review.png", settleNanoseconds: 400_000_000),
-        .init(id: "add-machine-running", fileName: "107-add-machine-running.png", settleNanoseconds: 900_000_000),
-        .init(id: "add-machine-failed", fileName: "108-add-machine-failed.png", settleNanoseconds: 600_000_000),
-        .init(id: "add-machine-done", fileName: "109-add-machine-done.png", settleNanoseconds: 600_000_000),
-        .init(id: "no-machines-home", fileName: "110-no-machines-home.png", settleNanoseconds: 700_000_000),
-        .init(id: "no-machines-kind", fileName: "111-no-machines-kind.png", settleNanoseconds: 400_000_000),
-        .init(id: "no-machines-packages", fileName: "112-no-machines-packages.png", settleNanoseconds: 400_000_000),
-        .init(id: "no-machines-review", fileName: "113-no-machines-review.png", settleNanoseconds: 400_000_000),
+        .init(id: "add-machine-agent-key", fileName: "104-add-machine-agent-key.png", settleNanoseconds: 400_000_000),
+        .init(id: "add-machine-packages", fileName: "105-add-machine-packages.png", settleNanoseconds: 400_000_000),
+        .init(id: "add-machine-review", fileName: "106-add-machine-review.png", settleNanoseconds: 400_000_000),
+        .init(id: "add-machine-local-review", fileName: "107-add-machine-local-review.png", settleNanoseconds: 400_000_000),
+        .init(id: "add-machine-running", fileName: "108-add-machine-running.png", settleNanoseconds: 900_000_000),
+        .init(id: "add-machine-failed", fileName: "109-add-machine-failed.png", settleNanoseconds: 600_000_000),
+        .init(id: "add-machine-done", fileName: "110-add-machine-done.png", settleNanoseconds: 600_000_000),
+        .init(id: "no-machines-home", fileName: "111-no-machines-home.png", settleNanoseconds: 700_000_000),
+        .init(id: "no-machines-kind", fileName: "112-no-machines-kind.png", settleNanoseconds: 400_000_000),
+        .init(id: "no-machines-details", fileName: "113-no-machines-details.png", settleNanoseconds: 400_000_000),
+        .init(id: "no-machines-packages", fileName: "114-no-machines-packages.png", settleNanoseconds: 400_000_000),
+        .init(id: "no-machines-review", fileName: "115-no-machines-review.png", settleNanoseconds: 400_000_000),
+        .init(id: "legacy-review", fileName: "116-legacy-review.png", settleNanoseconds: 400_000_000),
+        .init(id: "legacy-running", fileName: "117-legacy-running.png", settleNanoseconds: 900_000_000),
     ]
 
     static func handles(_ id: String) -> Bool {
@@ -32,7 +38,10 @@ enum DemoAddMachine {
         let state = AddMachineModel.shared
         let machines = MachinesStore.shared
         let hasMachines = !id.hasPrefix("no-machines")
-        machines.seedDemo(hasMachines ? DemoData.machinesSnapshot : DemoData.noMachinesSnapshot)
+        let legacy = id.hasPrefix("legacy")
+        machines.seedDemo(
+            legacy ? DemoData.legacyMachinesSnapshot
+                : (hasMachines ? DemoData.machinesSnapshot : DemoData.noMachinesSnapshot))
         model.workspaces = hasMachines ? DemoData.workspaces : []
         stats.seedDemo(hasMachines: hasMachines)
         state.startOver()
@@ -52,25 +61,37 @@ enum DemoAddMachine {
         switch id {
         case "add-machine-details":
             fillServer(state)
+            await state.scan()
         case "add-machine-password":
             fillServer(state)
             state.wizard.draft.login = .password
+            state.wizard.draft.password = SecretText("demo-password")
             state.wizard.draft.fingerprint = ""
-        case "add-machine-packages":
+            await state.scan()
+        case "add-machine-agent-key":
+            fillServer(state)
+            state.wizard.draft.keySource = .agent
+            state.wizard.draft.fingerprint = ""
+            await state.loadAgentKeys()
+            state.wizard.draft.agentKey = DemoData.addMachineAgentKeys[0].fingerprint
+            await state.scan()
+            state.wizard.draft.scanConfirmed = true
+        case "add-machine-packages", "no-machines-packages":
             fillServer(state)
             state.wizard.next()
             state.wizard.togglePackage("docker")
-            state.wizard.togglePackage("tailscale")
         case "add-machine-review":
-            fillServer(state)
+            fillPasswordServer(state)
             state.wizard.next()
             state.wizard.togglePackage("docker")
             state.wizard.next()
-        case "no-machines-packages":
+        case "no-machines-details":
             fillServer(state)
-            state.wizard.next()
+            state.wizard.draft.domain = "example.com"
+            await state.scan()
         case "no-machines-review":
             fillServer(state)
+            state.wizard.draft.domain = "example.com"
             state.wizard.next()
             state.wizard.next()
         case "add-machine-local-review":
@@ -79,8 +100,13 @@ enum DemoAddMachine {
             state.wizard.draft.workspace = "acme-lab"
             state.wizard.next()
             state.wizard.next()
-        case "add-machine-running", "add-machine-failed", "add-machine-done":
+        case "legacy-review":
             fillServer(state)
+            state.wizard.draft.login = .password
+            state.wizard.next()
+            state.wizard.next()
+        case "add-machine-running", "add-machine-failed", "add-machine-done", "legacy-running":
+            if id == "legacy-running" { fillServer(state) } else { fillPasswordServer(state) }
             state.wizard.next()
             state.wizard.togglePackage("docker")
             state.wizard.next()
@@ -89,6 +115,12 @@ enum DemoAddMachine {
         default:
             break
         }
+    }
+
+    private static func fillPasswordServer(_ state: AddMachineModel) {
+        fillServer(state)
+        state.wizard.draft.login = .password
+        state.wizard.draft.password = SecretText("demo-password")
     }
 
     private static func fillServer(_ state: AddMachineModel) {
@@ -102,22 +134,31 @@ enum DemoAddMachine {
 
     private static func seedRun(_ state: AddMachineModel, id: String) {
         let plan = state.wizard.plan
+        let output = DemoData.addMachineOutput
         var statuses: [String: MachineStepRunner.StepStatus] = [:]
         switch id {
-        case "add-machine-running":
+        case "legacy-running":
             statuses[plan[0].id] = .done
             statuses[plan[1].id] = .running
             state.runner.seedDemo(statuses: statuses, phase: .running)
-        case "add-machine-failed":
+        case "add-machine-running":
             statuses[plan[0].id] = .done
-            statuses[plan[1].id] = .done
-            statuses[plan[2].id] = .failed
+            statuses[plan[1].id] = .running
+            state.runner.seedDemo(statuses: statuses, phase: .running, lines: output)
+        case "add-machine-failed":
+            statuses[plan[0].id] = .failed
             state.runner.seedDemo(
-                statuses: statuses, phase: .failed(step: plan[2].id),
-                problem: "\(plan[2].displayLine) ended with an error. The terminal shows what it said.")
+                statuses: statuses, phase: .failed(step: plan[0].id),
+                problem: "connecting to 203.0.113.20:22: connection timed out",
+                lines: Array(output.prefix(1)) + [
+                    "Error: connecting to 203.0.113.20:22: connection timed out",
+                ])
         default:
             for step in plan { statuses[step.id] = .done }
-            state.runner.seedDemo(statuses: statuses, phase: .succeeded)
+            state.runner.seedDemo(
+                statuses: statuses, phase: .succeeded,
+                lines: output + ["$ devmachine workspaces new beta --machine backup --yes", "added workspace beta",
+                                 "$ devmachine sync --machine backup --yes", "backup is in sync"])
         }
     }
 }

@@ -15,14 +15,29 @@ struct ConfiguredMachine: Equatable, Identifiable, Sendable {
 }
 
 /// What one read of the configuration found. `hasConfiguration` is false
-/// before the CLI's `config.yml` exists: then there is no machine, and every
-/// `machines`/`packages` call fails, so none is made.
+/// before the CLI's `config.yml` exists: then there is no machine. An older
+/// CLI fails every `machines`/`packages` call then, so none is made; one
+/// that adds without a terminal (`MachineUnattendedAdd`) lists the latest
+/// release's packages, which the first machine can start with.
 struct MachinesSnapshot: Equatable, Sendable {
     var hasConfiguration: Bool
     var machines: [ConfiguredMachine]
     var packages: [CLIPackage]
+    var cliVersion: SemanticVersion?
+
+    init(
+        hasConfiguration: Bool, machines: [ConfiguredMachine], packages: [CLIPackage],
+        cliVersion: SemanticVersion? = nil
+    ) {
+        self.hasConfiguration = hasConfiguration
+        self.machines = machines
+        self.packages = packages
+        self.cliVersion = cliVersion
+    }
 
     static let none = MachinesSnapshot(hasConfiguration: false, machines: [], packages: [])
+
+    var addsWithoutTerminal: Bool { MachineUnattendedAdd.isSupported(cliVersion: cliVersion) }
 }
 
 enum MachinesReader {
@@ -31,18 +46,26 @@ enum MachinesReader {
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) throws -> MachinesSnapshot {
         let directory = try cli.configPath().path
+        let version = (try? cli.version()).flatMap { SemanticVersion.first(in: $0) }
         guard fileExists((directory as NSString).appendingPathComponent(AppSettings.opsRepoMarker)) else {
-            return .none
+            guard MachineUnattendedAdd.isSupported(cliVersion: version) else {
+                return MachinesSnapshot(hasConfiguration: false, machines: [], packages: [], cliVersion: version)
+            }
+            // The latest release is read over the network; without one the
+            // wizard still offers essentials, so a failure is not an error.
+            let packages = (try? cli.packages()) ?? []
+            return MachinesSnapshot(hasConfiguration: false, machines: [], packages: packages, cliVersion: version)
         }
         let packages = try cli.packages()
         let machines = try cli.listConfigMachines().map { machine in
             ConfiguredMachine(
                 name: machine.name, hosts: machine.hosts, adminUser: machine.adminUser, port: machine.port,
                 workspaces: machine.workspaces,
-                packages: packages.filter { $0.isInstalled(onMachine: machine.name) }.map(\.name),
+                packages: machine.packages
+                    ?? packages.filter { $0.isInstalled(onMachine: machine.name) }.map(\.name),
                 isSelf: machine.isSelf)
         }
-        return MachinesSnapshot(hasConfiguration: true, machines: machines, packages: packages)
+        return MachinesSnapshot(hasConfiguration: true, machines: machines, packages: packages, cliVersion: version)
     }
 }
 
