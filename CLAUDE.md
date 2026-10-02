@@ -385,7 +385,7 @@ Rules:
 - **The Local workspace lists what `zmx ls` reports**, merged with what the app
   remembers (`LocalSessionScan.merge`): a session started outside the app shows
   up, and a remembered one that has no shell yet shows without a client count.
-  One `ps -axo pid=,ppid=,comm=` per poll detects every enabled coding harness.
+  One `ps -axo pid=,ppid=,comm=` per poll detects every registered coding harness.
 - **A local pane runs the account's login shell** (`LocalShell`: the user
   database first, then `SHELL`, then `/bin/zsh`), never a fixed zsh: a bash or
   fish user got a zsh with none of their configuration.
@@ -509,8 +509,12 @@ Rules:
   inside its field. WebKit's "Open Link in New Window" reads "New Tab".
 
 ## Coding harnesses
-- Multiple harnesses may be enabled globally. Enabling one validates only its
-  local CLI; a failed check does not change settings.
+- **Detection never depends on the toggle.** Every harness in
+  `HarnessRegistry.builtIn` is detected, badged, gets its icon, upload folder
+  and Context panel, enabled or not and whether or not its CLI is on this Mac:
+  many run only on a server. Enabling one only adds it to the launch choices
+  and session defaults (and its usage card); that still needs its local CLI,
+  and a failed check does not change settings.
 - This Mac has one Terminal-or-harness default. Remote workspaces inherit one
   remote fallback and may override it individually.
 - Remote choices are declarative. Never probe or modify a VPS to validate a
@@ -547,13 +551,19 @@ Rules:
   is opened `mode=ro` (never `immutable=1`, which misses rows still in the
   WAL); a locked or missing database reads as no sessions. `ContextFacade`
   serves every harness in the table, local or remote: the remote
-  `devmachine-infer` answers with the same ids. A harness is detected only
-  while it is enabled, by exact program name (`pi` is never `pip`); the session's
-  detected harnesses pick the transcript before the newest-file fallback.
-- **Remote Cline is not detected.** tmux reports the pane's foreground program,
-  and Cline's npm launcher is `node`; the native `.cline` it starts is a child
-  tmux does not name. Matching bare `node` would badge every Node program.
-  Locally the process tree shows `.cline`, so a local session is detected.
+  `devmachine-infer` answers with the same ids. A harness is detected by exact
+  program name (`pi` is never `pip`); the session's detected harnesses pick the
+  transcript before the newest-file fallback.
+- **A remote pane is matched by every program under it, not only the one in
+  front.** tmux names the foreground program, and Cline's npm launcher is
+  `node`; the native `.cline` it starts is a child. So the session listing
+  (`RemoteCommands.listSessions`, still one ssh per poll) also returns each
+  pane's pid and the host's `ps -A -o pid=,ppid=,comm=`, and
+  `TmuxListParser` walks the pane's descendants with
+  `ProcessTree.matchingPrograms`, as the local scan does. Bare `node` matches
+  nothing. tmux runs last in that command: its exit code is the command's,
+  and 127 is how a host without tmux is told apart. Without a process table
+  the pane's own command still counts.
 
 ## Performance rules (learned from a 2 GB footprint)
 - Poll only while a view is visible (`onAppear`/`onDisappear` begin/end, refcount),
