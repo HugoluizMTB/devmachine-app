@@ -33,24 +33,23 @@ private final class ScriptedRunner: CommandRunner, @unchecked Sendable {
 }
 
 private func detection(
-    homebrewFound: Bool = true, cliFound: Bool = true, adminMachine: String? = nil,
+    cliFound: Bool = true, adminMachine: String? = nil,
     missingPackageMachines: [String] = [], agents: [DetectedAgent] = []
 ) -> OnboardingDetection {
     OnboardingDetection(
-        homebrewFound: homebrewFound, cliFound: cliFound, adminMachine: adminMachine,
+        cliFound: cliFound, adminMachine: adminMachine,
         missingPackageMachines: missingPackageMachines, agents: agents)
 }
 
 // MARK: - OnboardingPlan.missingSteps
 
 final class OnboardingPlanMissingStepsTests: XCTestCase {
-    func testEverythingMissingListsTrustTapInstallAndSetupOnly() {
-        // No machine is known yet, so there is nothing to add the package to.
+    func testEverythingMissingListsInstallAndSetupOnly() {
         let steps = OnboardingPlan.missingSteps(for: .empty)
-        XCTAssertEqual(steps, [.trustTap, .installCLI, .runSetup])
+        XCTAssertEqual(steps, [.installCLI, .runSetup])
     }
 
-    func testCLIFoundButNoMachineSkipsTheTapAndInstallSteps() {
+    func testCLIFoundButNoMachineSkipsTheInstallStep() {
         let steps = OnboardingPlan.missingSteps(for: detection(cliFound: true, adminMachine: nil))
         XCTAssertEqual(steps, [.runSetup])
     }
@@ -83,42 +82,33 @@ final class OnboardingPlanMissingStepsTests: XCTestCase {
         XCTAssertTrue(steps.contains(.sync(machine: "acme")))
     }
 
-    func testHomebrewMissingIsNeverAStepOfItsOwn() {
-        // Homebrew is shown as a banner, never run by the app, so it never
-        // appears in the runnable step list even when everything else is missing.
-        let steps = OnboardingPlan.missingSteps(for: detection(homebrewFound: false, cliFound: false))
-        XCTAssertFalse(steps.contains(where: { $0.title.lowercased().contains("homebrew") }))
-    }
 }
 
 // MARK: - OnboardingPlan.commands
 
 final class OnboardingPlanCommandsTests: XCTestCase {
-    func testCommandsForAFreshMachineListTapInstallAndSetup() {
+    func testAFreshMacInstallsTheBinaryWithoutHomebrewOrXcode() {
         let commands = OnboardingPlan.commands(for: .empty)
-        XCTAssertEqual(commands.map(\.id), [.trustTap, .installCLI, .runSetup])
-        XCTAssertEqual(commands[0].command, "brew trust --formula mydevmachine/tap/devmachine")
-        XCTAssertEqual(commands[1].command, "brew install mydevmachine/tap/devmachine")
-        XCTAssertEqual(commands[2].command, "devmachine setup")
+        XCTAssertEqual(commands.map(\.id), [.installCLI, .runSetup])
+        XCTAssertEqual(commands[0].command, "curl -fsSL https://mydevmachine.sh/install.sh | DEVMACHINE_NO_BREW=1 sh")
+        XCTAssertEqual(commands[1].command, #"PATH="$HOME/.local/bin:$PATH" devmachine setup"#)
     }
 
     func testCommandsForAMissingPackageUseTheMachineName() {
         let commands = OnboardingPlan.commands(
             for: detection(adminMachine: "acme", missingPackageMachines: ["acme"]))
         XCTAssertEqual(commands.map(\.command), [
-            "devmachine packages add devmachine-app --machine acme",
-            "devmachine sync --machine acme",
+            #"PATH="$HOME/.local/bin:$PATH" devmachine packages add devmachine-app --machine acme"#,
+            #"PATH="$HOME/.local/bin:$PATH" devmachine sync --machine acme"#,
         ])
     }
 
     func testCommandsForSeveralMissingMachinesListEachOnesPair() {
         let commands = OnboardingPlan.commands(
             for: detection(adminMachine: "acme", missingPackageMachines: ["acme", "beta"]))
-        XCTAssertEqual(commands.map(\.command), [
-            "devmachine packages add devmachine-app --machine acme",
-            "devmachine sync --machine acme",
-            "devmachine packages add devmachine-app --machine beta",
-            "devmachine sync --machine beta",
+        XCTAssertEqual(commands.map(\.id), [
+            .addPackage(machine: "acme"), .sync(machine: "acme"),
+            .addPackage(machine: "beta"), .sync(machine: "beta"),
         ])
     }
 }
@@ -132,11 +122,8 @@ final class OnboardingDetectorTests: XCTestCase {
             "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
         ])
         let result = OnboardingDetector.detect(
-            homebrewPaths: ["/fake/brew"], exists: { $0 == "/fake/brew" },
             cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) },
             agents: { [] })
-
-        XCTAssertTrue(result.homebrewFound)
         XCTAssertTrue(result.cliFound)
         XCTAssertEqual(result.adminMachine, "acme")
         XCTAssertEqual(result.missingPackageMachines, [])
@@ -145,11 +132,8 @@ final class OnboardingDetectorTests: XCTestCase {
 
     func testMissingCLIReportsNothingElseDetected() {
         let result = OnboardingDetector.detect(
-            homebrewPaths: ["/fake/brew"], exists: { _ in false },
             cli: { throw DevmachineCLIError.executableNotFound(["/fake"]) },
             agents: { [] })
-
-        XCTAssertFalse(result.homebrewFound)
         XCTAssertFalse(result.cliFound)
         XCTAssertNil(result.adminMachine)
         XCTAssertEqual(result.missingPackageMachines, [])
@@ -159,7 +143,6 @@ final class OnboardingDetectorTests: XCTestCase {
     func testCLIFoundButNoMachineConfiguredLeavesThePackageUnchecked() {
         let runner = ScriptedRunner(byCommand: ["machines": ("[]", "", 0)])
         let result = OnboardingDetector.detect(
-            homebrewPaths: ["/fake/brew"], exists: { $0 == "/fake/brew" },
             cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) },
             agents: { [] })
 
@@ -178,7 +161,6 @@ final class OnboardingDetectorTests: XCTestCase {
             "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
         ])
         let result = OnboardingDetector.detect(
-            homebrewPaths: ["/fake/brew"], exists: { $0 == "/fake/brew" },
             cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) },
             agents: { [] })
 
@@ -192,7 +174,6 @@ final class OnboardingDetectorTests: XCTestCase {
             "list": ("", "connection refused", 1),
         ])
         let result = OnboardingDetector.detect(
-            homebrewPaths: ["/fake/brew"], exists: { $0 == "/fake/brew" },
             cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) },
             agents: { [] })
 
@@ -238,60 +219,6 @@ final class AgentDetectorTests: XCTestCase {
     }
 }
 
-// MARK: - AgentPrompt
-
-final class AgentPromptTests: XCTestCase {
-    func testClaudeCommandLineQuotesThePromptAsOneArgument() {
-        let line = AgentPrompt.commandLine(for: .claude)
-        XCTAssertTrue(line.hasPrefix("claude \""))
-        XCTAssertTrue(line.hasSuffix("\""))
-        XCTAssertTrue(line.contains("mydevmachine.sh/agent-setup.md"))
-    }
-
-    func testCodexCommandLineUsesItsOwnExecutableName() {
-        let line = AgentPrompt.commandLine(for: .codex)
-        XCTAssertTrue(line.hasPrefix("codex \""))
-    }
-
-    func testEmbeddedQuotesAreEscapedSoTheShellSeesOneArgument() {
-        let quoted = AgentPrompt.shellQuote(#"say "hi" and `whoami` and $HOME"#)
-        XCTAssertEqual(quoted, #""say \"hi\" and \`whoami\` and \$HOME""#)
-    }
-}
-
-// MARK: - OnboardingMarker
-
-final class OnboardingMarkerTests: XCTestCase {
-    func testWrapAppendsAnIfElseThatEchoesOkOrFail() {
-        let wrapped = OnboardingMarker.wrap("brew install foo")
-        XCTAssertEqual(wrapped, "brew install foo; if [ $? -eq 0 ]; then echo __DM_STEP_OK__; else echo __DM_STEP_FAIL__; fi")
-    }
-
-    func testOutcomeIsNilUntilAFreshMarkerAppears() {
-        XCTAssertNil(OnboardingMarker.outcome(okCount: 0, failCount: 0, stepsFinishedBefore: 0))
-        XCTAssertNil(OnboardingMarker.outcome(okCount: 1, failCount: 0, stepsFinishedBefore: 1))
-    }
-
-    func testOutcomeIsDoneWhenTheFreshMarkerIsOk() {
-        XCTAssertEqual(OnboardingMarker.outcome(okCount: 1, failCount: 0, stepsFinishedBefore: 0), .done)
-        XCTAssertEqual(OnboardingMarker.outcome(okCount: 4, failCount: 1, stepsFinishedBefore: 3), .done)
-    }
-
-    func testOutcomeIsFailedWhenTheFreshMarkerIsFail() {
-        XCTAssertEqual(
-            OnboardingMarker.outcome(okCount: 0, failCount: 1, stepsFinishedBefore: 0),
-            .failed("This step exited with an error. See the terminal above."))
-        XCTAssertEqual(
-            OnboardingMarker.outcome(okCount: 2, failCount: 2, stepsFinishedBefore: 3),
-            .failed("This step exited with an error. See the terminal above."))
-    }
-
-    func testAnOlderStepsMarkersDoNotCountAsThisStepFinishing() {
-        // Two steps already finished ok; nothing new has appeared yet for the third.
-        XCTAssertNil(OnboardingMarker.outcome(okCount: 2, failCount: 0, stepsFinishedBefore: 2))
-    }
-}
-
 // MARK: - OnboardingDetection.isComplete (success detection)
 
 final class OnboardingDetectionCompleteTests: XCTestCase {
@@ -311,10 +238,4 @@ final class OnboardingDetectionCompleteTests: XCTestCase {
         XCTAssertTrue(result.isComplete)
     }
 
-    func testHomebrewMissingDoesNotBlockCompletionOnceEverythingElseIsThere() {
-        // Homebrew is only needed to install the CLI; once the CLI, machine
-        // and package are all in place it no longer matters.
-        let result = detection(homebrewFound: false, cliFound: true, adminMachine: "acme", missingPackageMachines: [])
-        XCTAssertTrue(result.isComplete)
-    }
 }

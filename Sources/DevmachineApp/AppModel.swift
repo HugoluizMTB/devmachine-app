@@ -371,6 +371,9 @@ final class AppModel: ObservableObject {
     /// does — no background service (session sweep, stats, context) is started
     /// until this clears.
     @Published private(set) var cliMissing = false
+    /// The first-run setup owns the window: no CLI, or no saved settings
+    /// yet, and the person has not skipped it (`launchRoute`).
+    @Published private(set) var showsOnboarding = false
     @Published var settings: AppSettings? = nil
     /// What the CLI answered about this Mac's setup — the config folder,
     /// admin machine, base domain, and workspace aliases Setup shows
@@ -456,6 +459,7 @@ final class AppModel: ObservableObject {
     private let zmxPath: String?
     private let sessionSuffix: @Sendable () -> String
     private let cliAvailabilityCheck: @Sendable () -> Bool
+    private let detectSettings: @Sendable () -> CLIDetectedSettings
     private var navigationHistory = NavigationHistory(initial: .home)
     private var isRestoringNavigation = false
     private var selectionPollTimer: Timer? = nil
@@ -502,6 +506,9 @@ final class AppModel: ObservableObject {
         cliAvailabilityCheck: @escaping @Sendable () -> Bool = {
             (try? DevmachineCLI.resolve()) != nil
         },
+        detectSettings: @escaping @Sendable () -> CLIDetectedSettings = {
+            CLIAutoDetect.detect(cli: { try DevmachineCLI.resolve() })
+        },
         defaults: UserDefaults = AppModel.defaultDefaults(),
         cache: DataCache = DataCache()
     ) {
@@ -522,6 +529,7 @@ final class AppModel: ObservableObject {
         self.zmxPath = zmxPath
         self.sessionSuffix = sessionSuffix
         self.cliAvailabilityCheck = cliAvailabilityCheck
+        self.detectSettings = detectSettings
         AppModel.shared = self
         observeWake()
         TerminalRegistry.shared.onSessionEnded = { [weak self] kind in
@@ -1288,22 +1296,80 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Runs at launch and from the gate page's "Check again" button. While the
-    /// CLI is missing this only updates `cliMissing`, so the gate stays up and
-    /// nothing below it starts. Once found, it falls through exactly where a
-    /// normal launch would: Setup if unconfigured, else load the workspaces.
+    enum LaunchRoute: Equatable {
+        case onboarding
+        case home
+    }
+
+    static let onboardingSkippedKey = "onboardingSkipped"
+
+    /// Home needs saved settings, and the CLI unless the person chose to go
+    /// without it. Anything else is the setup flow, never Settings, which
+    /// used to greet a first run with a form to fill in.
+    static func launchRoute(cliFound: Bool, isConfigured: Bool, skipped: Bool) -> LaunchRoute {
+        isConfigured && (cliFound || skipped) ? .home : .onboarding
+    }
+
+    var onboardingSkipped: Bool { defaults.bool(forKey: Self.onboardingSkippedKey) }
+
+    /// Runs at launch. Onboarding owns the window while it is due, and
+    /// nothing below it starts; otherwise the workspaces load.
     func checkCLIAndProceed(isConfigured: Bool) {
         if DemoMode.isActive {
             seedDemoState()
             return
         }
         cliMissing = !cliAvailabilityCheck()
-        guard !cliMissing else { return }
-        if isConfigured {
+        switch Self.launchRoute(cliFound: !cliMissing, isConfigured: isConfigured, skipped: onboardingSkipped) {
+        case .onboarding:
+            showsOnboarding = true
+        case .home:
+            showsOnboarding = false
             loadWorkspaces()
-        } else {
-            activePage = .setup
         }
+    }
+
+    /// Reads the CLI again, off the main thread: Settings asks each time it
+    /// opens, so a CLI installed after launch is picked up.
+    @discardableResult
+    func refreshDetected() async -> CLIDetectedSettings {
+        guard !DemoMode.isActive else { return detected }
+        let detect = detectSettings
+        let next = await Task.detached { detect() }.value
+        if detected != next { detected = next }
+        return next
+    }
+
+    /// "Start using Devmachine": straight into Home, with no restart and no
+    /// stop at Settings. What the CLI reports fills the empty Connection
+    /// fields and is saved, so Settings opens already valid.
+    func completeOnboarding(saving store: SettingsStore) async {
+        await leaveOnboarding(saving: store)
+    }
+
+    /// "Skip for now": Home with local sessions only. Remembered, so the next
+    /// launch does not ask again; Settings can open the setup later.
+    func skipOnboarding(saving store: SettingsStore) async {
+        defaults.set(true, forKey: Self.onboardingSkippedKey)
+        await leaveOnboarding(saving: store)
+    }
+
+    /// Back to the setup flow from Settings: the skip is forgotten.
+    func openOnboarding() {
+        defaults.removeObject(forKey: Self.onboardingSkippedKey)
+        activePage = nil
+        showsOnboarding = true
+    }
+
+    private func leaveOnboarding(saving store: SettingsStore) async {
+        let detected = await refreshDetected()
+        let next = detected.filling(store.settings ?? .empty)
+        if store.settings != next { store.settings = next }
+        settings = next
+        cliMissing = !cliAvailabilityCheck()
+        activePage = nil
+        showsOnboarding = false
+        loadWorkspaces()
     }
 
     /// `DEVMACHINE_DEMO=1`: skips the CLI gate, Setup, and every ssh/CLI call
@@ -1313,6 +1379,7 @@ final class AppModel: ObservableObject {
     /// spawning mosh/ssh/zmx.
     private func seedDemoState() {
         cliMissing = false
+        showsOnboarding = false
         settings = .empty
         hasCaddyMachine = true
         activePage = nil
@@ -1342,8 +1409,8 @@ final class AppModel: ObservableObject {
 
     func loadWorkspaces() {
         guard let settings else { return }
-        let detected = CLIAutoDetect.detect(cli: { try DevmachineCLI.resolve() })
-        self.detected = detected
+        let detected = detectSettings()
+        if self.detected != detected { self.detected = detected }
         var settingsWithAliases = settings
         settingsWithAliases.workspaceAliases = detected.workspaceAliases
         self.settings = settingsWithAliases
@@ -1367,6 +1434,10 @@ final class AppModel: ObservableObject {
     }
 
     #if DEBUG
+    func seedDemoDetected(_ value: CLIDetectedSettings) {
+        detected = value
+    }
+
     func seedDemoSessionProblem(_ problem: SessionProblem?, alias: String) {
         sessionProblems[alias] = problem
         if problem != nil { sessionsByAlias[alias] = [] }
@@ -1379,10 +1450,9 @@ final class AppModel: ObservableObject {
     func reloadConfiguration() {
         guard let settings, hasLoadedWorkspaces, !DemoMode.isActive else { return }
         let source = services.workspaceSource
+        let detect = detectSettings
         Task {
-            let detected = await Task.detached {
-                CLIAutoDetect.detect(cli: { try DevmachineCLI.resolve() })
-            }.value
+            let detected = await Task.detached { detect() }.value
             var settingsWithAliases = self.settings ?? settings
             settingsWithAliases.workspaceAliases = detected.workspaceAliases
             let resolved = settingsWithAliases

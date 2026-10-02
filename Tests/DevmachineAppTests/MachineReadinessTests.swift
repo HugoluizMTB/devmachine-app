@@ -409,47 +409,6 @@ final class SessionProblemModelTests: XCTestCase {
     }
 }
 
-private struct FakeInstallRunner: CLIInstallRunning {
-    let status: Int32
-    let lines: [String]
-    func run(_ plan: CLIInstallPlan, output: @escaping @Sendable (String) -> Void) async throws -> Int32 {
-        for line in lines { output(line) }
-        return status
-    }
-}
-
-@MainActor
-final class CLIInstallModelTests: XCTestCase {
-    func testInstalledOnlyWhenTheAppCanFindTheCLIAfterwards() async {
-        let model = CLIInstallModel(
-            plan: .homebrew(brew: "/opt/homebrew/bin/brew"),
-            runner: FakeInstallRunner(status: 0, lines: ["==> Pouring devmachine"]),
-            findsCLI: { true })
-        await model.install()
-        XCTAssertEqual(model.phase, .installed)
-        XCTAssertEqual(model.output, ["$ brew install mydevmachine/tap/devmachine", "==> Pouring devmachine"])
-    }
-
-    func testAFailedInstallShowsTheInstallersOwnReason() async {
-        let model = CLIInstallModel(
-            plan: .installer,
-            runner: FakeInstallRunner(status: 1, lines: ["devmachine install: 'curl' is required but not found on PATH"]),
-            findsCLI: { false })
-        await model.install()
-        guard case let .failed(error) = model.phase else { return XCTFail("expected a failure") }
-        XCTAssertEqual(error.cause, "devmachine install: 'curl' is required but not found on PATH")
-        XCTAssertTrue(error.details.contains("curl -fsSL https://mydevmachine.sh/install.sh | sh"))
-    }
-
-    func testAnInstallTheAppCannotFindIsAFailure() async {
-        let model = CLIInstallModel(
-            plan: .installer, runner: FakeInstallRunner(status: 0, lines: []), findsCLI: { false })
-        await model.install()
-        guard case let .failed(error) = model.phase else { return XCTFail("expected a failure") }
-        XCTAssertEqual(error.title, "The CLI was installed, but the app can't find it")
-    }
-}
-
 final class MachineReadinessContentTests: XCTestCase {
     func testTitles() {
         XCTAssertEqual(
@@ -483,11 +442,6 @@ final class MachineReadinessContentTests: XCTestCase {
 
     func testTheOldCLITextNamesTheVersionItNeeds() {
         XCTAssertTrue(MachineReadinessContent.oldCLIBody.contains("0.7.24"))
-    }
-
-    func testInstallWording() {
-        XCTAssertEqual(OnboardingInstallContent.buttonTitle, "Install CLI")
-        XCTAssertTrue(OnboardingInstallContent.lead(.installer).contains("needs no password"))
     }
 }
 

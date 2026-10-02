@@ -238,7 +238,8 @@ final class DevmachineCLITests: XCTestCase {
             let message = error.localizedDescription
             XCTAssertTrue(message.contains("/opt/homebrew/bin/devmachine"))
             XCTAssertTrue(message.contains("/usr/local/bin/devmachine"))
-            XCTAssertTrue(message.contains("brew install"))
+            XCTAssertTrue(message.contains("DEVMACHINE_NO_BREW=1"))
+            XCTAssertFalse(message.contains("brew install"))
         }
     }
 }

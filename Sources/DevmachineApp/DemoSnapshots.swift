@@ -27,6 +27,10 @@ enum DemoSnapshots {
     /// for one screen. Same rule as `subdomainsInitialTab`.
     static var paletteInitialQuery = ""
 
+    /// Read by `SetupPage.issues` so Connection shows the issue a remedy
+    /// answers (no CLI, or setup never ran) for one screen.
+    static var settingsIssueRemedy: SettingsIssue.Remedy?
+
     private static let acmeAlias = "acme-devmachine"
     /// A big-display window, the proportions a Mac screenshot has on the
     /// website: at a laptop size the cards and text read oversized.
@@ -192,6 +196,21 @@ enum DemoSnapshots {
         Screen(id: "cli-update-old", fileName: "64-cli-update-old.png", settleNanoseconds: 200_000_000),
     ]
 
+    /// The setup flow walk (`DEVMACHINE_DEMO_WALK=setup-flow`): the first-run
+    /// page in each state, then Settings → Connection filled from the CLI and
+    /// with each issue the setup button answers.
+    static let setupFlowScreens: [Screen] = [
+        Screen(id: "setup-start", fileName: "80-setup-start.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-running", fileName: "81-setup-running.png", settleNanoseconds: 1_200_000_000),
+        Screen(id: "setup-failed", fileName: "82-setup-failed.png", settleNanoseconds: 1_200_000_000),
+        Screen(id: "setup-agent", fileName: "83-setup-agent.png", settleNanoseconds: 1_200_000_000),
+        Screen(id: "setup-agent-stopped", fileName: "84-setup-agent-stopped.png", settleNanoseconds: 1_200_000_000),
+        Screen(id: "setup-ready", fileName: "85-setup-ready.png", settleNanoseconds: 300_000_000),
+        Screen(id: "settings-connection", fileName: "86-settings-connection.png", settleNanoseconds: 500_000_000),
+        Screen(id: "settings-needs-setup", fileName: "87-settings-needs-setup.png", settleNanoseconds: 500_000_000),
+        Screen(id: "settings-cli-missing", fileName: "88-settings-cli-missing.png", settleNanoseconds: 500_000_000),
+    ]
+
     static let publishViaScreens: [Screen] = [
         Screen(id: "publish-port", fileName: "50-publish-port.png", settleNanoseconds: 400_000_000),
         Screen(id: "publish-port-via", fileName: "51-publish-port-via.png", settleNanoseconds: 400_000_000),
@@ -283,6 +302,7 @@ enum DemoSnapshots {
         case "preview-browser": return previewBrowserScreens
         case "machine-ready": return machineReadyScreens
         case "publish-via": return publishViaScreens
+        case "setup-flow": return setupFlowScreens
         default: return screens
         }
     }
@@ -356,12 +376,19 @@ enum DemoSnapshots {
                     prPanel(environment, tab: .usage, height: usagePaneHeight),
                     fittingSize: NSSize(width: 780, height: usagePaneHeight), fixedHeight: usagePaneHeight)
             case "onboarding":
-                view = standaloneView(onboardingPage(environment), fittingSize: windowSize)
-                // `OnboardingPage` reads `demoDetection` from its own `.task`,
+                view = standaloneView(onboardingPage("onboarding", environment), fittingSize: windowSize)
+                // `OnboardingPage` reads its demo flow from its own `.task`,
                 // which only starts once SwiftUI's next run loop turn — the
                 // window is already laid out by here, but the view's first
                 // render still shows its `@State` initial value otherwise.
                 try? await Task.sleep(nanoseconds: 300_000_000)
+            case "setup-start", "setup-running", "setup-failed", "setup-agent", "setup-agent-stopped", "setup-ready":
+                view = standaloneView(
+                    onboardingPage(screen.id, environment), fittingSize: NSSize(width: 1400, height: 860),
+                    autosize: false)
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                TerminalRegistry.shared.replayDemoTranscripts()
+                try? await Task.sleep(nanoseconds: 250_000_000)
             case "publish-port":
                 view = standaloneView(publishSheet(environment), fittingSize: NSSize(width: 480, height: 620))
             case "publish-port-via":
@@ -421,6 +448,7 @@ enum DemoSnapshots {
         PaneUploadStore.shared.dropTarget = nil
         DemoData.typedAtPrompt = [:]
         PreviewStore.shared.closeAll()
+        settingsIssueRemedy = nil
         model.goHome()
         try? await Task.sleep(nanoseconds: 150_000_000)
         switch screen.id {
@@ -454,6 +482,16 @@ enum DemoSnapshots {
         case "session-defaults":
             setupInitialSection = .harnesses
             model.showPage(.setup)
+        #if DEBUG
+        case "settings-connection", "settings-needs-setup", "settings-cli-missing":
+            settingsIssueRemedy = screen.id == "settings-needs-setup"
+                ? .runSetup : (screen.id == "settings-cli-missing" ? .installCLI : nil)
+            model.seedDemoDetected(CLIDetectedSettings(
+                opsRepoPath: DemoData.operatorPath, adminMachine: "main",
+                publicIP: DemoData.machineAddress, baseDomain: "example.com"))
+            setupInitialSection = .connection
+            model.showPage(.setup)
+        #endif
         case "git-worktrees":
             guard case let .remote(alias, session) = dropKind else { break }
             model.clickSession(SessionRef(alias: alias, name: session))
@@ -518,16 +556,9 @@ enum DemoSnapshots {
             .environment(\.harnessSettingsFacade, environment.harnessSettingsFacade)
     }
 
-    private static func onboardingPage(_ environment: Environment) -> some View {
-        OnboardingPage(demoDetection: OnboardingDetection(
-            homebrewFound: true,
-            cliFound: false,
-            adminMachine: nil,
-            missingPackageMachines: [],
-            agents: [
-                DetectedAgent(kind: .claude, executablePath: "/opt/homebrew/bin/claude"),
-                DetectedAgent(kind: .codex, executablePath: "/opt/homebrew/bin/codex"),
-            ]))
+    private static func onboardingPage(_ id: String, _ environment: Environment) -> some View {
+        let state = DemoSetupFlow.state(for: id)
+        return OnboardingPage(demoFlow: state?.flow, demoPaneKind: state?.pane)
             .environmentObject(environment.wallpaperStore)
     }
 
@@ -661,25 +692,8 @@ enum DemoSnapshots {
     }
 
     private static func installCLIView(_ id: String, environment: Environment) async -> NSView {
-        let installer: CLIInstallModel
-        switch id {
-        case "install-cli-running":
-            installer = DemoMachineReady.installer(.installSlow)
-            Task { await installer.install() }
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-        case "install-cli-failed":
-            installer = DemoMachineReady.installer(.installFails)
-            await installer.install()
-        default:
-            installer = DemoMachineReady.installer(nil)
-        }
-        let page = OnboardingPage(
-            demoDetection: OnboardingDetection(
-                homebrewFound: true, cliFound: false, adminMachine: nil, missingPackageMachines: [],
-                agents: [DetectedAgent(kind: .claude, executablePath: "/opt/homebrew/bin/claude")]),
-            installer: installer)
-            .environmentObject(environment.wallpaperStore)
-        let view = standaloneView(page, fittingSize: NSSize(width: 1100, height: 760), autosize: false)
+        let view = standaloneView(
+            onboardingPage(id, environment), fittingSize: NSSize(width: 1100, height: 760), autosize: false)
         try? await Task.sleep(nanoseconds: 300_000_000)
         return view
     }
@@ -720,6 +734,9 @@ enum DemoSnapshots {
         _ view: V, fittingSize: NSSize, autosize: Bool = true, fixedHeight: CGFloat? = nil
     ) -> NSView {
         let hosting = NSHostingView(rootView: view.environment(\.dmMetrics, .current))
+        // A full-window page fills whatever it is given; left to size the
+        // window to its content, it grew thousands of points tall.
+        if !autosize { hosting.sizingOptions = [] }
         hosting.frame = NSRect(origin: .zero, size: fittingSize)
         let window = NSWindow(
             contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)

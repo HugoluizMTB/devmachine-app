@@ -333,26 +333,45 @@ extension AppSettingsTests {
         XCTAssertEqual(settings.remoteSessionProgram, .harness(.claude))
     }
 
-    func testValidateGivesActionableAdviceWhenTheFolderIsMissing() {
+    func testAMissingFolderWithTheCLIInstalledSaysSetupHasNotRun() {
         let issues = AppSettings.validate(goodSettings, fileExists: existing())
         XCTAssertEqual(issues.map(\.field), [.opsRepoPath])
-        XCTAssertTrue(issues.first?.message.contains("brew install mydevmachine/tap/devmachine") ?? false)
-        XCTAssertTrue(issues.first?.message.contains("devmachine setup") ?? false)
+        XCTAssertEqual(issues.first?.remedy, .runSetup)
+        XCTAssertTrue(issues.first?.message.contains("devmachine setup has not run yet") ?? false)
+        XCTAssertFalse(issues.first?.message.contains("brew") ?? true)
     }
 
-    func testValidateGivesActionableAdviceWhenConfigYmlIsMissing() {
+    func testAMissingConfigYmlWithTheCLIInstalledSaysSetupHasNotRun() {
         let issues = AppSettings.validate(
             goodSettings, fileExists: existing("/Users/alice/.config/devmachine"))
         XCTAssertEqual(issues.map(\.field), [.opsRepoPath])
+        XCTAssertEqual(issues.first?.remedy, .runSetup)
         XCTAssertTrue(issues.first?.message.contains("config.yml") ?? false)
-        XCTAssertTrue(issues.first?.message.contains("brew install mydevmachine/tap/devmachine") ?? false)
+        XCTAssertTrue(issues.first?.message.contains("devmachine setup has not run yet") ?? false)
+        XCTAssertFalse(issues.first?.message.contains("brew") ?? true)
     }
 
-    func testValidateReportsAMissingCLIExecutableEvenWithAGoodFolder() {
+    func testAMissingCLIGivesTheInstallLineWithoutHomebrew() {
         let issues = AppSettings.validate(goodSettings, fileExists: fullRepo(), cliExecutableFound: false)
         XCTAssertEqual(issues.map(\.field), [.opsRepoPath])
-        XCTAssertTrue(issues.first?.message.contains("was not found on this Mac") ?? false)
-        XCTAssertTrue(issues.first?.message.contains("brew install mydevmachine/tap/devmachine") ?? false)
+        XCTAssertEqual(issues.first?.remedy, .installCLI)
+        XCTAssertTrue(issues.first?.message.contains("not installed") ?? false)
+        XCTAssertTrue(issues.first?.message.contains(
+            "curl -fsSL https://mydevmachine.sh/install.sh | DEVMACHINE_NO_BREW=1 sh") ?? false)
+        XCTAssertFalse(issues.first?.message.contains("brew install") ?? true)
+    }
+
+    func testAMissingCLIIsTheOneIssueEvenWhenTheFolderIsMissingToo() {
+        let issues = AppSettings.validate(goodSettings, fileExists: existing(), cliExecutableFound: false)
+        XCTAssertEqual(issues.map(\.remedy), [.installCLI])
+    }
+
+    func testAnIssueTheAppCannotFixCarriesNoRemedy() {
+        var settings = goodSettings
+        settings.publicIP = "not an ip"
+        let issues = AppSettings.validate(settings, fileExists: fullRepo())
+        XCTAssertEqual(issues.map(\.field), [.publicIP])
+        XCTAssertNil(issues.first?.remedy)
     }
 
     func testValidatePassesWhenTheCLIExecutableIsFound() {
