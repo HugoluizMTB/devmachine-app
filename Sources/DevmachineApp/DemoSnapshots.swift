@@ -30,6 +30,7 @@ enum DemoSnapshots {
     /// Read by `SetupPage.issues` so Connection shows the issue a remedy
     /// answers (no CLI, or setup never ran) for one screen.
     static var settingsIssueRemedy: SettingsIssue.Remedy?
+    static var settingsNoMachine = false
 
     private static let acmeAlias = "acme-devmachine"
     /// A big-display window, the proportions a Mac screenshot has on the
@@ -209,6 +210,7 @@ enum DemoSnapshots {
         Screen(id: "settings-connection", fileName: "86-settings-connection.png", settleNanoseconds: 500_000_000),
         Screen(id: "settings-needs-setup", fileName: "87-settings-needs-setup.png", settleNanoseconds: 500_000_000),
         Screen(id: "settings-cli-missing", fileName: "88-settings-cli-missing.png", settleNanoseconds: 500_000_000),
+        Screen(id: "settings-no-machine", fileName: "89-settings-no-machine.png", settleNanoseconds: 500_000_000),
     ]
 
     static let publishViaScreens: [Screen] = [
@@ -466,6 +468,7 @@ enum DemoSnapshots {
         DemoData.typedAtPrompt = [:]
         PreviewStore.shared.closeAll()
         settingsIssueRemedy = nil
+        settingsNoMachine = false
         model.goHome()
         try? await Task.sleep(nanoseconds: 150_000_000)
         #if DEBUG
@@ -506,9 +509,10 @@ enum DemoSnapshots {
             setupInitialSection = .harnesses
             model.showPage(.setup)
         #if DEBUG
-        case "settings-connection", "settings-needs-setup", "settings-cli-missing":
+        case "settings-connection", "settings-needs-setup", "settings-cli-missing", "settings-no-machine":
             settingsIssueRemedy = screen.id == "settings-needs-setup"
                 ? .runSetup : (screen.id == "settings-cli-missing" ? .installCLI : nil)
+            settingsNoMachine = screen.id == "settings-no-machine"
             model.seedDemoDetected(CLIDetectedSettings(
                 opsRepoPath: DemoData.operatorPath, adminMachine: "main",
                 publicIP: DemoData.machineAddress, baseDomain: "example.com"))

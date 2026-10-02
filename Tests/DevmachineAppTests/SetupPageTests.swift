@@ -42,6 +42,18 @@ final class SetupPageTests: XCTestCase {
         XCTAssertEqual(options.map(\.title), ["Terminal", "OpenAI Codex"])
     }
 
+    @MainActor
+    func testTheDemoShowsNoMachineYetOnlyForItsOwnShot() {
+        var draft = AppSettings.empty
+        draft.opsRepoPath = "/Users/alice/.config/devmachine"
+        defer { DemoSnapshots.settingsNoMachine = false }
+        DemoSnapshots.settingsNoMachine = false
+        XCTAssertTrue(SetupPage.notices(for: draft, demo: true).isEmpty)
+        DemoSnapshots.settingsNoMachine = true
+        XCTAssertEqual(SetupPage.notices(for: draft, demo: true).map(\.kind), [.noMachineYet])
+        XCTAssertTrue(SetupPage.issues(for: draft, demo: true).isEmpty)
+    }
+
     func testDisablingHarnessNormalizesEveryAffectedDraftChoice() {
         let settings = AppSettings(
             opsRepoPath: "/Users/alice/dev/ops",

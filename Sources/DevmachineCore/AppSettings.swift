@@ -1,5 +1,24 @@
 import Foundation
 
+/// Something Settings says that does not block Save: the setup is fine,
+/// there is just nothing to reach yet.
+public struct SettingsNotice: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
+        /// The CLI's own folder before `devmachine setup` wrote `config.yml`.
+        case noMachineYet
+    }
+
+    public let kind: Kind
+    public let field: SettingsIssue.Field
+    public let message: String
+
+    public init(kind: Kind, field: SettingsIssue.Field, message: String) {
+        self.kind = kind
+        self.field = field
+        self.message = message
+    }
+}
+
 public struct SettingsIssue: Equatable, Sendable {
     public enum Field: String, Sendable, CaseIterable {
         case opsRepoPath
@@ -335,6 +354,23 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public static let domainPattern = "^[a-z0-9-]+(\\.[a-z0-9-]+)+$"
 
     public static let opsRepoMarker = "config.yml"
+
+    /// The folder `validate` lets through before a machine exists still
+    /// needs a way forward, or a fresh Mac lands on a silent Settings page.
+    public static func notices(
+        _ settings: AppSettings,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        cliExecutableFound: Bool = true,
+        cliConfigDirectory: String? = nil
+    ) -> [SettingsNotice] {
+        guard cliExecutableFound, !settings.opsRepoPath.isEmpty,
+              settings.opsRepoPath == cliConfigDirectory,
+              !fileExists(settings.opsRepoPath + "/" + opsRepoMarker)
+        else { return [] }
+        return [SettingsNotice(
+            kind: .noMachineYet, field: .opsRepoPath,
+            message: "No machine yet. Run the setup to connect a server, or add a machine.")]
+    }
 
     public static func validate(
         _ settings: AppSettings,

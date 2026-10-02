@@ -398,6 +398,33 @@ extension AppSettingsTests {
         XCTAssertEqual(issues.map(\.remedy), [.runSetup])
     }
 
+    func testTheCLIsOwnFolderWithoutConfigYmlSaysNoMachineYetWithoutBlockingSave() {
+        let folder = "/Users/alice/.config/devmachine"
+        var settings = goodSettings
+        settings.opsRepoPath = folder
+        for fileExists in [existing(), existing(folder)] {
+            XCTAssertTrue(AppSettings.validate(
+                settings, fileExists: fileExists, cliConfigDirectory: folder).isEmpty)
+            let notices = AppSettings.notices(settings, fileExists: fileExists, cliConfigDirectory: folder)
+            XCTAssertEqual(notices.map(\.kind), [.noMachineYet])
+            XCTAssertEqual(notices.first?.field, .opsRepoPath)
+            XCTAssertTrue(notices.first?.message.contains("No machine yet") ?? false)
+        }
+    }
+
+    func testAConfiguredFolderHasNoNotice() {
+        XCTAssertTrue(AppSettings.notices(
+            goodSettings, fileExists: fullRepo(), cliConfigDirectory: "/Users/alice/.config/devmachine").isEmpty)
+    }
+
+    func testNoMachineYetIsNotShownBesideABlockingIssue() {
+        let folder = "/Users/alice/.config/devmachine"
+        XCTAssertTrue(AppSettings.notices(
+            goodSettings, fileExists: existing(), cliExecutableFound: false, cliConfigDirectory: folder).isEmpty)
+        XCTAssertTrue(AppSettings.notices(
+            goodSettings, fileExists: existing(), cliConfigDirectory: folder + "-other").isEmpty)
+    }
+
     func testAnIssueTheAppCannotFixCarriesNoRemedy() {
         var settings = goodSettings
         settings.publicIP = "not an ip"

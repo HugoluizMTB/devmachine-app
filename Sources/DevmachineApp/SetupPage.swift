@@ -165,6 +165,21 @@ struct SetupPage: View {
             draft, cliExecutableFound: (try? DevmachineCLI.resolve()) != nil, cliConfigDirectory: cliConfigDirectory)
     }
 
+    private var notices: [SettingsNotice] {
+        Self.notices(for: draft, cliConfigDirectory: model.detected.opsRepoPath)
+    }
+
+    static func notices(
+        for draft: AppSettings, cliConfigDirectory: String? = nil, demo: Bool = DemoMode.isActive
+    ) -> [SettingsNotice] {
+        guard !demo else {
+            guard DemoSnapshots.settingsNoMachine else { return [] }
+            return AppSettings.notices(draft, fileExists: { _ in false }, cliConfigDirectory: draft.opsRepoPath)
+        }
+        return AppSettings.notices(
+            draft, cliExecutableFound: (try? DevmachineCLI.resolve()) != nil, cliConfigDirectory: cliConfigDirectory)
+    }
+
     private var isFirstRun: Bool { !settingsStore.isConfigured }
 
     @State private var section: SettingsSection
@@ -322,6 +337,14 @@ struct SetupPage: View {
                         model.openOnboarding()
                     }
                 }
+            } else if let notice = notices.first {
+                Image(systemName: "info.circle.fill")
+                    .font(.dm(11))
+                    .foregroundStyle(.blue)
+                Text(notice.message)
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
             }
             Spacer()
             if !isFirstRun {
@@ -453,6 +476,17 @@ struct SetupPage: View {
                         remedy == .installCLI ? "Set up devmachine" : "Run devmachine setup",
                         systemImage: "play.fill", size: .small
                     ) { model.openOnboarding() }
+                }
+            } else if let notice = notices.first(where: { $0.field == field }) {
+                Text(notice.message)
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: m.space.sm) {
+                    DMButton("Run setup", systemImage: "play.fill", size: .small) { model.openOnboarding() }
+                    DMButton("Add a machine", systemImage: "plus", variant: .outline, size: .small) {
+                        model.showPage(.addMachine)
+                    }
                 }
             } else if isDetected(field) {
                 Text("Detected from the devmachine CLI.")

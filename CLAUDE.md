@@ -775,7 +775,11 @@ once may fail there.
   domain are optional (checked only once typed, filled from the CLI when it
   knows them); the CLI's own folder passes before `devmachine setup` writes
   its `config.yml`; only a missing CLI or another folder without
-  `config.yml` blocks Save, with the setup flow as its fix.
+  `config.yml` blocks Save, with the setup flow as its fix. That folder is
+  never silent: `AppSettings.notices` gives a non-blocking "No machine
+  yet" with Run setup (onboarding) and Add a machine (the wizard); a fresh
+  Mac that landed on Settings had nowhere to go. Demo shot:
+  `89-settings-no-machine.png` in the setup-flow walk.
 - **The wizard (`AppPage.addMachine`) only builds `devmachine` commands**
   (`MachinePlan`, Core) and shows them before Create. A server whose key
   already logs in is added unattended (`machines add --address
