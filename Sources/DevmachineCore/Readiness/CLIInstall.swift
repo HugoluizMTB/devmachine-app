@@ -10,6 +10,9 @@ public enum CLIInstallPlan: Equatable, Sendable {
     public static let tap = "mydevmachine/tap/devmachine"
     public static let installerURL = "https://mydevmachine.sh/install.sh"
     public static let brewPaths = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+    /// The release binary into `~/.local/bin`, never Homebrew: Homebrew
+    /// refuses to install a tap formula on a Mac whose Xcode is behind.
+    public static let noHomebrewCommand = "curl -fsSL \(installerURL) | DEVMACHINE_NO_BREW=1 sh"
 
     public static func choose(
         brewPaths: [String] = brewPaths, exists: (String) -> Bool

@@ -8,12 +8,23 @@ public struct SettingsIssue: Equatable, Sendable {
         case baseDomain
     }
 
+    /// What the app itself can do about it, shown as a button beside the
+    /// message. Nil when only the person can fix it (a typo in a field).
+    public enum Remedy: Equatable, Sendable {
+        /// No CLI on this Mac: the setup flow installs it.
+        case installCLI
+        /// The CLI is there but `devmachine setup` never ran.
+        case runSetup
+    }
+
     public let field: Field
     public let message: String
+    public let remedy: Remedy?
 
-    public init(field: Field, message: String) {
+    public init(field: Field, message: String, remedy: Remedy? = nil) {
         self.field = field
         self.message = message
+        self.remedy = remedy
     }
 }
 
@@ -325,12 +336,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let opsRepoMarker = "config.yml"
 
-    /// What to do next, once the folder or the CLI itself turns out to be
-    /// missing — the same fix both times, so the same line names it.
-    public static let cliInstallHint =
-        "Install the CLI (brew install mydevmachine/tap/devmachine), run "
-        + "devmachine setup in a terminal, then come back."
-
     public static func validate(
         _ settings: AppSettings,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
@@ -338,19 +343,26 @@ public struct AppSettings: Codable, Equatable, Sendable {
     ) -> [SettingsIssue] {
         var issues: [SettingsIssue] = []
 
-        if settings.opsRepoPath.isEmpty {
+        // Without the CLI the folder is missing too, and that is not a second
+        // problem: one issue, naming the one fix.
+        if !cliExecutableFound {
+            issues.append(SettingsIssue(
+                field: .opsRepoPath,
+                message: "The devmachine CLI is not installed on this Mac. Run the setup, or install it in a "
+                    + "terminal: \(CLIInstallPlan.noHomebrewCommand)",
+                remedy: .installCLI))
+        } else if settings.opsRepoPath.isEmpty {
             issues.append(SettingsIssue(field: .opsRepoPath, message: "Choose the devmachine configuration folder."))
         } else if !fileExists(settings.opsRepoPath) {
             issues.append(SettingsIssue(
-                field: .opsRepoPath, message: "This folder does not exist. \(cliInstallHint)"))
+                field: .opsRepoPath,
+                message: "devmachine setup has not run yet: this folder does not exist.",
+                remedy: .runSetup))
         } else if !fileExists(settings.opsRepoPath + "/" + opsRepoMarker) {
             issues.append(SettingsIssue(
-                field: .opsRepoPath, message: "No \(opsRepoMarker) in this folder. \(cliInstallHint)"))
-        }
-
-        if !cliExecutableFound {
-            issues.append(SettingsIssue(
-                field: .opsRepoPath, message: "Devmachine CLI was not found on this Mac. \(cliInstallHint)"))
+                field: .opsRepoPath,
+                message: "devmachine setup has not run yet: there is no \(opsRepoMarker) in this folder.",
+                remedy: .runSetup))
         }
 
         // No longer needed for an admin login — every admin command now runs

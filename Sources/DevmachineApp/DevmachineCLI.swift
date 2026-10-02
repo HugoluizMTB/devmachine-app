@@ -222,7 +222,7 @@ enum DevmachineCLIError: LocalizedError, Equatable {
         case .commandFailed(let detail):
             return detail.trimmingCharacters(in: .whitespacesAndNewlines)
         case .executableNotFound(let paths):
-            return "Devmachine CLI was not found at \(paths.joined(separator: " or ")). Install it with `brew install mydevmachine/tap/devmachine`."
+            return "Devmachine CLI was not found at \(paths.joined(separator: " or ")). Install it with `\(CLIInstallPlan.noHomebrewCommand)`."
         case .needsNewerCLI(let command):
             return "The installed devmachine CLI has no `\(command)` yet. Update it with `devmachine update`."
         }
