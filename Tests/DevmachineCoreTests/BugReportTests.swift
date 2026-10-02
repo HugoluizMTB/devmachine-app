@@ -59,6 +59,30 @@ final class BugReportTests: XCTestCase {
         XCTAssertFalse(body.contains("alice"))
     }
 
+    func testMachineAndWorkspaceNamesAreReplacedAsWholeWords() {
+        let context = BugReport.Context(
+            home: "/Users/alice", user: "alice", machines: ["lab", "main"], workspaces: ["acme"])
+        let text = BugReport.redact(
+            "devmachine sync --machine lab --yes; workspaces new acme --machine main; label acmes", context: context)
+        XCTAssertEqual(
+            text, "devmachine sync --machine <machine> --yes; workspaces new <workspace> --machine <machine>; label acmes")
+    }
+
+    func testTheCommandInTheBodyIsRedactedToo() throws {
+        let context = BugReport.Context(home: "/Users/alice", user: "alice", machines: ["lab"], workspaces: [])
+        var report = report(lines: [])
+        report.command = "devmachine sync --machine lab --yes"
+        let body = report.body(context: context)
+        XCTAssertTrue(body.contains("devmachine sync --machine <machine> --yes"))
+        XCTAssertFalse(body.contains(" lab "))
+    }
+
+    func testAShortUserNameIsReplacedAsAWholeWordOnly() {
+        let context = BugReport.Context(home: "/Users/al", user: "al")
+        let text = BugReport.redact("login al failed for al; also always alright, /Users/al/.ssh", context: context)
+        XCTAssertEqual(text, "login <user> failed for <user>; also always alright, ~/.ssh")
+    }
+
     func testALongLogIsTrimmedFromTheTopToStayUnderTheLimit() throws {
         let lines = (1...400).map { "line \($0) " + String(repeating: "x", count: 60) }
         let url = try XCTUnwrap(report(lines: lines).url(context: context))

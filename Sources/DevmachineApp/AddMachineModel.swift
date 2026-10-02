@@ -270,6 +270,8 @@ final class AddMachineModel: ObservableObject {
         wizard.draft.password = SecretText()
         BugReportEnvironment.typedHosts = [wizard.draft.trimmedAddress]
         BugReportEnvironment.typedDomains = [wizard.draft.trimmedDomain]
+        BugReportEnvironment.typedMachines = [wizard.draft.trimmedName]
+        BugReportEnvironment.typedWorkspaces = [wizard.draft.workspace.trimmingCharacters(in: .whitespaces)]
         await runner.run(
             wizard.plan, inTerminal: !wizard.unattended, password: password, limaMethod: limaMethod,
             label: firstRun ? "Setting up devmachine…" : "Adding a machine…")

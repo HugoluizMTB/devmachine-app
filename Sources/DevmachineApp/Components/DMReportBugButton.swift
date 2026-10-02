@@ -24,13 +24,19 @@ enum BugReportEnvironment {
     /// Addresses and domains the person typed this run, besides the saved ones.
     static var typedHosts: [String] = []
     static var typedDomains: [String] = []
+    /// The machine and workspace names typed this run.
+    static var typedMachines: [String] = []
+    static var typedWorkspaces: [String] = []
 
     static func context() -> BugReport.Context {
         let settings = AppModel.shared?.settings
         return BugReport.Context(
             home: NSHomeDirectory(), user: NSUserName(),
             hosts: typedHosts + [settings?.publicIP ?? ""] + (MachinesStore.shared.machines.flatMap(\.hosts)),
-            domains: typedDomains + [settings?.baseDomain ?? ""])
+            domains: typedDomains + [settings?.baseDomain ?? ""],
+            machines: typedMachines + MachinesStore.shared.machines.map(\.name),
+            workspaces: typedWorkspaces + MachinesStore.shared.machines.flatMap(\.workspaces)
+                + (AppModel.shared?.workspaces.map(\.name) ?? []))
     }
 
     static func report(

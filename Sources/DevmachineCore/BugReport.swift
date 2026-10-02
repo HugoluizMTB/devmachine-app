@@ -15,12 +15,19 @@ public struct BugReport: Equatable, Sendable {
         public var user: String
         public var hosts: [String]
         public var domains: [String]
+        public var machines: [String]
+        public var workspaces: [String]
 
-        public init(home: String, user: String, hosts: [String] = [], domains: [String] = []) {
+        public init(
+            home: String, user: String, hosts: [String] = [], domains: [String] = [],
+            machines: [String] = [], workspaces: [String] = []
+        ) {
             self.home = home
             self.user = user
             self.hosts = hosts
             self.domains = domains
+            self.machines = machines
+            self.workspaces = workspaces
         }
     }
 
@@ -114,9 +121,19 @@ public struct BugReport: Equatable, Sendable {
         text = replace(#"\b(?:\d{1,3}\.){3}\d{1,3}\b"#, in: text, with: "<ip>")
         text = replace(#"\b(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}\b"#, in: text, with: "<ip>")
         text = replace(#"\b(?:[0-9A-Fa-f]{1,4}:)+:(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4})*)?"#, in: text, with: "<ip>")
-        if context.user.count >= 3 {
-            let escaped = NSRegularExpression.escapedPattern(for: context.user)
-            text = replace(#"\b"# + escaped + #"\b"#, in: text, with: "<user>")
+        text = replaceWords(context.machines, in: text, with: "<machine>")
+        text = replaceWords(context.workspaces, in: text, with: "<workspace>")
+        text = replaceWords([context.user], in: text, with: "<user>")
+        return text
+    }
+
+    /// Whole words only, so `al` never eats the middle of `always`. A name
+    /// may hold `-` or `.`, which a regex word boundary would split on.
+    private static func replaceWords(_ words: [String], in text: String, with marker: String) -> String {
+        var text = text
+        for word in words.filter({ !$0.isEmpty }).sorted(by: { $0.count > $1.count }) {
+            let escaped = NSRegularExpression.escapedPattern(for: word)
+            text = replace(#"(?<![A-Za-z0-9_.-])"# + escaped + #"(?![A-Za-z0-9_-]|\.[A-Za-z0-9])"#, in: text, with: marker)
         }
         return text
     }
