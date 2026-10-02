@@ -387,14 +387,17 @@ final class PreviewPage: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         }
     }
 
-    nonisolated func webView(
+    // The async form: its signature carries no handler attributes, so it
+    // stays WKUIDelegate's method on an SDK whose header changes them. The
+    // handler form stopped matching once and `confirm` was always false.
+    func webView(
         _ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
-        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (Bool) -> Void
-    ) {
+        initiatedByFrame frame: WKFrameInfo
+    ) async -> Bool {
         let origin = Self.origin(of: frame)
-        MainActor.assumeIsolated {
+        return await withCheckedContinuation { continuation in
             prompts.ask(PreviewDialogText.Message(title: PreviewDialogText.says(origin), body: message),
-                        confirm: "OK", in: dialogWindow, done: completionHandler)
+                        confirm: "OK", in: dialogWindow) { continuation.resume(returning: $0) }
         }
     }
 
