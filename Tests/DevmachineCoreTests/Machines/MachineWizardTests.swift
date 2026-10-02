@@ -130,32 +130,93 @@ final class MachineWizardTests: XCTestCase {
         XCTAssertEqual(wizard.stage, .packages)
     }
 
-    func testConnectingOnlyAsksForAServerAndAddsNothingElse() {
-        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true, connectOnly: true)
-        XCTAssertEqual(wizard.stage, .details)
-        XCTAssertEqual(wizard.draft.kind, .server)
-        XCTAssertFalse(wizard.canGoBack)
-        wizard.choose(.localVM)
-        XCTAssertEqual(wizard.draft.kind, .server)
-
+    func testTheFirstRunAsksTheSameQuestionsAndEndsWithThisAppsPackageAndASync() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true, firstRun: true)
+        XCTAssertEqual(wizard.stage, .kind)
+        wizard.choose(.server)
         wizard.draft.name = "main"
         wizard.draft.address = "203.0.113.10"
         wizard.draft.keySource = .agent
         wizard.draft.agentKey = fingerprint
         wizard.draft.fingerprint = fingerprint
+        wizard.draft.sync = false
+        wizard.draft.packages = ["docker"]
         wizard.next()
-        XCTAssertEqual(wizard.stage, .review)
-        wizard.back()
-        XCTAssertEqual(wizard.stage, .details)
-        wizard.next()
-        wizard.next()
-        XCTAssertEqual(wizard.stage, .run)
+        XCTAssertEqual(wizard.stage, .packages)
 
-        XCTAssertEqual(wizard.plan.map(\.kind), [.addMachine])
+        XCTAssertEqual(wizard.plan.map(\.arguments), [
+            ["machines", "add", "--name", "main", "--address", "203.0.113.10", "--fingerprint", fingerprint,
+             "--key", "agent:\(fingerprint)", "--yes"],
+            ["packages", "add", "docker", "--machine", "main", "--yes"],
+            ["packages", "add", "devmachine-app", "--machine", "main", "--yes"],
+            ["sync", "--machine", "main", "--yes"],
+        ])
     }
 
-    func testAConnectOnlyWizardIsRebuiltAtItsDetailsNotAtAKind() {
-        var wizard = MachineWizard(existingMachines: [], limaFound: false, unattended: true, connectOnly: true)
+    func testTheFirstRunCanMakeAMachineOnThisMacAndInstallsLimaFirstWhenMissing() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: false, unattended: true, firstRun: true)
+        XCTAssertTrue(wizard.canChoose(.localVM))
+        wizard.choose(.localVM)
+        wizard.draft.name = "lab"
+        XCTAssertEqual(wizard.plan.map(\.kind), [
+            .installLima, .createLocal, .addPackage(MachinePackageCatalog.appPackage), .sync,
+        ])
+        XCTAssertEqual(wizard.plan.first?.id, MachinePlanStep.installLimaID)
+        XCTAssertFalse(wizard.plan.first?.isCommand ?? true)
+        XCTAssertEqual(wizard.plan[1].arguments, ["machines", "create-local", "lab", "--add"])
+    }
+
+    func testLimaThatIsThereIsNotInstalledAgain() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true)
+        wizard.choose(.localVM)
+        wizard.draft.name = "lab"
+        XCTAssertEqual(wizard.plan.map(\.kind), [.createLocal, .sync])
+    }
+
+    func testTheSkillsAreInstalledOnceForEveryHarnessChosenAfterTheSync() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true, firstRun: true)
+        wizard.choose(.localVM)
+        wizard.draft.name = "lab"
+        wizard.draft.skillAgents = ["claude", "opencode"]
+        XCTAssertEqual(Array(wizard.plan.suffix(2).map(\.arguments)), [
+            ["sync", "--machine", "lab", "--yes"],
+            ["skills", "add", "--agent", "claude", "--agent", "opencode", "--yes"],
+        ])
+        XCTAssertEqual(wizard.plan.last?.kind, .skills)
+        XCTAssertFalse(wizard.plan.last?.blocksSetup ?? true)
+    }
+
+    func testNoHarnessChosenMeansNoSkillsStep() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true, firstRun: true)
+        wizard.choose(.localVM)
+        wizard.draft.name = "lab"
+        XCTAssertFalse(wizard.plan.contains { $0.kind == .skills })
+    }
+
+    func testOnlyTheFirstRunInstallsSkills() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true)
+        wizard.choose(.localVM)
+        wizard.draft.name = "lab"
+        wizard.draft.skillAgents = ["claude"]
+        XCTAssertFalse(wizard.plan.contains { $0.kind == .skills })
+    }
+
+    func testAHarnessIsChosenOrLeftOutByToggling() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true, firstRun: true)
+        wizard.toggleSkillAgent("claude")
+        wizard.toggleSkillAgent("codex")
+        wizard.toggleSkillAgent("claude")
+        XCTAssertEqual(wizard.draft.skillAgents, ["codex"])
+    }
+
+    func testTheSkillHarnessesAreTheCLIsFourInItsOrder() {
+        XCTAssertEqual(SkillAgent.all.map(\.id), ["claude", "codex", "pi", "opencode"])
+        XCTAssertEqual(SkillAgent.all.map(\.name), ["Claude Code", "Codex", "Pi", "OpenCode"])
+        XCTAssertEqual(SkillAgent.ordered(["opencode", "claude", "unknown"]), ["claude", "opencode"])
+    }
+
+    func testAFirstRunWizardIsRebuiltAtItsKindLikeAnyOther() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: false, unattended: true, firstRun: true)
         wizard.restore(.review)
         XCTAssertEqual(wizard.stage, .details)
     }
@@ -169,13 +230,13 @@ final class MachineWizardTests: XCTestCase {
         XCTAssertEqual(wizard.draft.packages, ["docker"])
     }
 
-    func testEssentialsIsAFlagNotAnExtraPackage() {
+    func testEssentialsIsAlwaysInstalledAndCannotBeTurnedOff() {
         var wizard = filledServer()
         XCTAssertTrue(wizard.isSelected(MachinePackageCatalog.essentials))
         wizard.togglePackage(MachinePackageCatalog.essentials)
-        XCTAssertFalse(wizard.draft.essentials)
+        XCTAssertTrue(wizard.draft.essentials)
         XCTAssertEqual(wizard.draft.packages, [])
-        XCTAssertFalse(wizard.isSelected(MachinePackageCatalog.essentials))
+        XCTAssertTrue(wizard.isSelected(MachinePackageCatalog.essentials))
     }
 
     func testTheProblemsShownAreTheCurrentDetailsProblems() {
@@ -199,6 +260,27 @@ final class MachinePackageCatalogTests: XCTestCase {
         XCTAssertEqual(cards.first?.isRecommended, true)
         XCTAssertEqual(cards.first { $0.name == "caddy-sites" }?.isYours, true)
         XCTAssertEqual(cards.first { $0.name == "docker" }?.isYours, false)
+    }
+
+    func testWhatEssentialsContainsIsNotOfferedAgainOnItsOwn() {
+        let cards = MachinePackageCatalog.cards(from: [
+            PackageInfo(name: "essentials", scope: "machine", summary: "Base.", source: "release",
+                        needs: ["base", "caddy", "devmachine-app"]),
+            PackageInfo(name: "caddy", scope: "machine", summary: "Sites.", source: "release"),
+            PackageInfo(name: "devmachine-app", scope: "machine", summary: "App.", source: "release"),
+            PackageInfo(name: "docker", scope: "machine", summary: "Docker Engine.", source: "release"),
+        ])
+        XCTAssertEqual(cards.map(\.name), ["essentials", "docker"])
+        XCTAssertEqual(cards[0].contains, ["base", "caddy", "devmachine-app"])
+        XCTAssertTrue(cards[0].isLocked)
+        XCTAssertFalse(cards[1].isLocked)
+    }
+
+    func testDockerIsSuggestedWhenItIsOffered() {
+        let docker = MachinePackageCard(name: "docker", summary: "", isRecommended: false, isYours: false)
+        let tailscale = MachinePackageCard(name: "tailscale", summary: "", isRecommended: false, isYours: false)
+        XCTAssertEqual(MachinePackageCatalog.suggested(from: [tailscale, docker]), ["docker"])
+        XCTAssertEqual(MachinePackageCatalog.suggested(from: [tailscale]), [])
     }
 
     func testAPackageWithNoSummarySaysSo() {

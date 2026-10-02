@@ -132,6 +132,12 @@ What is there:
   is, only once it is old enough to matter.
 - Commands (`DMCommandBlock.swift`): `DMCommandBlock` for shell commands to
   select or copy (one or more lines, one Copy button); `DMCopyButton` alone.
+- Logs (`DMLogView.swift`): `DMLogView` for a program's output as it comes
+  (monospaced, colour codes out via `LogText`, follows the last line,
+  Expand, Copy log; `fills` on a run screen). Every streamed output uses it.
+- `DMReportBugButton`: opens a prefilled, redacted GitHub issue (`BugReport`)
+  in the browser; every failure panel carries one.
+- `DMChoiceCard(locked:)`: checked and never toggled (essentials).
 - Fields (`DMFields.swift`): `DMSearchField` (magnifier + borderless field +
   trailing slot, optional focus binding); `.dmField()` for a text input on a
   dark surface.
@@ -580,41 +586,59 @@ Rules:
 - **Onboarding owns the window until the Mac is set up or skipped**
   (`AppModel.launchRoute`): Home needs saved settings and the CLI (or a
   remembered "Skip for now"). A first run never lands on Settings.
-- **Every step is the program of its own pane, never text typed into a
-  shell** (`TerminalRegistry.runProgram`, `OnboardingPrograms`): a typed line
-  raced a shell that was still starting, and a step was "done" when its line
-  was echoed. The exit code ends a step; `zsh -lic` with `pipefail` gives it
-  the account's PATH and ssh agent. A new pane per step, so an old program's
-  exit never answers for the next.
-- **The flow is a pure state machine** (`OnboardingFlow`, driven by
-  `OnboardingRunner`): install CLI → `devmachine setup` (or the server form
-  below) → `packages add
-  devmachine-app` → `sync` per machine, re-reading the Mac after each step.
-  Every step ends done or failed; a step that exits 0 but changes nothing is
-  failed too, never re-run in a loop. A sync always follows an add, because
-  the CLI lists a package as soon as it is declared. Failures wait for Try
-  again, Back or "Ask <agent> to fix it".
-- **The agent path starts the agent as the pane's program** with the prompt
-  as one argument (`AgentPrompt.setup`), and the Mac is re-read every 10
-  seconds until setup is complete. Only the first read looks for agents
-  (a login shell per agent); every later one reuses them and reads the CLI
-  and its configuration only. Quitting the agent early offers the button
-  for the steps still missing. Demo mode reads no CLI or agent and refuses
-  every step and agent (`OnboardingDemoTests`).
-- **A CLI that takes every answer as a flag connects the server with no
-  terminal** (`MachineUnattendedAdd.minimumCLIVersion`, read into
-  `OnboardingDetection.cliVersion`): "Connect a server" becomes the
-  `.connectServer` effect, and the Add machine wizard's own views stand
-  where the pane would (`OnboardingConnectView`, an `AddMachineModel` with
-  `connectOnly`: a server only, details then review, no workspace,
-  packages or sync). It runs only `machines add --address … --fingerprint
-  … [--key …|--password-stdin] [--domain …]`, which on a fresh Mac writes
-  what `setup` would; the flow's own steps then add devmachine-app and
-  sync, as before. The form reads the configuration again when it opens;
-  a CLI older than detection said falls back to `setup` in a pane, which
-  stays the path for an older CLI. Back, Close or leaving the page stops a
-  run and drops the password. Demo shots: `90-setup-connect.png`,
-  `91-setup-connect-review.png` in the setup-flow walk.
+- **The first run is the Add machine wizard, not a second implementation**
+  (`OnboardingFlow`, a pure state machine driven by `OnboardingRunner`).
+  The CLI is installed first, as a background step with its log
+  (`MachinePlanStep.installCLI`: the release binary, never Homebrew),
+  because the wizard reads keys and packages through it. Then
+  `AddMachineWizardView` runs with `firstRun`: "Do you already have a
+  server (VPS)?" (yes: address, login, key or password, `machines scan`
+  fingerprint confirmed against the console; no: a Lima machine on this
+  Mac, no address asked), packages, review of the exact commands, run.
+  `firstRun` always syncs, always adds `devmachine-app` (essentials needs
+  it, but `installed_on` lists only what a machine names itself), hides
+  the workspace, and installs the skills (below). A Mac already connected
+  but missing `devmachine-app` gets `packages add` + `sync` per machine,
+  run the same way. A CLI older than `MachineUnattendedAdd` says so and
+  offers the installer (`.cliTooOld`).
+- **No agent setup.** The setup is deterministic and all in the UI: no
+  "let your agent do it", no prompt, no "ask the agent". The owner's agent
+  once hand-rolled a Lima VM with `limactl`, which the checklist can never
+  see.
+- **Every step is a background process with its log** (`MachineStepRunner`,
+  `DMLogView`): no pane, nothing typed. Retry resumes from the failed step;
+  the ones done are skipped (`machines add` is atomic on CLI 0.7.27+). A
+  run that ends 0 but leaves the Mac as it was is `unresolved`, with Check
+  again, never a loop. Demo mode refuses every run (`OnboardingDemoTests`).
+- **The skills always install** when a harness is chosen: one
+  `skills add --agent <h>… --yes` after the sync (`SkillAgent`: claude,
+  codex, pi, opencode; `--agent` works for a harness not installed yet).
+  Preselected: Settings → Harnesses plus the harness folders this Mac has
+  (`AddMachineModel.harnessesInUse`). A failed skills step is a warning
+  with Retry (`MachinePlanStep.blocksSetup`), never a blocker for "Start
+  using Devmachine".
+- **A machine on this Mac installs Lima when it is missing**
+  (`LimaInstall`, `LimaInstaller`): GitHub's latest release tarball for
+  the Mac's processor, checked against the release's `SHA256SUMS` before
+  a byte is written, unpacked into `~/.local` (`bin`, `share`, `libexec`).
+  The CLI runs `limactl` by name, so `~/.local/bin` goes first on the PATH
+  it gets. A failed download offers `brew install lima` when Homebrew is
+  there. Only an unattended run (CLI 0.7.27+) can do this; an older CLI
+  still shows `brew install lima`.
+- **Every failure says how to fix it** (`SetupFailurePanel`,
+  `SetupFailureHelp`/`SetupFailureAdvice` in Core): a cause read from the
+  log (an outdated Xcode, a download, Lima's checksum, a changed host key,
+  a refused login, an unreachable server) gets its own steps and buttons;
+  anything else gets what the step ran, the last lines, Retry and Change
+  answers. Every failure also has Report a bug (`DMReportBugButton`): the
+  browser opens a new GitHub issue filled in by `BugReport`, with secrets,
+  addresses, paths, names, emails, fingerprints and the typed hosts and
+  domains taken out, under 7000 characters. The app never posts it. The
+  DNS setup's failure has the same button.
+- Demo walk `DEVMACHINE_DEMO_WALK=setup-flow` (`DemoSetupFlow`): `80`–`91`
+  are the setup (start, CLI install and its failure, choice, server and
+  local details, packages, review, running, failed, ready, old CLI),
+  `92`–`95` Settings → Connection.
 - **It ends on "Start using Devmachine"**: `completeOnboarding` reads the CLI
   again, fills the empty Connection fields, saves them and opens Home, with
   no restart. Settings → Connection shows what the CLI reports read-only
@@ -817,14 +841,15 @@ once may fail there.
   never silent: `AppSettings.notices` gives a non-blocking "No machine
   yet" with Run setup (onboarding) and Add a machine (the wizard); a fresh
   Mac that landed on Settings had nowhere to go. Demo shot:
-  `89-settings-no-machine.png` in the setup-flow walk.
+  `95-settings-no-machine.png` in the setup-flow walk.
 - **The wizard (`AppPage.addMachine`) only builds `devmachine` commands**
   (`MachinePlan`, Core) and shows them before Create. Packages are
   `--no-essentials` or `packages add`, then an optional `workspaces new` and
   `sync`. Package cards are machine packages whose `platforms` hold `linux`
   or are empty (any): a server and a Lima machine are both Linux, so a
-  `[macos]` package is never offered. Essentials says what it contains,
-  from its `needs`.
+  `[macos]` package is never offered. Essentials is always installed
+  (locked, its `needs` listed as included and not offered again on their
+  own); docker is suggested and checked (`MachinePackageCatalog.suggested`).
 - **CLI 0.7.27+ adds with no terminal at all**
   (`MachineUnattendedAdd.minimumCLIVersion`, read from `version` into the
   `MachinesSnapshot`). Every answer is a flag: `machines add --address

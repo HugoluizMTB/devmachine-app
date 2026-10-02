@@ -2,18 +2,53 @@ import SwiftUI
 import DevmachineCore
 
 /// The Add machine wizard, a central page: what kind of machine, its details,
-/// its packages, the exact commands, then those commands running in a
-/// terminal. Everything it does is a `devmachine` command shown first.
+/// its packages, the exact commands, then those commands running. Everything
+/// it does is a `devmachine` command shown first. The first-run setup shows
+/// the same wizard (`AddMachineWizardView`).
 struct AddMachinePage: View {
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var model: AppModel
     @ObservedObject var state: AddMachineModel
     @ObservedObject private var machines = MachinesStore.shared
-    @ObservedObject private var runner: MachineStepRunner
-    @State private var confirming = false
 
     init(state: AddMachineModel = .shared) {
         self.state = state
+    }
+
+    var body: some View {
+        AddMachineWizardView(state: state, title: "Add a machine", cards: machines.packageCards, onClose: close)
+            .padding(m.space.xxl)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color.dmContentBg)
+            .onAppear {
+                state.openPage()
+                Task { await machines.load() }
+            }
+            .onDisappear { state.leavePage() }
+    }
+
+    private func close() {
+        state.close()
+        if model.activePage == .addMachine { model.activePage = nil }
+    }
+}
+
+/// The wizard itself: stage pills, the stage on screen, Back / Continue,
+/// and the run. `onClose` is Cancel, Close and Done.
+struct AddMachineWizardView: View {
+    @Environment(\.dmMetrics) private var m
+    @ObservedObject var state: AddMachineModel
+    @ObservedObject private var runner: MachineStepRunner
+    let title: String
+    let cards: [MachinePackageCard]
+    let onClose: () -> Void
+    @State private var confirming = false
+
+    init(state: AddMachineModel, title: String, cards: [MachinePackageCard], onClose: @escaping () -> Void) {
+        self.state = state
+        self.title = title
+        self.cards = cards
+        self.onClose = onClose
         _runner = ObservedObject(wrappedValue: state.runner)
     }
 
@@ -24,7 +59,7 @@ struct AddMachinePage: View {
         VStack(alignment: .leading, spacing: m.space.xl) {
             header
             if wizard.stage == .run {
-                AddMachineRunView(state: state, runner: runner, onClose: close)
+                AddMachineRunView(state: state, runner: runner, onClose: onClose)
             } else {
                 ScrollView {
                     stageBody
@@ -34,18 +69,10 @@ struct AddMachinePage: View {
                 footer
             }
         }
-        .padding(m.space.xxl)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.dmContentBg)
-        .onAppear {
-            state.openPage()
-            Task { await machines.load() }
-        }
-        .onDisappear { state.leavePage() }
         .confirmationDialog(
-            "Create \(draft.name.trimmingCharacters(in: .whitespaces))?", isPresented: $confirming
+            (wizard.firstRun ? "Set up " : "Create ") + draft.trimmedName + "?", isPresented: $confirming
         ) {
-            Button("Create machine") { Task { await state.create() } }
+            Button(wizard.firstRun ? "Run the setup" : "Create machine") { Task { await state.create() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(verbatim: AddMachineContent.confirmMessage(draft))
@@ -54,7 +81,7 @@ struct AddMachinePage: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: m.space.md) {
-            Text(verbatim: "Add a machine")
+            Text(verbatim: title)
                 .font(.dm(17, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
             HStack(spacing: m.space.sm) {
@@ -81,7 +108,7 @@ struct AddMachinePage: View {
         switch wizard.stage {
         case .kind: AddMachineKindView(state: state)
         case .details: AddMachineDetailsView(state: state)
-        case .packages: AddMachinePackagesView(state: state, cards: machines.packageCards)
+        case .packages: AddMachinePackagesView(state: state, cards: cards)
         case .review: AddMachineReviewView(wizard: wizard)
         case .run: EmptyView()
         }
@@ -92,11 +119,14 @@ struct AddMachinePage: View {
             if wizard.canGoBack {
                 DMButton("Back", variant: .outline) { state.wizard.back() }
             }
-            DMButton("Cancel", variant: .ghost) { close() }
+            DMButton(wizard.firstRun && !wizard.canGoBack ? "Back" : "Cancel",
+                     variant: wizard.firstRun && !wizard.canGoBack ? .outline : .ghost) { onClose() }
             Spacer()
             if wizard.stage == .review {
-                DMButton("Create machine", systemImage: "play.fill") { confirming = true }
-                    .keyboardShortcut(.defaultAction)
+                DMButton(wizard.firstRun ? "Run the setup" : "Create machine", systemImage: "play.fill") {
+                    confirming = true
+                }
+                .keyboardShortcut(.defaultAction)
             } else if wizard.stage != .kind {
                 DMButton("Continue") { state.wizard.next() }
                     .disabled(!wizard.canAdvance)
@@ -105,38 +135,36 @@ struct AddMachinePage: View {
         }
         .frame(maxWidth: m.pt(760))
     }
-
-    private func close() {
-        state.close()
-        if model.activePage == .addMachine { model.activePage = nil }
-    }
 }
 
 private struct AddMachineKindView: View {
     @Environment(\.dmMetrics) private var m
     @ObservedObject var state: AddMachineModel
 
+    private var wizard: MachineWizard { state.wizard }
+
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
-            Text(verbatim: "What are you adding?")
+            Text(verbatim: wizard.firstRun ? "Do you already have a server (VPS)?" : "What are you adding?")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
             HStack(alignment: .top, spacing: m.space.lg) {
                 DMChoiceCard(
-                    title: "A server I have", systemImage: "server.rack",
+                    title: wizard.firstRun ? "Yes, I have a server" : "A server I have", systemImage: "server.rack",
                     detail: "A VPS or any Debian or Ubuntu server you reach by IP or hostname.",
-                    selected: state.wizard.draft.kind == .server && state.wizard.stage != .kind
+                    selected: wizard.draft.kind == .server && wizard.stage != .kind
                 ) { state.wizard.choose(.server) }
                 DMChoiceCard(
-                    title: "A machine on this Mac", systemImage: "desktopcomputer",
-                    detail: "A Lima virtual machine to try devmachine with no server. "
-                        + "Nothing on the internet can reach it, so it cannot publish sites.",
+                    title: wizard.firstRun ? "No, make a machine on this Mac" : "A machine on this Mac",
+                    systemImage: "desktopcomputer",
+                    detail: AddMachineContent.localChoiceDetail(limaFound: wizard.limaFound, unattended: wizard.unattended),
+                    badge: wizard.firstRun ? "NO SERVER NEEDED" : nil,
                     selected: false
                 ) { state.wizard.choose(.localVM) }
-                .disabled(!state.wizard.canChoose(.localVM))
+                .disabled(!wizard.canChoose(.localVM))
             }
             .fixedSize(horizontal: false, vertical: true)
-            if !state.wizard.limaFound {
+            if !wizard.canChoose(.localVM) {
                 VStack(alignment: .leading, spacing: m.space.sm) {
                     Text(verbatim: "A machine on this Mac needs Lima. Install it, then check again.")
                         .font(.dm(11.5))
@@ -167,7 +195,7 @@ struct AddMachineDetailsView: View {
             } else {
                 AddMachineNote(text: AddMachineContent.localNote(unattended: unattended))
             }
-            if !state.wizard.connectOnly {
+            if !state.wizard.firstRun {
                 field("First workspace", .workspace,
                       hint: "Optional. A workspace is one Linux account on the machine, and what the sidebar lists.") {
                     TextField("acme", text: draft.workspace).dmField()
@@ -344,9 +372,9 @@ private struct AddMachinePackagesView: View {
                 ForEach(shown) { card in
                     DMChoiceCard(
                         title: card.name, detail: card.summary,
-                        badge: card.isRecommended ? "RECOMMENDED" : (card.isYours ? "YOURS" : nil),
-                        note: card.contains.isEmpty ? nil : "Contains " + card.contains.joined(separator: ", ") + ".",
-                        selected: state.wizard.isSelected(card.name), multiple: true
+                        badge: badge(card),
+                        note: card.contains.isEmpty ? nil : "Includes " + card.contains.joined(separator: ", ") + ".",
+                        selected: state.wizard.isSelected(card.name), multiple: true, locked: card.isLocked
                     ) { state.wizard.togglePackage(card.name) }
                 }
             }
@@ -354,19 +382,58 @@ private struct AddMachinePackagesView: View {
                 AddMachineNote(text: "The other packages are listed once your first machine exists: "
                     + "add them later with devmachine packages add.")
             }
-            Toggle(isOn: $state.wizard.draft.sync) {
-                VStack(alignment: .leading, spacing: m.space.xxs) {
-                    Text(verbatim: "Install them now")
-                        .font(.dm(12, weight: .medium))
-                        .foregroundStyle(Color.dmRowText)
-                    Text(verbatim: "Runs devmachine sync at the end. Off, the packages are only written "
-                        + "to the configuration until you sync.")
-                        .font(.dm(11))
-                        .foregroundStyle(Color.dmMuted)
+            if state.wizard.firstRun {
+                AddMachineSkillsChoice(state: state)
+            } else {
+                Toggle(isOn: $state.wizard.draft.sync) {
+                    VStack(alignment: .leading, spacing: m.space.xxs) {
+                        Text(verbatim: "Install them now")
+                            .font(.dm(12, weight: .medium))
+                            .foregroundStyle(Color.dmRowText)
+                        Text(verbatim: "Runs devmachine sync at the end. Off, the packages are only written "
+                            + "to the configuration until you sync.")
+                            .font(.dm(11))
+                            .foregroundStyle(Color.dmMuted)
+                    }
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private func badge(_ card: MachinePackageCard) -> String? {
+        if card.isLocked { return "ALWAYS INSTALLED" }
+        if MachinePackageCatalog.suggestedPackages.contains(card.name) { return "SUGGESTED" }
+        return card.isYours ? "YOURS" : nil
+    }
+}
+
+/// The coding harnesses the devmachine skills are linked for. The skills
+/// always install; this only says which harnesses see them.
+private struct AddMachineSkillsChoice: View {
+    @Environment(\.dmMetrics) private var m
+    @ObservedObject var state: AddMachineModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            AddMachineFieldLabel(text: "Your coding agents learn devmachine")
+            Text(verbatim: "The setup installs the devmachine skills into ~/.agents/skills, then links them for "
+                + "the agents chosen here. Preselected: the ones this Mac uses.")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            FlowLayout(spacing: m.space.sm) {
+                ForEach(SkillAgent.all) { agent in
+                    DMChip(title: agent.name, selected: state.wizard.draft.skillAgents.contains(agent.id)) {
+                        state.wizard.toggleSkillAgent(agent.id)
+                    }
                 }
             }
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            if state.wizard.draft.skillAgents.isEmpty {
+                AddMachineNote(text: "No agent chosen: the skills are not installed. "
+                    + "Run devmachine skills add later to add them.")
+            }
         }
     }
 }
@@ -380,11 +447,14 @@ struct AddMachineReviewView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
             Text(verbatim: wizard.unattended
-                ? "These commands run in order on the next step, here, with no terminal."
+                ? "These run in order on the next step, here, with every log shown."
                 : "These commands run in order, in a terminal on the next step.")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
-            DMCommandBlock(wizard.plan.map(\.displayLine), wraps: true)
+            ForEach(wizard.plan.filter { !$0.isCommand }) { step in
+                AddMachineNote(text: "First: " + step.displayLine + ".")
+            }
+            DMCommandBlock(wizard.plan.filter(\.isCommand).map(\.displayLine), wraps: true)
             if wizard.plan.contains(where: { $0.input == .password }) {
                 AddMachineNote(text: "The password goes to the CLI on its standard input. "
                     + "It is never in a command line, a file or a log.")
@@ -396,7 +466,7 @@ struct AddMachineReviewView: View {
                     .foregroundStyle(Color.dmMuted)
                 AddMachineAnswers(answers: answers)
             }
-            AddMachineNote(text: AddMachineContent.reviewNote(draft, connectOnly: wizard.connectOnly))
+            AddMachineNote(text: AddMachineContent.reviewNote(draft, firstRun: wizard.firstRun))
         }
     }
 }
@@ -408,44 +478,68 @@ struct AddMachineRunView: View {
     let onClose: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: m.space.xl) {
-            if state.wizard.unattended {
-                ProcessOutputView(lines: runner.lines, fills: true)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                TerminalPaneView(kind: runner.terminalKind)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .dmSurface(Color.black, radius: DMRadius.panel)
-            }
-            ScrollView {
-                VStack(alignment: .leading, spacing: m.space.lg) {
-                    outcome
-                    steps
-                    let answers = state.wizard.terminalAnswers
-                    if !answers.isEmpty, runner.phase != .succeeded {
-                        Text(verbatim: "When the terminal asks")
-                            .font(.dm(11, weight: .semibold))
-                            .foregroundStyle(Color.dmRowText.opacity(0.8))
-                        AddMachineAnswers(answers: answers)
-                    }
-                }
-            }
-            .frame(width: m.pt(320))
+        MachineRunLayout(
+            steps: state.wizard.plan, runner: runner, inTerminal: !state.wizard.unattended,
+            answers: runner.phase == .succeeded ? [] : state.wizard.terminalAnswers
+        ) {
+            outcome
         }
     }
 
     @ViewBuilder
     private var outcome: some View {
-        switch runner.phase {
-        case .succeeded:
-            VStack(alignment: .leading, spacing: m.space.md) {
-                Label {
-                    Text(verbatim: "\(state.wizard.draft.name) is ready")
-                } icon: {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.green)
+        if state.onlySkillsFailed {
+            succeeded
+            SetupFailurePanel(
+                step: state.failedStep, lines: runner.lines, problem: runner.problem, exitCode: runner.exitCode,
+                onRetry: { Task { await state.retry() } })
+        } else {
+            switch runner.phase {
+            case .succeeded:
+                succeeded
+            case .failed:
+                SetupFailurePanel(
+                    step: state.failedStep, lines: runner.lines, problem: runner.problem, exitCode: runner.exitCode,
+                    onRetry: state.canRetry ? { Task { await state.retry() } } : nil,
+                    onEditAnswers: { state.editAnswers() })
+                if state.offersHomebrewLima {
+                    DMButton("Install Lima with Homebrew instead", systemImage: "shippingbox", variant: .outline,
+                             size: .small) { Task { await state.retryLimaWithHomebrew() } }
                 }
-                .font(.dm(14, weight: .semibold))
-                .foregroundStyle(Color.dmRowText)
+                if !state.canRetry {
+                    Text(verbatim: "The password is not kept after a run. Type it again to try again.")
+                        .font(.dm(11))
+                        .foregroundStyle(Color.dmMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !state.wizard.firstRun {
+                    DMButton("Close", variant: .ghost, size: .small, action: onClose)
+                }
+            case .running, .idle:
+                Text(verbatim: state.wizard.unattended
+                    ? "Each step's log shows on the left as it runs. Nothing here asks a question."
+                    : "Watch the terminal. A step that asks something waits for you there.")
+                    .font(.dm(11.5))
+                    .foregroundStyle(Color.dmMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                if runner.phase == .running {
+                    DMButton("Stop", systemImage: "stop.fill", variant: .dangerOutline, size: .small) { state.stop() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var succeeded: some View {
+        VStack(alignment: .leading, spacing: m.space.md) {
+            Label {
+                Text(verbatim: "\(state.wizard.draft.name) is ready")
+            } icon: {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.green)
+            }
+            .font(.dm(14, weight: .semibold))
+            .foregroundStyle(Color.dmRowText)
+            if !state.wizard.firstRun {
                 Text(verbatim: state.wizard.draft.workspace.isEmpty
                     ? "It is in Settings → Machines. Add a workspace to see it in the sidebar."
                     : "Its workspace shows in the sidebar.")
@@ -454,48 +548,49 @@ struct AddMachineRunView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 DMButton("Done", action: onClose)
             }
-        case let .failed(step):
-            DMErrorStateView(
-                state: DMErrorState(
-                    title: "Could not add \(state.wizard.draft.name)",
-                    cause: runner.problem,
-                    details: failureDetails(step)),
-                retry: state.canRetry ? { Task { await state.retry() } } : nil)
-            if !state.canRetry {
-                Text(verbatim: "The password is not kept after a run. Type it again to try again.")
-                    .font(.dm(11))
-                    .foregroundStyle(Color.dmMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// A run on screen: the log (or the terminal, for an older CLI) on the
+/// left, and beside it how it ends and every step with its command.
+struct MachineRunLayout<Outcome: View>: View {
+    @Environment(\.dmMetrics) private var m
+    let steps: [MachinePlanStep]
+    @ObservedObject var runner: MachineStepRunner
+    var inTerminal = false
+    var answers: [MachinePlan.Answer] = []
+    @ViewBuilder let outcome: () -> Outcome
+
+    var body: some View {
+        HStack(alignment: .top, spacing: m.space.xl) {
+            if inTerminal {
+                TerminalPaneView(kind: runner.terminalKind)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .dmSurface(Color.black, radius: DMRadius.panel)
+            } else {
+                DMLogView(lines: runner.lines, fills: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            HStack(spacing: m.space.sm) {
-                DMButton("Edit answers", variant: state.canRetry ? .outline : .primary, size: .small) {
-                    state.editAnswers()
+            ScrollView {
+                VStack(alignment: .leading, spacing: m.space.lg) {
+                    outcome()
+                    stepList
+                    if !answers.isEmpty {
+                        Text(verbatim: "When the terminal asks")
+                            .font(.dm(11, weight: .semibold))
+                            .foregroundStyle(Color.dmRowText.opacity(0.8))
+                        AddMachineAnswers(answers: answers)
+                    }
                 }
-                DMButton("Close", variant: .ghost, size: .small, action: onClose)
             }
-            .frame(maxWidth: .infinity)
-        case .running, .idle:
-            Text(verbatim: state.wizard.unattended
-                ? "Each command's output shows on the left as it runs. Nothing here asks a question."
-                : "Watch the terminal. A step that asks something waits for you there.")
-                .font(.dm(11.5))
-                .foregroundStyle(Color.dmMuted)
-                .fixedSize(horizontal: false, vertical: true)
-            if runner.phase == .running {
-                DMButton("Stop", systemImage: "stop.fill", variant: .dangerOutline, size: .small) { state.stop() }
-            }
+            .frame(width: m.pt(340))
         }
     }
 
-    private func failureDetails(_ step: String) -> String {
-        let line = state.wizard.plan.first { $0.id == step }?.displayLine ?? step
-        guard state.wizard.unattended, !runner.lines.isEmpty else { return line }
-        return runner.lines.suffix(30).joined(separator: "\n")
-    }
-
-    private var steps: some View {
+    private var stepList: some View {
         VStack(alignment: .leading, spacing: m.space.md) {
-            ForEach(state.wizard.plan) { step in
+            ForEach(steps) { step in
                 HStack(alignment: .firstTextBaseline, spacing: m.space.md) {
                     icon(runner.status(of: step))
                         .frame(width: m.pt(DMIconSize.md))
@@ -503,6 +598,11 @@ struct AddMachineRunView: View {
                         Text(verbatim: step.title)
                             .font(.dm(12, weight: .medium))
                             .foregroundStyle(Color.dmRowText)
+                        Text(verbatim: step.displayLine)
+                            .font(.dm(10, design: .monospaced))
+                            .foregroundStyle(Color.dmMuted)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
                         if step.asksInTerminal {
                             Text(verbatim: "Asks in the terminal")
                                 .font(.dm(10.5))
@@ -582,9 +682,19 @@ enum AddMachineContent {
     static func localNote(unattended: Bool) -> String {
         unattended
             ? "Lima creates the machine with root and the password devmachine, public on purpose: it holds "
-                + "nothing real. devmachine then connects it with that password and turns password login off."
+                + "nothing real. devmachine then connects it with that password and turns password login off. "
+                + "No address to type: it runs on this Mac."
             : "Lima creates the machine with root and the password devmachine, "
                 + "public on purpose: it holds nothing real. The next step adds it like a server you bought."
+    }
+
+    static func localChoiceDetail(limaFound: Bool, unattended: Bool) -> String {
+        var text = "A Lima virtual machine to try devmachine with no server. "
+            + "Nothing on the internet can reach it, so it cannot publish sites."
+        if !limaFound, unattended {
+            text += " Lima is installed first, from its GitHub release (no Homebrew needed)."
+        }
+        return text
     }
 
     static func confirmMessage(_ draft: MachineDraft) -> String {
@@ -599,18 +709,16 @@ enum AddMachineContent {
         }
     }
 
-    static func reviewNote(_ draft: MachineDraft, connectOnly: Bool = false) -> String {
-        if connectOnly {
-            return "This command changes the server: a key goes in and password login goes off. "
-                + "The next steps add devmachine-app to it and sync."
-        }
-        let sync = draft.sync ? " sync then installs the packages." : " Nothing is installed until you run devmachine sync."
+    static func reviewNote(_ draft: MachineDraft, firstRun: Bool = false) -> String {
+        let sync = firstRun || draft.sync
+            ? " sync then installs the packages." : " Nothing is installed until you run devmachine sync."
+        let retry = " If a step fails, Retry starts again from that step."
         switch draft.kind {
         case .localVM:
-            return "create-local takes a few minutes the first time." + sync
+            return "create-local takes a few minutes the first time." + sync + retry
         case .server:
             return "The first command changes the server: a key goes in and password login goes off. "
-                + "The package commands only write the configuration on this Mac." + sync
+                + "The package commands only write the configuration on this Mac." + sync + retry
         }
     }
 }

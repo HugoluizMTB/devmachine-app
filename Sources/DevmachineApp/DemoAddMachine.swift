@@ -79,11 +79,9 @@ enum DemoAddMachine {
         case "add-machine-packages", "no-machines-packages":
             fillServer(state)
             state.wizard.next()
-            state.wizard.togglePackage("docker")
         case "add-machine-review":
             fillPasswordServer(state)
             state.wizard.next()
-            state.wizard.togglePackage("docker")
             state.wizard.next()
         case "no-machines-details":
             fillServer(state)
@@ -108,7 +106,6 @@ enum DemoAddMachine {
         case "add-machine-running", "add-machine-failed", "add-machine-done", "legacy-running":
             if id == "legacy-running" { fillServer(state) } else { fillPasswordServer(state) }
             state.wizard.next()
-            state.wizard.togglePackage("docker")
             state.wizard.next()
             state.wizard.next()
             seedRun(state, id: id)

@@ -13,13 +13,16 @@ struct DMChoiceCard: View {
     let selected: Bool
     /// A checkbox when several can be on, a radio mark when only one.
     var multiple = false
+    /// Always on (a package that always installs): checked, never toggled,
+    /// drawn at full strength.
+    var locked = false
     let action: () -> Void
     @Environment(\.dmMetrics) private var m
     @Environment(\.isEnabled) private var isEnabled
     @State private var hovering = false
 
     var body: some View {
-        Button(action: action) {
+        Button { if !locked { action() } } label: {
             HStack(alignment: .top, spacing: m.space.md) {
                 if let systemImage {
                     Image(systemName: systemImage)
@@ -54,7 +57,7 @@ struct DMChoiceCard: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .contentShape(Rectangle())
             .dmSurface(
-                selected ? Color.dmSelection : (hovering && isEnabled ? Color.dmHover : Color.dmBand),
+                selected ? Color.dmSelection : (hovering && isEnabled && !locked ? Color.dmHover : Color.dmBand),
                 radius: DMRadius.panel,
                 stroke: selected ? Color.accentColor.opacity(0.7) : Color.dmStroke)
             .opacity(isEnabled ? 1 : 0.5)
@@ -62,9 +65,11 @@ struct DMChoiceCard: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .help(locked ? "Always installed" : "")
     }
 
     private var mark: String {
+        if locked { return "lock.square.fill" }
         switch (multiple, selected) {
         case (true, true): return "checkmark.square.fill"
         case (true, false): return "square"

@@ -217,7 +217,7 @@ struct DNSProviderSetupCard: View {
         case let .notSynced(provider, problem):
             notSynced(provider, problem: problem, machine: machine)
         case .working(.sync):
-            ProcessOutputView(lines: setup.lines)
+            DMLogView(lines: setup.lines)
         case .working:
             EmptyView()
         case let .failed(step, cause, details):
@@ -228,6 +228,12 @@ struct DNSProviderSetupCard: View {
                 retry: retry(step),
                 retryTitle: step == .sync ? "Run sync again" : "Back")
                 .frame(maxWidth: .infinity)
+            DMReportBugButton {
+                BugReportEnvironment.report(
+                    title: "DNS setup failed: \(step)", stepID: "dns-\(step)", command: "devmachine (DNS setup, \(step))",
+                    exitCode: nil, lines: setup.lines + [details])
+            }
+            .frame(maxWidth: .infinity)
         case .unknown, .ready:
             EmptyView()
         }

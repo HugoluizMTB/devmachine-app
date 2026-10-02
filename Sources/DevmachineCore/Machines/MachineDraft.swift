@@ -72,19 +72,21 @@ public struct MachineDraft: Equatable, Sendable {
     /// Machine packages beyond essentials, in the order they were chosen.
     public var packages: [String] = []
     public var sync = true
+    /// The harnesses `skills add --agent` links the skills for (first run).
+    public var skillAgents: [String] = []
     /// False before the CLI's `config.yml` exists: only `setup` writes the
     /// first machine, and it asks its questions itself.
     public var hasConfiguration = true
 
     public init() {}
 
-    var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+    public var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
     var trimmedUser: String { user.trimmingCharacters(in: .whitespaces) }
     var trimmedPort: String { port.trimmingCharacters(in: .whitespaces) }
     var trimmedKeyFile: String { keyFile.trimmingCharacters(in: .whitespaces) }
     var trimmedWorkspace: String { workspace.trimmingCharacters(in: .whitespaces) }
-    var trimmedAddress: String { address.trimmingCharacters(in: .whitespaces) }
-    var trimmedDomain: String { domain.trimmingCharacters(in: .whitespaces) }
+    public var trimmedAddress: String { address.trimmingCharacters(in: .whitespaces) }
+    public var trimmedDomain: String { domain.trimmingCharacters(in: .whitespaces) }
 
     /// The `SHA256:…` word in what was pasted: `ssh-keygen -lf` prints it
     /// between the key size and the comment.

@@ -3,6 +3,12 @@ import Foundation
 /// One CLI command the wizard runs, in order.
 public struct MachinePlanStep: Equatable, Sendable, Identifiable {
     public enum Kind: Equatable, Sendable {
+        /// Not a `devmachine` command: the app installs Lima itself
+        /// (`LimaInstall`) before `create-local` needs it.
+        case installLima
+        /// The CLI's own installer, a shell line, before any `devmachine`.
+        case installCLI
+        case skills
         case createLocal
         case addMachine
         case addPackage(String)
@@ -33,11 +39,33 @@ public struct MachinePlanStep: Equatable, Sendable, Identifiable {
         self.input = input
     }
 
-    public var id: String { arguments.joined(separator: " ") }
+    public static let installLimaID = "install-lima"
+    public static let installCLIID = "install-cli"
+
+    public var id: String {
+        switch kind {
+        case .installLima: return Self.installLimaID
+        case .installCLI: return Self.installCLIID
+        default: return arguments.joined(separator: " ")
+        }
+    }
+
+    /// Whether the step is a `devmachine` command to show as one.
+    public var isCommand: Bool { kind != .installLima && kind != .installCLI }
+
+    /// A failed skills install is a warning: the machine is set up without it.
+    public var blocksSetup: Bool { kind != .skills }
 
     public var displayLine: String {
-        (["devmachine"] + arguments.map(FileUpload.shellQuoted)).joined(separator: " ")
+        switch kind {
+        case .installLima: return "Install Lima from \(LimaInstall.releasePage) into ~/.local, checking its SHA-256"
+        case .installCLI: return CLIInstallPlan.noHomebrewCommand
+        default: return (["devmachine"] + arguments.map(FileUpload.shellQuoted)).joined(separator: " ")
+        }
     }
+
+    public static let installCLI = MachinePlanStep(
+        kind: .installCLI, title: "Install the devmachine CLI", arguments: [], asksInTerminal: false)
 }
 
 /// The commands that turn a wizard's answers into a machine. Nothing here
@@ -61,9 +89,17 @@ public enum MachinePlan {
 
     /// `unattended` is a CLI that takes every answer as a flag
     /// (`MachineUnattendedAdd`): nothing then asks in a terminal.
-    public static func steps(for draft: MachineDraft, unattended: Bool = false) -> [MachinePlanStep] {
+    /// `installsLima` puts Lima's own install first, for a local machine
+    /// on a Mac without it; only a run in the background can do that.
+    public static func steps(
+        for draft: MachineDraft, unattended: Bool = false, installsLima: Bool = false
+    ) -> [MachinePlanStep] {
         let name = draft.trimmedName
         var steps: [MachinePlanStep] = []
+        if unattended, installsLima, draft.kind == .localVM {
+            steps.append(MachinePlanStep(
+                kind: .installLima, title: "Install Lima", arguments: [], asksInTerminal: false))
+        }
         if unattended {
             steps.append(draft.kind == .localVM ? createLocalAndAddStep(for: draft) : unattendedAddStep(for: draft))
         } else {
@@ -89,6 +125,13 @@ public enum MachinePlan {
             steps.append(MachinePlanStep(
                 kind: .sync, title: "Install everything on \(name)",
                 arguments: ["sync", "--machine", name, "--yes"], asksInTerminal: false))
+        }
+        let agents = SkillAgent.ordered(draft.skillAgents)
+        if !agents.isEmpty {
+            steps.append(MachinePlanStep(
+                kind: .skills, title: "Teach " + SkillAgent.names(agents).joined(separator: ", ") + " devmachine",
+                arguments: ["skills", "add"] + agents.flatMap { ["--agent", $0] } + ["--yes"],
+                asksInTerminal: false))
         }
         return steps
     }

@@ -56,6 +56,14 @@ final class DMComponentsFitTests: XCTestCase {
                 title: "docker", systemImage: "shippingbox", detail: "Docker Engine and Compose.",
                 badge: "YOURS", selected: true, multiple: true) {}
         }
+        DMFitCheck.assertFits("locked choice card", width: DMCardWidth.banner) {
+            DMChoiceCard(
+                title: "essentials", detail: "Base tools.", badge: "ALWAYS INSTALLED", note: "Includes base, git.",
+                selected: true, multiple: true, locked: true) {}
+        }
+        DMFitCheck.assertFits("log", width: DMCardWidth.sheet) {
+            DMLogView(lines: ["$ devmachine sync --machine lab --yes", "TASK [base : apt] ok"])
+        }
     }
 
     func testRowsAndSectionsFitAtEveryTextSize() {

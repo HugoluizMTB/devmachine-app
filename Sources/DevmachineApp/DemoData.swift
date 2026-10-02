@@ -131,55 +131,6 @@ enum DemoData {
     \u{1B}[36m$\u{1B}[0m
     """
 
-    /// The setup flow's panes, by the demo pane's name: install, setup,
-    /// a failed install, and an agent at work.
-    private static func onboardingTranscript(_ name: String) -> String {
-        if name.hasSuffix("failed") { return onboardingFailedTranscript }
-        if name.hasSuffix("setup") { return onboardingSetupTranscript }
-        if name.hasSuffix("agent") { return onboardingAgentTranscript }
-        return onboardingInstallTranscript
-    }
-
-    private static let onboardingInstallTranscript = """
-    Downloading devmachine 0.7.30 for darwin/arm64...
-    Installed devmachine to /Users/alice/.local/bin/devmachine
-    """
-
-    private static let onboardingSetupTranscript = """
-    \u{1B}[1mdevmachine setup\u{1B}[0m
-
-    This connects a server you rent (or one on your desk) to this Mac.
-
-    Server address (IP or hostname): 203.0.113.10
-    Admin user [root]: root
-
-    The server answered with this host key:
-      ED25519 SHA256:Zm9vYmFyYmF6cXV4ZXhhbXBsZWtleWZpbmdlcnByaW50
-    Check it against your provider's console before going on.
-
-    Does it match? [y/N] \u{1B}[7m \u{1B}[0m
-    """
-
-    private static let onboardingFailedTranscript = """
-    curl: (6) Could not resolve host: mydevmachine.sh
-    """
-
-    private static let onboardingAgentTranscript = """
-    \u{1B}[1m\u{1B}[36m● Claude Code\u{1B}[0m — ~
-
-    \u{1B}[2m>\u{1B}[0m Set up devmachine for me: read
-      https://mydevmachine.sh/agent-setup.md and follow it.
-
-    \u{1B}[2mFetching agent-setup.md\u{1B}[0m
-
-    \u{1B}[2m$\u{1B}[0m curl -fsSL https://mydevmachine.sh/install.sh | sh
-    \u{1B}[32m✓\u{1B}[0m devmachine 0.7.30 installed
-
-    The next step connects your server. What is its address?
-
-    \u{1B}[36m❯\u{1B}[0m
-    """
-
     private static let operatorTranscript = """
     \u{1B}[1m\u{1B}[36m● Claude Code\u{1B}[0m — ~/.config/devmachine
 
@@ -241,7 +192,6 @@ enum DemoData {
             return testRunTranscript
         case let .local(session, _):
             let lowered = session.lowercased()
-            if lowered.hasPrefix(OnboardingRunner.sessionPrefix) { return onboardingTranscript(lowered) }
             if session == MachineStepRunner.sessionName { return addMachineTranscript }
             if lowered.contains("claude") { return claudeTranscript }
             if lowered.contains("codex") { return codexTranscript }

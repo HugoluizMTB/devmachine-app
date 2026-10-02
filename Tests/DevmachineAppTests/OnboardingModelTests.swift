@@ -33,83 +33,34 @@ private final class ScriptedRunner: CommandRunner, @unchecked Sendable {
 }
 
 private func detection(
-    cliFound: Bool = true, adminMachine: String? = nil,
-    missingPackageMachines: [String] = [], agents: [DetectedAgent] = []
+    cliFound: Bool = true, adminMachine: String? = nil, missingPackageMachines: [String] = []
 ) -> OnboardingDetection {
-    OnboardingDetection(
-        cliFound: cliFound, adminMachine: adminMachine,
-        missingPackageMachines: missingPackageMachines, agents: agents)
+    OnboardingDetection(cliFound: cliFound, adminMachine: adminMachine, missingPackageMachines: missingPackageMachines)
 }
 
-// MARK: - OnboardingPlan.missingSteps
+// MARK: - OnboardingPlan.prepareSteps
 
-final class OnboardingPlanMissingStepsTests: XCTestCase {
-    func testEverythingMissingListsInstallAndSetupOnly() {
-        let steps = OnboardingPlan.missingSteps(for: .empty)
-        XCTAssertEqual(steps, [.installCLI, .runSetup])
+final class OnboardingPlanPrepareStepsTests: XCTestCase {
+    func testWithoutTheCLIOnlyTheCLIIsInstalledWithoutHomebrew() {
+        let steps = OnboardingPlan.prepareSteps(for: detection(cliFound: false))
+        XCTAssertEqual(steps, [.installCLI])
+        XCTAssertEqual(steps[0].displayLine, CLIInstallPlan.noHomebrewCommand)
+        XCTAssertFalse(steps[0].displayLine.contains("brew install"))
     }
 
-    func testCLIFoundButNoMachineSkipsTheInstallStep() {
-        let steps = OnboardingPlan.missingSteps(for: detection(cliFound: true, adminMachine: nil))
-        XCTAssertEqual(steps, [.runSetup])
-    }
-
-    func testOneMissingMachineAddsOnePairOfSteps() {
-        let steps = OnboardingPlan.missingSteps(
-            for: detection(adminMachine: "acme", missingPackageMachines: ["acme"]))
-        XCTAssertEqual(steps, [.addPackage(machine: "acme"), .sync(machine: "acme")])
-    }
-
-    func testSeveralMissingMachinesEachGetTheirOwnPairInOrder() {
-        let steps = OnboardingPlan.missingSteps(
+    func testEachMachineMissingThisAppsPackageGetsItAndASyncInOrder() {
+        let steps = OnboardingPlan.prepareSteps(
             for: detection(adminMachine: "acme", missingPackageMachines: ["acme", "beta"]))
-        XCTAssertEqual(steps, [
-            .addPackage(machine: "acme"), .sync(machine: "acme"),
-            .addPackage(machine: "beta"), .sync(machine: "beta"),
+        XCTAssertEqual(steps.map(\.arguments), [
+            ["packages", "add", "devmachine-app", "--machine", "acme", "--yes"],
+            ["sync", "--machine", "acme", "--yes"],
+            ["packages", "add", "devmachine-app", "--machine", "beta", "--yes"],
+            ["sync", "--machine", "beta", "--yes"],
         ])
     }
 
-    func testNothingMissingListsNoSteps() {
-        let steps = OnboardingPlan.missingSteps(for: detection(adminMachine: "acme", missingPackageMachines: []))
-        XCTAssertEqual(steps, [])
-    }
-
-    func testAMachineHintFillsInThePackageStepsBeforeDetectionKnowsAboutIt() {
-        // The package-only gate already knows which machine is missing the
-        // package before onboarding's own detection has run once.
-        let steps = OnboardingPlan.missingSteps(for: .empty, machine: "acme")
-        XCTAssertTrue(steps.contains(.addPackage(machine: "acme")))
-        XCTAssertTrue(steps.contains(.sync(machine: "acme")))
-    }
-
-}
-
-// MARK: - OnboardingPlan.commands
-
-final class OnboardingPlanCommandsTests: XCTestCase {
-    func testAFreshMacInstallsTheBinaryWithoutHomebrewOrXcode() {
-        let commands = OnboardingPlan.commands(for: .empty)
-        XCTAssertEqual(commands.map(\.id), [.installCLI, .runSetup])
-        XCTAssertEqual(commands[0].command, "curl -fsSL https://mydevmachine.sh/install.sh | DEVMACHINE_NO_BREW=1 sh")
-        XCTAssertEqual(commands[1].command, #"PATH="$HOME/.local/bin:$PATH" devmachine setup"#)
-    }
-
-    func testCommandsForAMissingPackageUseTheMachineName() {
-        let commands = OnboardingPlan.commands(
-            for: detection(adminMachine: "acme", missingPackageMachines: ["acme"]))
-        XCTAssertEqual(commands.map(\.command), [
-            #"PATH="$HOME/.local/bin:$PATH" devmachine packages add devmachine-app --machine acme"#,
-            #"PATH="$HOME/.local/bin:$PATH" devmachine sync --machine acme"#,
-        ])
-    }
-
-    func testCommandsForSeveralMissingMachinesListEachOnesPair() {
-        let commands = OnboardingPlan.commands(
-            for: detection(adminMachine: "acme", missingPackageMachines: ["acme", "beta"]))
-        XCTAssertEqual(commands.map(\.id), [
-            .addPackage(machine: "acme"), .sync(machine: "acme"),
-            .addPackage(machine: "beta"), .sync(machine: "beta"),
-        ])
+    func testAMacWithEverythingHasNothingToPrepare() {
+        XCTAssertEqual(OnboardingPlan.prepareSteps(for: detection(adminMachine: "acme")), [])
     }
 }
 
@@ -122,8 +73,7 @@ final class OnboardingDetectorTests: XCTestCase {
             "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
         ])
         let result = OnboardingDetector.detect(
-            cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) },
-            agents: { [] })
+            cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
         XCTAssertTrue(result.cliFound)
         XCTAssertEqual(result.adminMachine, "acme")
         XCTAssertEqual(result.missingPackageMachines, [])
@@ -132,8 +82,7 @@ final class OnboardingDetectorTests: XCTestCase {
 
     func testMissingCLIReportsNothingElseDetected() {
         let result = OnboardingDetector.detect(
-            cli: { throw DevmachineCLIError.executableNotFound(["/fake"]) },
-            agents: { [] })
+            cli: { throw DevmachineCLIError.executableNotFound(["/fake"]) })
         XCTAssertFalse(result.cliFound)
         XCTAssertNil(result.adminMachine)
         XCTAssertEqual(result.missingPackageMachines, [])
@@ -143,8 +92,7 @@ final class OnboardingDetectorTests: XCTestCase {
     func testCLIFoundButNoMachineConfiguredLeavesThePackageUnchecked() {
         let runner = ScriptedRunner(byCommand: ["machines": ("[]", "", 0)])
         let result = OnboardingDetector.detect(
-            cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) },
-            agents: { [] })
+            cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
 
         XCTAssertTrue(result.cliFound)
         XCTAssertNil(result.adminMachine)
@@ -161,8 +109,7 @@ final class OnboardingDetectorTests: XCTestCase {
             "list": (#"{"packages":[{"name":"devmachine-app","scope":"machine","installed_on":["machine acme"]}]}"#, "", 0),
         ])
         let result = OnboardingDetector.detect(
-            cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) },
-            agents: { [] })
+            cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
 
         XCTAssertEqual(result.missingPackageMachines, ["beta"])
         XCTAssertFalse(result.isComplete)
@@ -174,48 +121,12 @@ final class OnboardingDetectorTests: XCTestCase {
             "list": ("", "connection refused", 1),
         ])
         let result = OnboardingDetector.detect(
-            cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) },
-            agents: { [] })
+            cli: { DevmachineCLI(executable: "/opt/devmachine", runner: runner) })
 
         XCTAssertEqual(result.missingPackageMachines, [])
         // Failing open still leaves the machine detected, so `isComplete`
         // reads true rather than stuck behind a flaky `packages` read.
         XCTAssertTrue(result.isComplete)
-    }
-}
-
-// MARK: - AgentDetector
-
-final class AgentDetectorTests: XCTestCase {
-    func testAKnownPathIsFoundWithoutTouchingTheShell() {
-        let runner = ScriptedRunner(byCommand: [:])
-        let agents = AgentDetector.detect(
-            kinds: [.claude], runner: runner, shell: "/bin/zsh",
-            exists: { $0 == "/opt/homebrew/bin/claude" })
-
-        XCTAssertEqual(agents, [DetectedAgent(kind: .claude, executablePath: "/opt/homebrew/bin/claude")])
-        XCTAssertTrue(runner.calls.isEmpty)
-    }
-
-    func testFallsBackToTheLoginShellWhenNoKnownPathExists() {
-        let runner = ScriptedRunner(byCommand: ["command -v codex": ("/Users/alice/.local/bin/codex\n", "", 0)])
-        let agents = AgentDetector.detect(
-            kinds: [.codex], runner: runner, shell: "/bin/zsh",
-            exists: { $0 == "/Users/alice/.local/bin/codex" })
-
-        XCTAssertEqual(agents, [DetectedAgent(kind: .codex, executablePath: "/Users/alice/.local/bin/codex")])
-    }
-
-    func testNeitherAKnownPathNorTheShellFindsItLeavesItUndetected() {
-        let runner = ScriptedRunner(byCommand: [:])
-        let agents = AgentDetector.detect(kinds: [.claude], runner: runner, shell: "/bin/zsh", exists: { _ in false })
-        XCTAssertTrue(agents.isEmpty)
-    }
-
-    func testAnEmptyShellAnswerIsNotTreatedAsFound() {
-        let runner = ScriptedRunner(byCommand: ["command -v claude": ("\n", "", 0)])
-        let agents = AgentDetector.detect(kinds: [.claude], runner: runner, shell: "/bin/zsh", exists: { _ in false })
-        XCTAssertTrue(agents.isEmpty)
     }
 }
 

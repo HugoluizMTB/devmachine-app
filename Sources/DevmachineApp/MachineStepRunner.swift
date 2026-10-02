@@ -42,6 +42,15 @@ final class MachineStepRunner: ObservableObject {
         var beginTask: (String, Int) -> UUID?
         var setTask: (UUID, Int) -> Void
         var endTask: (UUID, Bool) -> Void
+        /// The plan's Lima step (`LimaInstaller`). A test that does not set
+        /// it gets a refusal, never a download.
+        var installLima: (LimaInstall.Method, @escaping @Sendable (String) -> Void) async throws -> Void = { _, _ in
+            throw LimaInstallError(message: "Installing Lima is not available here.")
+        }
+        /// The CLI's own installer, a shell line run with no terminal.
+        var installCLI: (@escaping @Sendable (String) -> Void) async throws -> Int32 = { _ in
+            throw LimaInstallError(message: "Installing the CLI is not available here.")
+        }
     }
 
     @Published private(set) var statuses: [String: StepStatus] = [:]
@@ -51,6 +60,8 @@ final class MachineStepRunner: ObservableObject {
     @Published private(set) var lines: [String] = []
     /// The run went through `runProcess`, not the terminal.
     @Published private(set) var inBackground = false
+    /// The failed step's exit status, nil for a stop or an error before it ran.
+    @Published private(set) var exitCode: Int32?
 
     nonisolated static let stopped = "Stopped before it finished. Try again runs this step again."
     nonisolated static let endedWithoutMarker = "The step ended without finishing: the terminal is back at its "
@@ -95,7 +106,11 @@ final class MachineStepRunner: ObservableObject {
     /// Runs every step not done yet, in order, and stops at the first that
     /// fails. A retry calls this again: the steps already done are skipped.
     /// `password` goes to the stdin of the step that reads it, nowhere else.
-    func run(_ steps: [MachinePlanStep], inTerminal: Bool = true, password: SecretText = SecretText()) async {
+    /// `limaMethod` is how a missing Lima is installed when the plan has that step.
+    func run(
+        _ steps: [MachinePlanStep], inTerminal: Bool = true, password: SecretText = SecretText(),
+        limaMethod: LimaInstall.Method = .release, label: String = "Adding a machine…"
+    ) async {
         guard !DemoMode.isActive else {
             reset()
             fail(steps.first, Self.demoRefusal)
@@ -104,16 +119,18 @@ final class MachineStepRunner: ObservableObject {
         let token = UUID()
         runToken = token
         problem = nil
+        exitCode = nil
         phase = .running
         inBackground = !inTerminal
-        let task = hooks.beginTask("Adding a machine…", steps.count)
+        let task = hooks.beginTask(label, steps.count)
         defer { if let task { hooks.endTask(task, phase == .succeeded) } }
 
         guard inTerminal else {
             for (index, step) in steps.enumerated() where status(of: step) != .done {
                 guard runToken == token else { return }
                 if let task { hooks.setTask(task, index) }
-                guard await runInBackground(step, password: password, token: token) else { return }
+                guard await runInBackground(step, password: password, limaMethod: limaMethod, token: token)
+                else { return }
             }
             phase = .succeeded
             return
@@ -156,12 +173,15 @@ final class MachineStepRunner: ObservableObject {
         problem = nil
         lines = []
         inBackground = false
+        exitCode = nil
     }
 
-    private func runInBackground(_ step: MachinePlanStep, password: SecretText, token: UUID) async -> Bool {
+    private func runInBackground(
+        _ step: MachinePlanStep, password: SecretText, limaMethod: LimaInstall.Method, token: UUID
+    ) async -> Bool {
         activeStep = step
         statuses[step.id] = .running
-        let before = lines + ["$ " + step.displayLine]
+        let before = lines + [(step.isCommand ? "$ " : "▸ ") + step.displayLine]
         lines = before
         let sink = ProcessOutputSink { [weak self] output in
             guard let self, self.runToken == token, self.lines.count < before.count + output.count else { return }
@@ -169,8 +189,21 @@ final class MachineStepRunner: ObservableObject {
         }
         let input = step.input == .password ? Data(password.value.utf8) : nil
         let runProcess = hooks.runProcess
+        let installLima = hooks.installLima
+        let installCLI = hooks.installCLI
         let arguments = step.arguments
-        let work = Task { try await runProcess(arguments, input, sink.receive) }
+        let kind = step.kind
+        let work = Task { () async throws -> Int32 in
+            switch kind {
+            case .installLima:
+                try await installLima(limaMethod, sink.receive)
+                return 0
+            case .installCLI:
+                return try await installCLI(sink.receive)
+            default:
+                return try await runProcess(arguments, input, sink.receive)
+            }
+        }
         processTask = work
         let status: Int32
         do {
@@ -184,6 +217,7 @@ final class MachineStepRunner: ObservableObject {
         guard runToken == token else { return false }
         lines = before + sink.snapshot
         guard status == 0 else {
+            exitCode = status
             fail(step, MachinePrepare.failureCause(sink.snapshot)
                 ?? "\(step.displayLine) ended with an error. The output shows what it said.")
             return false
@@ -294,12 +328,24 @@ extension MachineStepRunner.Hooks {
             let cli = try DevmachineCLI.resolve()
             return try await StreamingProcess.run(
                 executable: cli.executable, arguments: arguments,
-                environment: CLISelfUpdate.environment(base: cli.environment()), input: input, output: output)
+                environment: LimaInstall.environment(
+                    base: CLISelfUpdate.environment(base: cli.environment()), home: NSHomeDirectory()),
+                input: input, output: output)
         },
         beginTask: { label, total in AppModel.shared?.beginTask(label: label, total: total) },
         setTask: { id, completed in AppModel.shared?.setTask(id, completed: completed) },
         endTask: { id, succeeded in
             if succeeded { AppModel.shared?.finishTask(id) } else { AppModel.shared?.dropTask(id) }
+        },
+        installLima: { method, output in
+            guard !DemoMode.isActive else { throw LimaInstallError(message: "Demo mode never installs Lima.") }
+            try await LimaInstaller.live.install(method, output: output)
+        },
+        installCLI: { output in
+            guard !DemoMode.isActive else { throw LimaInstallError(message: "Demo mode never installs the CLI.") }
+            return try await StreamingProcess.run(
+                executable: "/bin/zsh", arguments: ["-l", "-c", "setopt pipefail; " + CLIInstallPlan.noHomebrewCommand],
+                environment: CLISelfUpdate.environment(base: ProcessInfo.processInfo.environment), output: output)
         })
     }
 }

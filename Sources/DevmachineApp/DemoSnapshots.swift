@@ -199,22 +199,27 @@ enum DemoSnapshots {
     ]
 
     /// The setup flow walk (`DEVMACHINE_DEMO_WALK=setup-flow`): the first-run
-    /// page in each state, the server form a newer CLI gets instead of
-    /// `setup`'s terminal, then Settings → Connection filled from the CLI and
-    /// with each issue the setup button answers.
+    /// page in each state (`DemoSetupFlow`): the CLI install and its failure,
+    /// every wizard stage, a run with its log, a failure with Retry, the end,
+    /// then Settings → Connection filled from the CLI and with each issue the
+    /// setup button answers.
     static let setupFlowScreens: [Screen] = [
         Screen(id: "setup-start", fileName: "80-setup-start.png", settleNanoseconds: 300_000_000),
-        Screen(id: "setup-running", fileName: "81-setup-running.png", settleNanoseconds: 1_200_000_000),
-        Screen(id: "setup-failed", fileName: "82-setup-failed.png", settleNanoseconds: 1_200_000_000),
-        Screen(id: "setup-agent", fileName: "83-setup-agent.png", settleNanoseconds: 1_200_000_000),
-        Screen(id: "setup-agent-stopped", fileName: "84-setup-agent-stopped.png", settleNanoseconds: 1_200_000_000),
-        Screen(id: "setup-ready", fileName: "85-setup-ready.png", settleNanoseconds: 300_000_000),
-        Screen(id: "setup-connect", fileName: "90-setup-connect.png", settleNanoseconds: 300_000_000),
-        Screen(id: "setup-connect-review", fileName: "91-setup-connect-review.png", settleNanoseconds: 300_000_000),
-        Screen(id: "settings-connection", fileName: "86-settings-connection.png", settleNanoseconds: 500_000_000),
-        Screen(id: "settings-needs-setup", fileName: "87-settings-needs-setup.png", settleNanoseconds: 500_000_000),
-        Screen(id: "settings-cli-missing", fileName: "88-settings-cli-missing.png", settleNanoseconds: 500_000_000),
-        Screen(id: "settings-no-machine", fileName: "89-settings-no-machine.png", settleNanoseconds: 500_000_000),
+        Screen(id: "setup-installing", fileName: "81-setup-installing.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-install-failed", fileName: "82-setup-install-failed.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-choice", fileName: "83-setup-choice.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-server", fileName: "84-setup-server.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-local", fileName: "85-setup-local.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-packages", fileName: "86-setup-packages.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-review", fileName: "87-setup-review.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-running", fileName: "88-setup-running.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-failed", fileName: "89-setup-failed.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-ready", fileName: "90-setup-ready.png", settleNanoseconds: 300_000_000),
+        Screen(id: "setup-cli-old", fileName: "91-setup-cli-old.png", settleNanoseconds: 300_000_000),
+        Screen(id: "settings-connection", fileName: "92-settings-connection.png", settleNanoseconds: 500_000_000),
+        Screen(id: "settings-needs-setup", fileName: "93-settings-needs-setup.png", settleNanoseconds: 500_000_000),
+        Screen(id: "settings-cli-missing", fileName: "94-settings-cli-missing.png", settleNanoseconds: 500_000_000),
+        Screen(id: "settings-no-machine", fileName: "95-settings-no-machine.png", settleNanoseconds: 500_000_000),
     ]
 
     static let publishViaScreens: [Screen] = [
@@ -402,8 +407,7 @@ enum DemoSnapshots {
                 // window is already laid out by here, but the view's first
                 // render still shows its `@State` initial value otherwise.
                 try? await Task.sleep(nanoseconds: 300_000_000)
-            case "setup-start", "setup-running", "setup-failed", "setup-agent", "setup-agent-stopped", "setup-ready",
-                 "setup-connect", "setup-connect-review":
+            case _ where DemoSetupFlow.screens.contains(screen.id):
                 view = standaloneView(
                     onboardingPage(screen.id, environment), fittingSize: NSSize(width: 1400, height: 860),
                     autosize: false)
@@ -591,9 +595,11 @@ enum DemoSnapshots {
     }
 
     private static func onboardingPage(_ id: String, _ environment: Environment) -> some View {
-        let state = DemoSetupFlow.state(for: id)
-        return OnboardingPage(
-            demoFlow: state?.flow, demoPaneKind: state?.pane, demoConnect: DemoSetupFlow.connectStage(for: id))
+        let screens = [
+            "install-cli": "setup-start", "install-cli-running": "setup-installing",
+            "install-cli-failed": "setup-install-failed",
+        ]
+        return OnboardingPage(demoScreen: screens[id] ?? id)
             .environmentObject(environment.wallpaperStore)
     }
 

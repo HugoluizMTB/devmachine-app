@@ -286,7 +286,7 @@ struct UpdateDialog: View {
         default:
             UpdateProgressView(phase: updates.phase)
             if case .upgradingWithHomebrew = updates.phase {
-                ProcessOutputView(lines: updates.homebrewOutput)
+                DMLogView(lines: updates.homebrewOutput)
             }
         }
     }
@@ -309,35 +309,6 @@ struct UpdateDialog: View {
     private func close() {
         updates.dismissFailure()
         updates.showsDialog = false
-    }
-}
-
-struct ProcessOutputView: View {
-    @Environment(\.dmMetrics) private var m
-    let lines: [String]
-    /// Takes all the height it is given instead of a short fixed box.
-    var fills = false
-
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                        Text(verbatim: line)
-                            .font(.dm(10.5, design: .monospaced))
-                            .foregroundStyle(Color.dmMuted)
-                            .id(index)
-                    }
-                }
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(m.space.md)
-            }
-            .frame(maxHeight: fills ? .infinity : m.pt(120))
-            .frame(height: fills ? nil : m.pt(120))
-            .dmSurface(Color.dmSelection, radius: DMRadius.control)
-            .onChange(of: lines.count) { _, count in proxy.scrollTo(count - 1, anchor: .bottom) }
-        }
     }
 }
 
@@ -462,7 +433,7 @@ struct UpdatesSettingsView: View {
                         .foregroundStyle(.green)
                 }
                 if !updates.cliOutput.isEmpty {
-                    ProcessOutputView(lines: updates.cliOutput)
+                    DMLogView(lines: updates.cliOutput)
                 }
             }
         }
@@ -473,7 +444,7 @@ struct UpdatesSettingsView: View {
         switch updates.cliPhase {
         case .running:
             UpdateProgressView(label: CLIUpdateContent.running)
-            ProcessOutputView(lines: updates.cliOutput)
+            DMLogView(lines: updates.cliOutput)
         case .failed(let error):
             DMErrorStateView(state: error, retry: { Task { await updates.updateCLI() } })
         case .needsManualUpdate:

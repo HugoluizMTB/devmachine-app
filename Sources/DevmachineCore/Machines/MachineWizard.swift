@@ -16,6 +16,8 @@ public enum MachineWizardStage: Int, CaseIterable, Equatable, Sendable {
 
 /// The Add machine wizard's state: which step is on screen and every answer
 /// so far. Back keeps the answers; a run that started has no way back.
+/// The first-run setup is this same wizard with `firstRun`: it always syncs,
+/// always adds the package this app reads, and installs the skills.
 public struct MachineWizard: Equatable, Sendable {
     public private(set) var stage: MachineWizardStage = .kind
     public var draft = MachineDraft()
@@ -24,35 +26,27 @@ public struct MachineWizard: Equatable, Sendable {
     /// The CLI takes every answer as a flag (`MachineUnattendedAdd`): the
     /// whole run happens without a terminal.
     public let unattended: Bool
-    /// Onboarding's "Connect a server": a server only, its details then the
-    /// review, and nothing after the add. Its own steps add the package
-    /// this app needs and sync.
-    public let connectOnly: Bool
+    public let firstRun: Bool
 
-    public init(existingMachines: [String], limaFound: Bool, unattended: Bool = false, connectOnly: Bool = false) {
+    public init(existingMachines: [String], limaFound: Bool, unattended: Bool = false, firstRun: Bool = false) {
         self.existingMachines = existingMachines
         self.limaFound = limaFound
         self.unattended = unattended
-        self.connectOnly = connectOnly
-        if connectOnly {
-            draft.kind = .server
-            draft.sync = false
-            stage = .details
-        }
+        self.firstRun = firstRun
     }
-
-    public var firstStage: MachineWizardStage { connectOnly ? .details : .kind }
 
     public var problems: [MachineDraftProblem] {
         draft.problems(existingMachines: existingMachines, unattended: unattended)
     }
 
+    /// A CLI that takes every answer as a flag runs in the background, where
+    /// a missing Lima is installed as the plan's first step.
     public func canChoose(_ kind: MachineKind) -> Bool {
-        kind == .server || limaFound
+        kind == .server || limaFound || unattended
     }
 
     public mutating func choose(_ kind: MachineKind) {
-        guard canChoose(kind), !connectOnly || kind == .server else { return }
+        guard canChoose(kind) else { return }
         draft.kind = kind
         stage = .details
     }
@@ -66,19 +60,15 @@ public struct MachineWizard: Equatable, Sendable {
         }
     }
 
-    public var canGoBack: Bool { stage != firstStage && stage != .run }
+    public var canGoBack: Bool { stage != .kind && stage != .run }
 
     public mutating func next() {
-        guard canAdvance else { return }
-        let skip = connectOnly && stage == .details ? 2 : 1
-        guard let following = MachineWizardStage(rawValue: stage.rawValue + skip) else { return }
+        guard canAdvance, let following = MachineWizardStage(rawValue: stage.rawValue + 1) else { return }
         stage = following
     }
 
     public mutating func back() {
-        guard canGoBack else { return }
-        let skip = connectOnly && stage == .review ? 2 : 1
-        guard let previous = MachineWizardStage(rawValue: stage.rawValue - skip) else { return }
+        guard canGoBack, let previous = MachineWizardStage(rawValue: stage.rawValue - 1) else { return }
         stage = previous
     }
 
@@ -89,9 +79,9 @@ public struct MachineWizard: Equatable, Sendable {
     /// starts one.
     public mutating func restore(_ target: MachineWizardStage) {
         guard target != .run else { return }
-        stage = firstStage
+        stage = .kind
         guard stage != target, canAdvance else { return }
-        if stage == .kind { stage = .details }
+        stage = .details
         while stage.rawValue < target.rawValue, canAdvance {
             next()
         }
@@ -104,7 +94,19 @@ public struct MachineWizard: Equatable, Sendable {
         stage = .details
     }
 
-    public var plan: [MachinePlanStep] { MachinePlan.steps(for: draft, unattended: unattended) }
+    public var plan: [MachinePlanStep] {
+        var draft = draft
+        if firstRun {
+            draft.sync = true
+            draft.workspace = ""
+            if !draft.packages.contains(MachinePackageCatalog.appPackage) {
+                draft.packages.append(MachinePackageCatalog.appPackage)
+            }
+        } else {
+            draft.skillAgents = []
+        }
+        return MachinePlan.steps(for: draft, unattended: unattended, installsLima: !limaFound)
+    }
 
     public var terminalAnswers: [MachinePlan.Answer] {
         MachinePlan.terminalAnswers(for: draft, unattended: unattended)
@@ -114,16 +116,54 @@ public struct MachineWizard: Equatable, Sendable {
         package == MachinePackageCatalog.essentials ? draft.essentials : draft.packages.contains(package)
     }
 
-    /// `essentials` is what `machines add` starts a machine with unless
-    /// `--no-essentials`, so it is that flag, never a `packages add`.
+    /// `essentials` is always installed: it holds what every machine and
+    /// this app need, so it is never toggled off.
     public mutating func togglePackage(_ package: String) {
-        if package == MachinePackageCatalog.essentials {
-            draft.essentials.toggle()
-        } else if let index = draft.packages.firstIndex(of: package) {
+        guard package != MachinePackageCatalog.essentials else { return }
+        if let index = draft.packages.firstIndex(of: package) {
             draft.packages.remove(at: index)
         } else {
             draft.packages.append(package)
         }
+    }
+
+    public mutating func toggleSkillAgent(_ agent: String) {
+        if let index = draft.skillAgents.firstIndex(of: agent) {
+            draft.skillAgents.remove(at: index)
+        } else {
+            draft.skillAgents = SkillAgent.ordered(draft.skillAgents + [agent])
+        }
+    }
+}
+
+/// The coding harnesses `devmachine skills add --agent` links the skills
+/// for. The skills land in `~/.agents/skills` whatever is chosen, so a
+/// harness installed later finds them; `--agent` works for one not
+/// installed yet.
+public struct SkillAgent: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+
+    public static let all = [
+        SkillAgent(id: "claude", name: "Claude Code"),
+        SkillAgent(id: "codex", name: "Codex"),
+        SkillAgent(id: "pi", name: "Pi"),
+        SkillAgent(id: "opencode", name: "OpenCode"),
+    ]
+
+    /// Known ids only, in the CLI's order, each once.
+    public static func ordered(_ ids: [String]) -> [String] {
+        all.map(\.id).filter { ids.contains($0) }
+    }
+
+    public static func names(_ ids: [String]) -> [String] {
+        all.filter { ids.contains($0.id) }.map(\.name)
+    }
+
+    /// What `skills add` finds by itself: each harness's own folder in the home folder.
+    public static func detected(home: String, isDirectory: (String) -> Bool) -> [String] {
+        let folders = ["claude": ".claude", "codex": ".codex", "pi": ".pi", "opencode": ".config/opencode"]
+        return all.map(\.id).filter { isDirectory(home + "/" + (folders[$0] ?? $0)) }
     }
 }
 
@@ -159,6 +199,8 @@ public struct MachinePackageCard: Equatable, Sendable, Identifiable {
     public let isYours: Bool
     /// What `essentials` is made of; empty for any other package.
     public let contains: [String]
+    /// Always installed, shown checked and never toggled.
+    public var isLocked: Bool { name == MachinePackageCatalog.essentials }
 
     public var id: String { name }
 
@@ -173,14 +215,24 @@ public struct MachinePackageCard: Equatable, Sendable, Identifiable {
 
 public enum MachinePackageCatalog {
     public static let essentials = "essentials"
+    /// What this app reads from a machine. Essentials needs it, but the
+    /// first run names it too, so the machine's own list says it is there.
+    public static let appPackage = "devmachine-app"
+    public static let suggestedPackages = ["docker"]
+
+    public static func suggested(from cards: [MachinePackageCard]) -> [String] {
+        suggestedPackages.filter { name in cards.contains { $0.name == name } }
+    }
     /// A server is always Linux, and so is a Lima machine on this Mac.
     public static let linux = "linux"
 
     /// Machine packages only (a workspace package goes on a workspace) that
-    /// run on `platform`, with essentials first and the rest by name.
+    /// run on `platform`, with essentials first and the rest by name. What
+    /// essentials is made of is not offered again on its own.
     public static func cards(from packages: [PackageInfo], platform: String = linux) -> [MachinePackageCard] {
-        packages
-            .filter { $0.scope == "machine" && runs($0, on: platform) }
+        let included = packages.first { $0.name == essentials }?.needs ?? []
+        return packages
+            .filter { $0.scope == "machine" && runs($0, on: platform) && !included.contains($0.name) }
             .map { package in
                 let summary = package.summary.trimmingCharacters(in: .whitespacesAndNewlines)
                 return MachinePackageCard(
@@ -212,12 +264,16 @@ public enum AddMachinePrompt {
 }
 
 /// `create-local` needs Lima. An app opened from Finder has no shell PATH,
-/// so it looks where Homebrew installs it.
+/// so it looks where Homebrew installs it, and in `~/.local/bin`, where the
+/// app unpacks Lima's own release (`LimaInstall`).
 public enum LimaTool {
     public static let installCommand = "brew install lima"
     public static let paths = ["/opt/homebrew/bin/limactl", "/usr/local/bin/limactl"]
 
-    public static func find(exists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }) -> String? {
-        paths.first(where: exists)
+    public static func find(
+        home: String = NSHomeDirectory(),
+        exists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+    ) -> String? {
+        (paths + [LimaInstall.limactl(home: home)]).first(where: exists)
     }
 }

@@ -127,7 +127,7 @@ struct MachineReadinessCard: View {
     private var content: some View {
         switch job?.phase {
         case .running:
-            ProcessOutputView(lines: job?.output ?? [])
+            DMLogView(lines: job?.output ?? [])
         case .succeeded:
             EmptyView()
         case let .failed(error):

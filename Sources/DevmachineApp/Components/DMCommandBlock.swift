@@ -44,10 +44,11 @@ struct DMCommandBlock: View {
 
 struct DMCopyButton: View {
     let text: String
+    var title = "Copy"
     @State private var copied = false
 
     var body: some View {
-        DMButton(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc",
+        DMButton(copied ? "Copied" : title, systemImage: copied ? "checkmark" : "doc.on.doc",
                  variant: .ghost, size: .small) {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)

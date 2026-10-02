@@ -9,6 +9,7 @@ final class AddMachineModel: ObservableObject {
     /// Demo mode reads no server and no agent: it answers with invented keys.
     static let shared = DemoMode.isActive
         ? AddMachineModel(
+            findLima: { "/opt/homebrew/bin/limactl" },
             scanMachine: { address, port in DemoData.addMachineScan(address: address, port: port) },
             listAgentKeys: { DemoData.addMachineAgentKeys })
         : AddMachineModel()
@@ -22,9 +23,17 @@ final class AddMachineModel: ObservableObject {
     let runner: MachineStepRunner
     private let machines: MachinesStore
     private let findLima: () -> String?
+    private let findBrew: () -> String?
+    /// How the plan's Lima step installs it: the release first, Homebrew
+    /// once that failed and the person asked for it.
+    @Published private(set) var limaMethod: LimaInstall.Method = .release
     /// Onboarding's own wizard sets it to move to its next step.
     var onAdded: @MainActor () -> Void
-    let connectOnly: Bool
+    /// The first-run setup: the same wizard, ending with this app's package,
+    /// a sync and the skills.
+    let firstRun: Bool
+    /// The harnesses the skills are linked for at first: the ones in use on this Mac.
+    private let skillAgents: () -> [String]
     private let scanMachine: @Sendable (String, String) async throws -> MachineScan
     private let listAgentKeys: @Sendable () async throws -> [AgentKey]
 
@@ -32,6 +41,7 @@ final class AddMachineModel: ObservableObject {
         machines: MachinesStore = .shared,
         runner: MachineStepRunner = MachineStepRunner(),
         findLima: @escaping () -> String? = { LimaTool.find() },
+        findBrew: @escaping () -> String? = { LimaInstaller.findBrew() },
         onAdded: @escaping @MainActor () -> Void = { AddMachineModel.reloadEverything() },
         scanMachine: @escaping @Sendable (String, String) async throws -> MachineScan = { address, port in
             try await Task.detached { try DevmachineCLI.resolve().scanMachine(address: address, port: port) }.value
@@ -39,39 +49,69 @@ final class AddMachineModel: ObservableObject {
         listAgentKeys: @escaping @Sendable () async throws -> [AgentKey] = {
             try await Task.detached { try DevmachineCLI.resolve().agentKeys() }.value
         },
-        connectOnly: Bool = false
+        skillAgents: @escaping () -> [String] = { AddMachineModel.harnessesInUse() },
+        firstRun: Bool = false
     ) {
-        self.connectOnly = connectOnly
+        self.firstRun = firstRun
+        self.skillAgents = skillAgents
         self.machines = machines
         self.runner = runner
         self.findLima = findLima
+        self.findBrew = findBrew
         self.onAdded = onAdded
         self.scanMachine = scanMachine
         self.listAgentKeys = listAgentKeys
-        wizard = MachineWizard(existingMachines: [], limaFound: false, connectOnly: connectOnly)
+        wizard = MachineWizard(existingMachines: [], limaFound: false, firstRun: firstRun)
         startOver()
     }
 
     var isRunning: Bool { runner.phase == .running }
 
-    /// Onboarding's "Connect a server": the server form only, and the add
-    /// alone. Demo mode scans no server and reads no agent.
+    var packageCards: [MachinePackageCard] { machines.packageCards }
+
+    /// The first-run setup's wizard. Demo mode scans no server and reads no agent.
     static func forOnboarding() -> AddMachineModel {
-        guard DemoMode.isActive else { return AddMachineModel(connectOnly: true) }
+        guard DemoMode.isActive else { return AddMachineModel(firstRun: true) }
         let machines = MachinesStore(read: { DemoData.noMachinesSnapshot }, remove: { _ in })
         machines.seedDemo(DemoData.noMachinesSnapshot)
         return AddMachineModel(
             machines: machines,
+            findLima: { nil }, findBrew: { "/opt/homebrew/bin/brew" },
             scanMachine: { address, port in DemoData.addMachineScan(address: address, port: port) },
             listAgentKeys: { DemoData.addMachineAgentKeys },
-            connectOnly: true)
+            skillAgents: { ["claude", "codex"] },
+            firstRun: true)
     }
 
-    /// Reads the configuration, then starts a fresh form: whether it is the
-    /// first machine and what the CLI can do decide what the form asks.
-    func prepareConnect() async {
+    /// Reads the configuration, then starts a fresh wizard: whether it is
+    /// the first machine and what the CLI can do decide what it asks.
+    func prepareFirstRun() async {
         await machines.load()
         startOver()
+    }
+
+    /// The harnesses enabled in Settings → Harnesses, and the ones whose
+    /// folder this Mac has (what `skills add` itself would find).
+    static func harnessesInUse(home: String = NSHomeDirectory()) -> [String] {
+        let enabled = (AppModel.shared?.settings?.enabledHarnesses ?? []).map(\.rawValue)
+        let found = SkillAgent.detected(home: home) { path in
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+        }
+        return SkillAgent.ordered(enabled + found)
+    }
+
+    /// Only the skills step failed: the machine is set up, and a Retry
+    /// installs them.
+    var onlySkillsFailed: Bool {
+        guard case .failed = runner.phase,
+              let failed = wizard.plan.first(where: { runner.status(of: $0) == .failed })
+        else { return false }
+        return !failed.blocksSetup
+    }
+
+    var failedStep: MachinePlanStep? {
+        wizard.plan.first { runner.status(of: $0) == .failed }
     }
 
     /// Try again needs every answer the failed step reads; the password is
@@ -119,7 +159,22 @@ final class AddMachineModel: ObservableObject {
         refreshContext()
     }
 
+    /// The Lima step failed with its release download and Homebrew is there.
+    var offersHomebrewLima: Bool {
+        guard limaMethod == .release, findBrew() != nil,
+              let step = wizard.plan.first(where: { $0.kind == .installLima })
+        else { return false }
+        return runner.status(of: step) == .failed
+    }
+
+    func retryLimaWithHomebrew() async {
+        guard let brew = findBrew() else { return }
+        limaMethod = .homebrew(brew: brew)
+        await retry()
+    }
+
     func startOver() {
+        limaMethod = .release
         runner.reset()
         scanError = nil
         wizard = freshWizard()
@@ -145,10 +200,12 @@ final class AddMachineModel: ObservableObject {
         let added = addedByThisRun
         var wizard = MachineWizard(
             existingMachines: machines.machines.map(\.name).filter { $0 != added },
-            limaFound: DemoMode.isActive || findLima() != nil,
+            limaFound: findLima() != nil,
             unattended: machines.snapshot?.addsWithoutTerminal ?? false,
-            connectOnly: connectOnly)
+            firstRun: firstRun)
         wizard.draft.hasConfiguration = machines.snapshot?.hasConfiguration ?? true
+        wizard.draft.packages = MachinePackageCatalog.suggested(from: machines.packageCards)
+        if firstRun { wizard.draft.skillAgents = SkillAgent.ordered(skillAgents()) }
         return wizard
     }
 
@@ -211,8 +268,12 @@ final class AddMachineModel: ObservableObject {
     private func runPlan() async {
         let password = wizard.draft.password
         wizard.draft.password = SecretText()
-        await runner.run(wizard.plan, inTerminal: !wizard.unattended, password: password)
-        guard runner.phase == .succeeded else { return }
+        BugReportEnvironment.typedHosts = [wizard.draft.trimmedAddress]
+        BugReportEnvironment.typedDomains = [wizard.draft.trimmedDomain]
+        await runner.run(
+            wizard.plan, inTerminal: !wizard.unattended, password: password, limaMethod: limaMethod,
+            label: firstRun ? "Setting up devmachine…" : "Adding a machine…")
+        guard runner.phase == .succeeded || onlySkillsFailed else { return }
         onAdded()
     }
 

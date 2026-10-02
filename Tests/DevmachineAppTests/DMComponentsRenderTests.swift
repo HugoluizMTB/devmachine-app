@@ -76,6 +76,11 @@ private struct DMComponentsGallery: View {
                 DMKindLabel(text: "CNAME")
             }
             DMCommandBlock(["devmachine packages add docker --machine main", "devmachine sync --machine main"])
+            DMLogView(lines: ["$ devmachine machines create-local lab --add", "\u{1B}[2mINFO[0003] Waiting for ssh\u{1B}[0m",
+                              "lab is ready"])
+            DMReportBugButton { BugReport(
+                title: "Setup failed", appVersion: "0", cliVersion: "0", macOS: "15", arch: "arm64",
+                stepID: "x", command: "x", exitCode: 1, lines: []) }
             HStack(alignment: .top, spacing: 8) {
                 DMChoiceCard(
                     title: "A server I have", systemImage: "server.rack",

@@ -14,41 +14,32 @@ final class OnboardingDemoTests: XCTestCase {
         super.tearDown()
     }
 
-    func testOnboardingRunsNoStepAndNoAgent() async {
-        let panes = RecordingPanes()
-        let agent = DetectedAgent(kind: .claude, executablePath: "/Users/alice/.local/bin/claude")
-        let runner = OnboardingRunner(
-            home: "/Users/alice", launcher: panes,
-            detect: { _ in
-                OnboardingDetection(cliFound: false, adminMachine: nil, missingPackageMachines: [], agents: [agent])
-            })
+    func testOnboardingRunsNoStep() async throws {
+        let runner = OnboardingRunner()
         await runner.refresh()
 
         runner.start()
-        XCTAssertEqual(runner.flow.phase, .failed(.installCLI, .demo))
-
-        runner.back()
-        runner.startAgent(.claude)
-        XCTAssertEqual(runner.flow.phase, .agentStopped(.claude))
-        XCTAssertTrue(panes.launched.isEmpty)
+        let deadline = Date().addingTimeInterval(2)
+        while runner.prepare.phase == .idle || runner.prepare.phase == .running, Date() < deadline {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(runner.prepare.phase, .failed(step: MachinePlanStep.installCLIID))
+        XCTAssertEqual(runner.prepare.problem, MachineStepRunner.demoRefusal)
     }
 
     func testOnboardingReadsNoRealCLIInDemoMode() async {
-        let runner = OnboardingRunner(home: "/Users/alice", launcher: RecordingPanes())
+        let runner = OnboardingRunner()
 
         await runner.refresh()
 
         XCTAssertEqual(runner.flow.detection, DemoSetupFlow.freshMac)
     }
-}
 
-@MainActor
-private final class RecordingPanes: OnboardingPaneLaunching {
-    var launched: [PaneProgram] = []
-
-    func launch(_ program: PaneProgram, in kind: TerminalKind, onExit: @escaping @MainActor (Int32?) -> Void) {
-        launched.append(program)
+    func testTheFirstRunWizardReadsNoServerAndNoAgentInDemoMode() async {
+        let wizard = AddMachineModel.forOnboarding()
+        await wizard.prepareFirstRun()
+        XCTAssertTrue(wizard.wizard.firstRun)
+        XCTAssertEqual(wizard.wizard.draft.skillAgents, ["claude", "codex"])
+        XCTAssertEqual(wizard.wizard.draft.packages, ["docker"])
     }
-
-    func close(_ kind: TerminalKind) {}
 }
