@@ -35,6 +35,9 @@ final class TerminalRegistry: NSObject {
     /// The connection being set up for each remote pane. A late answer from
     /// an attempt that is no longer this one is dropped.
     private var remoteLaunches: [TerminalKind: RemoteLaunch] = [:]
+    /// Panes that run one program instead of a shell (`runProgram`).
+    private var programs: [TerminalKind: PaneProgram] = [:]
+    private var programExits: [TerminalKind: @MainActor (Int32?) -> Void] = [:]
     nonisolated static let resolveSupport = ResolveSupport()
 
     private struct RemoteLaunch {
@@ -149,20 +152,14 @@ final class TerminalRegistry: NSObject {
         return forward ? view.findNext(clean) : view.findPrevious(clean)
     }
 
-    /// How many times `term` appears in the pane's own scrollback, without
-    /// selecting or scrolling — onboarding polls this for its
-    /// `OnboardingMarker` exit-status echoes instead of using `find`, which
-    /// would move the person's view every time it checks.
-    func matchCount(_ term: String, in kind: TerminalKind) -> Int {
-        guard let view = terminals[kind] else { return 0 }
-        return view.searchMatchSummary(term).total
-    }
-
-    /// The onboarding terminal types its steps into a fresh shell, and a
-    /// startup question — oh-my-zsh offering to update — read the first one
-    /// as its answer and dropped it. Only that session gets these.
-    static func extraEnvironment(session: String) -> [String] {
-        session == OnboardingRunner.sessionName ? ["DISABLE_AUTO_UPDATE=true", "DISABLE_UPDATE_PROMPT=true"] : []
+    /// Runs `program` as the pane's process instead of a shell, for
+    /// onboarding: the next pane mounted for `kind` starts it once sized, and
+    /// `onExit` gets its exit code. The pane is not revived when the program
+    /// ends; its last screen stays to read.
+    func runProgram(_ program: PaneProgram, in kind: TerminalKind, onExit: @escaping @MainActor (Int32?) -> Void) {
+        close(kind)
+        programs[kind] = program
+        programExits[kind] = onExit
     }
 
     /// Drops the highlight and gives the keyboard back to the session.
@@ -376,6 +373,8 @@ final class TerminalRegistry: NSObject {
         reattached.remove(kind)
         detachedAt[kind] = nil
         remoteLaunches[kind] = nil
+        programs[kind] = nil
+        programExits[kind] = nil
         RemoteTransportStore.shared.forget(kind)
         if pendingFocusKind == kind { pendingFocusKind = nil }
         guard let term = terminals.removeValue(forKey: kind) else { return }
@@ -422,6 +421,17 @@ final class TerminalRegistry: NSObject {
         }
         PaneLog.log("start pane=\(kind)")
         let customSocket = SettingsStore.shared.settings?.sshAgentSocket
+        if let program = programs[kind] {
+            var folder = NSHomeDirectory()
+            if case let .local(_, path) = kind { folder = path }
+            term.startProcess(
+                executable: program.executable,
+                args: program.args,
+                environment: RemoteCommands.terminalEnvironment(customSocket: customSocket) + program.environment,
+                execName: nil,
+                currentDirectory: folder)
+            return
+        }
         switch kind {
         case let .remote(alias, session):
             startRemote(kind, alias: alias, session: session, in: term, customSocket: customSocket)
@@ -433,8 +443,7 @@ final class TerminalRegistry: NSObject {
                 term.startProcess(
                     executable: shell.executable,
                     args: shell.arguments,
-                    environment: RemoteCommands.terminalEnvironment(customSocket: customSocket) + shell.environment
-                        + Self.extraEnvironment(session: session),
+                    environment: RemoteCommands.terminalEnvironment(customSocket: customSocket) + shell.environment,
                     execName: shell.execName,
                     currentDirectory: path
                 )
@@ -446,8 +455,7 @@ final class TerminalRegistry: NSObject {
                 args: Zmx.attachArguments(
                     name: Zmx.sessionName(from: session, socketDirectory: socketDirectory),
                     command: shell.multiplexerCommand),
-                environment: Zmx.environment(socketDirectory: socketDirectory) + shell.environment
-                    + Self.extraEnvironment(session: session),
+                environment: Zmx.environment(socketDirectory: socketDirectory) + shell.environment,
                 // The session's own directory comes from here: the multiplexer
                 // starts the shell in the directory it was launched from.
                 currentDirectory: path
@@ -683,6 +691,11 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
         // than leave a dead screen or lose the pane.
         guard let kind = terminals.first(where: { $0.value === source })?.key else { return }
         PaneLog.log("process ended pane=\(kind) exit=\(exitCode.map(String.init) ?? "-")")
+        if let onExit = programExits.removeValue(forKey: kind) {
+            programs[kind] = nil
+            onExit(exitCode)
+            return
+        }
         if handleRemoteExit(kind, source: source, exitCode: exitCode) { return }
         dead.insert(kind)
         detachedAt[kind] = nil

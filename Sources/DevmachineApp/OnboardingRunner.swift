@@ -1,122 +1,148 @@
 import Foundation
-import AppKit
 import DevmachineCore
 
-/// Drives the "set it up here" side of onboarding: types each missing step's
-/// command into the shared embedded local terminal, one after another, and
-/// watches the pane's own scrollback for the `OnboardingMarker` this step's
-/// command appends, since a step like `devmachine setup` waits on the
-/// person's own answers and there is no other way to know it is done.
+/// Where onboarding's programs run. The real one is `TerminalRegistry`;
+/// tests stand in for it, so no test starts a shell.
 @MainActor
-final class OnboardingRunner: ObservableObject {
-    static let sessionName = "devmachine-onboarding"
+protocol OnboardingPaneLaunching: AnyObject {
+    func launch(_ program: PaneProgram, in kind: TerminalKind, onExit: @escaping @MainActor (Int32?) -> Void)
+    func close(_ kind: TerminalKind)
+}
 
-    @Published private(set) var statuses: [OnboardingStepID: OnboardingStepStatus] = [:]
-    @Published private(set) var currentStep: OnboardingStepID?
-
-    let terminalKind: TerminalKind
-
-    private let sender: any SessionCommandSending
-    private let matchCounter: (String, TerminalKind) -> Int
-    private let pollInterval: UInt64
-    private var runToken = UUID()
-
-    init(
-        path: String = NSHomeDirectory(),
-        sender: any SessionCommandSending = HostRunner(),
-        matchCounter: @escaping (String, TerminalKind) -> Int = { term, kind in
-            TerminalRegistry.shared.matchCount(term, in: kind)
-        },
-        pollInterval: UInt64 = 500_000_000
-    ) {
-        self.terminalKind = .local(session: Self.sessionName, path: path)
-        self.sender = sender
-        self.matchCounter = matchCounter
-        self.pollInterval = pollInterval
-    }
-
-    func status(for id: OnboardingStepID) -> OnboardingStepStatus {
-        statuses[id] ?? .waiting
-    }
-
-    /// Runs every step in `steps` that has not already finished, in order,
-    /// stopping at the first failure. Steps already `.done` (a retry after a
-    /// later failure) are skipped.
-    func run(steps: [(id: OnboardingStepID, command: String)]) {
-        let token = UUID()
-        runToken = token
-        Task { await runSequentially(steps, token: token) }
-    }
-
-    /// Forgets every step and stops whatever was waiting: the page's Back.
-    func reset() {
-        runToken = UUID()
-        statuses = [:]
-        currentStep = nil
-    }
-
-    /// Demo screenshots: a run in any state, without a terminal.
-    func seedDemo(_ statuses: [OnboardingStepID: OnboardingStepStatus]) {
-        self.statuses = statuses
-    }
-
-    /// Re-runs one failed step and, if it succeeds, continues with the rest
-    /// of `steps` from that point on.
-    func retry(step: OnboardingStepID, remaining: [(id: OnboardingStepID, command: String)]) {
-        statuses[step] = .waiting
-        run(steps: remaining)
-    }
-
-    private func runSequentially(_ steps: [(id: OnboardingStepID, command: String)], token: UUID) async {
-        var stepsFinishedBefore = steps.prefix { statuses[$0.id] == .done }.count
-        for step in steps[stepsFinishedBefore...] {
-            guard runToken == token else { return }
-            await runOne(step, token: token)
-            guard runToken == token else { return }
-            if case .failed = statuses[step.id] { return }
-            stepsFinishedBefore += 1
-        }
-    }
-
-    private func runOne(_ step: (id: OnboardingStepID, command: String), token: UUID) async {
-        currentStep = step.id
-        statuses[step.id] = .running
-        let nonce = OnboardingMarker.newNonce()
-        do {
-            try sender.send(OnboardingMarker.wrap(step.command, nonce: nonce), into: CommandTarget.from(terminalKind))
-        } catch {
-            statuses[step.id] = .failed(error.localizedDescription)
-            return
-        }
-        await waitForOutcome(step.id, nonce: nonce, token: token)
-    }
-
-    private func waitForOutcome(_ id: OnboardingStepID, nonce: String, token: UUID) async {
-        while runToken == token {
-            if let outcome = OnboardingMarker.outcome(
-                okSeen: matchCounter(OnboardingMarker.ok(nonce: nonce), terminalKind) > 0,
-                failSeen: matchCounter(OnboardingMarker.fail(nonce: nonce), terminalKind) > 0) {
-                statuses[id] = outcome
-                return
-            }
-            try? await Task.sleep(nanoseconds: pollInterval)
-        }
-    }
-
-    /// Opens a coding agent on a failed step, in the same terminal, which is
-    /// back at its prompt once a step has failed. It gets the step and the
-    /// exact command, and runs it again itself to see the error.
-    func askAgent(_ kind: AgentKind, step: OnboardingStepID, command: String) {
-        let line = AgentPrompt.helpCommandLine(for: kind, step: step, command: command)
-        try? sender.send(line, into: CommandTarget.from(terminalKind))
+extension TerminalRegistry: OnboardingPaneLaunching {
+    func launch(_ program: PaneProgram, in kind: TerminalKind, onExit: @escaping @MainActor (Int32?) -> Void) {
+        runProgram(program, in: kind, onExit: onExit)
+        // The person started this run, and `devmachine setup` or the agent
+        // waits on their answers: the keyboard goes to the pane once it is up.
+        requestFocus(kind)
     }
 }
 
-private extension CommandTarget {
-    static func from(_ kind: TerminalKind) -> CommandTarget {
-        switch kind {
-        case let .remote(alias, session): return .remote(alias: alias, session: session)
-        case let .local(session, path): return .local(session: session, path: path)
+/// Carries out what `OnboardingFlow` decides: starts each step, or the
+/// agent, as the program of a fresh pane, and reads the Mac again after
+/// each one. A step's exit code is the only thing that ends it, so nothing
+/// depends on a shell being ready to take typed text.
+@MainActor
+final class OnboardingRunner: ObservableObject {
+    nonisolated static let sessionPrefix = "devmachine-onboarding"
+
+    @Published private(set) var flow = OnboardingFlow()
+    /// The pane on screen: one per step or agent, so an old program's exit
+    /// can never be read as the new one's.
+    @Published private(set) var paneKind: TerminalKind?
+
+    private let home: String
+    private let launcher: any OnboardingPaneLaunching
+    private let detect: @Sendable () async -> OnboardingDetection
+    private let agentPollInterval: UInt64
+    private var paneNumber = 0
+    private var detecting = false
+    private var detectAgain = false
+    private var agentWatch: Task<Void, Never>?
+
+    init(
+        home: String = NSHomeDirectory(),
+        launcher: (any OnboardingPaneLaunching)? = nil,
+        detect: @escaping @Sendable () async -> OnboardingDetection = {
+            await Task.detached { OnboardingDetector.detect() }.value
+        },
+        agentPollInterval: UInt64 = 4_000_000_000
+    ) {
+        self.home = home
+        self.launcher = launcher ?? TerminalRegistry.shared
+        self.detect = detect
+        self.agentPollInterval = agentPollInterval
+    }
+
+    /// Demo screenshots: a flow in any state, with no program behind it.
+    func seedDemo(_ flow: OnboardingFlow, paneKind: TerminalKind?) {
+        self.flow = flow
+        self.paneKind = paneKind
+    }
+
+    func start() { perform(flow.start()) }
+    func retry() { perform(flow.retry()) }
+    func back() { perform(flow.back()) }
+    func startAgent(_ kind: AgentKind) { perform(flow.startAgent(kind)) }
+    func askAgent(_ kind: AgentKind) { perform(flow.askAgent(kind)) }
+
+    /// The page is going away: whatever still runs in its pane ends with it.
+    func leave() {
+        agentWatch?.cancel()
+        closePane()
+    }
+
+    /// Reads the Mac again. Calls that arrive while one is in flight are
+    /// folded into a single read after it.
+    func refresh() async {
+        if detecting {
+            detectAgain = true
+            return
+        }
+        detecting = true
+        repeat {
+            detectAgain = false
+            let next = await detect()
+            perform(flow.receive(next))
+        } while detectAgain
+        detecting = false
+    }
+
+    private func perform(_ effect: OnboardingEffect?) {
+        switch effect {
+        case nil:
+            break
+        case let .runStep(step, command):
+            launch(OnboardingPrograms.step(command)) { [weak self] code in
+                guard let self else { return }
+                perform(flow.stepExited(step, exitCode: code))
+            }
+        case let .launchAgent(kind, prompt):
+            guard let agent = flow.detection.agents.first(where: { $0.kind == kind }) else { return }
+            launch(OnboardingPrograms.agent(agent, prompt: prompt)) { [weak self] _ in
+                guard let self else { return }
+                agentWatch?.cancel()
+                perform(flow.agentExited())
+            }
+            watchAgent()
+        case .refreshDetection:
+            Task { await refresh() }
+        case .stopPane:
+            agentWatch?.cancel()
+            closePane()
+        }
+    }
+
+    private func launch(_ program: PaneProgram, onExit: @escaping @MainActor (Int32?) -> Void) {
+        closePane()
+        paneNumber += 1
+        let number = paneNumber
+        let kind = TerminalKind.local(session: "\(Self.sessionPrefix)-\(number)", path: home)
+        paneKind = kind
+        launcher.launch(program, in: kind) { [weak self] code in
+            guard let self, number == paneNumber else { return }
+            onExit(code)
+        }
+    }
+
+    private func closePane() {
+        guard let kind = paneKind else { return }
+        paneKind = nil
+        launcher.close(kind)
+    }
+
+    /// An agent never says it is done, so the Mac is read every few seconds
+    /// while it works; the page moves on by itself once setup is complete.
+    private func watchAgent() {
+        agentWatch?.cancel()
+        let interval = agentPollInterval
+        agentWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: interval)
+                guard !Task.isCancelled, let self else { return }
+                guard case .agentRunning = flow.phase else { return }
+                await refresh()
+            }
         }
     }
 }

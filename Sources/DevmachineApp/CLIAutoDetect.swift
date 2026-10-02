@@ -12,6 +12,17 @@ struct CLIDetectedSettings: Equatable, Sendable {
     var workspaceAliases: [String: String] = [:]
 
     static let empty = CLIDetectedSettings()
+
+    /// `settings` with every empty Connection field taken from what the CLI
+    /// reported. A value already there, typed or saved, is kept.
+    func filling(_ settings: AppSettings) -> AppSettings {
+        var result = settings
+        if result.opsRepoPath.isEmpty, let opsRepoPath { result.opsRepoPath = opsRepoPath }
+        if result.publicIP.isEmpty, let publicIP { result.publicIP = publicIP }
+        if result.baseDomain.isEmpty, let baseDomain { result.baseDomain = baseDomain }
+        if !workspaceAliases.isEmpty { result.workspaceAliases = workspaceAliases }
+        return result
+    }
 }
 
 enum CLIAutoDetect {

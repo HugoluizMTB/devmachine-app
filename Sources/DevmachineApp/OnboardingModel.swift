@@ -92,35 +92,21 @@ enum AgentDetector {
     }
 }
 
-/// The first message handed to an agent asked to do the setup itself.
+/// The first message handed to an agent asked to do the setup itself. It
+/// reaches the agent as one argument of its own program, never typed into a
+/// shell, so it needs no quoting.
 enum AgentPrompt {
-    static let text = "Set up devmachine for me: read https://mydevmachine.sh/agent-setup.md and follow it. "
+    static let setup = "Set up devmachine for me: read https://mydevmachine.sh/agent-setup.md and follow it. "
         + "When the machine is ready, also add the devmachine-app package to it and sync, "
         + "so the Devmachine Mac app works."
 
-    /// The exact command line typed into the terminal — `claude "<prompt>"` /
-    /// `codex "<prompt>"`, the initial-prompt form both CLIs accept.
-    static func commandLine(for kind: AgentKind) -> String {
-        "\(kind.executableName) \(shellQuote(text))"
-    }
-
     /// The agent opened after a step failed: it gets the step and the exact
     /// command, and runs it again to see the error for itself.
-    static func helpCommandLine(for kind: AgentKind, step: OnboardingStepID, command: String) -> String {
-        let text = "The devmachine setup on this Mac failed at the step \"\(step.title)\", "
+    static func help(step: OnboardingStepID, command: String) -> String {
+        "The devmachine setup on this Mac failed at the step \"\(step.title)\", "
             + "which ran: \(command)\n\nRun it again to see the error, find out why it fails, "
             + "and fix it with me, then run that step again until it succeeds. "
             + "The setup guide is https://mydevmachine.sh/agent-setup.md."
-        return "\(kind.executableName) \(shellQuote(text))"
-    }
-
-    static func shellQuote(_ text: String) -> String {
-        "\"" + text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "$", with: "\\$")
-            .replacingOccurrences(of: "`", with: "\\`")
-            + "\""
     }
 }
 
@@ -172,9 +158,7 @@ enum OnboardingDetector {
 }
 
 enum OnboardingPlan {
-    /// The release binary into `~/.local/bin`, never Homebrew: Homebrew
-    /// refuses to install a tap formula on a Mac whose Xcode is behind.
-    static let installCLICommand = "curl -fsSL \(CLIInstallPlan.installerURL) | DEVMACHINE_NO_BREW=1 sh"
+    static let installCLICommand = CLIInstallPlan.noHomebrewCommand
     /// Every later step names the CLI through a PATH that has the installer's
     /// folder, which a fresh shell may not have yet.
     static let cli = #"PATH="$HOME/.local/bin:$PATH" devmachine"#
@@ -212,50 +196,15 @@ enum OnboardingPlan {
 
     /// The exact command for each missing step, in order.
     static func commands(for detection: OnboardingDetection, machine: String? = nil) -> [(id: OnboardingStepID, command: String)] {
-        missingSteps(for: detection, machine: machine).map { id in
-            switch id {
-            case .installCLI: return (id, installCLICommand)
-            case .runSetup: return (id, setupCommand)
-            case let .addPackage(machine): return (id, addPackageCommand(machine: machine))
-            case let .sync(machine): return (id, syncCommand(machine: machine))
-            }
+        missingSteps(for: detection, machine: machine).map { ($0, command(for: $0)) }
+    }
+
+    static func command(for step: OnboardingStepID) -> String {
+        switch step {
+        case .installCLI: return installCLICommand
+        case .runSetup: return setupCommand
+        case let .addPackage(machine): return addPackageCommand(machine: machine)
+        case let .sync(machine): return syncCommand(machine: machine)
         }
-    }
-}
-
-/// How the runner tells a step's exit status apart in the terminal's own
-/// scrollback, without reading raw bytes off the process itself — some steps
-/// (`devmachine setup`) wait on the person's own typed answers, so the
-/// terminal is the only thing that knows when they are done.
-enum OnboardingMarker {
-    static let failure = "This step exited with an error. See the terminal above."
-
-    /// The line typed into the terminal. The marker is put together by
-    /// `printf` when the command ends, so the typed line itself — which the
-    /// terminal shows as it is typed — never contains it. Before, it did, and
-    /// every step read as done the moment it was typed.
-    static func wrap(_ command: String, nonce: String) -> String {
-        "\(command); if [ $? -eq 0 ]; then dm_r=OK; else dm_r=FAIL; fi; printf '__DM_%s_%s__\\n' \(nonce) \"$dm_r\""
-    }
-
-    static func ok(nonce: String) -> String { "__DM_\(nonce)_OK__" }
-    static func fail(nonce: String) -> String { "__DM_\(nonce)_FAIL__" }
-
-    /// A fresh marker for every run, so an older run's marker — a failure
-    /// before a retry — never answers for this one.
-    static func newNonce() -> String {
-        String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)).lowercased()
-    }
-
-    /// The nonce a typed line carries, for a test standing in for the shell.
-    static func nonce(inTyped line: String) -> String? {
-        guard let range = line.range(of: #"__DM_%s_%s__\\n' (\w+)"#, options: .regularExpression) else { return nil }
-        return line[range].split(separator: " ").last.map(String.init)
-    }
-
-    static func outcome(okSeen: Bool, failSeen: Bool) -> OnboardingStepStatus? {
-        if okSeen { return .done }
-        if failSeen { return .failed(failure) }
-        return nil
     }
 }

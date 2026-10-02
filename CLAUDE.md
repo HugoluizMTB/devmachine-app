@@ -557,6 +557,34 @@ Rules:
 - A session's Context warms its workspace (`WorkspaceMachineData.warm`), so
   Publish a port… and Preview open with something to show.
 
+## First run (onboarding)
+- **Onboarding owns the window until the Mac is set up or skipped**
+  (`AppModel.launchRoute`): Home needs saved settings and the CLI (or a
+  remembered "Skip for now"). A first run never lands on Settings.
+- **Every step is the program of its own pane, never text typed into a
+  shell** (`TerminalRegistry.runProgram`, `OnboardingPrograms`): a typed line
+  raced a shell that was still starting, and a step was "done" when its line
+  was echoed. The exit code ends a step; `zsh -lic` with `pipefail` gives it
+  the account's PATH and ssh agent. A new pane per step, so an old program's
+  exit never answers for the next.
+- **The flow is a pure state machine** (`OnboardingFlow`, driven by
+  `OnboardingRunner`): install CLI → `devmachine setup` → `packages add
+  devmachine-app` → `sync` per machine, re-reading the Mac after each step.
+  Every step ends done or failed; a step that exits 0 but changes nothing is
+  failed too, never re-run in a loop. A sync always follows an add, because
+  the CLI lists a package as soon as it is declared. Failures wait for Try
+  again, Back or "Ask <agent> to fix it".
+- **The agent path starts the agent as the pane's program** with the prompt
+  as one argument (`AgentPrompt.setup`), and the Mac is re-read every few
+  seconds until setup is complete. Quitting the agent early offers the button
+  for the steps still missing.
+- **It ends on "Start using Devmachine"**: `completeOnboarding` reads the CLI
+  again, fills the empty Connection fields, saves them and opens Home, with
+  no restart.
+- The main window opens at 80% of the screen when AppKit has no saved frame
+  for it (`MainWindowSizing`, read before any window exists); a saved frame
+  always wins. Demo walk: `DEVMACHINE_DEMO_WALK=setup-flow`.
+
 ## Machine readiness
 - **A machine missing `devmachine-app` gets a card, never a gate over the
   whole window** (`MachineReadinessStore`). Declared comes from `packages

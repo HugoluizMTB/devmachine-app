@@ -1,176 +1,191 @@
 import SwiftUI
 import AppKit
 
-/// The guided onboarding flow, shown instead of `CLIGatePage`/`PackageGatePage`
-/// while Homebrew, the devmachine CLI, a configured machine, or the
-/// `devmachine-app` package are missing. It owns the whole window the same
-/// way those gates did — nothing else starts until every check passes.
+/// The first-run setup. It owns the whole window until the Mac is ready or
+/// the person skips it: one button runs every step (CLI, `devmachine setup`,
+/// the devmachine-app package and its sync), or a detected agent does the
+/// same from a prompt. It ends on a button into the app, never on a restart.
 struct OnboardingPage: View {
     @Environment(\.dmMetrics) private var m
-    /// Known already when onboarding starts from the package-only gate (CLI
-    /// present, config present, only the package missing) — the steps list
-    /// then skips straight to `addPackage`/`sync`.
-    var initialMachine: String? = nil
-    var onFinished: () -> Void = {}
 
-    /// Set only for the website's demo screenshots: a fixed detection, and
-    /// optionally a run already in some state, shown instead of the real
-    /// probe so the page never depends on what is actually installed.
-    var demoDetection: OnboardingDetection?
-    var demoStatuses: [OnboardingStepID: OnboardingStepStatus]?
+    var onStart: () -> Void = {}
+    var onSkip: () -> Void = {}
+
+    /// Set only for demo screenshots: the flow in a fixed state, and the pane
+    /// whose demo transcript stands in for a program.
+    var demoFlow: OnboardingFlow?
+    var demoPaneKind: TerminalKind?
 
     @StateObject private var runner = OnboardingRunner()
-    @State private var detection: OnboardingDetection = .empty
-    @State private var running = false
-    @State private var didFinish = false
 
     init(
-        initialMachine: String? = nil, onFinished: @escaping () -> Void = {},
-        demoDetection: OnboardingDetection? = nil,
-        demoStatuses: [OnboardingStepID: OnboardingStepStatus]? = nil
+        onStart: @escaping () -> Void = {}, onSkip: @escaping () -> Void = {},
+        demoFlow: OnboardingFlow? = nil, demoPaneKind: TerminalKind? = nil
     ) {
-        self.initialMachine = initialMachine
-        self.onFinished = onFinished
-        self.demoDetection = demoDetection
-        self.demoStatuses = demoStatuses
+        self.onStart = onStart
+        self.onSkip = onSkip
+        self.demoFlow = demoFlow
+        self.demoPaneKind = demoPaneKind
     }
+
+    private var flow: OnboardingFlow { runner.flow }
 
     var body: some View {
         ZStack {
             WallpaperBackground(style: .ambient)
             VStack(alignment: .leading, spacing: m.pt(18)) {
                 header
-                if detection.isComplete {
-                    successCard
-                } else if running {
-                    runningCard
-                } else {
-                    startCard
-                }
+                content
             }
-            .frame(maxWidth: m.pt(880))
+            .frame(maxWidth: usesPane ? m.pt(1180) : m.pt(720))
             .padding(m.pt(28))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .environment(\.colorScheme, .dark)
         .task {
-            if let demoStatuses {
-                running = true
-                runner.seedDemo(demoStatuses)
+            if let demoFlow {
+                runner.seedDemo(demoFlow, paneKind: demoPaneKind)
+                return
             }
-            await refreshDetection()
+            await runner.refresh()
         }
-        .onChange(of: runner.statuses) { _, _ in
-            Task { await refreshDetection() }
-        }
-        .onChange(of: detection) { _, _ in
-            // A step just finished (e.g. `devmachine setup` registered the
-            // machine) can change which steps are still missing — pick the
-            // newly-appeared ones up without the person pressing Start again.
-            if running, demoStatuses == nil, failedStep == nil {
-                runner.run(steps: currentSteps)
-            }
-        }
-        .onChange(of: detection.isComplete) { _, complete in
-            if complete, !didFinish {
-                didFinish = true
-                onFinished()
-            }
+        .onDisappear { runner.leave() }
+    }
+
+    private var usesPane: Bool {
+        switch flow.phase {
+        case .start, .complete: return false
+        default: return true
         }
     }
 
-    // MARK: - Header / progress
+    @ViewBuilder
+    private var content: some View {
+        switch flow.phase {
+        case .start:
+            startCard
+        case .complete:
+            successCard
+        case .running, .checking, .failed:
+            withPane { stepList; stepActions }
+        case let .agentRunning(kind):
+            withPane { agentCard(kind, running: true) }
+        case let .agentStopped(kind):
+            withPane { agentCard(kind, running: false) }
+        }
+    }
+
+    // MARK: - Header
 
     private var header: some View {
         VStack(alignment: .leading, spacing: m.pt(10)) {
-            Text("Set up devmachine")
+            Text(flow.phase == .complete ? "You are all set" : "Set up devmachine")
                 .font(.dm(20, weight: .semibold))
                 .foregroundStyle(.white)
-            Text("A few things get this Mac talking to your server. Watch the terminal — nothing runs without you seeing it.")
+            Text("This Mac needs the devmachine CLI, a server it can reach, and the devmachine-app "
+                + "package on that server. Everything runs in a terminal you can watch.")
                 .font(.dm(12.5))
                 .foregroundStyle(.white.opacity(0.7))
-            DMProgressBar(done: progressDone, total: progressTotal, fillColor: .green)
+                .fixedSize(horizontal: false, vertical: true)
+            DMProgressBar(done: stagesDone, total: stages.count, fillColor: .green)
                 .frame(maxWidth: m.pt(360))
         }
     }
 
-    private var progressTotal: Int { 3 }
-    private var progressDone: Int {
-        var done = 0
-        if detection.cliFound { done += 1 }
-        if detection.adminMachine != nil { done += 1 }
-        if detection.missingPackageMachines.isEmpty { done += 1 }
-        return done
+    private struct Stage: Identifiable {
+        let title: String
+        let done: Bool
+        var id: String { title }
+    }
+
+    private var stages: [Stage] {
+        let detection = flow.detection
+        return [
+            Stage(title: "The devmachine CLI is installed", done: detection.cliFound),
+            Stage(title: "A server is connected", done: detection.adminMachine != nil),
+            Stage(
+                title: "Every server has devmachine-app",
+                done: detection.adminMachine != nil && detection.missingPackageMachines.isEmpty),
+        ]
+    }
+
+    private var stagesDone: Int {
+        flow.phase == .complete ? stages.count : stages.filter(\.done).count
     }
 
     // MARK: - Start
 
     private var startCard: some View {
-        VStack(alignment: .leading, spacing: m.space.md) {
-            Text("Installs the devmachine CLI, then connects your server: it asks for "
-                + "the server's address and shows a fingerprint to check with your provider. "
-                + "No Homebrew or Xcode needed.")
+        VStack(alignment: .leading, spacing: m.space.lg) {
+            Text("One button does it all: it installs the CLI (no Homebrew or Xcode needed), "
+                + "then connects your server. That step asks for the server's address and shows a "
+                + "fingerprint to check with your provider. Then it adds devmachine-app to the server.")
                 .font(.dm(12))
                 .foregroundStyle(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
-            DMButton("Set up devmachine", systemImage: "play.fill", size: .large) { start() }
-                .keyboardShortcut(.defaultAction)
-            Text("Or run this in a terminal, then `devmachine setup`:")
-                .font(.dm(11))
-                .foregroundStyle(.white.opacity(0.55))
-            DMCommandBlock(OnboardingPlan.installCLICommand)
+            HStack(spacing: m.space.md) {
+                DMButton("Set up devmachine", systemImage: "play.fill", size: .large,
+                         isLoading: !flow.hasDetected) { runner.start() }
+                    .keyboardShortcut(.defaultAction)
+                ForEach(flow.detection.agents) { agent in
+                    DMButton("Let \(agent.kind.displayName) do it", systemImage: "sparkles",
+                             variant: .outline, size: .large) { runner.startAgent(agent.kind) }
+                }
+            }
+            if !flow.detection.agents.isEmpty {
+                Text("The agent starts with a prompt to follow mydevmachine.sh/agent-setup.md and add "
+                    + "devmachine-app. You answer it in the terminal; this page moves on when the setup is complete.")
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: m.space.md) {
+                DMButton("Skip for now", variant: .ghost, size: .small) { skip() }
+                Text("Sessions on this Mac work without a server. Settings can run the setup later.")
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            .padding(.top, m.space.md)
         }
         .padding(m.space.xl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
     }
 
-    private func start() {
-        running = true
-        runner.run(steps: currentSteps)
+    private func skip() {
+        runner.leave()
+        onSkip()
     }
 
-    private func back() {
-        runner.reset()
-        running = false
-    }
+    // MARK: - Pane and steps
 
-    private var currentSteps: [(id: OnboardingStepID, command: String)] {
-        OnboardingPlan.commands(for: detection, machine: initialMachine)
-    }
-
-    private var failedStep: (id: OnboardingStepID, command: String)? {
-        currentSteps.first { step in
-            if case .failed = runner.status(for: step.id) { return true }
-            return false
-        }
-    }
-
-    // MARK: - Running
-
-    private var runningCard: some View {
+    private func withPane<Side: View>(@ViewBuilder side: () -> Side) -> some View {
         HStack(alignment: .top, spacing: m.space.xl) {
-            VStack(spacing: 0) {
-                TerminalPaneView(kind: runner.terminalKind)
-                    .frame(minHeight: m.pt(360))
-            }
-            .frame(maxWidth: .infinity)
-            .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
-
+            pane
             VStack(alignment: .leading, spacing: m.space.xl) {
-                stepList
-                if let failed = failedStep {
-                    failureActions(failed)
-                }
+                side()
             }
-            .frame(width: m.pt(260))
+            .frame(width: m.pt(300))
         }
+    }
+
+    private var pane: some View {
+        VStack(spacing: 0) {
+            if let kind = runner.paneKind {
+                TerminalPaneView(kind: kind)
+                    .id(kind)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: m.pt(380), maxHeight: m.pt(560))
+        .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
     }
 
     private var stepList: some View {
         VStack(alignment: .leading, spacing: m.pt(10)) {
-            ForEach(currentSteps, id: \.id) { step in
+            ForEach(flow.steps, id: \.self) { step in
                 stepRow(step)
             }
         }
@@ -179,15 +194,20 @@ struct OnboardingPage: View {
         .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
     }
 
-    private func stepRow(_ step: (id: OnboardingStepID, command: String)) -> some View {
-        let status = runner.status(for: step.id)
+    private func stepRow(_ step: OnboardingStepID) -> some View {
+        let status = flow.status(of: step)
         return VStack(alignment: .leading, spacing: m.space.xs) {
             HStack(spacing: m.space.md) {
                 stepIcon(status)
-                Text(step.id.title)
+                Text(step.title)
                     .font(.dm(12, weight: .medium))
                     .foregroundStyle(.white)
-                Spacer()
+                Spacer(minLength: 0)
+            }
+            if status == .running, step.interactive {
+                Text("Answer its questions in the terminal.")
+                    .font(.dm(10.5))
+                    .foregroundStyle(.white.opacity(0.6))
             }
             if case let .failed(message) = status {
                 Text(message)
@@ -196,29 +216,6 @@ struct OnboardingPage: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    /// A failed step stops the run: try it again, go back to the start, or
-    /// hand it to a coding agent, which can often fix what the CLI cannot —
-    /// an outdated Xcode, a missing tool, a network in the way.
-    private func failureActions(_ failed: (id: OnboardingStepID, command: String)) -> some View {
-        VStack(alignment: .leading, spacing: m.space.md) {
-            HStack(spacing: m.space.sm) {
-                DMButton("Try again", systemImage: "arrow.clockwise", size: .small) {
-                    runner.retry(step: failed.id, remaining: currentSteps)
-                }
-                DMButton("Back", variant: .outline, size: .small) { back() }
-            }
-            ForEach(detection.agents) { agent in
-                DMButton("Ask \(agent.kind.displayName) to fix it", systemImage: "sparkles",
-                         variant: .outline, size: .small) {
-                    runner.askAgent(agent.kind, step: failed.id, command: failed.command)
-                }
-            }
-        }
-        .padding(m.space.xl)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
     }
 
     @ViewBuilder
@@ -239,40 +236,105 @@ struct OnboardingPage: View {
         }
     }
 
+    /// A failed step stops the run: try it again, go back, or hand it to a
+    /// coding agent. While a step runs, Back stops it.
+    @ViewBuilder
+    private var stepActions: some View {
+        if case .failed = flow.phase {
+            VStack(alignment: .leading, spacing: m.space.md) {
+                HStack(spacing: m.space.sm) {
+                    DMButton("Try again", systemImage: "arrow.clockwise", size: .small) { runner.retry() }
+                        .keyboardShortcut(.defaultAction)
+                    DMButton("Back", variant: .outline, size: .small) { runner.back() }
+                }
+                ForEach(flow.detection.agents) { agent in
+                    DMButton("Ask \(agent.kind.displayName) to fix it", systemImage: "sparkles",
+                             variant: .outline, size: .small) { runner.askAgent(agent.kind) }
+                }
+            }
+            .padding(m.space.xl)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
+        } else {
+            DMButton("Stop and go back", variant: .ghost, size: .small) { runner.back() }
+        }
+    }
+
+    // MARK: - Agent
+
+    private func agentCard(_ kind: AgentKind, running: Bool) -> some View {
+        VStack(alignment: .leading, spacing: m.space.lg) {
+            Text(running
+                 ? "\(kind.displayName) is setting things up"
+                 : "\(kind.displayName) stopped before the setup finished")
+                .font(.dm(13, weight: .semibold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(running
+                 ? "Answer it in the terminal. This page moves on by itself once everything below is done."
+                 : "Pick up from where it stopped: the button runs only the steps still missing.")
+                .font(.dm(11.5))
+                .foregroundStyle(.white.opacity(0.65))
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: m.pt(8)) {
+                ForEach(stages) { stage in
+                    HStack(spacing: m.space.md) {
+                        stepIcon(stage.done ? .done : (running ? .running : .waiting))
+                        Text(stage.title)
+                            .font(.dm(11.5))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                }
+            }
+            if running {
+                DMButton("Stop and go back", variant: .ghost, size: .small) { runner.back() }
+            } else {
+                VStack(alignment: .leading, spacing: m.space.sm) {
+                    DMButton("Set up devmachine", systemImage: "play.fill", size: .small) { runner.start() }
+                        .keyboardShortcut(.defaultAction)
+                    HStack(spacing: m.space.sm) {
+                        DMButton("Open \(kind.displayName) again", systemImage: "sparkles",
+                                 variant: .outline, size: .small) { runner.startAgent(kind) }
+                        DMButton("Back", variant: .outline, size: .small) { runner.back() }
+                    }
+                }
+            }
+        }
+        .padding(m.space.xl)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
+    }
+
     // MARK: - Success
 
     private var successCard: some View {
         VStack(alignment: .leading, spacing: m.pt(14)) {
-            Text("Devmachine is ready")
-                .font(.dm(16, weight: .semibold))
-                .foregroundStyle(.white)
-            Text("The CLI, your server, and the devmachine-app package are all set. Restart to load everything.")
+            HStack(spacing: m.space.md) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.dm(22))
+                    .foregroundStyle(.green)
+                Text("Devmachine is ready")
+                    .font(.dm(16, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            Text(readySummary)
                 .font(.dm(12.5))
                 .foregroundStyle(.white.opacity(0.7))
-            DMButton("Restart Devmachine", action: relaunch)
-                .keyboardShortcut(.defaultAction)
+                .fixedSize(horizontal: false, vertical: true)
+            DMButton("Start using Devmachine", systemImage: "arrow.right", size: .large) {
+                runner.leave()
+                onStart()
+            }
+            .keyboardShortcut(.defaultAction)
         }
         .padding(m.pt(20))
+        .frame(maxWidth: .infinity, alignment: .leading)
         .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.14))
     }
 
-    private func relaunch() {
-        let bundleURL = Bundle.main.bundleURL
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { _, _ in
-            DispatchQueue.main.async { NSApp.terminate(nil) }
-        }
-    }
-
-    // MARK: - Detection
-
-    private func refreshDetection() async {
-        if let demoDetection {
-            detection = demoDetection
-            return
-        }
-        let next = await Task.detached { OnboardingDetector.detect() }.value
-        detection = next
+    private var readySummary: String {
+        let server = flow.detection.adminMachine.map { "the server \($0)" } ?? "your server"
+        return "The CLI is installed, and \(server) has devmachine-app. "
+            + "Settings are filled in from the CLI, so there is nothing to type."
     }
 }

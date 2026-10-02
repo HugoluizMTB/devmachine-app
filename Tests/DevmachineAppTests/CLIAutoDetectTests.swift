@@ -106,3 +106,34 @@ final class CLIAutoDetectTests: XCTestCase {
         XCTAssertFalse(CLIAutoDetect.isTailscaleAddress("not-an-ip"))
     }
 }
+
+final class CLIDetectedSettingsFillingTests: XCTestCase {
+    private let detected = CLIDetectedSettings(
+        opsRepoPath: "/Users/alice/.config/devmachine", adminMachine: "acme",
+        publicIP: "203.0.113.10", baseDomain: "example.com",
+        workspaceAliases: ["acme": "acme-devmachine"])
+
+    func testEmptyFieldsTakeWhatTheCLIReports() {
+        let filled = detected.filling(.empty)
+        XCTAssertEqual(filled.opsRepoPath, "/Users/alice/.config/devmachine")
+        XCTAssertEqual(filled.publicIP, "203.0.113.10")
+        XCTAssertEqual(filled.baseDomain, "example.com")
+        XCTAssertEqual(filled.workspaceAliases, ["acme": "acme-devmachine"])
+    }
+
+    func testAValueThePersonSetIsKept() {
+        var mine = AppSettings.empty
+        mine.opsRepoPath = "/Users/alice/other"
+        mine.publicIP = "203.0.113.99"
+        let filled = detected.filling(mine)
+        XCTAssertEqual(filled.opsRepoPath, "/Users/alice/other")
+        XCTAssertEqual(filled.publicIP, "203.0.113.99")
+        XCTAssertEqual(filled.baseDomain, "example.com")
+    }
+
+    func testNothingDetectedChangesNothing() {
+        var mine = AppSettings.empty
+        mine.hostAlias = "lab"
+        XCTAssertEqual(CLIDetectedSettings.empty.filling(mine), mine)
+    }
+}
