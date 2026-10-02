@@ -192,15 +192,15 @@ enum DemoSnapshots {
         Screen(id: "cli-update-old", fileName: "64-cli-update-old.png", settleNanoseconds: 200_000_000),
     ]
 
-    /// The machine readiness walk (`DEVMACHINE_DEMO_WALK=machine-ready`): a
-    /// machine without devmachine-app on Home and in the sidebar, Prepare
-    /// running, failed and done on fake scripts, the old-CLI and outdated
-    /// cards, a workspace with no SSH alias, and onboarding's Install CLI.
     static let publishViaScreens: [Screen] = [
         Screen(id: "publish-port", fileName: "50-publish-port.png", settleNanoseconds: 400_000_000),
         Screen(id: "publish-port-via", fileName: "51-publish-port-via.png", settleNanoseconds: 400_000_000),
     ]
 
+    /// The machine readiness walk (`DEVMACHINE_DEMO_WALK=machine-ready`): a
+    /// machine without devmachine-app on Home and in the sidebar, Prepare
+    /// running, failed and done on fake scripts, the old-CLI and outdated
+    /// cards, a workspace with no SSH alias, and onboarding's Install CLI.
     static let machineReadyScreens: [Screen] = [
         Screen(id: "ready-home", fileName: "70-ready-home.png", settleNanoseconds: 700_000_000),
         Screen(id: "ready-running", fileName: "71-ready-running.png", settleNanoseconds: 1_500_000_000),

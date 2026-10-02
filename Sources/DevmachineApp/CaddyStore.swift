@@ -81,6 +81,10 @@ final class CaddyStore: ObservableObject {
     /// Where a site can be served from and where each workspace lives, for
     /// the add sheet's "Published by". Empty until the CLI has answered.
     @Published private(set) var publishPlaces = PublishPlaces()
+    /// True while the add sheet waits for its first answer about where
+    /// things live; Create waits too, or a workspace on a machine without
+    /// Caddy would be sent without `--via`.
+    @Published private(set) var isLoadingPublishPlaces = false
     @Published var removingHost: String?
 
     /// The selected server's installed DNS providers — the tab strip's own
@@ -155,17 +159,50 @@ final class CaddyStore: ObservableObject {
     var workspacesOnSelectedMachine: [String]? {
         guard let selectedMachine, !context.workspaces.isEmpty else { return nil }
         let own = context.workspaces(on: selectedMachine)
-        guard publishPlaces.servingMachines.contains(selectedMachine) else { return own }
-        let unserved = context.workspaces
-            .filter { context.hasCaddy(onMachine: $0.machine) == false }
-            .map(\.name)
+        let serving = publishPlaces.servingMachines
+        guard serving.contains(selectedMachine) else { return own }
+        let unserved = context.workspaces.filter { !serving.contains($0.machine) }.map(\.name)
         return own + unserved.filter { !own.contains($0) }
     }
 
-    /// The add sheet opened before the Subdomains page ever loaded: read the
-    /// machines and where workspaces live, from the cache first.
+    /// The add sheet opened before the Subdomains page ever loaded. Only the
+    /// configuration is read (cache first), never a machine's site list: a
+    /// sheet opening must not cost an ssh per machine.
     func loadPublishPlacesIfNeeded() {
-        if machines.isEmpty { refresh(force: false) }
+        guard machines.isEmpty, !DemoMode.isActive else { return }
+        let key = MachineDataKeys.sitesContext
+        let cached = cache.revalidate(key, force: false, fetch: sitesContextFetch(), onUpdate: { [weak self] update in
+            guard let self else { return }
+            self.isLoadingPublishPlaces = false
+            self.cache.put(MachineDataKeys.workspaces, update.cached.value.workspaces)
+            self.updatePublishPlaces(update.cached.value.machines, update.cached.value.context)
+        }, onError: { [weak self] _ in
+            self?.isLoadingPublishPlaces = false
+        })
+        if let cached {
+            updatePublishPlaces(cached.value.machines, cached.value.context)
+        }
+        isLoadingPublishPlaces = cached == nil && cache.isRefreshing(key)
+    }
+
+    private func sitesContextFetch() -> @Sendable () throws -> SitesContextSnapshot {
+        let service = self.service
+        return {
+            let machines = try service.machines()
+            let context = service.context()
+            return SitesContextSnapshot(
+                machines: machines, domain: context.domain, workspaces: context.workspaces,
+                installedPackages: context.installedPackages)
+        }
+    }
+
+    private func updatePublishPlaces(_ machines: [CLIMachine], _ context: SitesContext) {
+        let places = PublishPlaces(
+            servingMachines: machines
+                .filter { !$0.isSelf && context.hasCaddy(onMachine: $0.name) == true }
+                .map(\.name),
+            machineOf: Dictionary(context.workspaces.map { ($0.name, $0.machine) }, uniquingKeysWith: { first, _ in first }))
+        if places != publishPlaces { publishPlaces = places }
     }
 
     func select(_ name: String) {
@@ -227,15 +264,8 @@ final class CaddyStore: ObservableObject {
             return
         }
         let key = MachineDataKeys.sitesContext
-        let service = self.service
         machinesError = nil
-        let cached = cache.revalidate(key, force: force, fetch: {
-            let machines = try service.machines()
-            let context = service.context()
-            return SitesContextSnapshot(
-                machines: machines, domain: context.domain, workspaces: context.workspaces,
-                installedPackages: context.installedPackages)
-        }, onUpdate: { [weak self] update in
+        let cached = cache.revalidate(key, force: force, fetch: sitesContextFetch(), onUpdate: { [weak self] update in
             guard let self else { return }
             self.isLoadingMachines = false
             self.cache.put(MachineDataKeys.workspaces, update.cached.value.workspaces)
@@ -264,12 +294,7 @@ final class CaddyStore: ObservableObject {
     private func apply(_ snapshot: SitesContextSnapshot, force: Bool) {
         if machines != snapshot.machines { machines = snapshot.machines }
         context = snapshot.context
-        let places = PublishPlaces(
-            servingMachines: machines
-                .filter { !$0.isSelf && context.hasCaddy(onMachine: $0.name) == true }
-                .map(\.name),
-            machineOf: Dictionary(context.workspaces.map { ($0.name, $0.machine) }, uniquingKeysWith: { first, _ in first }))
-        if places != publishPlaces { publishPlaces = places }
+        updatePublishPlaces(machines, context)
         if domain != snapshot.domain { domain = snapshot.domain }
         sitesByMachine = sitesByMachine.filter { name, _ in snapshot.machines.contains { $0.name == name } }
 
@@ -521,7 +546,9 @@ final class CaddyStore: ObservableObject {
         if removingHost == request.host { removingHost = nil }
         if progress.changedTheMachine { invalidate(after: request) }
         let lifetime: TimeInterval?
+        let asksForSomething = progress.steps.contains { $0.state == .attention }
         switch progress.outcome {
+        case .live where asksForSomething: lifetime = nil
         case .live: lifetime = liveCardLifetime
         case .removed: lifetime = removedCardLifetime
         default: lifetime = nil

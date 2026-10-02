@@ -161,7 +161,7 @@ public struct PublishProgress: Equatable, Sendable {
     private static func appliedStep(_ result: ExposeResult) -> Step {
         guard let via = result.via else { return Step(.caddy, "Caddy route applied", .done) }
         if let note = result.note {
-            return Step(.caddy, "Live on \(via), which cannot reach the port yet", .attention, detail: note)
+            return Step(.caddy, "Live on \(via), with a warning", .attention, detail: note)
         }
         return Step(.caddy, "Caddy route applied on \(via)", .done)
     }

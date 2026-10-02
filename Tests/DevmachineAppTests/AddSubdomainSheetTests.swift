@@ -177,3 +177,28 @@ final class AddSubdomainViaTests: XCTestCase {
         XCTAssertFalse(form.workspaceMachineHasNoCaddy)
     }
 }
+
+final class AddSubdomainViaRefreshTests: XCTestCase {
+    func testFreshPlacesKeepTheMachineThePersonChose() {
+        let places = PublishPlaces(servingMachines: ["edge", "spare"], machineOf: ["bob": "lab"])
+        var form = AddSubdomainForm(
+            workspaces: [Workspace(name: "bob", alias: "bob-devmachine")], preselectedWorkspace: "bob")
+        form.update(places: places, preferring: nil)
+        form.servingMachine = "spare"
+
+        form.update(places: places, preferring: nil)
+        XCTAssertEqual(form.via, "spare")
+
+        form.update(places: PublishPlaces(servingMachines: ["edge"], machineOf: ["bob": "lab"]), preferring: nil)
+        XCTAssertEqual(form.via, "edge", "a choice that is gone falls back to the default")
+    }
+
+    func testAWorkspaceWhoseMachineIsUnknownOffersNoPicker() {
+        var form = AddSubdomainForm(
+            workspaces: [Workspace(name: "bob", alias: "bob-devmachine")], preselectedWorkspace: "bob")
+        form.update(places: PublishPlaces(servingMachines: ["edge", "spare"], machineOf: [:]), preferring: nil)
+
+        XCTAssertFalse(form.showsServingPicker)
+        XCTAssertNil(form.via)
+    }
+}

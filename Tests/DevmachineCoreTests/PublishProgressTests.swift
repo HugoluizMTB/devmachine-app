@@ -134,7 +134,7 @@ final class PublishProgressTests: XCTestCase {
 
         XCTAssertEqual(progress.outcome, .live(URL(string: "https://app.example.com")!))
         XCTAssertEqual(progress.step(.caddy)?.state, .attention)
-        XCTAssertEqual(progress.step(.caddy)?.title, "Live on edge, which cannot reach the port yet")
+        XCTAssertEqual(progress.step(.caddy)?.title, "Live on edge, with a warning")
         XCTAssertEqual(progress.step(.caddy)?.detail, "edge cannot reach lab at 100.64.0.7:8080: check the firewall")
     }
 

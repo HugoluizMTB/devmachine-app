@@ -94,6 +94,29 @@ final class SubdomainsMachinesTests: XCTestCase {
         }
     }
 
+    func testALiveSiteWithAWarningStaysUntilDismissed() async throws {
+        let store = try await loadedStore(MultiMachineCLIRunner())
+        store.liveCardLifetime = 0.05
+
+        store.addSubdomain(SubdomainRequest(host: "down.example.com", port: 3001, managedDNS: false), workspace: "bob", via: "box")
+        try await eventually { store.jobs.first?.progress.isFinished == true }
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(store.jobs.count, 1, "the warning must not leave on its own")
+    }
+
+    func testTheAddSheetReadsOnlyTheConfigurationNeverASiteList() async throws {
+        let runner = MultiMachineCLIRunner()
+        let store = makeStore(runner)
+
+        store.loadPublishPlacesIfNeeded()
+        try await eventually { !store.publishPlaces.servingMachines.isEmpty }
+
+        XCTAssertEqual(store.publishPlaces.servingMachines, ["box"])
+        XCTAssertFalse(store.isLoadingPublishPlaces)
+        XCTAssertFalse(runner.calls.contains { $0.contains("expose") || $0.contains("dns") })
+    }
+
     func testTheFirstServerIsSelectedWhenNothingIsRemembered() async throws {
         let store = try await loadedStore(MultiMachineCLIRunner())
 

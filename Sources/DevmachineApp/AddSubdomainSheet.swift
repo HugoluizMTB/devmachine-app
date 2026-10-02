@@ -83,10 +83,19 @@ struct AddSubdomainForm {
 
     /// `preferring` is the machine the Subdomains page shows: it serves a
     /// workspace whose own machine cannot.
+    ///
+    /// A machine the person chose stays chosen while it can still serve: a
+    /// refresh arriving with the sheet open must not change where the site
+    /// goes behind their back.
     mutating func update(places: PublishPlaces, preferring: String?) {
         self.places = places
         preferredMachine = preferring
+        if let servingMachine, workspaceMachine != nil, places.servingMachines.contains(servingMachine) { return }
         workspaceChanged()
+    }
+
+    var showsServingPicker: Bool {
+        workspaceMachine != nil && (workspaceMachineHasNoCaddy || places.servingMachines.count > 1)
     }
 
     mutating func workspaceChanged() {
@@ -120,7 +129,6 @@ struct AddSubdomainSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let settings: AppSettings
-    let preferredMachine: String?
     let suggestedPorts: [PortSuggestion]
     let portsAsOf: Date?
     let isRefreshingPorts: Bool
@@ -129,12 +137,11 @@ struct AddSubdomainSheet: View {
 
     init(
         settings: AppSettings, workspaces: [Workspace], onMachine: [String]? = nil,
-        preferredMachine: String? = nil, preselectedWorkspace: String? = nil,
+        preselectedWorkspace: String? = nil,
         suggestedPorts: [PortSuggestion] = [], suggestedLabel: String = "",
         portsAsOf: Date? = nil, isRefreshingPorts: Bool = false
     ) {
         self.settings = settings
-        self.preferredMachine = preferredMachine
         self.suggestedPorts = suggestedPorts
         self.portsAsOf = portsAsOf
         self.isRefreshingPorts = isRefreshingPorts
@@ -179,7 +186,7 @@ struct AddSubdomainSheet: View {
                 }
             }
 
-            if form.workspaceMachineHasNoCaddy || form.places.servingMachines.count > 1 {
+            if form.showsServingPicker {
                 servingSection
             }
 
@@ -240,8 +247,8 @@ struct AddSubdomainSheet: View {
             HStack {
                 Spacer()
                 DMButton("Cancel", variant: .outline) { dismiss() }
-                DMButton("Create") { confirming = true }
-                    .disabled(request == nil)
+                DMButton("Create", isLoading: store.isLoadingPublishPlaces) { confirming = true }
+                    .disabled(request == nil || store.isLoadingPublishPlaces)
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -251,7 +258,7 @@ struct AddSubdomainSheet: View {
         .onChange(of: suggestedPorts) { _, fresh in form.updateSuggestions(fresh) }
         .onChange(of: form.selectedWorkspace) { _, _ in form.workspaceChanged() }
         .onChange(of: store.publishPlaces, initial: true) { _, places in
-            form.update(places: places, preferring: preferredMachine)
+            form.update(places: places, preferring: store.selectedMachine)
         }
         .onAppear { store.loadPublishPlacesIfNeeded() }
         .confirmationDialog(
