@@ -248,7 +248,18 @@ Rules:
   local one (`TerminalRegistry.requestRepaint`). Do not fake a resize instead: an
   earlier version shrank the pane a row and restored it, which left the last row
   unpainted, and another killed the local client and restarted it, which left the
-  keyboard wired to the process that had just died.
+  keyboard wired to the process that had just died. `refresh-client -t` takes a
+  client, never a session: given the session name it only said "can't find client",
+  so the command names each client of the session (`RemoteCommands.refreshClient`).
+- **A remote pane coming back leaves an idle tmux copy mode**
+  (`RemoteCommands.leaveIdleCopyMode`), on return to the pane and when the app
+  becomes active or the screen wakes. tmux's `WheelUpPane` enters copy mode
+  *without scrolling* when the program does not read the mouse (Claude Code's
+  normal view), so one stray wheel-up report leaves the screen looking the same,
+  frozen, with every key going to copy mode until Ctrl+C or q. The tell is the
+  window name `[tmux]` in the status line, not the program's. Only copy mode at
+  scroll 0 with no selection is left; scrolled up, someone is reading. Not focus
+  reporting: the hosts run `focus-events off` and mosh drops `?1004`.
 - **A process starts only after its pane has the size it will be drawn at**
   (`viewDidSize`). Started earlier it learns a placeholder geometry, and a program
   that repaints only what changed never corrects it.

@@ -101,9 +101,28 @@ public enum RemoteCommands {
 
     /// Asks tmux to draw the session again, without changing its size. Used
     /// when a pane returns to the screen unchanged, which otherwise gives the
-    /// program inside no reason to repaint.
+    /// program inside no reason to repaint. `refresh-client -t` takes a client,
+    /// never a session: named after the session it only printed "can't find
+    /// client" over ssh, so each client attached to the session is named.
     public static func refreshClient(session: String) -> String {
-        "tmux refresh-client -t \(shellSingleQuoted(session))"
+        "tmux list-clients -t \(shellSingleQuoted(session)) -F 'refresh-client -t #{client_name}'"
+            + " | tmux source-file -"
+    }
+
+    /// Leaves tmux's copy mode when it sits at the bottom with nothing
+    /// selected. One wheel-up report in a pane whose program does not read the
+    /// mouse enters copy mode without scrolling: the screen looks the same, but
+    /// it stops updating and every key goes to copy mode instead of the
+    /// program. Scrolled up or with a selection, someone is reading, and it stays.
+    public static func leaveIdleCopyMode(session: String) -> String {
+        let target = shellSingleQuoted(session)
+        return "[ \"$(tmux display-message -p -t \(target) '#{pane_mode}:#{scroll_position}:#{selection_present}')\""
+            + " = copy-mode:0:0 ] && tmux send-keys -t \(target) -X cancel"
+    }
+
+    /// What a pane coming back to the screen asks of its session.
+    public static func returnToSession(session: String) -> String {
+        refreshClient(session: session) + "; " + leaveIdleCopyMode(session: session)
     }
 
     public static func killSession(name: String) -> String {
