@@ -90,6 +90,9 @@ final class CaddyStore: ObservableObject {
     /// The selected server's installed DNS providers — the tab strip's own
     /// list, separate from each tab's records.
     @Published var dnsProviders: [String] = []
+    /// What `dns providers` said, zones and errors included; nil until it
+    /// answered for the selected machine.
+    @Published private(set) var dnsAnswers: [DNSProviderAnswer]?
     @Published var dnsProvidersError: String?
     @Published var isLoadingDNSProviders = false
 
@@ -109,14 +112,24 @@ final class CaddyStore: ObservableObject {
     private let service: CaddyService
     private let selection: SitesMachineSelection
     let cache: DataCache
+    let dnsSetup: DNSSetupStore
 
     init(
         service: CaddyService = CaddyService(), selection: SitesMachineSelection = SitesMachineSelection(),
-        cache: DataCache = DataCache()
+        cache: DataCache = DataCache(), dnsSetup: DNSSetupStore? = nil
     ) {
         self.service = service
         self.selection = selection
         self.cache = cache
+        self.dnsSetup = dnsSetup ?? DNSSetupStore(
+            service: service,
+            runner: DemoMode.isActive ? DemoDNSSyncRunner() as any PrepareRunning : ProcessPrepareRunner())
+        if DemoMode.isActive { self.dnsSetup.canRunSync = { true } }
+        self.dnsSetup.onConfigurationChanged = { [weak self] in self?.refresh(force: true) }
+        self.dnsSetup.onSyncEnded = { [weak self] machine in
+            guard let self, self.dnsMachine == machine else { return }
+            self.loadDNSProviders(force: true)
+        }
     }
 
     // MARK: - The selected machine
@@ -260,7 +273,7 @@ final class CaddyStore: ObservableObject {
                  selected: DemoData.subdomainSelectedMachine)
             publishPlaces = DemoData.publishPlaces
             domain = DemoData.domain
-            dnsProviders = DemoData.dnsProviders
+            loadDNSProviders()
             return
         }
         let key = MachineDataKeys.sitesContext
@@ -306,6 +319,7 @@ final class CaddyStore: ObservableObject {
             ?? machines.first?.name
         if chosen != selectedMachine { selectedMachine = chosen }
         if previous != selectedMachine { resetDNS() }
+        updateDNSSetup()
         loadAll(force: force)
     }
 
@@ -388,31 +402,33 @@ final class CaddyStore: ObservableObject {
 
     private func resetDNS() {
         dnsProviders = []
+        dnsAnswers = nil
         dnsProvidersError = nil
         isLoadingDNSProviders = false
         dnsRecordsByProvider = [:]
         dnsErrorByProvider = [:]
         dnsLoadingProviders = []
+        updateDNSSetup()
     }
 
     func loadDNSProviders(force: Bool = false) {
         if DemoMode.isActive {
-            dnsProviders = dnsMachine == nil ? [] : DemoData.dnsProviders
+            showDNSAnswers(dnsMachine == nil ? nil : DemoData.dnsAnswers)
             isLoadingDNSProviders = false
             return
         }
         guard let machine = dnsMachine else {
-            dnsProviders = []
+            showDNSAnswers(nil)
             isLoadingDNSProviders = false
             return
         }
         let key = MachineDataKeys.dnsProviders(machine)
         let service = self.service
         let cached = cache.revalidate(key, force: force, fetch: {
-            try service.dnsProviderNames(machine: machine)
+            try service.dnsProviders(machine: machine)
         }, onUpdate: { [weak self] update in
             guard let self, self.dnsMachine == machine else { return }
-            if self.dnsProviders != update.cached.value { self.dnsProviders = update.cached.value }
+            self.showDNSAnswers(update.cached.value)
             self.dnsProvidersError = nil
             self.isLoadingDNSProviders = false
             if force { self.reloadLoadedRecords() }
@@ -422,10 +438,25 @@ final class CaddyStore: ObservableObject {
             self.isLoadingDNSProviders = false
         })
         if let cached {
-            if dnsProviders != cached.value { dnsProviders = cached.value }
+            showDNSAnswers(cached.value)
             dnsProvidersError = nil
         }
         isLoadingDNSProviders = cache.isRefreshing(key)
+    }
+
+    private func showDNSAnswers(_ answers: [DNSProviderAnswer]?) {
+        if dnsAnswers != answers { dnsAnswers = answers }
+        let names = answers?.map(\.name) ?? []
+        if dnsProviders != names { dnsProviders = names }
+        updateDNSSetup()
+    }
+
+    /// Only a server that publishes sites gets the DNS setup card: on this
+    /// Mac, or a server without caddy, there is nothing to make records for.
+    private func updateDNSSetup() {
+        let machine = dnsMachine.flatMap { name in context.hasCaddy(onMachine: name) == false ? nil : name }
+        let packages = DemoMode.isActive ? DemoData.dnsPackages : context.installedPackages
+        dnsSetup.update(machine: machine, packages: packages, answers: machine == nil ? nil : dnsAnswers)
     }
 
     private func reloadLoadedRecords() {

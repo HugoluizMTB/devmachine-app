@@ -99,8 +99,16 @@ struct CaddyService: Sendable {
 
     /// DNS providers are packages, installed per machine: the tab strip
     /// lists the ones on `machine`.
-    func dnsProviderNames(machine: String) throws -> [String] {
-        try resolvedCLI().dnsProviders(machine: machine).map(\.name)
+    func dnsProviders(machine: String) throws -> [DNSProviderAnswer] {
+        try resolvedCLI().dnsProviders(machine: machine)
+    }
+
+    func addPackage(_ package: String, machine: String) throws {
+        try resolvedCLI().addPackage(package, machine: machine)
+    }
+
+    func setSecret(_ name: String, value: String) throws {
+        try resolvedCLI().setSecret(name, value: value)
     }
 
     func dnsRecords(machine: String, provider: String, zone: String) throws -> [DNSRecordRow] {

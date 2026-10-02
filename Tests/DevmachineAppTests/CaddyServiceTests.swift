@@ -206,7 +206,7 @@ final class CaddyServiceTests: XCTestCase {
         let runner = MultiMachineCLIRunner()
         let service = service(runner)
 
-        XCTAssertEqual(try service.dnsProviderNames(machine: "box"), ["Cloudflare"])
+        XCTAssertEqual(try service.dnsProviders(machine: "box").map(\.name), ["Cloudflare"])
         XCTAssertEqual(
             try service.dnsRecords(machine: "box", provider: "Cloudflare", zone: "example.com"),
             [DNSRecordRow(name: "app", type: "A", value: "203.0.113.10", ttl: 300)])

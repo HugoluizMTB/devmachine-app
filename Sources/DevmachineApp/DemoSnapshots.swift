@@ -213,6 +213,16 @@ enum DemoSnapshots {
         Screen(id: "install-cli-failed", fileName: "78-install-cli-failed.png", settleNanoseconds: 300_000_000),
     ]
 
+    /// The DNS setup walk (`DEVMACHINE_DEMO_WALK=dns-setup`): see `DemoDNSWalk`.
+    static let dnsSetupScreens: [Screen] = [
+        Screen(id: "dns-none", fileName: "80-dns-none.png", settleNanoseconds: 500_000_000),
+        Screen(id: "dns-not-synced", fileName: "81-dns-not-synced.png", settleNanoseconds: 500_000_000),
+        Screen(id: "dns-no-zones", fileName: "82-dns-no-zones.png", settleNanoseconds: 500_000_000),
+        Screen(id: "dns-syncing", fileName: "83-dns-syncing.png", settleNanoseconds: 700_000_000),
+        Screen(id: "dns-failed", fileName: "84-dns-failed.png", settleNanoseconds: 500_000_000),
+        Screen(id: "dns-ready", fileName: "85-dns-ready.png", settleNanoseconds: 700_000_000),
+    ]
+
     /// The file viewer walk (`DEVMACHINE_DEMO_WALK=file-viewer`): a Swift file
     /// in the viewer, highlighted. It is also the check that a packaged app
     /// finds the highlighter's script inside its own bundle.
@@ -283,6 +293,7 @@ enum DemoSnapshots {
         case "preview-browser": return previewBrowserScreens
         case "machine-ready": return machineReadyScreens
         case "publish-via": return publishViaScreens
+        case "dns-setup": return dnsSetupScreens
         default: return screens
         }
     }
@@ -401,6 +412,9 @@ enum DemoSnapshots {
         PaneUploadStore.shared.dropTarget = nil
         DemoData.typedAtPrompt = [:]
         PreviewStore.shared.closeAll()
+        #if DEBUG
+        DemoDNSWalk.reset()
+        #endif
         environment.model.goHome()
     }
 
@@ -468,6 +482,8 @@ enum DemoSnapshots {
             DemoData.typedAtPrompt = [dropKind: dropPrompt]
             PaneUploadStore.shared.dropTarget = dropKind
         #if DEBUG
+        case "dns-none", "dns-not-synced", "dns-no-zones", "dns-syncing", "dns-failed", "dns-ready":
+            await DemoDNSWalk.prepare(screen.id, store: environment.caddyStore, model: model)
         case "ready-home":
             DemoMachineReady.seed(MachineReadinessStore.shared, model: model)
         case "ready-running":

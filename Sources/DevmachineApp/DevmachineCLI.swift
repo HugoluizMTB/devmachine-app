@@ -1,17 +1,8 @@
 import Foundation
 import DevmachineCore
 
-/// One installed DNS provider, as `dns providers` reports it — the app only
-/// needs the name for the tab strip; `dns list` resolves the provider and
-/// zone itself.
-struct CLIDNSProvider: Decodable, Equatable, Sendable {
-    let name: String
-    let zones: [String]
-    let error: String?
-}
-
 private struct CLIDNSProviderList: Decodable {
-    let providers: [CLIDNSProvider]
+    let providers: [DNSProviderAnswer]
 }
 
 private struct CLIDNSListResult: Decodable {
@@ -153,16 +144,26 @@ struct CLIPackage: Codable, Equatable, Sendable {
     let name: String
     let scope: String
     let installedOn: [String]
+    var summary: String?
+    /// Not in `packages list` yet; read when a newer CLI adds it.
+    var kind: String?
+    var category: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, scope
+        case name, scope, summary, kind, category
         case installedOn = "installed_on"
     }
 
-    init(name: String, scope: String, installedOn: [String]) {
+    init(
+        name: String, scope: String, installedOn: [String], summary: String? = nil,
+        kind: String? = nil, category: String? = nil
+    ) {
         self.name = name
         self.scope = scope
         self.installedOn = installedOn
+        self.summary = summary
+        self.kind = kind
+        self.category = category
     }
 
     /// A package the configuration asks for that no recipe provides comes
@@ -172,6 +173,13 @@ struct CLIPackage: Codable, Equatable, Sendable {
         name = try c.decode(String.self, forKey: .name)
         scope = try c.decodeIfPresent(String.self, forKey: .scope) ?? ""
         installedOn = try c.decodeIfPresent([String].self, forKey: .installedOn) ?? []
+        summary = try c.decodeIfPresent(String.self, forKey: .summary)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        category = try c.decodeIfPresent(String.self, forKey: .category)
+    }
+
+    var isDNSProvider: Bool {
+        DNSProviderCatalog.isProvider(kind: kind, category: category, summary: summary)
     }
 
     func isInstalled(onMachine machine: String) -> Bool {
@@ -348,7 +356,7 @@ struct DevmachineCLI: Sendable {
 
     /// Every DNS provider installed on `machine`, and the zones it can see —
     /// the tab strip only shows a tab for a provider that is here.
-    func dnsProviders(machine: String) throws -> [CLIDNSProvider] {
+    func dnsProviders(machine: String) throws -> [DNSProviderAnswer] {
         let result = try runner.runCapturing(
             executable: executable,
             args: ["--machine", machine, "--format", "json", "dns", "providers"],
@@ -368,6 +376,33 @@ struct DevmachineCLI: Sendable {
         )
         try requireSuccess(result)
         return try JSONDecoder().decode(CLIDNSListResult.self, from: Data(result.stdout.utf8)).records
+    }
+
+    /// Asks for `package` on `machine` in the configuration on this Mac.
+    /// Nothing reaches the machine until a sync.
+    func addPackage(_ package: String, machine: String) throws {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: DNSProviderSetup.addArguments(package: package, machine: machine),
+            environment: environment()
+        )
+        try requireSuccess(result)
+    }
+
+    /// Stores a secret in the CLI's own store. The value goes to the
+    /// command's standard input, never into its arguments.
+    func setSecret(_ name: String, value: String) throws {
+        guard let input = DNSProviderSetup.secretInput(value) else {
+            throw DevmachineCLIError.commandFailed("The value is empty or has a line break in it.")
+        }
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: DNSProviderSetup.secretArguments(credential: name),
+            environment: environment(),
+            input: input,
+            onBytesWritten: nil
+        )
+        try requireSuccess(result)
     }
 
     func listWorkspaces() throws -> [CLIWorkspace] {

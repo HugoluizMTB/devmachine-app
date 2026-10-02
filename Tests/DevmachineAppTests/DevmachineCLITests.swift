@@ -32,6 +32,24 @@ private final class CLIRecordingRunner: CommandRunner, @unchecked Sendable {
         return result
     }
 
+    func runCapturing(
+        executable: String, args: [String], environment: [String: String]?, input: Data?,
+        onBytesWritten: (@Sendable (Int) -> Void)?
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        lock.lock()
+        storedInputs.append(input)
+        lock.unlock()
+        return try runCapturing(executable: executable, args: args, environment: environment)
+    }
+
+    private var storedInputs: [Data?] = []
+
+    var inputs: [Data?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedInputs
+    }
+
     var calls: [Call] {
         lock.lock()
         defer { lock.unlock() }
@@ -134,10 +152,70 @@ final class DevmachineCLITests: XCTestCase {
         let providers = try DevmachineCLI(executable: "/x", runner: runner).dnsProviders(machine: "box")
 
         XCTAssertEqual(providers, [
-            CLIDNSProvider(name: "Cloudflare", zones: ["example.com"], error: nil),
-            CLIDNSProvider(name: "Hostinger", zones: [], error: "no token"),
+            DNSProviderAnswer(name: "Cloudflare", zones: ["example.com"], error: nil),
+            DNSProviderAnswer(name: "Hostinger", zones: [], error: "no token"),
         ])
         XCTAssertEqual(runner.calls.first?.args, ["--machine", "box", "--format", "json", "dns", "providers"])
+    }
+
+    func testAProviderThatFailedWithNullZonesDoesNotFailTheWholeAnswer() throws {
+        let body = #"{"providers":[{"name":"hostinger","zones":null,"error":"HOSTINGER_API_TOKEN is not set"}]}"#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+
+        let providers = try DevmachineCLI(executable: "/x", runner: runner).dnsProviders(machine: "box")
+
+        XCTAssertEqual(providers, [DNSProviderAnswer(name: "hostinger", zones: [], error: "HOSTINGER_API_TOKEN is not set")])
+    }
+
+    func testAddingAPackageNamesTheMachineAndSkipsThePrompt() throws {
+        let runner = CLIRecordingRunner(result: ("added hostinger to machine box\n", "", 0))
+
+        try DevmachineCLI(executable: "/x", runner: runner).addPackage("hostinger", machine: "box")
+
+        XCTAssertEqual(runner.calls.first?.args, ["packages", "add", "hostinger", "--machine", "box", "--yes"])
+    }
+
+    func testASecretTravelsOnStandardInputAndNeverInTheArguments() throws {
+        let runner = CLIRecordingRunner(result: ("", "", 0))
+
+        try DevmachineCLI(executable: "/x", runner: runner).setSecret("hostinger", value: "tok-secret-123")
+
+        XCTAssertEqual(runner.calls.first?.args, ["secrets", "set", "hostinger", "--stdin"])
+        XCTAssertFalse(runner.calls.flatMap(\.args).contains { $0.contains("tok-secret-123") })
+        XCTAssertEqual(runner.inputs.first ?? nil, Data("tok-secret-123\n".utf8))
+    }
+
+    func testAnEmptySecretIsRefusedBeforeTheCLIRuns() {
+        let runner = CLIRecordingRunner(result: ("", "", 0))
+
+        XCTAssertThrowsError(try DevmachineCLI(executable: "/x", runner: runner).setSecret("hostinger", value: "  "))
+        XCTAssertTrue(runner.calls.isEmpty)
+    }
+
+    func testAFailedSecretSaysWhatTheCLISaidWithoutTheValue() {
+        let runner = CLIRecordingRunner(result: ("", "error: the keychain is locked\n", 1))
+
+        XCTAssertThrowsError(try DevmachineCLI(executable: "/x", runner: runner).setSecret("hostinger", value: "tok-9")) {
+            let message = ($0 as? LocalizedError)?.errorDescription ?? ""
+            XCTAssertTrue(message.contains("keychain is locked"))
+            XCTAssertFalse(message.contains("tok-9"))
+        }
+    }
+
+    func testPackagesCarryTheirSummaryAndKindWhenTheCLIGivesThem() throws {
+        let body = #"""
+        {"packages":[
+            {"name":"hostinger","scope":"machine","source":"release","summary":"DNS zones on Hostinger.","installed_on":["machine box"]},
+            {"name":"caddy","scope":"machine","source":"release","kind":"role","summary":"A reverse proxy.","installed_on":[]},
+            {"name":"cloudflare","scope":"machine","source":"release","kind":"dns","installed_on":null}
+        ]}
+        """#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+
+        let packages = try DevmachineCLI(executable: "/x", runner: runner).packages()
+
+        XCTAssertEqual(packages.filter(\.isDNSProvider).map(\.name), ["hostinger", "cloudflare"])
+        XCTAssertEqual(packages.first?.summary, "DNS zones on Hostinger.")
     }
 
     func testDNSListDecodesTheCLIJSONContractAndPassesTheProvider() throws {

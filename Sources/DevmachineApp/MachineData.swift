@@ -21,7 +21,7 @@ enum MachineDataKeys {
     static let sitesContext = CacheKey<SitesContextSnapshot>(.sitesContext, "cli")
 
     static func sites(_ machine: String) -> CacheKey<ExposureListing> { .init(.sites, machine) }
-    static func dnsProviders(_ machine: String) -> CacheKey<[String]> { .init(.dnsProviders, machine) }
+    static func dnsProviders(_ machine: String) -> CacheKey<[DNSProviderAnswer]> { .init(.dnsProviders, machine) }
     static func dnsRecords(machine: String, provider: String, zone: String) -> CacheKey<[DNSRecordRow]> {
         .init(.dnsRecords, "\(machine)|\(provider)|\(zone)")
     }

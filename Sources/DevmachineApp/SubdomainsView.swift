@@ -49,6 +49,9 @@ struct SubdomainsView: View {
                 machinePicker
             }
             tabsBar
+            if selectedTab == .sites {
+                DNSProviderSetupCard(setup: store.dnsSetup, domain: store.domain)
+            }
             body(for: selectedTab)
         }
         .animation(.easeOut(duration: 0.2), value: showsSkeleton)
