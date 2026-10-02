@@ -48,6 +48,18 @@ final class OnboardingRunner: ObservableObject {
         Task { await runSequentially(steps, token: token) }
     }
 
+    /// Forgets every step and stops whatever was waiting: the page's Back.
+    func reset() {
+        runToken = UUID()
+        statuses = [:]
+        currentStep = nil
+    }
+
+    /// Demo screenshots: a run in any state, without a terminal.
+    func seedDemo(_ statuses: [OnboardingStepID: OnboardingStepStatus]) {
+        self.statuses = statuses
+    }
+
     /// Re-runs one failed step and, if it succeeds, continues with the rest
     /// of `steps` from that point on.
     func retry(step: OnboardingStepID, remaining: [(id: OnboardingStepID, command: String)]) {
@@ -59,31 +71,31 @@ final class OnboardingRunner: ObservableObject {
         var stepsFinishedBefore = steps.prefix { statuses[$0.id] == .done }.count
         for step in steps[stepsFinishedBefore...] {
             guard runToken == token else { return }
-            await runOne(step, stepsFinishedBefore: stepsFinishedBefore)
+            await runOne(step, token: token)
             guard runToken == token else { return }
             if case .failed = statuses[step.id] { return }
             stepsFinishedBefore += 1
         }
     }
 
-    private func runOne(_ step: (id: OnboardingStepID, command: String), stepsFinishedBefore: Int) async {
+    private func runOne(_ step: (id: OnboardingStepID, command: String), token: UUID) async {
         currentStep = step.id
         statuses[step.id] = .running
+        let nonce = OnboardingMarker.newNonce()
         do {
-            try sender.send(OnboardingMarker.wrap(step.command), into: CommandTarget.from(terminalKind))
+            try sender.send(OnboardingMarker.wrap(step.command, nonce: nonce), into: CommandTarget.from(terminalKind))
         } catch {
             statuses[step.id] = .failed(error.localizedDescription)
             return
         }
-        await waitForOutcome(step.id, stepsFinishedBefore: stepsFinishedBefore)
+        await waitForOutcome(step.id, nonce: nonce, token: token)
     }
 
-    private func waitForOutcome(_ id: OnboardingStepID, stepsFinishedBefore: Int) async {
-        while true {
-            let okCount = matchCounter(OnboardingMarker.ok, terminalKind)
-            let failCount = matchCounter(OnboardingMarker.fail, terminalKind)
+    private func waitForOutcome(_ id: OnboardingStepID, nonce: String, token: UUID) async {
+        while runToken == token {
             if let outcome = OnboardingMarker.outcome(
-                okCount: okCount, failCount: failCount, stepsFinishedBefore: stepsFinishedBefore) {
+                okSeen: matchCounter(OnboardingMarker.ok(nonce: nonce), terminalKind) > 0,
+                failSeen: matchCounter(OnboardingMarker.fail(nonce: nonce), terminalKind) > 0) {
                 statuses[id] = outcome
                 return
             }
@@ -91,11 +103,12 @@ final class OnboardingRunner: ObservableObject {
         }
     }
 
-    /// Types an agent's initial prompt into the same pane instead of running
-    /// the scripted steps — the person watches the agent work and answers it
-    /// directly, so there is no marker to wait for.
-    func startAgent(_ kind: AgentKind) {
-        try? sender.send(AgentPrompt.commandLine(for: kind), into: CommandTarget.from(terminalKind))
+    /// Opens a coding agent on a failed step, in the same terminal, which is
+    /// back at its prompt once a step has failed. It gets the step and the
+    /// exact command, and runs it again itself to see the error.
+    func askAgent(_ kind: AgentKind, step: OnboardingStepID, command: String) {
+        let line = AgentPrompt.helpCommandLine(for: kind, step: step, command: command)
+        try? sender.send(line, into: CommandTarget.from(terminalKind))
     }
 }
 

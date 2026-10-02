@@ -9,7 +9,7 @@ import SwiftUI
 @MainActor
 enum DemoMachineReady {
     enum Script {
-        case prepareSlow, prepareFails, prepareSucceeds, installSlow, installFails
+        case prepareSlow, prepareFails, prepareSucceeds
     }
 
     static let machine = "staging"
@@ -59,13 +59,6 @@ enum DemoMachineReady {
             .environment(\.colorScheme, .dark)
     }
 
-    static func installer(_ script: Script?) -> CLIInstallModel {
-        CLIInstallModel(
-            plan: .homebrew(brew: "/opt/homebrew/bin/brew"),
-            runner: DemoInstallRunner(script: script.map(write)),
-            findsCLI: { false })
-    }
-
     private static func write(_ script: Script) -> String {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("devmachine-demo-ready-\(UUID().uuidString)")
@@ -98,23 +91,8 @@ enum DemoMachineReady {
                 + "echo 'error: 1 task(s) failed on staging: exit status 2' 1>&2\nexit 1\n"
         case .prepareSucceeds:
             return "#!/bin/sh\n" + add + "\(plan)\necho ''\necho 'staging: ok=3 changed=1 failed=0'\n"
-        case .installSlow:
-            return "#!/bin/sh\necho '==> Fetching mydevmachine/tap/devmachine'\n"
-                + "echo '==> Downloading https://example.com/devmachine_0.7.24_darwin_arm64.tar.gz'\nsleep 8\n"
-        case .installFails:
-            return "#!/bin/sh\necho '==> Fetching mydevmachine/tap/devmachine'\n"
-                + "echo 'Error: Failure while executing; `curl` exited with 6.' 1>&2\nexit 1\n"
         }
     }
 }
 
-private struct DemoInstallRunner: CLIInstallRunning {
-    let script: String?
-
-    func run(_ plan: CLIInstallPlan, output: @escaping @Sendable (String) -> Void) async throws -> Int32 {
-        guard let script else { return 0 }
-        return try await StreamingProcess.run(
-            executable: script, arguments: [], environment: ProcessInfo.processInfo.environment, output: output)
-    }
-}
 #endif

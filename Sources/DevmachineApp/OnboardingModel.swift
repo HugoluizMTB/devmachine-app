@@ -1,13 +1,11 @@
 import Foundation
 import DevmachineCore
 
-/// One step of the guided "set it up here" terminal flow. `installHomebrew`
-/// is deliberately not one of these: the app only ever shows its install
-/// line (it asks for the Mac password), never runs it. `addPackage`/`sync`
-/// carry a machine name since several machines can each be missing the
-/// package — one pair of steps per machine, not one pair total.
+/// One step of the guided terminal flow. Homebrew is never one: the CLI is
+/// installed from its release binary, which needs neither Homebrew nor an
+/// up-to-date Xcode. `addPackage`/`sync` carry a machine name since several
+/// machines can each be missing the package — one pair per machine.
 enum OnboardingStepID: Hashable, Equatable, Sendable {
-    case trustTap
     case installCLI
     case runSetup
     case addPackage(machine: String)
@@ -15,7 +13,6 @@ enum OnboardingStepID: Hashable, Equatable, Sendable {
 
     var title: String {
         switch self {
-        case .trustTap: return "Trust the devmachine tap"
         case .installCLI: return "Install the devmachine CLI"
         case .runSetup: return "Connect a server"
         case let .addPackage(machine): return "Add the devmachine-app package (\(machine))"
@@ -107,6 +104,16 @@ enum AgentPrompt {
         "\(kind.executableName) \(shellQuote(text))"
     }
 
+    /// The agent opened after a step failed: it gets the step and the exact
+    /// command, and runs it again to see the error for itself.
+    static func helpCommandLine(for kind: AgentKind, step: OnboardingStepID, command: String) -> String {
+        let text = "The devmachine setup on this Mac failed at the step \"\(step.title)\", "
+            + "which ran: \(command)\n\nRun it again to see the error, find out why it fails, "
+            + "and fix it with me, then run that step again until it succeeds. "
+            + "The setup guide is https://mydevmachine.sh/agent-setup.md."
+        return "\(kind.executableName) \(shellQuote(text))"
+    }
+
     static func shellQuote(_ text: String) -> String {
         "\"" + text
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -117,11 +124,10 @@ enum AgentPrompt {
     }
 }
 
-/// Everything the onboarding page checks before deciding what to show:
-/// Homebrew, the CLI, a configured machine, the `devmachine-app` package on
-/// every configured machine, and which agents this Mac has.
+/// Everything the onboarding page checks before deciding what to show: the
+/// CLI, a configured machine, the `devmachine-app` package on every
+/// configured machine, and which agents this Mac has.
 struct OnboardingDetection: Equatable, Sendable {
-    var homebrewFound: Bool
     var cliFound: Bool
     var adminMachine: String?
     /// Configured (non-self) machines that do not have `devmachine-app` yet —
@@ -130,19 +136,16 @@ struct OnboardingDetection: Equatable, Sendable {
     var agents: [DetectedAgent]
 
     static let empty = OnboardingDetection(
-        homebrewFound: false, cliFound: false, adminMachine: nil, missingPackageMachines: [], agents: [])
+        cliFound: false, adminMachine: nil, missingPackageMachines: [], agents: [])
 
     var isComplete: Bool { cliFound && adminMachine != nil && missingPackageMachines.isEmpty }
 }
 
 enum OnboardingDetector {
     static func detect(
-        homebrewPaths: [String] = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"],
-        exists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) },
         cli: () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
         agents: () -> [DetectedAgent] = { AgentDetector.detect() }
     ) -> OnboardingDetection {
-        let homebrewFound = homebrewPaths.contains(where: exists)
         var cliFound = false
         var adminMachine: String?
         var missingPackageMachines: [String] = []
@@ -163,26 +166,26 @@ enum OnboardingDetector {
         }
 
         return OnboardingDetection(
-            homebrewFound: homebrewFound, cliFound: cliFound, adminMachine: adminMachine,
+            cliFound: cliFound, adminMachine: adminMachine,
             missingPackageMachines: missingPackageMachines, agents: agents())
     }
 }
 
-/// The official one-liner from https://brew.sh — shown with a copy button and
-/// a link, never run by the app: it asks for the Mac's own password.
 enum OnboardingPlan {
-    static let homebrewInstallLine =
-        #"/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)""#
-    static let trustTapCommand = "brew trust --formula mydevmachine/tap/devmachine"
-    static let installCLICommand = "brew install mydevmachine/tap/devmachine"
-    static let setupCommand = "devmachine setup"
+    /// The release binary into `~/.local/bin`, never Homebrew: Homebrew
+    /// refuses to install a tap formula on a Mac whose Xcode is behind.
+    static let installCLICommand = "curl -fsSL \(CLIInstallPlan.installerURL) | DEVMACHINE_NO_BREW=1 sh"
+    /// Every later step names the CLI through a PATH that has the installer's
+    /// folder, which a fresh shell may not have yet.
+    static let cli = #"PATH="$HOME/.local/bin:$PATH" devmachine"#
+    static let setupCommand = "\(cli) setup"
 
     static func addPackageCommand(machine: String) -> String {
-        "devmachine packages add devmachine-app --machine \(machine)"
+        "\(cli) packages add devmachine-app --machine \(machine)"
     }
 
     static func syncCommand(machine: String) -> String {
-        "devmachine sync --machine \(machine)"
+        "\(cli) sync --machine \(machine)"
     }
 
     /// Which steps are still missing, in the order they must run. `machine`
@@ -192,7 +195,6 @@ enum OnboardingPlan {
     static func missingSteps(for detection: OnboardingDetection, machine: String? = nil) -> [OnboardingStepID] {
         var steps: [OnboardingStepID] = []
         if !detection.cliFound {
-            steps.append(.trustTap)
             steps.append(.installCLI)
         }
         if detection.adminMachine == nil {
@@ -212,7 +214,6 @@ enum OnboardingPlan {
     static func commands(for detection: OnboardingDetection, machine: String? = nil) -> [(id: OnboardingStepID, command: String)] {
         missingSteps(for: detection, machine: machine).map { id in
             switch id {
-            case .trustTap: return (id, trustTapCommand)
             case .installCLI: return (id, installCLICommand)
             case .runSetup: return (id, setupCommand)
             case let .addPackage(machine): return (id, addPackageCommand(machine: machine))
@@ -227,18 +228,34 @@ enum OnboardingPlan {
 /// (`devmachine setup`) wait on the person's own typed answers, so the
 /// terminal is the only thing that knows when they are done.
 enum OnboardingMarker {
-    static let ok = "__DM_STEP_OK__"
-    static let fail = "__DM_STEP_FAIL__"
+    static let failure = "This step exited with an error. See the terminal above."
 
-    static func wrap(_ command: String) -> String {
-        "\(command); if [ $? -eq 0 ]; then echo \(ok); else echo \(fail); fi"
+    /// The line typed into the terminal. The marker is put together by
+    /// `printf` when the command ends, so the typed line itself — which the
+    /// terminal shows as it is typed — never contains it. Before, it did, and
+    /// every step read as done the moment it was typed.
+    static func wrap(_ command: String, nonce: String) -> String {
+        "\(command); if [ $? -eq 0 ]; then dm_r=OK; else dm_r=FAIL; fi; printf '__DM_%s_%s__\\n' \(nonce) \"$dm_r\""
     }
 
-    /// Steps run one at a time, so the next marker to appear (by either name)
-    /// always belongs to the step that just ran — `stepsFinishedBefore` marks
-    /// how many steps before it already finished.
-    static func outcome(okCount: Int, failCount: Int, stepsFinishedBefore: Int) -> OnboardingStepStatus? {
-        guard okCount + failCount > stepsFinishedBefore else { return nil }
-        return okCount > stepsFinishedBefore ? .done : .failed("This step exited with an error. See the terminal above.")
+    static func ok(nonce: String) -> String { "__DM_\(nonce)_OK__" }
+    static func fail(nonce: String) -> String { "__DM_\(nonce)_FAIL__" }
+
+    /// A fresh marker for every run, so an older run's marker — a failure
+    /// before a retry — never answers for this one.
+    static func newNonce() -> String {
+        String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)).lowercased()
+    }
+
+    /// The nonce a typed line carries, for a test standing in for the shell.
+    static func nonce(inTyped line: String) -> String? {
+        guard let range = line.range(of: #"__DM_%s_%s__\\n' (\w+)"#, options: .regularExpression) else { return nil }
+        return line[range].split(separator: " ").last.map(String.init)
+    }
+
+    static func outcome(okSeen: Bool, failSeen: Bool) -> OnboardingStepStatus? {
+        if okSeen { return .done }
+        if failSeen { return .failed(failure) }
+        return nil
     }
 }

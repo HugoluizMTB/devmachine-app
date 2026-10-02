@@ -520,7 +520,6 @@ enum DemoSnapshots {
 
     private static func onboardingPage(_ environment: Environment) -> some View {
         OnboardingPage(demoDetection: OnboardingDetection(
-            homebrewFound: true,
             cliFound: false,
             adminMachine: nil,
             missingPackageMachines: [],
@@ -661,23 +660,17 @@ enum DemoSnapshots {
     }
 
     private static func installCLIView(_ id: String, environment: Environment) async -> NSView {
-        let installer: CLIInstallModel
+        let statuses: [OnboardingStepID: OnboardingStepStatus]?
         switch id {
-        case "install-cli-running":
-            installer = DemoMachineReady.installer(.installSlow)
-            Task { await installer.install() }
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-        case "install-cli-failed":
-            installer = DemoMachineReady.installer(.installFails)
-            await installer.install()
-        default:
-            installer = DemoMachineReady.installer(nil)
+        case "install-cli-running": statuses = [.installCLI: .running]
+        case "install-cli-failed": statuses = [.installCLI: .failed(OnboardingMarker.failure)]
+        default: statuses = nil
         }
         let page = OnboardingPage(
             demoDetection: OnboardingDetection(
-                homebrewFound: true, cliFound: false, adminMachine: nil, missingPackageMachines: [],
+                cliFound: false, adminMachine: nil, missingPackageMachines: [],
                 agents: [DetectedAgent(kind: .claude, executablePath: "/opt/homebrew/bin/claude")]),
-            installer: installer)
+            demoStatuses: statuses)
             .environmentObject(environment.wallpaperStore)
         let view = standaloneView(page, fittingSize: NSSize(width: 1100, height: 760), autosize: false)
         try? await Task.sleep(nanoseconds: 300_000_000)

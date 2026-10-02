@@ -158,6 +158,13 @@ final class TerminalRegistry: NSObject {
         return view.searchMatchSummary(term).total
     }
 
+    /// The onboarding terminal types its steps into a fresh shell, and a
+    /// startup question — oh-my-zsh offering to update — read the first one
+    /// as its answer and dropped it. Only that session gets these.
+    static func extraEnvironment(session: String) -> [String] {
+        session == OnboardingRunner.sessionName ? ["DISABLE_AUTO_UPDATE=true", "DISABLE_UPDATE_PROMPT=true"] : []
+    }
+
     /// Drops the highlight and gives the keyboard back to the session.
     func endFind(in kind: TerminalKind) {
         terminals[kind]?.clearSearch()
@@ -426,7 +433,8 @@ final class TerminalRegistry: NSObject {
                 term.startProcess(
                     executable: shell.executable,
                     args: shell.arguments,
-                    environment: RemoteCommands.terminalEnvironment(customSocket: customSocket) + shell.environment,
+                    environment: RemoteCommands.terminalEnvironment(customSocket: customSocket) + shell.environment
+                        + Self.extraEnvironment(session: session),
                     execName: shell.execName,
                     currentDirectory: path
                 )
@@ -438,7 +446,8 @@ final class TerminalRegistry: NSObject {
                 args: Zmx.attachArguments(
                     name: Zmx.sessionName(from: session, socketDirectory: socketDirectory),
                     command: shell.multiplexerCommand),
-                environment: Zmx.environment(socketDirectory: socketDirectory) + shell.environment,
+                environment: Zmx.environment(socketDirectory: socketDirectory) + shell.environment
+                    + Self.extraEnvironment(session: session),
                 // The session's own directory comes from here: the multiplexer
                 // starts the shell in the directory it was launched from.
                 currentDirectory: path
