@@ -1481,6 +1481,7 @@ final class AppModel: ObservableObject {
                     self.awaitingFirstLogin.insert(workspace.alias)
                     self.sessionProblems[workspace.alias] = nil
                 }
+                self.awaitingFirstLogin.formIntersection(next.map(\.alias))
             }
             for alias in self.awaitingFirstLogin {
                 if self.sessionProblems[alias]?.isAwaitingSync == true { self.sessionProblems[alias] = nil }
@@ -1665,6 +1666,9 @@ final class AppModel: ObservableObject {
             }
             let problem = SessionProblem(error)
             if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
+            if (error as? SessionListError)?.problem == .tmuxMissing {
+                awaitingFirstLogin.remove(alias)
+            }
             // One workspace's own problem (no alias, no tmux): the host may be
             // fine, and every other workspace on it still polls.
             if error is SessionListError {

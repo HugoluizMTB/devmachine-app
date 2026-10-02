@@ -26,6 +26,7 @@ private final class ChangingWorkspaceSource: WorkspaceSource, @unchecked Sendabl
 private final class AccountSessionSource: SessionSource, @unchecked Sendable {
     private let lock = NSLock()
     private var accounts: Set<String>
+    private var withoutTmux: Set<String> = []
 
     init(accounts: Set<String>) {
         self.accounts = accounts
@@ -34,6 +35,12 @@ private final class AccountSessionSource: SessionSource, @unchecked Sendable {
     func createAccount(_ workspace: String) {
         lock.lock()
         accounts.insert(workspace)
+        lock.unlock()
+    }
+
+    func removeTmux(_ workspace: String) {
+        lock.lock()
+        withoutTmux.insert(workspace)
         lock.unlock()
     }
 
@@ -49,6 +56,9 @@ private final class AccountSessionSource: SessionSource, @unchecked Sendable {
         guard accounts.contains(workspace.name) else {
             throw SessionStoreError(
                 failure: .authDenied, stderr: "\(workspace.name)@203.0.113.7: Permission denied (publickey).")
+        }
+        if withoutTmux.contains(workspace.name) {
+            throw SessionListError(problem: .tmuxMissing, stderr: "")
         }
         return [TmuxSession(name: "dash", windows: 1, harnesses: [])]
     }
@@ -128,6 +138,23 @@ final class NewWorkspaceLoginTests: XCTestCase {
         try await waitFor { model.sessionProblems[self.beta.alias] != nil }
 
         XCTAssertEqual(model.sessionProblems[beta.alias]?.isAwaitingSync, false)
+        XCTAssertTrue(model.isPollingPaused)
+    }
+
+    func testAWorkspaceThatLoggedInWithoutTmuxIsRefusedLikeAnyOther() async throws {
+        let workspaces = ChangingWorkspaceSource([acme])
+        let sessions = AccountSessionSource(accounts: ["acme", "beta"])
+        sessions.removeTmux("beta")
+        let model = try await openApp(workspaces: workspaces, sessions: sessions)
+        workspaces.add(beta)
+        model.reloadConfiguration()
+        try await waitFor { model.sessionProblems[self.beta.alias] == .tmuxMissing(detail: "") }
+
+        sessions.removeAccounts()
+        model.refresh(alias: beta.alias)
+        try await waitFor { model.sessionProblems[self.beta.alias]?.isAwaitingSync == false
+            && model.sessionProblems[self.beta.alias] != .tmuxMissing(detail: "") }
+
         XCTAssertTrue(model.isPollingPaused)
     }
 }
