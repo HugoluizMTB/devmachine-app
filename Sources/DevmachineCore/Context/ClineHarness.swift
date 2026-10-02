@@ -81,16 +81,12 @@ public struct ClineHarness: ContextHarnessReader {
     }
 
     /// The file is rewritten in place, not swapped in, so a read can meet
-    /// it half written: one more try before giving up on this poll.
+    /// it half written. That poll shows nothing and the next one reads it.
     static func messages(at path: URL) -> [[String: Any]] {
-        for _ in 0..<2 {
-            guard let data = try? Data(contentsOf: path) else { return [] }
-            if let object = try? JSONSerialization.jsonObject(with: data) {
-                if let wrapped = object as? [String: Any] { return wrapped["messages"] as? [[String: Any]] ?? [] }
-                return object as? [[String: Any]] ?? []
-            }
-        }
-        return []
+        guard let data = try? Data(contentsOf: path),
+              let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        if let wrapped = object as? [String: Any] { return wrapped["messages"] as? [[String: Any]] ?? [] }
+        return object as? [[String: Any]] ?? []
     }
 
     public static func extract(messages: [[String: Any]]) -> ContextHarnessPass {

@@ -24,25 +24,29 @@ public struct AntigravityHarness: ContextHarnessReader {
 
     public func recentTranscripts(for project: URL, limit: Int, fileManager: FileManager) -> [ContextTranscriptFile] {
         let cwd = project.standardizedFileURL.path
-        var ids: [String] = []
-        for line in Self.tailLines(of: dir.appendingPathComponent("history.jsonl"), maxBytes: Self.historyTailBytes) {
+        var seen = Set<String>()
+        var files: [ContextTranscriptFile] = []
+        for line in Self.tailLines(of: dir.appendingPathComponent("history.jsonl"), maxBytes: Self.historyTailBytes).reversed() {
+            guard files.count < limit else { break }
             guard let data = line.data(using: .utf8),
                   let entry = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   entry["workspace"] as? String == cwd,
-                  let id = entry["conversationId"] as? String, !id.isEmpty, !id.contains("/"), !ids.contains(id)
+                  let id = entry["conversationId"] as? String, !id.isEmpty, !id.contains("/"),
+                  seen.insert(id).inserted
             else { continue }
-            ids.append(id)
-        }
-        let files = ids.compactMap { id -> ContextTranscriptFile? in
-            let logs = dir.appendingPathComponent("brain").appendingPathComponent(id)
-                .appendingPathComponent(".system_generated/logs")
-            for name in ["transcript_full.jsonl", "transcript.jsonl"] {
-                let path = logs.appendingPathComponent(name)
-                if let modified = contextModified(path) { return ContextTranscriptFile(path: path, modified: modified) }
-            }
-            return nil
+            if let file = transcript(for: id) { files.append(file) }
         }
         return contextRecent(files, limit: limit)
+    }
+
+    private func transcript(for id: String) -> ContextTranscriptFile? {
+        let logs = dir.appendingPathComponent("brain").appendingPathComponent(id)
+            .appendingPathComponent(".system_generated/logs")
+        for name in ["transcript_full.jsonl", "transcript.jsonl"] {
+            let path = logs.appendingPathComponent(name)
+            if let modified = contextModified(path) { return ContextTranscriptFile(path: path, modified: modified) }
+        }
+        return nil
     }
 
     static func tailLines(of url: URL, maxBytes: Int) -> [String] {
