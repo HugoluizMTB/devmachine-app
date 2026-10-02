@@ -180,7 +180,7 @@ struct OnboardingPage: View {
                     .font(.dm(16, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            Text(OnboardingContent.ready(flow.detection.adminMachine))
+            Text(OnboardingContent.ready(flow.detection.adminMachine, workspace: runner.wizard.madeWorkspace))
                 .font(.dm(12.5))
                 .foregroundStyle(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
@@ -205,10 +205,11 @@ enum OnboardingContent {
             + "with brew upgrade devmachine, since it is found first."
     }
 
-    static func ready(_ machine: String?) -> String {
+    static func ready(_ machine: String?, workspace: String? = nil) -> String {
         let server = machine.map { "the machine \($0)" } ?? "your machine"
-        return "The CLI is installed, and \(server) has devmachine-app. "
-            + "Settings are filled in from the CLI, so there is nothing to type."
+        let sidebar = workspace.map { " Your workspace \($0) is in the sidebar: start a session there." } ?? ""
+        return "The CLI is installed, and \(server) has devmachine-app." + sidebar
+            + " Settings are filled in from the CLI, so there is nothing to type."
     }
 }
 

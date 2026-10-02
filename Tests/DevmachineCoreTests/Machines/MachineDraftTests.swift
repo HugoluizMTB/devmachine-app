@@ -101,13 +101,30 @@ final class MachineDraftTests: XCTestCase {
         XCTAssertEqual(draft.problems(existingMachines: []), [])
     }
 
-    func testAFirstWorkspaceIsOptionalButNamedLikeAMachine() {
+    func testAFirstWorkspaceIsOptionalButNamedLikeALinuxAccount() {
         var draft = server
         draft.workspace = ""
         XCTAssertEqual(draft.problems(existingMachines: []), [])
-        draft.workspace = "Acme"
-        XCTAssertEqual(draft.problems(existingMachines: []).map(\.field), [.workspace])
-        draft.workspace = "acme"
-        XCTAssertEqual(draft.problems(existingMachines: []), [])
+        for valid in ["acme", "acme-lab", "acme_2", "_tools"] {
+            draft.workspace = valid
+            XCTAssertEqual(draft.problems(existingMachines: []), [], valid)
+        }
+        for invalid in ["Acme", "2acme", "-acme", "acme.lab", "acme lab", String(repeating: "a", count: 33)] {
+            draft.workspace = invalid
+            XCTAssertEqual(draft.problems(existingMachines: []).map(\.field), [.workspace], invalid)
+        }
+    }
+
+    func testAFirstWorkspaceCannotTakeAnAccountTheMachineHasOrAWorkspaceName() {
+        var draft = server
+        draft.user = "deploy"
+        for taken in ["root", "ubuntu", "www-data", "deploy"] {
+            draft.workspace = taken
+            XCTAssertEqual(draft.problems(existingMachines: []).map(\.field), [.workspace], taken)
+        }
+        draft.workspace = "beta"
+        XCTAssertEqual(
+            draft.problems(existingMachines: [], existingWorkspaces: ["acme", "beta"]).map(\.message),
+            ["A workspace named beta already exists."])
     }
 }

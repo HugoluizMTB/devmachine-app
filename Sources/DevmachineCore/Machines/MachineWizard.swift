@@ -22,21 +22,36 @@ public struct MachineWizard: Equatable, Sendable {
     public private(set) var stage: MachineWizardStage = .kind
     public var draft = MachineDraft()
     public let existingMachines: [String]
+    /// Every workspace in the configuration: a new one cannot take a name.
+    public let existingWorkspaces: [String]
     public let limaFound: Bool
     /// The CLI takes every answer as a flag (`MachineUnattendedAdd`): the
     /// whole run happens without a terminal.
     public let unattended: Bool
     public let firstRun: Bool
 
-    public init(existingMachines: [String], limaFound: Bool, unattended: Bool = false, firstRun: Bool = false) {
+    public init(
+        existingMachines: [String], existingWorkspaces: [String] = [], limaFound: Bool, unattended: Bool = false,
+        firstRun: Bool = false
+    ) {
         self.existingMachines = existingMachines
+        self.existingWorkspaces = existingWorkspaces
         self.limaFound = limaFound
         self.unattended = unattended
         self.firstRun = firstRun
     }
 
+    /// The first run makes a workspace unless the person skipped it, so the
+    /// app opens with one in the sidebar; adding a machine later needs none.
+    public var requiresWorkspace: Bool { firstRun && !draft.skipsWorkspace }
+
     public var problems: [MachineDraftProblem] {
-        draft.problems(existingMachines: existingMachines, unattended: unattended)
+        var problems = draft.problems(
+            existingMachines: existingMachines, unattended: unattended, existingWorkspaces: existingWorkspaces)
+        if requiresWorkspace, draft.trimmedWorkspace.isEmpty {
+            problems.append(.init(field: .workspace, message: "Name your first workspace, like acme."))
+        }
+        return problems
     }
 
     /// A CLI that takes every answer as a flag runs in the background, where
@@ -98,7 +113,7 @@ public struct MachineWizard: Equatable, Sendable {
         var draft = draft
         if firstRun {
             draft.sync = true
-            draft.workspace = ""
+            if draft.skipsWorkspace { draft.workspace = "" }
             if !draft.packages.contains(MachinePackageCatalog.appPackage) {
                 draft.packages.append(MachinePackageCatalog.appPackage)
             }

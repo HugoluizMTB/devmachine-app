@@ -68,6 +68,8 @@ public struct MachineDraft: Equatable, Sendable {
     public var fingerprint = ""
     /// A first workspace to create on the machine; empty creates none.
     public var workspace = ""
+    /// First run only: the person chose to make no workspace now.
+    public var skipsWorkspace = false
     public var essentials = true
     /// Machine packages beyond essentials, in the order they were chosen.
     public var packages: [String] = []
@@ -84,7 +86,7 @@ public struct MachineDraft: Equatable, Sendable {
     var trimmedUser: String { user.trimmingCharacters(in: .whitespaces) }
     var trimmedPort: String { port.trimmingCharacters(in: .whitespaces) }
     var trimmedKeyFile: String { keyFile.trimmingCharacters(in: .whitespaces) }
-    var trimmedWorkspace: String { workspace.trimmingCharacters(in: .whitespaces) }
+    public var trimmedWorkspace: String { workspace.trimmingCharacters(in: .whitespaces) }
     public var trimmedAddress: String { address.trimmingCharacters(in: .whitespaces) }
     public var trimmedDomain: String { domain.trimmingCharacters(in: .whitespaces) }
 
@@ -137,7 +139,9 @@ public struct MachineDraft: Equatable, Sendable {
     /// `unattended` is a CLI that takes every answer as a flag
     /// (`MachineUnattendedAdd`): then a password or an agent key is asked
     /// here, and every server needs a fingerprint to trust.
-    public func problems(existingMachines: [String], unattended: Bool = false) -> [MachineDraftProblem] {
+    public func problems(
+        existingMachines: [String], unattended: Bool = false, existingWorkspaces: [String] = []
+    ) -> [MachineDraftProblem] {
         var problems: [MachineDraftProblem] = []
         if trimmedName.isEmpty {
             problems.append(.init(field: .name, message: "Give the machine a name."))
@@ -149,10 +153,39 @@ public struct MachineDraft: Equatable, Sendable {
         if kind == .server {
             problems += unattended ? unattendedServerProblems() : serverProblems()
         }
-        if !trimmedWorkspace.isEmpty, !Self.matches(trimmedWorkspace, Self.namePattern) {
-            problems.append(.init(field: .workspace, message: "Use lower-case letters, digits and dashes."))
+        if let message = workspaceProblem(existingWorkspaces: existingWorkspaces) {
+            problems.append(.init(field: .workspace, message: message))
         }
         return problems
+    }
+
+    /// A workspace's name is its Linux account's (`useradd` on the
+    /// machine), so it follows the CLI's `linuxUserName` rule and Linux's
+    /// 32-character limit, and cannot be an account the machine already has.
+    static let workspacePattern = "^[a-z_][a-z0-9_-]*$"
+    static let workspaceMaxLength = 32
+    static let systemAccounts: Set<String> = [
+        "root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news", "uucp", "proxy",
+        "www-data", "backup", "list", "irc", "nobody", "messagebus", "sshd", "syslog", "ubuntu", "admin",
+        "caddy", "docker", "lima",
+    ]
+
+    private func workspaceProblem(existingWorkspaces: [String]) -> String? {
+        let name = trimmedWorkspace
+        guard !name.isEmpty else { return nil }
+        if !Self.matches(name, Self.workspacePattern) {
+            return "Start with a letter, then use lower-case letters, digits, - and _."
+        }
+        if name.count > Self.workspaceMaxLength {
+            return "Use \(Self.workspaceMaxLength) characters or fewer: it becomes a Linux account name."
+        }
+        if Self.systemAccounts.contains(name) || name == trimmedUser {
+            return "\(name) is already an account on the machine. Pick another, like acme."
+        }
+        if existingWorkspaces.contains(name) {
+            return "A workspace named \(name) already exists."
+        }
+        return nil
     }
 
     private func serverProblems() -> [MachineDraftProblem] {

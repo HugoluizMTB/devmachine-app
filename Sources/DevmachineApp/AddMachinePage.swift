@@ -195,12 +195,7 @@ struct AddMachineDetailsView: View {
             } else {
                 AddMachineNote(text: AddMachineContent.localNote(unattended: unattended))
             }
-            if !state.wizard.firstRun {
-                field("First workspace", .workspace,
-                      hint: "Optional. A workspace is one Linux account on the machine, and what the sidebar lists.") {
-                    TextField("acme", text: draft.workspace).dmField()
-                }
-            }
+            workspaceField
             if unattended, !state.wizard.draft.hasConfiguration, state.wizard.draft.kind == .server {
                 field("Domain", .domain,
                       hint: "Optional. Published sites get names under it, like app.example.com.") {
@@ -256,6 +251,35 @@ struct AddMachineDetailsView: View {
             AddMachineNote(text: "The CLI asks for the password in the terminal on the last step, "
                 + "uses it once to install a key, then turns password login off. The app never sees it.")
             fingerprintField
+        }
+    }
+
+    /// The first run makes a workspace unless the person turns it off, so the
+    /// app opens with one in the sidebar; adding a machine later needs none.
+    @ViewBuilder
+    private var workspaceField: some View {
+        let firstRun = state.wizard.firstRun
+        VStack(alignment: .leading, spacing: m.space.md) {
+            if firstRun {
+                Toggle(isOn: Binding(
+                    get: { !state.wizard.draft.skipsWorkspace },
+                    set: { state.wizard.draft.skipsWorkspace = !$0 })
+                ) {
+                    Text(verbatim: "Make my first workspace now")
+                        .font(.dm(12, weight: .medium))
+                        .foregroundStyle(Color.dmRowText)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
+            if state.wizard.draft.skipsWorkspace, firstRun {
+                AddMachineNote(text: AddMachineContent.noWorkspaceNote)
+            } else {
+                field(firstRun ? "First workspace" : "First workspace (optional)", .workspace,
+                      hint: AddMachineContent.workspaceHint) {
+                    TextField("acme", text: draft.workspace).dmField()
+                }
+            }
         }
     }
 
@@ -333,6 +357,7 @@ struct AddMachineDetailsView: View {
         case .name: return !draft.name.isEmpty
         case .address: return !draft.address.isEmpty
         case .keyFile: return !draft.keyFile.isEmpty
+        case .workspace: return !draft.workspace.isEmpty
         default: return true
         }
     }
@@ -540,9 +565,9 @@ struct AddMachineRunView: View {
             .font(.dm(14, weight: .semibold))
             .foregroundStyle(Color.dmRowText)
             if !state.wizard.firstRun {
-                Text(verbatim: state.wizard.draft.workspace.isEmpty
+                Text(verbatim: state.wizard.draft.trimmedWorkspace.isEmpty
                     ? "It is in Settings → Machines. Add a workspace to see it in the sidebar."
-                    : "Its workspace shows in the sidebar.")
+                    : "The workspace \(state.wizard.draft.trimmedWorkspace) shows in the sidebar.")
                     .font(.dm(11.5))
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -678,6 +703,12 @@ enum AddMachineContent {
         summary: "What a new machine starts with: base tools, git, a firewall, SSH without passwords, "
             + "Caddy, and what this app reads from a machine.",
         isRecommended: true, isYours: false)
+
+    static let workspaceHint = "A workspace is a Linux account on the machine where your sessions run. "
+        + "Name it after your project, like acme. It gets the default workspace packages."
+
+    static let noWorkspaceNote = "No workspace yet: only sessions on this Mac until you add one, "
+        + "with devmachine workspaces new or Add a machine."
 
     static func localNote(unattended: Bool) -> String {
         unattended

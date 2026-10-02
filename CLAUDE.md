@@ -651,8 +651,10 @@ Rules:
   fingerprint confirmed against the console; no: a Lima machine on this
   Mac, no address asked), packages, review of the exact commands, run.
   `firstRun` always syncs, always adds `devmachine-app` (essentials needs
-  it, but `installed_on` lists only what a machine names itself), hides
-  the workspace, and installs the skills (below). A Mac already connected
+  it, but `installed_on` lists only what a machine names itself), asks for
+  the first workspace (`MachineWizard.requiresWorkspace`; a switch,
+  `skipsWorkspace`, turns it off) so the app opens with one in the
+  sidebar, and installs the skills (below). A Mac already connected
   but missing `devmachine-app` gets `packages add` + `sync` per machine,
   run the same way. A CLI older than `MachineUnattendedAdd` says so and
   offers the installer (`.cliTooOld`).
@@ -901,8 +903,12 @@ once may fail there.
   `95-settings-no-machine.png` in the setup-flow walk.
 - **The wizard (`AppPage.addMachine`) only builds `devmachine` commands**
   (`MachinePlan`, Core) and shows them before Create. Packages are
-  `--no-essentials` or `packages add`, then an optional `workspaces new` and
-  `sync`. Package cards are machine packages whose `platforms` hold `linux`
+  `--no-essentials` or `packages add`, then `workspaces new <w> --machine
+  <m> --yes` (optional here, required by default on the first run) and
+  `sync`. A workspace name is its Linux account's: the CLI's
+  `linuxUserName` rule, at most 32 characters, not a system account or
+  the admin login, not a workspace the configuration has
+  (`MachineDraft.workspaceProblem`). Package cards are machine packages whose `platforms` hold `linux`
   or are empty (any): a server and a Lima machine are both Linux, so a
   `[macos]` package is never offered. Essentials is always installed
   (locked, its `needs` listed as included and not offered again on their

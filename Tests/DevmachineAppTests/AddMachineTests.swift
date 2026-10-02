@@ -319,13 +319,14 @@ final class AddMachineModelTests: XCTestCase {
             hasConfiguration: true,
             machines: [ConfiguredMachine(
                 name: "main", hosts: ["203.0.113.10"], adminUser: "root", port: 22,
-                workspaces: [], packages: [], isSelf: false)],
+                workspaces: ["acme", "beta"], packages: [], isSelf: false)],
             packages: []))
         let model = AddMachineModel(
             machines: machines, runner: MachineStepRunner(hooks: FakeTerminal().hooks), findLima: { nil },
             onAdded: {})
 
         XCTAssertEqual(model.wizard.existingMachines, ["main"])
+        XCTAssertEqual(model.wizard.existingWorkspaces, ["acme", "beta"])
         XCTAssertFalse(model.wizard.limaFound)
         XCTAssertTrue(model.wizard.draft.hasConfiguration)
 

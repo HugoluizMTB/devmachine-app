@@ -142,6 +142,10 @@ final class MachineWizardTests: XCTestCase {
         wizard.draft.sync = false
         wizard.draft.packages = ["docker"]
         wizard.next()
+        XCTAssertEqual(wizard.stage, .details)
+        XCTAssertEqual(wizard.problems.map(\.field), [.workspace])
+        wizard.draft.workspace = "acme"
+        wizard.next()
         XCTAssertEqual(wizard.stage, .packages)
 
         XCTAssertEqual(wizard.plan.map(\.arguments), [
@@ -149,8 +153,31 @@ final class MachineWizardTests: XCTestCase {
              "--key", "agent:\(fingerprint)", "--yes"],
             ["packages", "add", "docker", "--machine", "main", "--yes"],
             ["packages", "add", "devmachine-app", "--machine", "main", "--yes"],
+            ["workspaces", "new", "acme", "--machine", "main", "--yes"],
             ["sync", "--machine", "main", "--yes"],
         ])
+    }
+
+    func testTheFirstRunWorkspaceCanBeSkippedOnPurpose() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true, firstRun: true)
+        wizard.choose(.localVM)
+        wizard.draft.name = "lab"
+        wizard.draft.workspace = "acme"
+        wizard.draft.skipsWorkspace = true
+        XCTAssertTrue(wizard.problems.isEmpty)
+        XCTAssertFalse(wizard.plan.contains { $0.kind == .newWorkspace })
+    }
+
+    func testAddingAMachineLaterNeedsNoWorkspaceButRefusesATakenOne() {
+        var wizard = MachineWizard(
+            existingMachines: ["main"], existingWorkspaces: ["acme"], limaFound: true, unattended: true)
+        wizard.choose(.localVM)
+        wizard.draft.name = "lab"
+        XCTAssertTrue(wizard.problems.isEmpty)
+        wizard.draft.workspace = "acme"
+        XCTAssertEqual(wizard.problems.map(\.field), [.workspace])
+        wizard.draft.workspace = "acme-lab"
+        XCTAssertEqual(wizard.plan.map(\.kind), [.createLocal, .newWorkspace, .sync])
     }
 
     func testTheFirstRunCanMakeAMachineOnThisMacAndInstallsLimaFirstWhenMissing() {

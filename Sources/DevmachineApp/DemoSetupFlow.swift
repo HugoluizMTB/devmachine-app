@@ -91,6 +91,7 @@ enum DemoSetupFlow {
             wizard.wizard.draft.login = .password
             wizard.wizard.draft.password = SecretText("demo-password")
             wizard.wizard.draft.domain = "example.com"
+            wizard.wizard.draft.workspace = "acme"
             wizard.wizard.draft.scan = DemoData.addMachineScan(address: "203.0.113.10", port: "22")
             wizard.wizard.draft.scanConfirmed = true
             return
@@ -99,6 +100,7 @@ enum DemoSetupFlow {
         }
         wizard.wizard.choose(.localVM)
         wizard.wizard.draft.name = "lab"
+        wizard.wizard.draft.workspace = "acme"
         guard screen != "setup-local" else { return }
         wizard.wizard.next()
         guard screen != "setup-packages" else { return }

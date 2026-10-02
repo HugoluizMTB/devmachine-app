@@ -110,6 +110,14 @@ final class AddMachineModel: ObservableObject {
         return !failed.blocksSetup
     }
 
+    /// The workspace the last run made, once its step is done: it is in the
+    /// configuration now, and must not block the answers that made it.
+    var madeWorkspace: String? {
+        guard let step = wizard.plan.first(where: { $0.kind == .newWorkspace }),
+              runner.status(of: step) == .done else { return nil }
+        return wizard.draft.trimmedWorkspace
+    }
+
     var failedStep: MachinePlanStep? {
         wizard.plan.first { runner.status(of: $0) == .failed }
     }
@@ -198,8 +206,10 @@ final class AddMachineModel: ObservableObject {
 
     private func freshWizard() -> MachineWizard {
         let added = addedByThisRun
+        let addedWorkspace = madeWorkspace
         var wizard = MachineWizard(
             existingMachines: machines.machines.map(\.name).filter { $0 != added },
+            existingWorkspaces: machines.machines.flatMap(\.workspaces).filter { $0 != addedWorkspace },
             limaFound: findLima() != nil,
             unattended: machines.snapshot?.addsWithoutTerminal ?? false,
             firstRun: firstRun)
