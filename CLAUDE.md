@@ -796,8 +796,13 @@ once may fail there.
   prints a per-step nonce marker the runner finds in the scrollback. A
   failed step shows `DMErrorStateView`; Try again skips the steps done.
   Tests inject `MachineStepRunner.Hooks`; nothing types into a real pane.
+- **No `config.yml` means no machine, not an unread list**: `machines
+  list` fails before it exists, and `StatsStore` then checks the file and
+  drops its cached cards, so Home never shows machines from an old
+  configuration. Any other failed read keeps the cache.
 - `DEVMACHINE_DEMO_WALK=machines` captures Settings → Machines, every
-  wizard step, a run in each state and the sidebar with no machine.
+  wizard step, a run in each state and the sidebar with no machine (Home
+  with no machine cards).
 
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action

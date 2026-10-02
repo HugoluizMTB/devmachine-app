@@ -91,6 +91,7 @@ enum DemoSnapshots {
         let settingsStore: SettingsStore
         let wallpaperStore: WallpaperStore
         let harnessSettingsFacade: HarnessSettingsFacade
+        let statsStore: StatsStore
     }
 
     /// One screen: its output file name and the steps to reach it. Kept as
@@ -473,7 +474,7 @@ enum DemoSnapshots {
         try? await Task.sleep(nanoseconds: 150_000_000)
         #if DEBUG
         if DemoAddMachine.handles(screen.id) {
-            await DemoAddMachine.prepare(screen.id, model: model)
+            await DemoAddMachine.prepare(screen.id, model: model, stats: environment.statsStore)
             return
         }
         #endif

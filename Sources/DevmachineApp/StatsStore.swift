@@ -70,6 +70,7 @@ final class StatsStore: ObservableObject {
     private let cache: StatsCache?
     private let tickInterval: TimeInterval?
     private let now: @MainActor () -> Date
+    private let fileExists: @Sendable (String) -> Bool
     private var schedule: StatsPollSchedule
     private var started = false
     private var isAsleep = false
@@ -84,9 +85,11 @@ final class StatsStore: ObservableObject {
         cache: StatsCache? = StatsCache(fileURL: StatsCache.defaultFileURL),
         policy: StatsPollPolicy = .standard,
         tickInterval: TimeInterval? = 1,
-        now: @escaping @MainActor () -> Date = { Date() }
+        now: @escaping @MainActor () -> Date = { Date() },
+        fileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) {
         self.cli = cli
+        self.fileExists = fileExists
         self.selection = selection
         self.cache = cache
         self.tickInterval = tickInterval
@@ -135,11 +138,10 @@ final class StatsStore: ObservableObject {
     func loadMachines() {
         loadMachinesTask?.cancel()
         let cli = self.cli
+        let fileExists = self.fileExists
         loadMachinesTask = Task {
-            let list = await Task.detached { () -> [StatsMachine]? in
-                try? cli().nonSelfMachines().map {
-                    StatsMachine(name: $0.name, firstAddress: $0.hosts.first)
-                }
+            let list = await Task.detached {
+                Self.readMachineList(cli: cli, fileExists: fileExists)
             }.value
             guard !Task.isCancelled else { return }
             self.hasLoadedMachineList = true
@@ -147,6 +149,22 @@ final class StatsStore: ObservableObject {
             if let list { self.apply(machineList: list) }
             self.tick()
         }
+    }
+
+    /// Nil when the list cannot be read, so the cached cards stay. Before
+    /// `config.yml` exists `machines list` fails too, but that answer is
+    /// known: no machine, and cached cards from an old configuration go.
+    nonisolated private static func readMachineList(
+        cli: @Sendable () throws -> DevmachineCLI, fileExists: (String) -> Bool
+    ) -> [StatsMachine]? {
+        guard let cli = try? cli() else { return nil }
+        if let machines = try? cli.nonSelfMachines() {
+            return machines.map { StatsMachine(name: $0.name, firstAddress: $0.hosts.first) }
+        }
+        guard let directory = try? cli.configPath().path,
+              !fileExists((directory as NSString).appendingPathComponent(AppSettings.opsRepoMarker))
+        else { return nil }
+        return []
     }
 
     /// Runs every machine that is due and has nothing in flight.
@@ -331,6 +349,19 @@ final class StatsStore: ObservableObject {
         mutate(&state)
         states[machine] = state
     }
+
+    #if DEBUG
+    /// The machines walk's "no machine yet" shots: Home must not show the
+    /// demo's machine cards beside a sidebar that says there is none.
+    func seedDemo(hasMachines: Bool) {
+        guard DemoMode.isActive else { return }
+        seedDemo()
+        guard !hasMachines else { return }
+        machines = []
+        states = [:]
+        selectedMachine = nil
+    }
+    #endif
 
     private func seedDemo() {
         machines = DemoData.statsMachines

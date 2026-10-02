@@ -28,11 +28,13 @@ enum DemoAddMachine {
         screens.contains { $0.id == id }
     }
 
-    static func prepare(_ id: String, model: AppModel) async {
+    static func prepare(_ id: String, model: AppModel, stats: StatsStore) async {
         let state = AddMachineModel.shared
         let machines = MachinesStore.shared
-        machines.seedDemo(id.hasPrefix("no-machines") ? DemoData.noMachinesSnapshot : DemoData.machinesSnapshot)
-        model.workspaces = id.hasPrefix("no-machines") ? [] : DemoData.workspaces
+        let hasMachines = !id.hasPrefix("no-machines")
+        machines.seedDemo(hasMachines ? DemoData.machinesSnapshot : DemoData.noMachinesSnapshot)
+        model.workspaces = hasMachines ? DemoData.workspaces : []
+        stats.seedDemo(hasMachines: hasMachines)
         state.startOver()
         switch id {
         case "machines-settings":

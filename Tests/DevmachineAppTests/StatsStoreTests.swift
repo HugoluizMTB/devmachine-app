@@ -12,6 +12,7 @@ private final class MultiMachineRunner: CommandRunner, @unchecked Sendable {
     var machinesJSON: String
     var snapshotsByMachine: [String: (stdout: String, stderr: String, exitCode: Int32)]
     var machinesListFails = false
+    var configPathJSON: String?
     private let gate = DispatchSemaphore(value: 0)
     private var holdsFetches = false
 
@@ -32,6 +33,9 @@ private final class MultiMachineRunner: CommandRunner, @unchecked Sendable {
         lock.lock()
         storedCalls.append(args)
         lock.unlock()
+        if args.suffix(2) == ["config", "path"] {
+            return configPathJSON.map { ($0, "", 0) } ?? ("", "no config path", 1)
+        }
         if args.contains("machines") {
             return machinesListFails ? ("", "config unreadable", 1) : (machinesJSON, "", 0)
         }
@@ -145,17 +149,20 @@ final class StatsStoreTests: XCTestCase {
 
     private func makeStore(
         cli: @escaping @Sendable () throws -> DevmachineCLI,
-        selection: StatsMachineSelection? = nil
+        selection: StatsMachineSelection? = nil,
+        fileExists: @escaping @Sendable (String) -> Bool = { _ in true }
     ) -> StatsStore {
         let clock = self.clock!
         return StatsStore(
             cli: cli, selection: selection ?? isolatedSelection, cache: cache,
             policy: StatsPollPolicy(interval: 90, backoff: [90, 180, 300], stagger: 0),
-            tickInterval: nil, now: { clock.now })
+            tickInterval: nil, now: { clock.now }, fileExists: fileExists)
     }
 
-    private func makeStore(_ runner: MultiMachineRunner) -> StatsStore {
-        makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) })
+    private func makeStore(
+        _ runner: MultiMachineRunner, fileExists: @escaping @Sendable (String) -> Bool = { _ in true }
+    ) -> StatsStore {
+        makeStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }, fileExists: fileExists)
     }
 
     func testAFreshSnapshotIsHandedBackWithoutAnotherRead() async throws {
@@ -623,6 +630,21 @@ final class StatsStoreTests: XCTestCase {
 
         XCTAssertEqual(store.machines.map(\.name), ["acme"])
         XCTAssertNotNil(store.snapshot)
+    }
+
+    func testWithNoConfigYmlTheCachedMachinesGoAway() async throws {
+        try cache.save([cachedEntry("acme", load1: 1, collectedAt: clock.now)])
+        let runner = MultiMachineRunner(machinesJSON: "")
+        runner.machinesListFails = true
+        runner.configPathJSON = #"{"path":"/Users/alice/.config/devmachine","source":"default"}"#
+        let store = makeStore(runner, fileExists: { _ in false })
+
+        store.start()
+        try await waitUntil { store.hasLoadedMachineList && store.machines.isEmpty }
+
+        XCTAssertNil(store.state(for: "acme"))
+        XCTAssertNil(store.selectedMachine)
+        XCTAssertTrue(cache.load().isEmpty)
     }
 
     func testOpeningAMachineFromHomeSelectsItsTab() throws {

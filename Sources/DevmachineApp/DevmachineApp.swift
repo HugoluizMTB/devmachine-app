@@ -89,7 +89,7 @@ struct DevmachineApp: App {
                     DemoSnapshots.runIfNeeded(DemoSnapshots.Environment(
                         model: model, prStore: prStore, usageStore: usageStore, caddyStore: caddyStore,
                         settingsStore: settingsStore, wallpaperStore: wallpaperStore,
-                        harnessSettingsFacade: harnessSettingsFacade))
+                        harnessSettingsFacade: harnessSettingsFacade, statsStore: statsStore))
                 }
                 .onChange(of: settingsStore.settings?.uiFontScale) { _, scale in
                     DMFont.scale = scale ?? 1
