@@ -11,6 +11,15 @@ final class ClaudeHarnessTests: XCTestCase {
         )
     }
 
+    func testSlugReplacesEveryCharacterClaudeCodeDoesNotKeep() {
+        XCTAssertEqual(
+            ClaudeHarness.slug(for: URL(fileURLWithPath: "/Users/alice/.config/devmachine")),
+            "-Users-alice--config-devmachine")
+        XCTAssertEqual(
+            ClaudeHarness.slug(for: URL(fileURLWithPath: "/Users/alice/dev/my_app v2")),
+            "-Users-alice-dev-my-app-v2")
+    }
+
     func testSlugReplacesSlashesWithDashes() {
         let slug = ClaudeHarness.slug(for: URL(fileURLWithPath: "/Users/alice/dev/dash"))
         XCTAssertEqual(slug, "-Users-alice-dev-dash")

@@ -5,8 +5,14 @@ public enum ClaudeHarness {
     public static let projectsDir = URL(fileURLWithPath: NSHomeDirectory())
         .appendingPathComponent(".claude/projects")
 
+    /// Claude Code names a project's folder by turning every character that
+    /// is not an ASCII letter or digit into `-`, so `/Users/alice/.config`
+    /// becomes `-Users-alice--config`. Replacing only `/` missed every path
+    /// with a dot, an underscore or a space.
     public static func slug(for project: URL) -> String {
-        project.standardizedFileURL.path.replacingOccurrences(of: "/", with: "-")
+        String(project.standardizedFileURL.path.unicodeScalars.map { scalar in
+            scalar.isASCII && CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : "-"
+        })
     }
 
     /// The project's own transcript dir, plus the dirs of worktree sessions
