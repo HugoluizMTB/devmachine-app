@@ -390,7 +390,7 @@ enum DemoSnapshots {
                     prPanel(environment, tab: .usage, height: usagePaneHeight),
                     fittingSize: NSSize(width: 780, height: usagePaneHeight), fixedHeight: usagePaneHeight)
             case "onboarding":
-                view = standaloneView(onboardingPage("onboarding", environment), fittingSize: windowSize)
+                view = standaloneView(onboardingPage("onboarding", environment), fittingSize: windowSize, autosize: false)
                 // `OnboardingPage` reads its demo flow from its own `.task`,
                 // which only starts once SwiftUI's next run loop turn — the
                 // window is already laid out by here, but the view's first
