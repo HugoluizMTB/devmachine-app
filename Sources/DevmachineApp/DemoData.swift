@@ -297,6 +297,42 @@ enum DemoData {
 
     static let dnsProviders = ["cloudflare", "hostinger"]
 
+    /// Which DNS setup state the Subdomains page shows: `ready` everywhere
+    /// but the `dns-setup` walk.
+    enum DNSScenario {
+        case ready, noneInstalled, notSynced, noZones
+    }
+
+    @MainActor static var dnsScenario = DNSScenario.ready
+
+    @MainActor static var dnsAnswers: [DNSProviderAnswer] {
+        switch dnsScenario {
+        case .ready:
+            return dnsProviders.map { DNSProviderAnswer(name: $0, zones: ["example.com"], error: nil) }
+        case .noneInstalled, .notSynced:
+            return []
+        case .noZones:
+            return [DNSProviderAnswer(name: "hostinger", zones: [], error: nil)]
+        }
+    }
+
+    @MainActor static var dnsPackages: [CLIPackage] {
+        let declared: [String]
+        switch dnsScenario {
+        case .ready: declared = dnsProviders
+        case .noneInstalled: declared = []
+        case .notSynced, .noZones: declared = ["hostinger"]
+        }
+        return ["cloudflare", "hostinger"].map { name in
+            CLIPackage(
+                name: name, scope: "machine",
+                installedOn: declared.contains(name) ? ["machine \(machineName)"] : [],
+                summary: "DNS zones on \(name == "cloudflare" ? "Cloudflare" : "Hostinger").",
+                kind: "dns", category: "DNS",
+                credentials: [PackageCredential(name: name, kind: "secret", scope: "machine")])
+        }
+    }
+
     static let dnsRecordsByProvider: [String: [DNSRecordRow]] = [
         "cloudflare": [
             DNSRecordRow(name: "app.acme.example.com", type: "A", value: machineAddress, ttl: 300),
