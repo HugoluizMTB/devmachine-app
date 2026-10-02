@@ -35,6 +35,11 @@ enum DemoData {
         ],
         "umbrella-devmachine": [
             TmuxSession(name: "web — dev server", windows: 1, harnesses: []),
+            TmuxSession(name: "pi — docs", windows: 1, harnesses: [.pi]),
+            TmuxSession(name: "agy — search", windows: 1, harnesses: [.antigravity]),
+            TmuxSession(name: "opencode — api", windows: 1, harnesses: [.opencode]),
+            TmuxSession(name: "kimi — tests", windows: 1, harnesses: [.kimi]),
+            TmuxSession(name: "cline — cleanup", windows: 1, harnesses: [.cline]),
         ],
     ]
 
@@ -525,7 +530,7 @@ enum DemoData {
         publicIP: machineAddress,
         baseDomain: "example.com",
         wallpaper: .gradient(name: "peaks"),
-        enabledHarnesses: [.claude, .codex],
+        enabledHarnesses: [.claude, .codex, .pi, .antigravity, .opencode, .kimi, .cline],
         localSessionProgram: .harness(.claude),
         remoteSessionProgram: .harness(.claude),
         workspaceSessionPrograms: [
