@@ -25,6 +25,7 @@ struct DevmachineApp: App {
 
     init() {
         DemoSnapshots.applyScrollBarDefaultsIfNeeded()
+        MainWindowSizer.readSavedFrame()
         let facade = HarnessSettingsFacade()
         harnessSettingsFacade = facade
         // `DEVMACHINE_DEMO=1`: every store seeds itself from `DemoData` (see
@@ -110,7 +111,10 @@ struct DevmachineApp: App {
                     RelaunchRehearsal.run(updates)
                     #endif
                 }
-                .frame(minWidth: 900, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
+                .frame(
+                    minWidth: MainWindowSizing.minimum.width, maxWidth: .infinity,
+                    minHeight: MainWindowSizing.minimum.height, maxHeight: .infinity)
+                .background(MainWindowSizer().frame(width: 0, height: 0))
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
