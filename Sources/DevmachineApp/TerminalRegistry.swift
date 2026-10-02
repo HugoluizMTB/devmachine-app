@@ -421,12 +421,13 @@ final class TerminalRegistry: NSObject {
         case let .local(session, path):
             // The multiplexer holds the shell, so the session survives the app.
             // Without it the pane is still usable, just not persistent.
+            let shell = LocalTools.shellLaunch()
             guard let zmx = LocalTools.zmxPath() else {
                 term.startProcess(
-                    executable: "/bin/zsh",
-                    args: ["-i", "-l"],
-                    environment: RemoteCommands.terminalEnvironment(customSocket: customSocket),
-                    execName: "-zsh",
+                    executable: shell.executable,
+                    args: shell.arguments,
+                    environment: RemoteCommands.terminalEnvironment(customSocket: customSocket) + shell.environment,
+                    execName: shell.execName,
                     currentDirectory: path
                 )
                 return
@@ -435,8 +436,9 @@ final class TerminalRegistry: NSObject {
             term.startProcess(
                 executable: zmx,
                 args: Zmx.attachArguments(
-                    name: Zmx.sessionName(from: session, socketDirectory: socketDirectory)),
-                environment: Zmx.environment(socketDirectory: socketDirectory),
+                    name: Zmx.sessionName(from: session, socketDirectory: socketDirectory),
+                    command: shell.multiplexerCommand),
+                environment: Zmx.environment(socketDirectory: socketDirectory) + shell.environment,
                 // The session's own directory comes from here: the multiplexer
                 // starts the shell in the directory it was launched from.
                 currentDirectory: path
@@ -768,6 +770,25 @@ enum LocalTools {
               exists(url.path)
         else { return nil }
         return url.path
+    }
+
+    /// Written once per run. A write that fails starts shells without the
+    /// integration rather than without the user's configuration.
+    static let shellIntegrationDirectory: String? = {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory() + "/Library/Application Support")
+        let directory = support.appendingPathComponent("Devmachine/shell-integration")
+        do {
+            try ShellIntegration.install(in: directory)
+            return directory.path
+        } catch {
+            PaneLog.log("shell integration not written: \(error)")
+            return nil
+        }
+    }()
+
+    static func shellLaunch() -> ShellLaunch {
+        ShellIntegration.launch(shell: LocalShell.current(), integrationDirectory: shellIntegrationDirectory)
     }
 }
 

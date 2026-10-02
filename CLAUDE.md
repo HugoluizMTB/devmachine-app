@@ -367,6 +367,20 @@ Rules:
   remembers (`LocalSessionScan.merge`): a session started outside the app shows
   up, and a remembered one that has no shell yet shows without a client count.
   One `ps -axo pid=,ppid=,comm=` per poll detects every enabled coding harness.
+- **A local pane runs the account's login shell** (`LocalShell`: the user
+  database first, then `SHELL`, then `/bin/zsh`), never a fixed zsh: a bash or
+  fish user got a zsh with none of their configuration.
+- **The prompt turns mouse and focus reporting off** (`ShellIntegration`). A
+  program that dies without undoing them (an ssh that drops, an editor killed
+  with SIGKILL) left them on, and every mouse move reached the shell as typed
+  `35;48;9M…`. zsh gets it through `ZDOTDIR` (its `.zshenv` puts `ZDOTDIR`
+  back before the user's files load), bash through `--init-file` (which then
+  reads the login files itself, because bash skips an init file in a login
+  shell), fish through `-C`. Any other shell starts plain. The files live in
+  `Application Support/Devmachine/shell-integration`; if they cannot be
+  written, the shell starts plain rather than without the user's files. zmx
+  runs the command only when it creates a session, and needs `HOME` passed:
+  bash and fish do not look it up.
 - **A local session is renamed in the sidebar only.** `zmx` has no rename and its
   socket is named after the session, so `LocalSession.handle` (the multiplexer
   name, and the registry key) never changes; `name` is what the sidebar shows.

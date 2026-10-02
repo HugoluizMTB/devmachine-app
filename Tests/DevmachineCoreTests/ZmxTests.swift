@@ -23,11 +23,18 @@ final class ZmxTests: XCTestCase {
         XCTAssertLessThan("/tmp/zmx-501/\(name)".utf8.count, Zmx.socketPathLimit)
     }
 
-    func testTheEnvironmentNamesTheShellAndTheSocketDirectory() {
-        let env = Zmx.environment(shell: "/bin/zsh", socketDirectory: "/tmp/zmx-501")
-        XCTAssertTrue(env.contains("SHELL=/bin/zsh"))
+    func testTheEnvironmentNamesTheHomeAndTheSocketDirectory() {
+        let env = Zmx.environment(socketDirectory: "/tmp/zmx-501", home: "/Users/alice")
+        XCTAssertTrue(env.contains("HOME=/Users/alice"))
         XCTAssertTrue(env.contains("ZMX_DIR=/tmp/zmx-501"))
         XCTAssertTrue(env.contains("ZMX_NO_DETACH_KEY=1"))
+    }
+
+    func testAttachCarriesTheCommandThatCreatesTheSession() {
+        XCTAssertEqual(Zmx.attachArguments(name: "acme"), ["attach", "acme"])
+        XCTAssertEqual(
+            Zmx.attachArguments(name: "acme", command: ["/bin/bash", "-i"]),
+            ["attach", "acme", "/bin/bash", "-i"])
     }
 }
 

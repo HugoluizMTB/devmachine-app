@@ -34,7 +34,11 @@ public enum Zmx {
         return name.isEmpty ? "s" : name
     }
 
-    public static func attachArguments(name: String) -> [String] { ["attach", name] }
+    /// The command runs only when the session is created; attaching to one
+    /// that exists reaches the shell already in it.
+    public static func attachArguments(name: String, command: [String] = []) -> [String] {
+        ["attach", name] + command
+    }
     public static let listArguments = ["ls"]
     public static func killArguments(name: String) -> [String] { ["kill", name] }
 
@@ -54,14 +58,16 @@ public enum Zmx {
         ZmxListParser.parse(listing).first { $0.name == session }?.pid
     }
 
-    /// `SHELL` because without it the multiplexer starts `/bin/sh`, and the
-    /// detach key off because the app's own UI decides when a pane detaches,
-    /// and the default binding would swallow the quit signal instead.
+    /// `HOME` because a shell other than zsh does not look it up when it is
+    /// missing, and then never finds the user's startup files. `SHELL` comes
+    /// from the shell's own launch. The detach key is off because the app's
+    /// own UI decides when a pane detaches, and the default binding would
+    /// swallow the quit signal instead.
     public static func environment(
-        shell: String = "/bin/zsh", socketDirectory: String = Zmx.socketDirectory(),
+        socketDirectory: String = Zmx.socketDirectory(), home: String = NSHomeDirectory(),
         term: String = "xterm-256color"
     ) -> [String] {
-        ["TERM=\(term)", "SHELL=\(shell)", "ZMX_DIR=\(socketDirectory)", "ZMX_NO_DETACH_KEY=1",
+        ["TERM=\(term)", "HOME=\(home)", "ZMX_DIR=\(socketDirectory)", "ZMX_NO_DETACH_KEY=1",
          "LANG=en_US.UTF-8", "COLORTERM=truecolor"]
     }
 }
