@@ -19,6 +19,8 @@ struct LimaInstaller: Sendable {
     var run: @Sendable (String, [String], @escaping @Sendable (String) -> Void) async throws -> Int32
     /// Writes the checked tarball to a temporary file and answers its path.
     var write: @Sendable (Data) throws -> String
+    /// Deletes that temporary file once it is unpacked or failed to.
+    var remove: @Sendable (String) -> Void
     var makeDirectory: @Sendable (String) throws -> Void
     var exists: @Sendable (String) -> Bool
 
@@ -47,6 +49,7 @@ struct LimaInstaller: Sendable {
         if let problem = check.problem { throw LimaInstallError(message: problem) }
         output("SHA-256 matches Lima's SHA256SUMS: \(digest)")
         let path = try write(tarball)
+        defer { remove(path) }
         try makeDirectory(LimaInstall.prefix(home: home))
         output("Unpacking into \(LimaInstall.prefix(home: home))…")
         let status = try await run("/usr/bin/tar", LimaInstall.extractArguments(tarball: path, home: home), output)
@@ -99,6 +102,7 @@ extension LimaInstaller {
                 try data.write(to: file)
                 return file.path
             },
+            remove: { try? FileManager.default.removeItem(atPath: $0) },
             makeDirectory: { try FileManager.default.createDirectory(atPath: $0, withIntermediateDirectories: true) },
             exists: { FileManager.default.isExecutableFile(atPath: $0) })
     }

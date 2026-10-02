@@ -620,7 +620,8 @@ Rules:
 - **A machine on this Mac installs Lima when it is missing**
   (`LimaInstall`, `LimaInstaller`): GitHub's latest release tarball for
   the Mac's processor, checked against the release's `SHA256SUMS` before
-  a byte is written, unpacked into `~/.local` (`bin`, `share`, `libexec`).
+  a byte is written, unpacked into `~/.local` (`bin`, `share`, `libexec`);
+  the temporary tarball is deleted whether the unpack worked or not.
   The CLI runs `limactl` by name, so `~/.local/bin` goes first on the PATH
   it gets. A failed download offers `brew install lima` when Homebrew is
   there. Only an unattended run (CLI 0.7.27+) can do this; an older CLI
@@ -632,8 +633,9 @@ Rules:
   anything else gets what the step ran, the last lines, Retry and Change
   answers. Every failure also has Report a bug (`DMReportBugButton`): the
   browser opens a new GitHub issue filled in by `BugReport`, with secrets,
-  addresses, paths, names, emails, fingerprints and the typed hosts and
-  domains taken out, under 7000 characters. The app never posts it. The
+  addresses, paths, emails, fingerprints, the typed hosts and domains, and
+  the user, machine and workspace names (whole words, any length) taken
+  out, under 7000 characters. The app never posts it. The
   DNS setup's failure has the same button.
 - Demo walk `DEVMACHINE_DEMO_WALK=setup-flow` (`DemoSetupFlow`): `80`–`91`
   are the setup (start, CLI install and its failure, choice, server and

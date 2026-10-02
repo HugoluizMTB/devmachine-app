@@ -8,6 +8,9 @@ private final class Recorder: @unchecked Sendable {
     private var storedRuns: [(String, [String])] = []
     private var storedLines: [String] = []
     private var storedWrites = 0
+    private var storedRemoved: [String] = []
+    var removed: [String] { lock.withLock { storedRemoved } }
+    func remove(_ path: String) { lock.withLock { storedRemoved.append(path) } }
     var runs: [(String, [String])] { lock.withLock { storedRuns } }
     var lines: [String] { lock.withLock { storedLines } }
     var writes: Int { lock.withLock { storedWrites } }
@@ -41,8 +44,9 @@ final class LimaInstallerTests: XCTestCase {
             },
             write: { _ in
                 recorder.wrote()
-                return "/tmp/lima.tar.gz"
+                return "/tmp/lima-\(recorder.writes).tar.gz"
             },
+            remove: { recorder.remove($0) },
             makeDirectory: { _ in },
             exists: { limactlAppears && $0 == "/Users/alice/.local/bin/limactl" })
     }
@@ -52,7 +56,8 @@ final class LimaInstallerTests: XCTestCase {
         try await installer(recorder: recorder).install(.release, output: recorder.line)
 
         XCTAssertEqual(recorder.runs.first?.0, "/usr/bin/tar")
-        XCTAssertEqual(recorder.runs.first?.1, ["-xzf", "/tmp/lima.tar.gz", "-C", "/Users/alice/.local"])
+        XCTAssertEqual(recorder.runs.first?.1, ["-xzf", "/tmp/lima-1.tar.gz", "-C", "/Users/alice/.local"])
+        XCTAssertEqual(recorder.removed, ["/tmp/lima-1.tar.gz"])
         XCTAssertEqual(recorder.runs.last?.0, "/Users/alice/.local/bin/limactl")
         XCTAssertTrue(recorder.lines.contains { $0.hasPrefix("SHA-256 matches") })
     }
@@ -79,6 +84,21 @@ final class LimaInstallerTests: XCTestCase {
             XCTAssertTrue(error.localizedDescription.contains("SHA256SUMS"))
         }
         XCTAssertTrue(recorder.runs.isEmpty)
+    }
+
+    func testAFailedUnpackStillDeletesTheTarballAndARetryLeavesNoCopy() async throws {
+        let recorder = Recorder()
+        do {
+            try await installer(recorder: recorder, tarStatus: 1).install(.release, output: recorder.line)
+            XCTFail("a failed tar must fail")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("tar"))
+        }
+        XCTAssertEqual(recorder.removed, ["/tmp/lima-1.tar.gz"])
+
+        try await installer(recorder: recorder).install(.release, output: recorder.line)
+        XCTAssertEqual(recorder.writes, 2)
+        XCTAssertEqual(recorder.removed, ["/tmp/lima-1.tar.gz", "/tmp/lima-2.tar.gz"])
     }
 
     func testHomebrewInstallsLimaWhenAskedTo() async throws {
