@@ -772,23 +772,25 @@ enum LocalTools {
         return url.path
     }
 
-    /// Written once per run. A write that fails starts shells without the
-    /// integration rather than without the user's configuration.
-    static let shellIntegrationDirectory: String? = {
+    /// Read once per run: the user database lookup is not free, and a changed
+    /// login shell takes a new login anyway.
+    static let accountShell = LocalShell.current()
+
+    /// Checked at every pane start, since a shell pointed at a missing file
+    /// loses the user's configuration; unchanged files cost a read. A write
+    /// that fails starts the shell without the integration instead.
+    static func shellLaunch() -> ShellLaunch {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory() + "/Library/Application Support")
         let directory = support.appendingPathComponent("Devmachine/shell-integration")
+        var installed: String?
         do {
             try ShellIntegration.install(in: directory)
-            return directory.path
+            installed = directory.path
         } catch {
             PaneLog.log("shell integration not written: \(error)")
-            return nil
         }
-    }()
-
-    static func shellLaunch() -> ShellLaunch {
-        ShellIntegration.launch(shell: LocalShell.current(), integrationDirectory: shellIntegrationDirectory)
+        return ShellIntegration.launch(shell: accountShell, integrationDirectory: installed)
     }
 }
 

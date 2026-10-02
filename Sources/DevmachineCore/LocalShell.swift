@@ -18,7 +18,11 @@ public enum LocalShell {
     /// second choice: an app opened from Finder may not have it, or have a
     /// stale one.
     public static func current() -> String {
-        let account = getpwuid(getuid()).map { String(cString: $0.pointee.pw_shell) }
+        var entry = passwd()
+        var result: UnsafeMutablePointer<passwd>?
+        var buffer = [CChar](repeating: 0, count: 4096)
+        let found = getpwuid_r(getuid(), &entry, &buffer, buffer.count, &result) == 0 && result != nil
+        let account = found ? String(cString: entry.pw_shell) : nil
         return resolve(account: account, environment: ProcessInfo.processInfo.environment["SHELL"])
     }
 }
@@ -74,15 +78,16 @@ public enum ShellIntegration {
             builtin printf '\(resetModesLiteral)'
             return $last
           }
-          autoload -Uz add-zsh-hook
-          add-zsh-hook precmd _devmachine_reset_terminal
+          precmd_functions+=(_devmachine_reset_terminal)
         fi
 
         """
 
     /// bash reads an init file only when it is not a login shell, so this one
-    /// reads the login files itself, in bash's own order.
+    /// does a login shell's work itself: the login files in bash's own order,
+    /// and `.bash_logout` on the way out.
     static let bash = """
+        trap '[ -r "$HOME/.bash_logout" ] && . "$HOME/.bash_logout"' EXIT
         [ -r /etc/profile ] && . /etc/profile
         if [ -r "$HOME/.bash_profile" ]; then . "$HOME/.bash_profile"
         elif [ -r "$HOME/.bash_login" ]; then . "$HOME/.bash_login"
@@ -122,16 +127,15 @@ public enum ShellIntegration {
     public static func launch(shell: String, integrationDirectory: String?) -> ShellLaunch {
         let name = (shell as NSString).lastPathComponent
         let plain = ShellLaunch(
-            executable: shell, arguments: ["-i"], execName: "-\(name)",
+            executable: shell, arguments: [], execName: "-\(name)",
             environment: ["SHELL=\(shell)"], multiplexerCommand: [])
         guard let directory = integrationDirectory else { return plain }
 
         switch ShellKind(path: shell) {
         case .zsh:
-            let zdotdir = ((directory as NSString).appendingPathComponent(zshPath) as NSString)
-                .deletingLastPathComponent
+            let zdotdir = (directory as NSString).appendingPathComponent("zsh")
             return ShellLaunch(
-                executable: shell, arguments: ["-i"], execName: "-\(name)",
+                executable: shell, arguments: [], execName: "-\(name)",
                 environment: ["SHELL=\(shell)", "ZDOTDIR=\(zdotdir)"], multiplexerCommand: [])
         case .bash:
             let file = (directory as NSString).appendingPathComponent(bashPath)

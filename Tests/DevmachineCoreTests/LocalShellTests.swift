@@ -35,7 +35,7 @@ final class ShellIntegrationLaunchTests: XCTestCase {
         let launch = ShellIntegration.launch(shell: "/bin/zsh", integrationDirectory: dir)
         XCTAssertEqual(launch.executable, "/bin/zsh")
         XCTAssertEqual(launch.execName, "-zsh")
-        XCTAssertEqual(launch.arguments, ["-i"])
+        XCTAssertEqual(launch.arguments, [])
         XCTAssertEqual(launch.environment, ["SHELL=/bin/zsh", "ZDOTDIR=\(dir)/zsh"])
         XCTAssertEqual(launch.multiplexerCommand, [])
     }
@@ -65,7 +65,7 @@ final class ShellIntegrationLaunchTests: XCTestCase {
     func testAnotherShellStartsAsAPlainLoginShell() {
         let launch = ShellIntegration.launch(shell: "/bin/tcsh", integrationDirectory: dir)
         XCTAssertEqual(launch.execName, "-tcsh")
-        XCTAssertEqual(launch.arguments, ["-i"])
+        XCTAssertEqual(launch.arguments, [])
         XCTAssertEqual(launch.environment, ["SHELL=/bin/tcsh"])
         XCTAssertEqual(launch.multiplexerCommand, [])
     }
@@ -75,7 +75,7 @@ final class ShellIntegrationLaunchTests: XCTestCase {
             let launch = ShellIntegration.launch(shell: shell, integrationDirectory: nil)
             let name = (shell as NSString).lastPathComponent
             XCTAssertEqual(launch.execName, "-\(name)")
-            XCTAssertEqual(launch.arguments, ["-i"])
+            XCTAssertEqual(launch.arguments, [])
             XCTAssertEqual(launch.environment, ["SHELL=\(shell)"])
             XCTAssertEqual(launch.multiplexerCommand, [])
         }

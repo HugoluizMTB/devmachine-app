@@ -375,10 +375,11 @@ Rules:
   with SIGKILL) left them on, and every mouse move reached the shell as typed
   `35;48;9M…`. zsh gets it through `ZDOTDIR` (its `.zshenv` puts `ZDOTDIR`
   back before the user's files load), bash through `--init-file` (which then
-  reads the login files itself, because bash skips an init file in a login
-  shell), fish through `-C`. Any other shell starts plain. The files live in
-  `Application Support/Devmachine/shell-integration`; if they cannot be
-  written, the shell starts plain rather than without the user's files. zmx
+  reads the login files and `.bash_logout` itself, because bash skips an init
+  file in a login shell), fish through `-C`. A local session that zmx already
+  holds keeps the shell it was started with. Any other shell starts plain. The files live in
+  `Application Support/Devmachine/shell-integration`, checked at every pane
+  start; if they cannot be written, the shell starts plain rather than without the user's files. zmx
   runs the command only when it creates a session, and needs `HOME` passed:
   bash and fish do not look it up.
 - **A local session is renamed in the sidebar only.** `zmx` has no rename and its

@@ -1,8 +1,6 @@
 import XCTest
 @testable import DevmachineCore
 
-/// Runs each real shell through its integration in a pseudo-terminal, the way
-/// a local pane does, with a throwaway home folder.
 final class ShellIntegrationShellTests: XCTestCase {
     private var home: URL!
     private var integration: URL!
@@ -20,7 +18,7 @@ final class ShellIntegrationShellTests: XCTestCase {
     }
 
     func testZshTurnsMouseReportingOffAtThePromptAndKeepsTheUsersConfiguration() throws {
-        try put(".zshenv", "export DM_ENV=1\n")
+        try put(".zshenv", "export DM_ENV=1\nfpath=()\n")
         try put(".zshrc", "alias dmcheck='echo RC_LOADED'\n")
         let output = try run("/bin/zsh", input: [
             "printf '\\033[?1003h'; false",
@@ -34,6 +32,7 @@ final class ShellIntegrationShellTests: XCTestCase {
 
     func testBashTurnsMouseReportingOffAtThePromptAndReadsTheLoginProfile() throws {
         try put(".bash_profile", "PROMPT_COMMAND='echo -n'\nalias dmcheck='echo RC_LOADED'\n")
+        try put(".bash_logout", "echo LOGOUT_RAN\n")
         let output = try run("/bin/bash", input: [
             "printf '\\033[?1003h'; false",
             "echo STATUS:$?; dmcheck",
@@ -42,6 +41,7 @@ final class ShellIntegrationShellTests: XCTestCase {
         assertResetFollowsEnable(output)
         XCTAssertTrue(output.contains("STATUS:1"), output)
         XCTAssertTrue(output.contains("RC_LOADED"), output)
+        XCTAssertTrue(output.contains("LOGOUT_RAN"), output)
     }
 
     func testFishTurnsMouseReportingOffAtThePromptAndKeepsTheUsersConfiguration() throws {
@@ -80,8 +80,6 @@ final class ShellIntegrationShellTests: XCTestCase {
         var secondary: Int32 = 0
         XCTAssertEqual(openpty(&primary, &secondary, nil, nil, nil), 0)
         let process = Process()
-        // script(1) gives the shell a controlling terminal, which fish needs
-        // and Process cannot set up; `exec -a` keeps the pane's login name.
         process.executableURL = URL(fileURLWithPath: "/usr/bin/script")
         process.arguments = ["-q", "/dev/null", "/bin/bash", "-c", #"exec -a "$0" "$@""#,
                              launch.execName, launch.executable] + launch.arguments
@@ -99,20 +97,19 @@ final class ShellIntegrationShellTests: XCTestCase {
         try tty.close()
 
         defer { close(primary) }
-        let lines = input
-        let descriptorForInput = primary
-        DispatchQueue.global().async {
-            for line in lines {
-                Thread.sleep(forTimeInterval: 0.8)
-                _ = (line + "\r").withCString { write(descriptorForInput, $0, strlen($0)) }
-            }
-        }
+        var pending = input
+        var nextWrite = Date().addingTimeInterval(0.8)
         var output = [UInt8]()
         var buffer = [UInt8](repeating: 0, count: 4096)
         let deadline = Date().addingTimeInterval(15)
         while Date() < deadline {
+            if !pending.isEmpty, Date() >= nextWrite {
+                let line = pending.removeFirst() + "\r"
+                _ = line.withCString { Darwin.write(primary, $0, strlen($0)) }
+                nextWrite = Date().addingTimeInterval(0.8)
+            }
             var descriptor = pollfd(fd: primary, events: Int16(POLLIN), revents: 0)
-            guard poll(&descriptor, 1, 200) >= 0 else { break }
+            guard poll(&descriptor, 1, 100) >= 0 else { break }
             if descriptor.revents == 0 { continue }
             let count = read(primary, &buffer, buffer.count)
             if count <= 0 { break }
