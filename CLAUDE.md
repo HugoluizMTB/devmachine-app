@@ -580,7 +580,9 @@ Rules:
   for the steps still missing.
 - **It ends on "Start using Devmachine"**: `completeOnboarding` reads the CLI
   again, fills the empty Connection fields, saves them and opens Home, with
-  no restart.
+  no restart. Settings → Connection shows what the CLI reports read-only
+  ("Change…", "Edit"), re-reads it each time it opens, and an issue the setup
+  fixes (no CLI, no `config.yml`) carries a button back into onboarding.
 - The main window opens at 80% of the screen when AppKit has no saved frame
   for it (`MainWindowSizing`, read before any window exists); a saved frame
   always wins. Demo walk: `DEVMACHINE_DEMO_WALK=setup-flow`.

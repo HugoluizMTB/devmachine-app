@@ -116,6 +116,9 @@ struct SetupPage: View {
     @State private var remoteSessionProgram = SessionLaunchChoice.terminal
     @State private var workspaceSessionPrograms: [String: SessionLaunchChoice] = [:]
     @State private var harnessErrors: [HarnessID: String] = [:]
+    /// Connection fields opened for typing. A field with a value shows it
+    /// read-only until "Edit": what the CLI reports is rarely changed.
+    @State private var editing: Set<SettingsIssue.Field> = []
 
     private var draft: AppSettings {
         AppSettings(
@@ -147,7 +150,12 @@ struct SetupPage: View {
     /// The demo's folder and CLI are invented, so they are never looked up on
     /// this Mac: a screenshot must not warn about the owner's own disk.
     static func issues(for draft: AppSettings, demo: Bool = DemoMode.isActive) -> [SettingsIssue] {
-        guard !demo else { return AppSettings.validate(draft, fileExists: { _ in true }) }
+        guard !demo else {
+            let remedy = DemoSnapshots.settingsIssueRemedy
+            return AppSettings.validate(
+                draft, fileExists: { remedy != .runSetup || !$0.hasSuffix(AppSettings.opsRepoMarker) },
+                cliExecutableFound: remedy != .installCLI)
+        }
         return AppSettings.validate(draft, cliExecutableFound: (try? DevmachineCLI.resolve()) != nil)
     }
 
@@ -173,6 +181,11 @@ struct SetupPage: View {
         .onAppear {
             load()
             openRequestedSection()
+        }
+        .task {
+            // The CLI may have been installed or set up since launch.
+            await model.refreshDetected()
+            fillFromDetected()
         }
         .onChange(of: model.requestedSettingsSection) { _, _ in openRequestedSection() }
     }
@@ -297,6 +310,11 @@ struct SetupPage: View {
                     .font(.dm(11))
                     .foregroundStyle(.white.opacity(0.7))
                     .lineLimit(1)
+                if issue.remedy != nil {
+                    DMButton("Run the setup", systemImage: "play.fill", variant: .outline, size: .small) {
+                        model.openOnboarding()
+                    }
+                }
             }
             Spacer()
             if !isFirstRun {
@@ -315,46 +333,35 @@ struct SetupPage: View {
     private var connectionBlock: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
             field(
-                title: "Ops repo folder",
-                hint: "Holds \(AppSettings.opsRepoMarker) — the devmachine CLI's configuration, usually ~/.config/devmachine.",
+                title: "Configuration folder",
+                hint: "Where the devmachine CLI keeps \(AppSettings.opsRepoMarker). The CLI chose it; "
+                    + "change it only to use another configuration.",
                 field: .opsRepoPath
             ) {
-                HStack(spacing: m.space.md) {
-                    TextField("/Users/you/.config/devmachine", text: $opsRepoPath)
-                        .dmField()
-                    DMButton("Choose…", variant: .outline) { chooseFolder() }
-                }
+                valueRow(
+                    opsRepoPath.isEmpty ? nil : Self.displayPath(opsRepoPath),
+                    empty: "Not set up yet",
+                    button: opsRepoPath.isEmpty ? "Choose…" : "Change…",
+                    action: chooseFolder)
             }
 
-            field(
-                title: "Host ssh alias",
-                hint: "Optional — leave empty for the default, \"devmachine\", which is what "
-                    + "`devmachine aliases --write` names every workspace's ssh alias after "
-                    + "(the aliases ending in -\(hostAlias.isEmpty ? "devmachine" : hostAlias)). "
-                    + "Admin commands (stats, Caddy) run through the devmachine CLI and do not need it.",
-                field: .hostAlias
-            ) {
-                TextField("myhost", text: $hostAlias)
-                    .dmField()
-            }
-
-            field(
+            editableField(
                 title: "Public IP",
                 hint: "The A record new subdomains point at.",
-                field: .publicIP
-            ) {
-                TextField("203.0.113.10", text: $publicIP)
-                    .dmField()
-            }
+                field: .publicIP, text: $publicIP, placeholder: "203.0.113.10")
 
-            field(
+            editableField(
                 title: "Base domain",
                 hint: "New subdomains are created under it.",
-                field: .baseDomain
-            ) {
-                TextField("example.com", text: $baseDomain)
-                    .dmField()
-            }
+                field: .baseDomain, text: $baseDomain, placeholder: "example.com")
+
+            editableField(
+                title: "Host ssh alias",
+                hint: "Optional. Empty means \"devmachine\", the name `devmachine aliases --write` gives "
+                    + "every workspace's ssh alias (the aliases ending in -\(hostAlias.isEmpty ? "devmachine" : hostAlias)). "
+                    + "Admin commands (stats, Caddy) run through the devmachine CLI and do not need it.",
+                field: .hostAlias, text: $hostAlias, placeholder: "devmachine",
+                emptyValue: "devmachine (default)")
 
             VStack(alignment: .leading, spacing: m.pt(5)) {
                 Text(verbatim: "SSH agent socket")
@@ -366,6 +373,54 @@ struct SetupPage: View {
                     + "Empty tries the 1Password socket, then the ssh agent already running.")
             }
         }
+    }
+
+    /// A value shown as it is, with one button to change it. Detected values
+    /// are rarely edited, so they read as facts, not as blank inputs.
+    private func valueRow(
+        _ value: String?, empty: String, button: String, action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: m.space.md) {
+            Text(verbatim: value ?? empty)
+                .font(.dm(12, design: value == nil ? .default : .monospaced))
+                .foregroundStyle(value == nil ? .white.opacity(0.45) : .white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            Spacer(minLength: m.space.md)
+            DMButton(button, variant: .outline, size: .small, action: action)
+        }
+        .padding(.leading, m.row.horizontal)
+        .padding(.trailing, m.space.xs)
+        .padding(.vertical, m.space.xs)
+        .dmSurface(Color.dmSelection, radius: DMRadius.row, style: .continuous)
+    }
+
+    /// Read-only with "Edit" when it has a value; a text field when it has
+    /// none yet or the person asked to change it.
+    @ViewBuilder
+    private func editableField(
+        title: String, hint: String, field: SettingsIssue.Field, text: Binding<String>,
+        placeholder: String, emptyValue: String? = nil
+    ) -> some View {
+        self.field(title: title, hint: hint, field: field) {
+            let value = text.wrappedValue
+            if editing.contains(field) || (value.isEmpty && emptyValue == nil) {
+                TextField(placeholder, text: text)
+                    .dmField()
+            } else {
+                valueRow(value.isEmpty ? emptyValue : value, empty: placeholder, button: "Edit") {
+                    editing.insert(field)
+                }
+            }
+        }
+    }
+
+    /// `~` for the home folder: a full `/Users/<name>/.config/…` path is
+    /// longer and says nothing more.
+    static func displayPath(_ path: String, home: String = NSHomeDirectory()) -> String {
+        guard path == home || path.hasPrefix(home + "/") else { return path }
+        return "~" + path.dropFirst(home.count)
     }
 
     @ViewBuilder
@@ -385,8 +440,15 @@ struct SetupPage: View {
                     .font(.dm(11))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                if let remedy = issue.remedy {
+                    DMButton(
+                        remedy == .installCLI ? "Set up devmachine" : "Run devmachine setup",
+                        systemImage: "play.fill", size: .small
+                    ) { model.openOnboarding() }
+                }
             } else if isDetected(field) {
-                Text("Detected from the devmachine CLI — type over it to use something else.")
+                Text("Detected from the devmachine CLI.")
                     .font(.dm(11))
                     .foregroundStyle(.blue)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1030,6 +1092,9 @@ struct SetupPage: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = "Choose"
+        // The CLI's folder is hidden (`~/.config/…`): never make the person
+        // find a dot-folder in a panel that hides them.
+        panel.showsHiddenFiles = true
         panel.directoryURL = URL(fileURLWithPath: opsRepoPath.isEmpty ? NSHomeDirectory() : opsRepoPath)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         opsRepoPath = url.path
