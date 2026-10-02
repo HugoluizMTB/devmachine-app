@@ -172,6 +172,11 @@ final class TerminalRegistry: NSObject {
         programExits[kind] = onExit
     }
 
+    /// The pane is mounted and its process started, so typed text reaches it.
+    func isStarted(_ kind: TerminalKind) -> Bool {
+        terminals[kind] != nil && !awaitingSize.contains(kind)
+    }
+
     /// Drops the highlight and gives the keyboard back to the session.
     func endFind(in kind: TerminalKind) {
         terminals[kind]?.clearSearch()

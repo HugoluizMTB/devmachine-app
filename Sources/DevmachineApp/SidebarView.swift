@@ -11,6 +11,7 @@ struct SidebarView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @ObservedObject private var readiness = MachineReadinessStore.shared
+    @ObservedObject private var machines = MachinesStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -30,11 +31,17 @@ struct SidebarView: View {
             footerRow
         }
         .background(Color.dmSidebarBg)
+        .task { await machines.load() }
     }
 
     private var workspaceList: some View {
         VStack(alignment: .leading, spacing: 1) {
             ForEach(Array(model.sidebarWorkspaces.enumerated()), id: \.element.id) { index, ws in
+                if ws.isLocal, AddMachinePrompt.shows(remoteMachines: machines.remoteMachineNames) {
+                    AddMachineSidebarButton { model.showPage(.addMachine) }
+                        .padding(.horizontal, m.space.md)
+                        .padding(.top, m.space.sm)
+                }
                 groupHeader(
                     ws.name,
                     alias: ws.alias,

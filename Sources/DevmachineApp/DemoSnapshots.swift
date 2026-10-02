@@ -314,6 +314,9 @@ enum DemoSnapshots {
         case "publish-via": return publishViaScreens
         case "setup-flow": return setupFlowScreens
         case "dns-setup": return dnsSetupScreens
+        #if DEBUG
+        case "machines": return DemoAddMachine.screens
+        #endif
         default: return screens
         }
     }
@@ -465,6 +468,12 @@ enum DemoSnapshots {
         settingsIssueRemedy = nil
         model.goHome()
         try? await Task.sleep(nanoseconds: 150_000_000)
+        #if DEBUG
+        if DemoAddMachine.handles(screen.id) {
+            await DemoAddMachine.prepare(screen.id, model: model)
+            return
+        }
+        #endif
         switch screen.id {
         case "sessions":
             model.stackWorkspace(acmeAlias)

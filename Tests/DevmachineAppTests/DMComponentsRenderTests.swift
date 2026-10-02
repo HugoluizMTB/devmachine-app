@@ -76,6 +76,14 @@ private struct DMComponentsGallery: View {
                 DMKindLabel(text: "CNAME")
             }
             DMCommandBlock(["devmachine packages add docker --machine main", "devmachine sync --machine main"])
+            HStack(alignment: .top, spacing: 8) {
+                DMChoiceCard(
+                    title: "A server I have", systemImage: "server.rack",
+                    detail: "A VPS you reach by IP.", selected: true) {}
+                DMChoiceCard(
+                    title: "docker", detail: "Docker Engine and Compose.", badge: "RECOMMENDED",
+                    selected: false, multiple: true) {}
+            }
             DMTabStrip(
                 tabs: ["Sites", "cloudflare"], selection: $tab, title: { $0 },
                 fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)

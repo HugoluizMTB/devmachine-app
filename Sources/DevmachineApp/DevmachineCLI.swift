@@ -145,6 +145,8 @@ struct CLIPackage: Codable, Equatable, Sendable {
     let scope: String
     let installedOn: [String]
     var summary: String?
+    /// `release` for the pinned package release, `local` for the person's own.
+    var source = ""
     /// `kind`, `category` and `credentials` come from CLI 0.7.27 on. A
     /// nil `credentials` means the CLI did not report them at all.
     var kind: String?
@@ -152,18 +154,19 @@ struct CLIPackage: Codable, Equatable, Sendable {
     var credentials: [PackageCredential]?
 
     enum CodingKeys: String, CodingKey {
-        case name, scope, summary, kind, category, credentials
+        case name, scope, summary, source, kind, category, credentials
         case installedOn = "installed_on"
     }
 
     init(
-        name: String, scope: String, installedOn: [String], summary: String? = nil,
+        name: String, scope: String, installedOn: [String], summary: String? = nil, source: String = "",
         kind: String? = nil, category: String? = nil, credentials: [PackageCredential]? = nil
     ) {
         self.name = name
         self.scope = scope
         self.installedOn = installedOn
         self.summary = summary
+        self.source = source
         self.kind = kind
         self.category = category
         self.credentials = credentials
@@ -177,6 +180,7 @@ struct CLIPackage: Codable, Equatable, Sendable {
         scope = try c.decodeIfPresent(String.self, forKey: .scope) ?? ""
         installedOn = try c.decodeIfPresent([String].self, forKey: .installedOn) ?? []
         summary = try c.decodeIfPresent(String.self, forKey: .summary)
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
         kind = try c.decodeIfPresent(String.self, forKey: .kind)
         category = try c.decodeIfPresent(String.self, forKey: .category)
         credentials = try c.decodeIfPresent([PackageCredential].self, forKey: .credentials)
@@ -199,6 +203,8 @@ struct CLIPackage: Codable, Equatable, Sendable {
     func isInstalled(onMachine machine: String) -> Bool {
         installedOn.contains("machine \(machine)")
     }
+
+    var info: PackageInfo { PackageInfo(name: name, scope: scope, summary: summary ?? "", source: source) }
 }
 
 private struct CLIPackageList: Decodable {
@@ -461,6 +467,14 @@ struct DevmachineCLI: Sendable {
         )
         try requireSuccess(result)
         return try JSONDecoder().decode([CLIConfigMachine].self, from: Data(result.stdout.utf8))
+    }
+
+    /// `machines rm`: takes the machine out of the configuration and leaves
+    /// the server running. The CLI refuses while a workspace lives on it.
+    func removeMachine(_ name: String) throws {
+        let result = try runner.runCapturing(
+            executable: executable, args: ["machines", "rm", name, "--yes"], environment: environment())
+        try requireSuccess(result)
     }
 
     /// Every configured machine that is not this Mac — the set Stats and the

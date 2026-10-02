@@ -175,7 +175,7 @@ public enum FileUpload {
         return "\(bytes) B"
     }
 
-    static func singleQuoted(_ value: String) -> String {
+    public static func singleQuoted(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

@@ -593,7 +593,8 @@ Rules:
   again, fills the empty Connection fields, saves them and opens Home, with
   no restart. Settings → Connection shows what the CLI reports read-only
   ("Change…", "Edit"), re-reads it each time it opens, and an issue the setup
-  fixes (no CLI, no `config.yml`) carries a button back into onboarding.
+  fixes (no CLI; a folder other than the CLI's own with no `config.yml`)
+  carries a button back into onboarding.
 - The main window opens at 80% of the screen when AppKit has no saved frame
   for it (`MainWindowSizing`, read before any window exists); a saved frame
   always wins. Demo walk: `DEVMACHINE_DEMO_WALK=setup-flow`.
@@ -760,6 +761,39 @@ once may fail there.
   mode refuses every write.
 - `DEVMACHINE_DEMO_WALK=dns-setup` captures every state; its sync is
   `DemoDNSSyncRunner`, which starts no process.
+
+## Machines and the Add machine wizard
+- **Settings → Machines lists the CLI's configuration** (`MachinesStore`:
+  `config path`, then `machines list` and `packages list`). Before
+  `config.yml` exists every one of those calls fails, so the store checks
+  the file first and reads "no machine" without calling them. Remove runs
+  `machines rm --yes` behind a confirm and only forgets the machine.
+- **The sidebar offers "Add a machine" above Local only once a read says
+  there is none besides this Mac** (`AddMachinePrompt`). Nothing is gated
+  on a machine: Home and local sessions work with zero. One rule in
+  `AppSettings.validate` covers both this and onboarding: Public IP and Base
+  domain are optional (checked only once typed, filled from the CLI when it
+  knows them); the CLI's own folder passes before `devmachine setup` writes
+  its `config.yml`; only a missing CLI or another folder without
+  `config.yml` blocks Save, with the setup flow as its fix.
+- **The wizard (`AppPage.addMachine`) only builds `devmachine` commands**
+  (`MachinePlan`, Core) and shows them before Create. A server whose key
+  already logs in is added unattended (`machines add --address
+  --fingerprint --key`); the fingerprint is pasted from the provider's
+  console, never read over the connection being trusted. A password-only
+  server, a Lima machine (`create-local`, then `machines add`) and the very
+  first machine (`setup`) go through the CLI's own questions, because an
+  unattended `add` has no way to take a password; the page lists the
+  answers to type. Packages are `--no-essentials` or `packages add`, then
+  an optional `workspaces new` and `sync`.
+- **The commands run in a local terminal pane** (`MachineStepRunner`), so
+  a password goes straight to the CLI and never through the app. Only
+  `sh <script>` is typed (any login shell, fish included); the script
+  prints a per-step nonce marker the runner finds in the scrollback. A
+  failed step shows `DMErrorStateView`; Try again skips the steps done.
+  Tests inject `MachineStepRunner.Hooks`; nothing types into a real pane.
+- `DEVMACHINE_DEMO_WALK=machines` captures Settings → Machines, every
+  wizard step, a run in each state and the sidebar with no machine.
 
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action

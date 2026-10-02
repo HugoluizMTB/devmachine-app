@@ -1,0 +1,177 @@
+import Foundation
+
+/// One CLI command the wizard runs, in order.
+public struct MachinePlanStep: Equatable, Sendable, Identifiable {
+    public enum Kind: Equatable, Sendable {
+        case createLocal
+        case addMachine
+        case addPackage(String)
+        case newWorkspace
+        case sync
+    }
+
+    public let kind: Kind
+    public let title: String
+    /// Everything after `devmachine`.
+    public let arguments: [String]
+    /// The CLI asks its own questions in the terminal (a password, a
+    /// fingerprint to confirm): the person answers there.
+    public let asksInTerminal: Bool
+
+    public var id: String { arguments.joined(separator: " ") }
+
+    public var displayLine: String {
+        (["devmachine"] + arguments.map(FileUpload.shellQuoted)).joined(separator: " ")
+    }
+}
+
+/// The commands that turn a wizard's answers into a machine. Nothing here
+/// reimplements the CLI: every step is a `devmachine` command, and anything
+/// left at the CLI's default adds no flag.
+public enum MachinePlan {
+    /// Where `create-local` puts a machine, and the root password it ships
+    /// with on purpose (the CLI's `local.Address` and `local.Password`).
+    public static let localAddress = "127.0.0.1"
+    public static let localPassword = "devmachine"
+
+    public struct Answer: Equatable, Sendable {
+        public let question: String
+        public let answer: String
+
+        public init(question: String, answer: String) {
+            self.question = question
+            self.answer = answer
+        }
+    }
+
+    public static func steps(for draft: MachineDraft) -> [MachinePlanStep] {
+        let name = draft.trimmedName
+        var steps: [MachinePlanStep] = []
+        if draft.kind == .localVM {
+            steps.append(MachinePlanStep(
+                kind: .createLocal, title: "Create \(name) on this Mac",
+                arguments: ["machines", "create-local", name], asksInTerminal: false))
+        }
+        steps.append(addStep(for: draft))
+        for package in draft.packages {
+            steps.append(MachinePlanStep(
+                kind: .addPackage(package), title: "Add \(package)",
+                arguments: ["packages", "add", package, "--machine", name, "--yes"], asksInTerminal: false))
+        }
+        if !draft.trimmedWorkspace.isEmpty {
+            steps.append(MachinePlanStep(
+                kind: .newWorkspace, title: "Add the workspace \(draft.trimmedWorkspace)",
+                arguments: ["workspaces", "new", draft.trimmedWorkspace, "--machine", name, "--yes"],
+                asksInTerminal: false))
+        }
+        if draft.sync {
+            steps.append(MachinePlanStep(
+                kind: .sync, title: "Install everything on \(name)",
+                arguments: ["sync", "--machine", name, "--yes"], asksInTerminal: false))
+        }
+        return steps
+    }
+
+    /// `--address` makes `add` ask nothing, which also means it cannot ask
+    /// for a password: a server that takes only one, and every local
+    /// machine, goes through the CLI's own questions instead. So does the
+    /// first machine of all, which only `setup` can write.
+    public static func asksInTerminal(_ draft: MachineDraft) -> Bool {
+        !draft.hasConfiguration || draft.kind == .localVM || draft.login == .password
+            || draft.expectedFingerprint == nil
+    }
+
+    private static func addStep(for draft: MachineDraft) -> MachinePlanStep {
+        let title = "Connect \(draft.trimmedName)"
+        let essentials = draft.essentials ? [] : ["--no-essentials"]
+        guard !asksInTerminal(draft), let fingerprint = draft.expectedFingerprint else {
+            let command = draft.hasConfiguration ? ["machines", "add"] : ["setup"]
+            return MachinePlanStep(
+                kind: .addMachine, title: title, arguments: command + essentials + ["--yes"], asksInTerminal: true)
+        }
+        var arguments = ["machines", "add", "--name", draft.trimmedName, "--address", draft.address,
+                         "--fingerprint", fingerprint]
+        if draft.trimmedUser != MachineDraft.defaultUser { arguments += ["--user", draft.trimmedUser] }
+        if draft.trimmedPort != MachineDraft.defaultPort { arguments += ["--port", draft.trimmedPort] }
+        if !draft.trimmedKeyFile.isEmpty { arguments += ["--key", draft.trimmedKeyFile] }
+        return MachinePlanStep(
+            kind: .addMachine, title: title, arguments: arguments + essentials + ["--yes"], asksInTerminal: false)
+    }
+
+    /// What to type when `machines add` or `setup` asks, in the order they
+    /// ask. Empty when nothing is asked.
+    public static func terminalAnswers(for draft: MachineDraft) -> [Answer] {
+        guard asksInTerminal(draft) else { return [] }
+        let local = draft.kind == .localVM
+        var answers = [
+            Answer(question: "machine name", answer: draft.trimmedName),
+            Answer(question: "address", answer: local ? localAddress : draft.address),
+            Answer(question: "administrative login", answer: local ? MachineDraft.defaultUser : draft.trimmedUser),
+            Answer(question: "SSH port", answer: local ? "the port create-local printed above" : draft.trimmedPort),
+        ]
+        if !draft.hasConfiguration {
+            answers.append(Answer(question: "domain", answer: "your domain, or leave it empty"))
+        }
+        let fingerprint: String
+        if local {
+            fingerprint = "yes: this machine runs on this Mac"
+        } else if let expected = draft.expectedFingerprint {
+            fingerprint = "yes, only if it shows \(expected)"
+        } else {
+            fingerprint = "yes, only if it matches your provider's console"
+        }
+        answers.append(Answer(question: "trust the fingerprint", answer: fingerprint))
+        answers.append(Answer(
+            question: "how to log in",
+            answer: draft.trimmedKeyFile.isEmpty || local
+                ? "1, a key devmachine makes" : "2, then \(draft.trimmedKeyFile)"))
+        let password: String
+        if local {
+            password = localPassword
+        } else if draft.login == .password {
+            password = "the server's password, from your provider"
+        } else {
+            password = "not asked when the key already logs in"
+        }
+        answers.append(Answer(question: "password", answer: password))
+        return answers
+    }
+}
+
+/// How a step run in a terminal reports its exit status: a small `sh`
+/// script runs the command and prints a marker when it ends, and the runner
+/// looks for that marker in the pane's scrollback. Only `sh <script>` is
+/// typed, so the line works in any login shell (fish quotes differently),
+/// the command keeps the terminal for its questions, and the echoed line
+/// never holds the marker.
+public enum TerminalStepMarker {
+    public static func ok(nonce: String) -> String { "__DM_\(nonce)_OK__" }
+    public static func fail(nonce: String) -> String { "__DM_\(nonce)_FAIL__" }
+
+    /// Shows the command as the review showed it, runs it, then prints the
+    /// marker, put together by `printf` so the file never holds it either.
+    public static func script(executable: String, step: MachinePlanStep, nonce: String) -> String {
+        let command = ([executable] + step.arguments).map(FileUpload.shellQuoted).joined(separator: " ")
+        return [
+            "printf '%s\\n' " + FileUpload.singleQuoted("$ " + step.displayLine),
+            command,
+            "if [ $? -eq 0 ]; then r=OK; else r=FAIL; fi",
+            "printf '__DM_%s_%s__\\n' \(nonce) \"$r\"",
+        ].joined(separator: "\n") + "\n"
+    }
+
+    public static func typedLine(scriptPath: String) -> String {
+        "sh " + FileUpload.shellQuoted(scriptPath)
+    }
+
+    public static func newNonce() -> String {
+        String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)).lowercased()
+    }
+
+    /// True when the step succeeded, false when it failed, nil while it runs.
+    public static func outcome(okSeen: Bool, failSeen: Bool) -> Bool? {
+        if okSeen { return true }
+        if failSeen { return false }
+        return nil
+    }
+}

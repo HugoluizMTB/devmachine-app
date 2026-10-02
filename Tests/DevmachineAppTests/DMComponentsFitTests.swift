@@ -51,6 +51,11 @@ final class DMComponentsFitTests: XCTestCase {
         DMFitCheck.assertFits("kind label") { DMKindLabel(text: "CNAME") }
         DMFitCheck.assertFits("PR state") { DMPRStateIcon(state: .merged) }
         DMFitCheck.assertFits("section label") { DMSectionLabel(text: "WORKSPACES") }
+        DMFitCheck.assertFits("choice card", width: DMCardWidth.banner) {
+            DMChoiceCard(
+                title: "docker", systemImage: "shippingbox", detail: "Docker Engine and Compose.",
+                badge: "YOURS", selected: true, multiple: true) {}
+        }
     }
 
     func testRowsAndSectionsFitAtEveryTextSize() {

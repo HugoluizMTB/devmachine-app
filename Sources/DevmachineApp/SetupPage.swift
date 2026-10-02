@@ -5,11 +5,12 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case connection, workspaces, harnesses, appearance, terminal, previews, advanced, about
+    case connection, machines, workspaces, harnesses, appearance, terminal, previews, advanced, about
 
     var title: String {
         switch self {
         case .connection: return "Connection"
+        case .machines: return "Machines"
         case .workspaces: return "Workspaces"
         case .harnesses: return "Harnesses"
         case .appearance: return "Appearance"
@@ -23,6 +24,7 @@ enum SettingsSection: String, CaseIterable {
     var subtitle: String {
         switch self {
         case .connection: return "The host this app talks to, and the devmachine configuration it reads."
+        case .machines: return "The servers and local machines in the devmachine configuration."
         case .workspaces: return "Which workspaces the sidebar shows and the app reaches."
         case .harnesses: return "Choose what new sessions start with."
         case .appearance: return "The wallpaper behind the panes, and the size of the interface."
@@ -36,6 +38,7 @@ enum SettingsSection: String, CaseIterable {
     var systemImage: String {
         switch self {
         case .connection: return "network"
+        case .machines: return "server.rack"
         case .workspaces: return "square.grid.2x2"
         case .harnesses: return "sparkles"
         case .appearance: return "photo"
@@ -145,18 +148,21 @@ struct SetupPage: View {
         )
     }
 
-    private var issues: [SettingsIssue] { Self.issues(for: draft) }
+    private var issues: [SettingsIssue] { Self.issues(for: draft, cliConfigDirectory: model.detected.opsRepoPath) }
 
     /// The demo's folder and CLI are invented, so they are never looked up on
     /// this Mac: a screenshot must not warn about the owner's own disk.
-    static func issues(for draft: AppSettings, demo: Bool = DemoMode.isActive) -> [SettingsIssue] {
+    static func issues(
+        for draft: AppSettings, cliConfigDirectory: String? = nil, demo: Bool = DemoMode.isActive
+    ) -> [SettingsIssue] {
         guard !demo else {
             let remedy = DemoSnapshots.settingsIssueRemedy
             return AppSettings.validate(
                 draft, fileExists: { remedy != .runSetup || !$0.hasSuffix(AppSettings.opsRepoMarker) },
                 cliExecutableFound: remedy != .installCLI)
         }
-        return AppSettings.validate(draft, cliExecutableFound: (try? DevmachineCLI.resolve()) != nil)
+        return AppSettings.validate(
+            draft, cliExecutableFound: (try? DevmachineCLI.resolve()) != nil, cliConfigDirectory: cliConfigDirectory)
     }
 
     private var isFirstRun: Bool { !settingsStore.isConfigured }
@@ -284,6 +290,7 @@ struct SetupPage: View {
                 }
                 switch section {
                 case .connection: connectionBlock
+                case .machines: MachinesSettingsView()
                 case .workspaces: workspacesBlock
                 case .harnesses: harnessesBlock
                 case .appearance: wallpaperBlock
@@ -347,12 +354,12 @@ struct SetupPage: View {
 
             editableField(
                 title: "Public IP",
-                hint: "The A record new subdomains point at.",
+                hint: "The A record new subdomains point at. Leave it empty without a server.",
                 field: .publicIP, text: $publicIP, placeholder: "203.0.113.10")
 
             editableField(
                 title: "Base domain",
-                hint: "New subdomains are created under it.",
+                hint: "New subdomains are created under it. Leave it empty without a server.",
                 field: .baseDomain, text: $baseDomain, placeholder: "example.com")
 
             editableField(

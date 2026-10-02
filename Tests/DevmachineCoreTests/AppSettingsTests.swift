@@ -69,7 +69,7 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testValidateRejectsNonIPv4() {
-        for bad in ["", "1.2.3", "256.1.1.1", "1.2.3.4.5", "abc", "1.2.3.4 "] {
+        for bad in ["1.2.3", "256.1.1.1", "1.2.3.4.5", "abc", "1.2.3.4 "] {
             var settings = goodSettings
             settings.publicIP = bad
             let fields = AppSettings.validate(settings, fileExists: fullRepo()).map(\.field)
@@ -78,7 +78,7 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testValidateRejectsBadDomain() {
-        for bad in ["", "nodot", "Example.com", "exa mple.com", "example.com."] {
+        for bad in ["nodot", "Example.com", "exa mple.com", "example.com."] {
             var settings = goodSettings
             settings.baseDomain = bad
             let fields = AppSettings.validate(settings, fileExists: fullRepo()).map(\.field)
@@ -92,9 +92,25 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
     }
 
-    func testValidateReportsEveryBadFieldAtOnceExceptTheNowOptionalAlias() {
+    func testValidateReportsEveryBadFieldAtOnceExceptTheOptionalOnes() {
         let fields = AppSettings.validate(AppSettings.empty, fileExists: existing()).map(\.field)
-        XCTAssertEqual(fields, [.opsRepoPath, .publicIP, .baseDomain])
+        XCTAssertEqual(fields, [.opsRepoPath])
+    }
+
+    func testWithoutAServerTheIPAndDomainStayEmpty() {
+        var settings = goodSettings
+        settings.publicIP = ""
+        settings.baseDomain = ""
+        XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
+    }
+
+    func testTheCLIsOwnFolderIsAcceptedBeforeItsFirstMachineWritesIt() {
+        var settings = goodSettings
+        settings.opsRepoPath = "/Users/alice/.config/devmachine"
+        let nothing: (String) -> Bool = { _ in false }
+        XCTAssertEqual(AppSettings.validate(settings, fileExists: nothing).map(\.field), [.opsRepoPath])
+        XCTAssertTrue(AppSettings.validate(
+            settings, fileExists: nothing, cliConfigDirectory: "/Users/alice/.config/devmachine").isEmpty)
     }
 
     func testPrefillProposesAliasAndPublicIPFromPubHost() {
