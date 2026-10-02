@@ -28,12 +28,12 @@ struct MachineSitesState: Equatable, Sendable {
 /// dismissed. The request is kept so Retry runs the same command again.
 struct PublishJob: Identifiable, Equatable {
     enum Request: Equatable {
-        case publish(workspace: String, port: Int, host: String)
+        case publish(workspace: String, port: Int, host: String, via: String? = nil)
         case remove(host: String, machine: String)
 
         var host: String {
             switch self {
-            case .publish(_, _, let host), .remove(let host, _): return host
+            case .publish(_, _, let host, _), .remove(let host, _): return host
             }
         }
 
@@ -78,6 +78,9 @@ final class CaddyStore: ObservableObject {
     @Published private(set) var machinesError: String?
     @Published var domain: String = ""
     @Published private(set) var jobs: [PublishJob] = []
+    /// Where a site can be served from and where each workspace lives, for
+    /// the add sheet's "Published by". Empty until the CLI has answered.
+    @Published private(set) var publishPlaces = PublishPlaces()
     @Published var removingHost: String?
 
     /// The selected server's installed DNS providers — the tab strip's own
@@ -146,9 +149,23 @@ final class CaddyStore: ObservableObject {
 
     /// Nil when the CLI could not say where workspaces live: the add sheet
     /// then offers every remote workspace, as it did before machines.
+    ///
+    /// A machine with caddy also offers the workspaces of machines without
+    /// it: it can serve them with `--via`.
     var workspacesOnSelectedMachine: [String]? {
         guard let selectedMachine, !context.workspaces.isEmpty else { return nil }
-        return context.workspaces(on: selectedMachine)
+        let own = context.workspaces(on: selectedMachine)
+        guard publishPlaces.servingMachines.contains(selectedMachine) else { return own }
+        let unserved = context.workspaces
+            .filter { context.hasCaddy(onMachine: $0.machine) == false }
+            .map(\.name)
+        return own + unserved.filter { !own.contains($0) }
+    }
+
+    /// The add sheet opened before the Subdomains page ever loaded: read the
+    /// machines and where workspaces live, from the cache first.
+    func loadPublishPlacesIfNeeded() {
+        if machines.isEmpty { refresh(force: false) }
     }
 
     func select(_ name: String) {
@@ -204,6 +221,7 @@ final class CaddyStore: ObservableObject {
         if DemoMode.isActive {
             show(machines: DemoData.subdomainMachines, states: DemoData.subdomainStates,
                  selected: DemoData.subdomainSelectedMachine)
+            publishPlaces = DemoData.publishPlaces
             domain = DemoData.domain
             dnsProviders = DemoData.dnsProviders
             return
@@ -246,6 +264,12 @@ final class CaddyStore: ObservableObject {
     private func apply(_ snapshot: SitesContextSnapshot, force: Bool) {
         if machines != snapshot.machines { machines = snapshot.machines }
         context = snapshot.context
+        let places = PublishPlaces(
+            servingMachines: machines
+                .filter { !$0.isSelf && context.hasCaddy(onMachine: $0.name) == true }
+                .map(\.name),
+            machineOf: Dictionary(context.workspaces.map { ($0.name, $0.machine) }, uniquingKeysWith: { first, _ in first }))
+        if places != publishPlaces { publishPlaces = places }
         if domain != snapshot.domain { domain = snapshot.domain }
         sitesByMachine = sitesByMachine.filter { name, _ in snapshot.machines.contains { $0.name == name } }
 
@@ -429,8 +453,8 @@ final class CaddyStore: ObservableObject {
 
     /// `expose add` finds the machine from the workspace. The card in the
     /// corner follows it from "Publishing…" to the live address.
-    func addSubdomain(_ req: SubdomainRequest, workspace: String) {
-        start(.publish(workspace: workspace, port: req.port, host: req.host))
+    func addSubdomain(_ req: SubdomainRequest, workspace: String, via: String? = nil) {
+        start(.publish(workspace: workspace, port: req.port, host: req.host, via: via))
     }
 
     func remove(host: String) {
@@ -474,8 +498,8 @@ final class CaddyStore: ObservableObject {
             let progress = await Task.detached { () -> PublishProgress in
                 do {
                     switch request {
-                    case let .publish(workspace, port, host):
-                        let output = try service.publish(workspace: workspace, port: port, host: host)
+                    case let .publish(workspace, port, host, via):
+                        let output = try service.publish(workspace: workspace, port: port, host: host, via: via)
                         return .finished(.publish, host: host, output: output)
                     case let .remove(host, machine):
                         let output = try service.remove(host: host, machine: machine)
@@ -515,7 +539,9 @@ final class CaddyStore: ObservableObject {
     private func invalidate(after request: PublishJob.Request) {
         let machine: String?
         switch request {
-        case .publish(let workspace, _, _):
+        case .publish(_, _, _, let via?):
+            machine = via
+        case .publish(let workspace, _, _, nil):
             machine = context.workspaces.first { $0.name == workspace }?.machine
                 ?? cache.cached(MachineDataKeys.workspaces)?.value.first { $0.name == workspace }?.machine
         case .remove(_, let name):

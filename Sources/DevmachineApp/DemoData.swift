@@ -212,6 +212,12 @@ enum DemoData {
 
     static let subdomainSelectedMachine = "main"
 
+    /// umbrella lives on a machine on the desk with no Caddy: main publishes
+    /// it with `--via`.
+    static let publishPlaces = PublishPlaces(
+        servingMachines: ["main", "staging"],
+        machineOf: ["acme": "main", "globex": "staging", "initech": "main", "umbrella": "lab"])
+
     static let subdomainRows: [SubdomainRow] = [
         SubdomainRow(
             site: ExposedSite(host: "app.acme.example.com", port: 3000, workspace: "acme", status: .published),

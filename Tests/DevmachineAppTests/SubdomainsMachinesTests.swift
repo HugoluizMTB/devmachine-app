@@ -64,6 +64,36 @@ final class SubdomainsMachinesTests: XCTestCase {
         XCTAssertNil(store.sitesByMachine["laptop"]?.errorText)
     }
 
+    func testOnlyAMachineWithCaddyCanServeAndEveryWorkspaceSaysWhereItLives() async throws {
+        let store = try await loadedStore(MultiMachineCLIRunner())
+
+        XCTAssertEqual(store.publishPlaces.servingMachines, ["box"])
+        XCTAssertEqual(store.publishPlaces.machineOf, ["alice": "box", "bob": "spare"])
+    }
+
+    func testAMachineWithCaddyAlsoOffersTheWorkspacesOfMachinesWithout() async throws {
+        let store = try await loadedStore(MultiMachineCLIRunner())
+
+        store.select("box")
+        XCTAssertEqual(store.workspacesOnSelectedMachine, ["alice", "bob"])
+        store.select("spare")
+        XCTAssertEqual(store.workspacesOnSelectedMachine, ["bob"])
+    }
+
+    func testPublishingThroughAnotherMachineNamesItAndReadsThatMachineAgain() async throws {
+        let runner = MultiMachineCLIRunner()
+        let store = try await loadedStore(runner)
+        let listsBefore = runner.calls.filter { $0 == ["--machine", "box", "--format", "json", "expose", "list"] }.count
+
+        store.addSubdomain(SubdomainRequest(host: "bob.example.com", port: 3000, managedDNS: false), workspace: "bob", via: "box")
+        try await eventually { store.jobs.first?.progress.isFinished == true }
+
+        XCTAssertEqual(store.jobs.first?.progress.outcome, .live(URL(string: "https://bob.example.com")!))
+        try await eventually {
+            runner.calls.filter { $0 == ["--machine", "box", "--format", "json", "expose", "list"] }.count > listsBefore
+        }
+    }
+
     func testTheFirstServerIsSelectedWhenNothingIsRemembered() async throws {
         let store = try await loadedStore(MultiMachineCLIRunner())
 
@@ -115,14 +145,6 @@ final class SubdomainsMachinesTests: XCTestCase {
         try await eventually { store.removingHost == nil }
 
         XCTAssertTrue(runner.calls.contains(["--machine", "box", "--format", "json", "expose", "rm", "old.example.com", "--yes"]))
-    }
-
-    func testTheAddSheetOffersOnlyTheSelectedMachinesWorkspaces() async throws {
-        let store = try await loadedStore(MultiMachineCLIRunner())
-
-        XCTAssertEqual(store.workspacesOnSelectedMachine, ["alice"])
-        store.select("spare")
-        XCTAssertEqual(store.workspacesOnSelectedMachine, ["bob"])
     }
 
     func testOneMachineShowsNoPicker() {

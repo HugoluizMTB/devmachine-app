@@ -75,6 +75,18 @@ final class DevmachineCLITests: XCTestCase {
         )])
     }
 
+    func testExposeThroughAnotherMachineNamesIt() throws {
+        let runner = CLIRecordingRunner()
+        let cli = DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner)
+
+        _ = try cli.exposeAdd(workspace: "bob", port: 8080, host: "app.example.com", via: "edge")
+
+        XCTAssertEqual(runner.calls.first?.args, [
+            "--format", "json", "expose", "add", "bob", "8080",
+            "--host", "app.example.com", "--via", "edge", "--publish",
+        ])
+    }
+
     func testExposeHandsBackTheWholeOutputEvenWhenItFailed() throws {
         let runner = CLIRecordingRunner(result: (#"{"status":"pending"}"#, "caddy refused the new file", 1))
 

@@ -62,7 +62,7 @@ enum DemoSnapshots {
 
     static func chrome(for screenID: String) -> SnapshotChrome.Kind {
         switch screenID {
-        case "pull-requests", "publish-port", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
+        case "pull-requests", "publish-port", "publish-port-via", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
              "worktree-remove", "worktrees-merged", "worktree-foreign",
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
              "file-viewer":
@@ -196,6 +196,11 @@ enum DemoSnapshots {
     /// machine without devmachine-app on Home and in the sidebar, Prepare
     /// running, failed and done on fake scripts, the old-CLI and outdated
     /// cards, a workspace with no SSH alias, and onboarding's Install CLI.
+    static let publishViaScreens: [Screen] = [
+        Screen(id: "publish-port", fileName: "50-publish-port.png", settleNanoseconds: 400_000_000),
+        Screen(id: "publish-port-via", fileName: "51-publish-port-via.png", settleNanoseconds: 400_000_000),
+    ]
+
     static let machineReadyScreens: [Screen] = [
         Screen(id: "ready-home", fileName: "70-ready-home.png", settleNanoseconds: 700_000_000),
         Screen(id: "ready-running", fileName: "71-ready-running.png", settleNanoseconds: 1_500_000_000),
@@ -277,6 +282,7 @@ enum DemoSnapshots {
         case "sizing": return sizingScreens
         case "preview-browser": return previewBrowserScreens
         case "machine-ready": return machineReadyScreens
+        case "publish-via": return publishViaScreens
         default: return screens
         }
     }
@@ -358,6 +364,9 @@ enum DemoSnapshots {
                 try? await Task.sleep(nanoseconds: 300_000_000)
             case "publish-port":
                 view = standaloneView(publishSheet(environment), fittingSize: NSSize(width: 480, height: 620))
+            case "publish-port-via":
+                view = standaloneView(
+                    publishSheet(environment, workspace: "umbrella"), fittingSize: NSSize(width: 480, height: 700))
             case "worktree-remove":
                 view = standaloneView(worktreeRemovalSheet, fittingSize: NSSize(width: 460, height: 400))
             case "worktrees-merged":
@@ -522,15 +531,16 @@ enum DemoSnapshots {
             .environmentObject(environment.wallpaperStore)
     }
 
-    private static func publishSheet(_ environment: Environment) -> some View {
+    private static func publishSheet(_ environment: Environment, workspace: String? = nil) -> some View {
         var settings = AppSettings.empty
         settings.baseDomain = "example.com"
+        let workspace = workspace ?? DemoData.workspaces.first?.name ?? ""
         return AddSubdomainSheet(
             settings: settings,
             workspaces: DemoData.workspaces,
-            preselectedWorkspace: DemoData.workspaces.first?.name,
+            preselectedWorkspace: workspace,
             suggestedPorts: DemoData.publishSuggestions.ports,
-            suggestedLabel: DemoData.workspaces.first?.name ?? "")
+            suggestedLabel: workspace)
             .environmentObject(environment.caddyStore)
     }
 

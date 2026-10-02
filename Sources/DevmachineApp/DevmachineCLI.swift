@@ -278,13 +278,14 @@ struct DevmachineCLI: Sendable {
     /// Publishes a workspace's port. The CLI applies the route on Caddy at
     /// once and says how it went in JSON (0.7.21 and newer); the whole output
     /// comes back, because a failed apply still printed what it recorded.
-    func exposeAdd(workspace: String, port: Int, host: String) throws -> CLIOutput {
+    /// `via` names another machine whose Caddy serves it, for a workspace
+    /// on a machine the internet cannot reach.
+    func exposeAdd(workspace: String, port: Int, host: String, via: String? = nil) throws -> CLIOutput {
         let result = try runner.runCapturing(
             executable: executable,
-            args: [
-                "--format", "json", "expose", "add", workspace, String(port),
-                "--host", host, "--publish",
-            ],
+            args: ["--format", "json", "expose", "add", workspace, String(port), "--host", host]
+                + (via.map { ["--via", $0] } ?? [])
+                + ["--publish"],
             environment: environment()
         )
         return CLIOutput(stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode)

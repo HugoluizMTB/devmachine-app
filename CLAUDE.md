@@ -676,6 +676,23 @@ once may fail there.
   DEVMACHINE_RELAUNCH_REHEARSAL=<another .app> <copy>.app`. It "updates" to
   the other bundle through the real dialog, swap and relaunch. Debug only.
 
+## Publishing through another machine
+- **A workspace on a machine without Caddy is published by one that has
+  it** (`expose add --via`). The add sheet's "Published by" lists the
+  non-self machines with caddy (`CaddyStore.publishPlaces`); the
+  workspace's own machine wins when it has caddy, then the machine the
+  Subdomains page shows, then the first. `via` is passed only when it
+  differs from the workspace's machine, so nothing changes for a machine
+  that serves its own sites. Nothing known about where things live means
+  no `--via`, as before.
+- The Subdomains page of a machine with caddy also offers the workspaces
+  of machines without it. After a publish, the serving machine is the one
+  read again, not the workspace's.
+- An older CLI answers `unknown flag: --via`; the card says to run
+  `devmachine update` instead of showing Cobra's usage text. A published
+  site whose serving machine cannot reach the port is live with an
+  attention step carrying the CLI's note.
+
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action
 in the app, behind a confirm, and never from tests. The app delegates publishing

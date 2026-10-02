@@ -127,4 +127,32 @@ final class PublishProgressTests: XCTestCase {
         XCTAssertEqual(progress.headline, "Removing app.example.com…")
         XCTAssertEqual(progress.steps.map(\.state), [.running, .waiting])
     }
+
+    func testASiteServedByAnotherMachineThatCannotReachThePortIsLiveWithAWarning() {
+        let progress = published(
+            #"{"host":"app.example.com","port":8080,"workspace":"alice","via":"edge","applied":true,"status":"published","note":"edge cannot reach lab at 100.64.0.7:8080: check the firewall"}"#)
+
+        XCTAssertEqual(progress.outcome, .live(URL(string: "https://app.example.com")!))
+        XCTAssertEqual(progress.step(.caddy)?.state, .attention)
+        XCTAssertEqual(progress.step(.caddy)?.title, "Live on edge, which cannot reach the port yet")
+        XCTAssertEqual(progress.step(.caddy)?.detail, "edge cannot reach lab at 100.64.0.7:8080: check the firewall")
+    }
+
+    func testASiteServedByAnotherMachineSaysWhich() {
+        let progress = published(
+            #"{"host":"app.example.com","port":8080,"workspace":"alice","via":"edge","applied":true,"status":"published"}"#)
+
+        XCTAssertEqual(progress.step(.caddy)?.title, "Caddy route applied on edge")
+        XCTAssertEqual(progress.step(.caddy)?.state, .done)
+    }
+
+    func testACLIWithoutViaIsToldToUpdate() {
+        let progress = published("", stderr: "Error: unknown flag: --via\nUsage: ...", exit: 1)
+
+        guard case .failed(let details) = progress.outcome else {
+            return XCTFail("\(progress.outcome)")
+        }
+        XCTAssertTrue(details.contains("devmachine update"), details)
+        XCTAssertFalse(progress.changedTheMachine)
+    }
 }

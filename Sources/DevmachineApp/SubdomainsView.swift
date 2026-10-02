@@ -68,7 +68,8 @@ struct SubdomainsView: View {
             if let settings = settingsStore.settings {
                 AddSubdomainSheet(
                     settings: settings, workspaces: model.visibleWorkspaces,
-                    onMachine: store.workspacesOnSelectedMachine)
+                    onMachine: store.workspacesOnSelectedMachine,
+                preferredMachine: store.selectedMachine)
                     .environmentObject(store)
             }
         }

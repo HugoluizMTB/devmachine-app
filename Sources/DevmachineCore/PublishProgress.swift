@@ -23,6 +23,9 @@ public struct ExposeResult: Decodable, Equatable, Sendable {
     public let host: String
     public let port: Int?
     public let workspace: String?
+    /// The machine whose Caddy serves the site, when it is not the
+    /// workspace's own (`expose add --via`).
+    public let via: String?
     public let applied: Bool
     public let status: Status
     public let note: String?
@@ -137,7 +140,7 @@ public struct PublishProgress: Equatable, Sendable {
         } else if result.applied {
             switch action {
             case .publish:
-                caddy = Step(.caddy, "Caddy route applied", .done)
+                caddy = appliedStep(result)
                 outcome = .live(URL(string: "https://\(result.host)") ?? URL(string: "https://\(host)")!)
             case .remove:
                 caddy = Step(.caddy, "Caddy dropped the route", .done)
@@ -151,6 +154,20 @@ public struct PublishProgress: Equatable, Sendable {
         return PublishProgress(
             action: action, host: host, steps: [first, caddy], outcome: outcome, changedTheMachine: true)
     }
+
+    /// A site served by another machine is live once that machine's Caddy
+    /// has it; the CLI adds a note when that machine cannot reach the port,
+    /// which visitors would otherwise meet as a bare 502.
+    private static func appliedStep(_ result: ExposeResult) -> Step {
+        guard let via = result.via else { return Step(.caddy, "Caddy route applied", .done) }
+        if let note = result.note {
+            return Step(.caddy, "Live on \(via), which cannot reach the port yet", .attention, detail: note)
+        }
+        return Step(.caddy, "Caddy route applied on \(via)", .done)
+    }
+
+    static let viaNeedsUpdate = "This devmachine CLI cannot publish through another machine yet. "
+        + "Update it with `devmachine update` and try again."
 
     private static func firstStep(_ action: Action, output: CLIOutput) -> Step {
         switch action {
@@ -188,6 +205,7 @@ public struct PublishProgress: Equatable, Sendable {
 
     private static func failureText(_ output: CLIOutput) -> String {
         let stderr = output.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if stderr.contains("unknown flag: --via") { return viaNeedsUpdate }
         if !stderr.isEmpty { return stderr }
         let stdout = output.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return stdout.isEmpty ? fallbackFailure : stdout

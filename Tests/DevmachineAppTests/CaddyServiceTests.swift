@@ -91,6 +91,8 @@ final class MultiMachineCLIRunner: CommandRunner, @unchecked Sendable {
             return (#"{"zone":"example.com","provider":"Cloudflare","records":[{"name":"app","type":"A","value":"203.0.113.10","ttl":300}]}"#, "", 0)
         case ["--machine", "box", "--format", "json", "expose", "rm", "old.example.com", "--yes"]:
             return (#"{"host":"old.example.com","workspace":"alice","applied":true,"status":"removed"}"#, "", 0)
+        case ["--format", "json", "expose", "add", "bob", "3000", "--host", "bob.example.com", "--via", "box", "--publish"]:
+            return (#"{"host":"bob.example.com","port":3000,"workspace":"bob","via":"box","applied":true,"status":"published"}"#, "", 0)
         case ["--format", "json", "expose", "add", "alice", "8080", "--host", "new.example.com", "--publish"]:
             return (#"{"host":"new.example.com","port":8080,"workspace":"alice","applied":true,"status":"published"}"#, "", 0)
         default:

@@ -107,8 +107,8 @@ struct CaddyService: Sendable {
         try resolvedCLI().dnsList(machine: machine, provider: provider, zone: zone)
     }
 
-    func publish(workspace: String, port: Int, host: String) throws -> CLIOutput {
-        try resolvedCLI().exposeAdd(workspace: workspace, port: port, host: host)
+    func publish(workspace: String, port: Int, host: String, via: String? = nil) throws -> CLIOutput {
+        try resolvedCLI().exposeAdd(workspace: workspace, port: port, host: host, via: via)
     }
 
     func remove(host: String, machine: String) throws -> CLIOutput {
