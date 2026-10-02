@@ -378,7 +378,9 @@ struct SidebarView: View {
         return DMRow(
             leading: glyph.reservesLeadingSlot ? AnyView(
                 SidebarHarnessIcon(
-                    icon: glyph.icon.flatMap(icons.icon(for:)),
+                    icon: glyph.icon.flatMap {
+                        icons.icon(for: $0, style: settingsStore.settings?.harnessIconStyle ?? .color)
+                    },
                     help: badges.first { $0.id == glyph.icon }?.helpText)
             ) : nil,
             title: title,

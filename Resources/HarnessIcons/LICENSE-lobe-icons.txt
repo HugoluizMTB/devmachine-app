@@ -1,9 +1,18 @@
-The icons in this folder antigravity.svg, cline.svg, kimi.svg and opencode.svg
-are copied from LobeHub's lobe-icons (https://github.com/lobehub/lobe-icons),
-npm package @lobehub/icons-static-svg 1.95.1: icons/antigravity-color.svg,
-icons/cline.svg, icons/kimi.svg and icons/opencode.svg. The size attributes,
-inline style and title were dropped; the drawing is unchanged. Each file is
-named after the app's HarnessID. lobe-icons' license follows.
+These icons in this folder are copied from LobeHub's lobe-icons
+(https://github.com/lobehub/lobe-icons), npm package
+@lobehub/icons-static-svg 1.95.1, from its icons/ folder:
+
+  antigravity.svg        icons/antigravity.svg
+  antigravity-color.svg  icons/antigravity-color.svg
+  cline.svg              icons/cline.svg
+  codex-color.svg        icons/codex-color.svg
+  kimi.svg               icons/kimi.svg
+  kimi-color.svg         icons/kimi-color.svg
+  opencode.svg           icons/opencode.svg
+
+The size attributes, inline style and title were dropped; the drawing is
+unchanged. Each file is named after the app's HarnessID; a "-color" file is
+the brand-colour version. lobe-icons' license follows.
 
 MIT License
 

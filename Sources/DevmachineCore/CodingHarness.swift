@@ -16,6 +16,20 @@ public struct HarnessID: RawRepresentable, Codable, Hashable, Sendable {
     public static let cline = HarnessID(rawValue: "cline")
 }
 
+/// How a harness icon is drawn: its `<id>-color.svg` in brand colors when
+/// there is one, or always its `<id>.svg` in the row's tint.
+public enum HarnessIconStyle: String, Codable, Sendable, CaseIterable {
+    case color
+    case monochrome
+
+    public var title: String {
+        switch self {
+        case .color: return "Original colors"
+        case .monochrome: return "Monochrome"
+        }
+    }
+}
+
 public enum SessionLaunchChoice: Codable, Equatable, Sendable {
     case terminal
     case harness(HarnessID)

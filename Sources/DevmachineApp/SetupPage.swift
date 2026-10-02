@@ -112,6 +112,7 @@ struct SetupPage: View {
     @State private var remoteTerminalMode = RemoteTerminalMode.automatic
     @State private var copyOnSelect = true
     @State private var showsHarnessIcons = false
+    @State private var harnessIconStyle = HarnessIconStyle.color
     @State private var linkOpening = LinkOpening.defaultBrowser
     @State private var hiddenWorkspaces: [String] = []
     @State private var enabledHarnesses = AppSettings.empty.enabledHarnesses
@@ -139,6 +140,7 @@ struct SetupPage: View {
             remoteTerminalMode: remoteTerminalMode,
             copyOnSelect: copyOnSelect,
             showsHarnessIcons: showsHarnessIcons,
+            harnessIconStyle: harnessIconStyle,
             hiddenWorkspaces: hiddenWorkspaces,
             enabledHarnesses: enabledHarnesses,
             localSessionProgram: localSessionProgram,
@@ -806,6 +808,21 @@ struct SetupPage: View {
             .controlSize(.small)
             note("A session running a harness shows its icon before the name. "
                 + "Terminal sessions show none.")
+            HStack(spacing: m.space.lg) {
+                Text(verbatim: "Icon style")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(showsHarnessIcons ? 0.85 : 0.4))
+                Picker("", selection: $harnessIconStyle) {
+                    ForEach(HarnessIconStyle.allCases, id: \.self) { style in
+                        Text(verbatim: style.title).tag(style)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .fixedSize()
+            }
+            .disabled(!showsHarnessIcons)
         }
     }
 
@@ -1080,6 +1097,7 @@ struct SetupPage: View {
             remoteTerminalMode = current.remoteTerminalMode
             copyOnSelect = current.copyOnSelect
             showsHarnessIcons = current.showsHarnessIcons
+            harnessIconStyle = current.harnessIconStyle
             linkOpening = current.linkOpening
             hiddenWorkspaces = current.hiddenWorkspaces
             applyHarnessSettings(current)

@@ -535,12 +535,20 @@ Rules:
   `codex app-server`. It never calls `thread/start` or `turn/start`, so the
   refresh does not start a model turn or consume inference tokens.
 - Sidebar harness icons (Settings → Harnesses, off by default) are files in
-  `Resources/HarnessIcons/<HarnessID>.svg`, loaded by name (`HarnessIconLibrary`):
-  a new harness gets its icon by adding a file. An SVG drawn in `currentColor`
-  takes the row's tint; one with its own colours keeps them. No file → the
-  hover dot stays. Claude, Codex and Pi come from Orca (MIT, `LICENSE-orca.txt`);
+  `Resources/HarnessIcons/`, loaded by name (`HarnessIconLibrary`): a new
+  harness gets its icon by adding a file. `<HarnessID>.svg` is always the
+  monochrome drawing in `currentColor` (it takes the row's tint, and every
+  built-in harness must have one); `<HarnessID>-color.svg` is the optional
+  brand-color version. Settings → Harnesses → Icon style
+  (`AppSettings.harnessIconStyle`, `.color` by default) picks it: Original
+  colors uses `-color` when it exists, else the monochrome file; Monochrome
+  never reads `-color`. A `-color` name is never a harness id. No monochrome
+  file → no icon, the hover dot stays. Brand colors exist for Claude, Codex,
+  Antigravity and Kimi; Pi, opencode and Cline are black and white anyway.
+  Claude, Codex and Pi come from Orca (MIT, `LICENSE-orca.txt`); codex-color,
   Antigravity, opencode, Kimi and Cline from lobe-icons (MIT,
   `LICENSE-lobe-icons.txt`). A new icon names its source in one of those files.
+  `DEVMACHINE_DEMO_ICON_STYLE=monochrome` switches the `harness-icons` demo walk.
 - The Context / Files / Git panel belongs to every selected session. Unsupported
   provider context shows an empty state while Files and Git remain available.
 - **Context reads a harness through one `ContextHarnessReader`** (Core,
