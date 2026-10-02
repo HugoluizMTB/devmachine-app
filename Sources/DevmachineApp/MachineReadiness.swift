@@ -85,6 +85,9 @@ struct ProcessPrepareRunner: PrepareRunning {
     var cli: @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() }
 
     func run(arguments: [String], output: @escaping @Sendable (String) -> Void) async throws -> Int32 {
+        guard !DemoMode.isActive else {
+            throw DevmachineCLIError.commandFailed("Demo mode never runs a devmachine command.")
+        }
         let instance = try cli()
         return try await StreamingProcess.run(
             executable: instance.executable, arguments: arguments,

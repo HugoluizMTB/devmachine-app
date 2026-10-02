@@ -24,12 +24,24 @@ public struct MachineWizard: Equatable, Sendable {
     /// The CLI takes every answer as a flag (`MachineUnattendedAdd`): the
     /// whole run happens without a terminal.
     public let unattended: Bool
+    /// Onboarding's "Connect a server": a server only, its details then the
+    /// review, and nothing after the add. Its own steps add the package
+    /// this app needs and sync.
+    public let connectOnly: Bool
 
-    public init(existingMachines: [String], limaFound: Bool, unattended: Bool = false) {
+    public init(existingMachines: [String], limaFound: Bool, unattended: Bool = false, connectOnly: Bool = false) {
         self.existingMachines = existingMachines
         self.limaFound = limaFound
         self.unattended = unattended
+        self.connectOnly = connectOnly
+        if connectOnly {
+            draft.kind = .server
+            draft.sync = false
+            stage = .details
+        }
     }
+
+    public var firstStage: MachineWizardStage { connectOnly ? .details : .kind }
 
     public var problems: [MachineDraftProblem] {
         draft.problems(existingMachines: existingMachines, unattended: unattended)
@@ -40,7 +52,7 @@ public struct MachineWizard: Equatable, Sendable {
     }
 
     public mutating func choose(_ kind: MachineKind) {
-        guard canChoose(kind) else { return }
+        guard canChoose(kind), !connectOnly || kind == .server else { return }
         draft.kind = kind
         stage = .details
     }
@@ -54,23 +66,42 @@ public struct MachineWizard: Equatable, Sendable {
         }
     }
 
-    public var canGoBack: Bool { stage != .kind && stage != .run }
+    public var canGoBack: Bool { stage != firstStage && stage != .run }
 
     public mutating func next() {
-        guard canAdvance, let following = MachineWizardStage(rawValue: stage.rawValue + 1) else { return }
+        guard canAdvance else { return }
+        let skip = connectOnly && stage == .details ? 2 : 1
+        guard let following = MachineWizardStage(rawValue: stage.rawValue + skip) else { return }
         stage = following
     }
 
     public mutating func back() {
-        guard canGoBack, let previous = MachineWizardStage(rawValue: stage.rawValue - 1) else { return }
+        guard canGoBack else { return }
+        let skip = connectOnly && stage == .review ? 2 : 1
+        guard let previous = MachineWizardStage(rawValue: stage.rawValue - skip) else { return }
         stage = previous
     }
 
     /// Back to a step the person already reached, after the wizard was
-    /// rebuilt around fresh context. Never into a run: only `next` starts one.
-    public mutating func restore(_ stage: MachineWizardStage) {
-        guard stage != .run else { return }
-        self.stage = stage
+    /// rebuilt around fresh context, but never past a step that now needs
+    /// an answer: a CLI that changed may ask for a password or a
+    /// fingerprint the older one did not. Never into a run: only `next`
+    /// starts one.
+    public mutating func restore(_ target: MachineWizardStage) {
+        guard target != .run else { return }
+        stage = firstStage
+        guard stage != target, canAdvance else { return }
+        if stage == .kind { stage = .details }
+        while stage.rawValue < target.rawValue, canAdvance {
+            next()
+        }
+    }
+
+    /// A run that failed or was stopped goes back to its details, every
+    /// answer kept, so a wrong address or password can be fixed.
+    public mutating func editAnswers() {
+        guard stage == .run else { return }
+        stage = .details
     }
 
     public var plan: [MachinePlanStep] { MachinePlan.steps(for: draft, unattended: unattended) }

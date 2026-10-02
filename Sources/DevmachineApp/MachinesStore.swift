@@ -89,6 +89,9 @@ final class MachinesStore: ObservableObject {
     private let read: @Sendable () async throws -> MachinesSnapshot
     private let remove: @Sendable (String) async throws -> Void
     private var loading = false
+    /// A load asked for while one runs: the configuration may have changed
+    /// after that read started, so it reads once more when it ends.
+    private var loadAgain = false
 
     init(
         read: @escaping @Sendable () async throws -> MachinesSnapshot = {
@@ -119,18 +122,24 @@ final class MachinesStore: ObservableObject {
             if snapshot == nil { seedDemo(DemoData.machinesSnapshot) }
             return
         }
-        guard !loading else { return }
+        if loading {
+            loadAgain = true
+            return
+        }
         loading = true
         defer { loading = false }
         if snapshot == nil { phase = .loading }
-        do {
-            let next = try await read()
-            if snapshot != next { snapshot = next }
-            phase = .loaded
-        } catch {
-            phase = .failed(DMErrorState(
-                title: "Could not read the machines", message: error.localizedDescription))
-        }
+        repeat {
+            loadAgain = false
+            do {
+                let next = try await read()
+                if snapshot != next { snapshot = next }
+                phase = .loaded
+            } catch {
+                phase = .failed(DMErrorState(
+                    title: "Could not read the machines", message: error.localizedDescription))
+            }
+        } while loadAgain
     }
 
     func requestLoad() {
@@ -139,6 +148,10 @@ final class MachinesStore: ObservableObject {
 
     func removeMachine(_ name: String) async {
         guard removing == nil else { return }
+        guard !DemoMode.isActive else {
+            removalError = DMErrorState(title: "Could not remove \(name)", message: "Demo mode never removes a machine.")
+            return
+        }
         removing = name
         defer { removing = nil }
         do {

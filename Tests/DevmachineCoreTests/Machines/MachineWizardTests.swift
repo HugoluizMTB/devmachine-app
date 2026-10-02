@@ -78,11 +78,86 @@ final class MachineWizardTests: XCTestCase {
     }
 
     func testARebuiltWizardReturnsToAStepButNeverIntoARun() {
-        var wizard = MachineWizard(existingMachines: [], limaFound: true)
+        var wizard = filledServer()
         wizard.restore(.packages)
         XCTAssertEqual(wizard.stage, .packages)
         wizard.restore(.run)
         XCTAssertEqual(wizard.stage, .packages)
+    }
+
+    func testARebuiltWizardStopsAtTheFirstStepThatNowNeedsAnAnswer() {
+        var legacy = MachineWizard(existingMachines: [], limaFound: true)
+        legacy.choose(.server)
+        legacy.draft.name = "main"
+        legacy.draft.address = "203.0.113.10"
+        legacy.draft.login = .password
+        XCTAssertTrue(legacy.problems.isEmpty, "an older CLI asks for the password in its terminal")
+
+        var unattended = MachineWizard(existingMachines: [], limaFound: true, unattended: true)
+        unattended.draft = legacy.draft
+        unattended.restore(.review)
+
+        XCTAssertEqual(unattended.stage, .details)
+        XCTAssertTrue(unattended.problems.contains { $0.field == .password })
+    }
+
+    func testARebuiltWizardWithoutLimaGoesBackToTheKind() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: false)
+        wizard.draft.kind = .localVM
+        wizard.draft.name = "lab"
+        wizard.restore(.review)
+        XCTAssertEqual(wizard.stage, .kind)
+    }
+
+    func testAFailedRunCanGoBackToItsDetailsWithEveryAnswer() {
+        var wizard = filledServer()
+        wizard.next()
+        wizard.togglePackage("docker")
+        wizard.next()
+        wizard.next()
+
+        wizard.editAnswers()
+
+        XCTAssertEqual(wizard.stage, .details)
+        XCTAssertEqual(wizard.draft.name, "main")
+        XCTAssertEqual(wizard.draft.packages, ["docker"])
+    }
+
+    func testOnlyARunGoesBackToEditItsAnswers() {
+        var wizard = filledServer()
+        wizard.next()
+        wizard.editAnswers()
+        XCTAssertEqual(wizard.stage, .packages)
+    }
+
+    func testConnectingOnlyAsksForAServerAndAddsNothingElse() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true, connectOnly: true)
+        XCTAssertEqual(wizard.stage, .details)
+        XCTAssertEqual(wizard.draft.kind, .server)
+        XCTAssertFalse(wizard.canGoBack)
+        wizard.choose(.localVM)
+        XCTAssertEqual(wizard.draft.kind, .server)
+
+        wizard.draft.name = "main"
+        wizard.draft.address = "203.0.113.10"
+        wizard.draft.keySource = .agent
+        wizard.draft.agentKey = fingerprint
+        wizard.draft.fingerprint = fingerprint
+        wizard.next()
+        XCTAssertEqual(wizard.stage, .review)
+        wizard.back()
+        XCTAssertEqual(wizard.stage, .details)
+        wizard.next()
+        wizard.next()
+        XCTAssertEqual(wizard.stage, .run)
+
+        XCTAssertEqual(wizard.plan.map(\.kind), [.addMachine])
+    }
+
+    func testAConnectOnlyWizardIsRebuiltAtItsDetailsNotAtAKind() {
+        var wizard = MachineWizard(existingMachines: [], limaFound: false, unattended: true, connectOnly: true)
+        wizard.restore(.review)
+        XCTAssertEqual(wizard.stage, .details)
     }
 
     func testAPackageIsToggledInTheOrderItWasChosen() {

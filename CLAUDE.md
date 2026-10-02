@@ -772,7 +772,8 @@ once may fail there.
   `MachineUnattendedAdd` lists the latest release's packages then, for the
   first machine (a failure there is no error: essentials is still offered).
   Remove runs `machines rm --yes` behind a confirm and only forgets the
-  machine.
+  machine. A load asked for while one runs reads once more after it, so
+  the last change on disk is always the one shown.
 - **The sidebar offers "Add a machine" above Local only once a read says
   there is none besides this Mac** (`AddMachinePrompt`). Nothing is gated
   on a machine: Home and local sessions work with zero. One rule in
@@ -807,8 +808,10 @@ once may fail there.
   stdin and nowhere else. The step carries only `input: .password`, never
   the value, so it is in no argument, step id, display line or log;
   printing the draft shows dots. It is written to the pipe before the
-  process starts (no SIGPIPE if the CLI exits first) and dropped once the
-  run succeeds.
+  process starts (no SIGPIPE if the CLI exits first). The draft drops it
+  when a run starts, whatever the outcome, when the page goes away, and
+  when the context is read again; a Try again that needs it opens the
+  answers instead.
 - **The fingerprint is read before anything trusts it** (`machines scan
   --format json`, logs in nowhere, writes nothing): the wizard shows the
   presented key beside the CLI's `verify` command for the provider's
@@ -826,6 +829,20 @@ once may fail there.
   the runner finds in the scrollback. A failed step shows
   `DMErrorStateView`; Try again skips the steps done. Tests inject
   `MachineStepRunner.Hooks`; nothing types into a real pane or starts a CLI.
+- **No run waits forever.** Stop ends a run in either mode (Ctrl-C into
+  the pane, or the background process is cancelled, which
+  `StreamingProcess` turns into SIGTERM). A terminal step that ends
+  without its marker is noticed when the pane's shell is its terminal's
+  foreground group again, twice in a row (`ProcessTree.isAtPrompt`), and
+  any step fails after `stepTimeout` (3 h: a first sync is slow) with
+  what to do.
+- **A failed run goes back to its answers.** "Edit answers" (and Close)
+  return to the details with every answer but the password; steps done
+  stay done, and the machine the run already wrote does not block its own
+  name. Reopening after a success starts fresh. When the context is read
+  again (a newer CLI found meanwhile), the wizard returns only as far as
+  every step before is still valid (`MachineWizard.restore`), so a step
+  that now needs a password or a fingerprint is where it stops.
 - **No `config.yml` means no machine, not an unread list**: `machines
   list` fails before it exists, and `StatsStore` then checks the file and
   drops its cached cards, so Home never shows machines from an old
@@ -835,7 +852,10 @@ once may fail there.
   each state, the first machine with its domain, the sidebar with no
   machine (Home with no machine cards), and `legacy-` shots of an older
   CLI's terminal flow. Demo mode scans no server and reads no agent
-  (`DemoData.addMachineScan`, `addMachineAgentKeys`) and refuses every run.
+  (`DemoData.addMachineScan`, `addMachineAgentKeys`) and refuses every run:
+  `MachineStepRunner.run`, `MachinesStore.removeMachine` and
+  `ProcessPrepareRunner` (Prepare, DNS sync) each refuse before reaching a
+  terminal or the CLI (`DemoRefusalTests`).
 
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action

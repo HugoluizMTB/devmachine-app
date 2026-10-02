@@ -269,7 +269,8 @@ struct ProcessCLIUpdater: CLIUpdating {
 
 /// stdout and stderr share one pipe, so the lines keep the order they were
 /// written in. stdin is closed, so a prompt fails instead of waiting forever;
-/// `input`, when given, is written to it first and then it is closed.
+/// `input`, when given, is written to it first and then it is closed. A
+/// cancelled task ends the process (SIGTERM) and throws.
 enum StreamingProcess {
     static func run(
         executable: String, arguments: [String], environment: [String: String], input: Data? = nil,
@@ -296,20 +297,26 @@ enum StreamingProcess {
                 lines.append(data)
             }
         }
-        let status: Int32 = try await withCheckedThrowingContinuation { continuation in
-            process.terminationHandler = { finished in
-                continuation.resume(returning: finished.terminationStatus)
+        let status: Int32 = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                process.terminationHandler = { finished in
+                    continuation.resume(returning: finished.terminationStatus)
+                }
+                do {
+                    try process.run()
+                    if Task.isCancelled { process.terminate() }
+                } catch {
+                    process.terminationHandler = nil
+                    continuation.resume(throwing: error)
+                }
             }
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                continuation.resume(throwing: error)
-            }
+        } onCancel: {
+            if process.isRunning { process.terminate() }
         }
         pipe.fileHandleForReading.readabilityHandler = nil
         lines.append(pipe.fileHandleForReading.readDataToEndOfFile())
         lines.flush()
+        try Task.checkCancellation()
         return status
     }
 

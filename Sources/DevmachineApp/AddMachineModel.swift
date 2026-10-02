@@ -22,7 +22,9 @@ final class AddMachineModel: ObservableObject {
     let runner: MachineStepRunner
     private let machines: MachinesStore
     private let findLima: () -> String?
-    private let onAdded: @MainActor () -> Void
+    /// Onboarding's own wizard sets it to move to its next step.
+    var onAdded: @MainActor () -> Void
+    let connectOnly: Bool
     private let scanMachine: @Sendable (String, String) async throws -> MachineScan
     private let listAgentKeys: @Sendable () async throws -> [AgentKey]
 
@@ -36,25 +38,65 @@ final class AddMachineModel: ObservableObject {
         },
         listAgentKeys: @escaping @Sendable () async throws -> [AgentKey] = {
             try await Task.detached { try DevmachineCLI.resolve().agentKeys() }.value
-        }
+        },
+        connectOnly: Bool = false
     ) {
+        self.connectOnly = connectOnly
         self.machines = machines
         self.runner = runner
         self.findLima = findLima
         self.onAdded = onAdded
         self.scanMachine = scanMachine
         self.listAgentKeys = listAgentKeys
-        wizard = MachineWizard(existingMachines: [], limaFound: false)
+        wizard = MachineWizard(existingMachines: [], limaFound: false, connectOnly: connectOnly)
         startOver()
     }
 
     var isRunning: Bool { runner.phase == .running }
 
-    /// A fresh wizard, unless a run is going or ended in a failure to read.
+    /// Try again needs every answer the failed step reads; the password is
+    /// forgotten after each run, so a step that reads it asks for it again.
+    var canRetry: Bool {
+        !wizard.plan.contains { $0.input == .password && runner.status(of: $0) != .done }
+            || !wizard.draft.password.value.isEmpty
+    }
+
+    /// A fresh wizard after a success; the answers after a failure, at the
+    /// first step that needs one; a run still going is left alone.
     func openPage() {
         guard !isRunning else { return }
         if wizard.stage == .run, runner.phase == .succeeded { startOver() }
         if wizard.stage != .run { refreshContext() }
+    }
+
+    /// The page went away (another page, a session, Close): the password
+    /// never outlives it.
+    func leavePage() {
+        wizard.draft.password = SecretText()
+    }
+
+    /// Done or Close on the run screen, Cancel before it. A failed run goes
+    /// back to its answers, so the page reopens on them, not on the error.
+    func close() {
+        leavePage()
+        guard !isRunning, wizard.stage == .run else { return }
+        if runner.phase == .succeeded {
+            startOver()
+        } else {
+            editAnswers()
+        }
+    }
+
+    func stop() {
+        runner.stop()
+    }
+
+    /// Back from a failed or stopped run to its details, every answer kept.
+    /// Steps already done stay done, so a second Create skips them.
+    func editAnswers() {
+        guard !isRunning, wizard.stage == .run else { return }
+        wizard.editAnswers()
+        refreshContext()
     }
 
     func startOver() {
@@ -63,25 +105,40 @@ final class AddMachineModel: ObservableObject {
         wizard = freshWizard()
     }
 
-    /// The answers stay; what the configuration holds and whether Lima is
-    /// there are read again, since either may have changed meanwhile.
+    /// The answers stay, except the password; what the configuration holds
+    /// and whether Lima is there are read again, since either may have
+    /// changed meanwhile. A CLI that changed may need answers the older one
+    /// did not, so the wizard stops at the first step that needs one.
     func refreshContext() {
         let draft = wizard.draft
         let stage = wizard.stage
         var next = freshWizard()
         let hasConfiguration = next.draft.hasConfiguration
         next.draft = draft
+        next.draft.password = SecretText()
         next.draft.hasConfiguration = hasConfiguration
         next.restore(stage)
         wizard = next
     }
 
     private func freshWizard() -> MachineWizard {
+        let added = addedByThisRun
         var wizard = MachineWizard(
-            existingMachines: machines.machines.map(\.name), limaFound: DemoMode.isActive || findLima() != nil,
-            unattended: machines.snapshot?.addsWithoutTerminal ?? false)
+            existingMachines: machines.machines.map(\.name).filter { $0 != added },
+            limaFound: DemoMode.isActive || findLima() != nil,
+            unattended: machines.snapshot?.addsWithoutTerminal ?? false,
+            connectOnly: connectOnly)
         wizard.draft.hasConfiguration = machines.snapshot?.hasConfiguration ?? true
         return wizard
+    }
+
+    /// The machine this wizard's own run already wrote: it is in the
+    /// configuration now, and must not block the answers that made it.
+    private var addedByThisRun: String? {
+        let creates = wizard.plan.first {
+            ($0.kind == .addMachine || $0.kind == .createLocal) && runner.status(of: $0) == .done
+        }
+        return creates == nil ? nil : wizard.draft.name.trimmingCharacters(in: .whitespaces)
     }
 
     /// Reads the key the server presents (`machines scan`), which logs in
@@ -124,15 +181,18 @@ final class AddMachineModel: ObservableObject {
     }
 
     /// `machines add` writes the machine only once its key is proved, so a
-    /// failed step simply runs again.
+    /// failed step simply runs again. Without the password it needs, the
+    /// answers open instead.
     func retry() async {
+        guard canRetry else { return editAnswers() }
         await runPlan()
     }
 
     private func runPlan() async {
-        await runner.run(wizard.plan, inTerminal: !wizard.unattended, password: wizard.draft.password)
-        guard runner.phase == .succeeded else { return }
+        let password = wizard.draft.password
         wizard.draft.password = SecretText()
+        await runner.run(wizard.plan, inTerminal: !wizard.unattended, password: password)
+        guard runner.phase == .succeeded else { return }
         onAdded()
     }
 

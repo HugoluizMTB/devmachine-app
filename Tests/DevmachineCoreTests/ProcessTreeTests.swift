@@ -12,6 +12,12 @@ final class ProcessTreeTests: XCTestCase {
         XCTAssertNil(ProcessTree.foregroundGroup(fromTPGID: "what"))
     }
 
+    func testAShellIsAtItsPromptOnlyWhenItIsTheForegroundGroup() {
+        XCTAssertEqual(ProcessTree.isAtPrompt(shellPID: 400, tpgidOutput: " 400\n"), true)
+        XCTAssertEqual(ProcessTree.isAtPrompt(shellPID: 400, tpgidOutput: " 512\n"), false)
+        XCTAssertNil(ProcessTree.isAtPrompt(shellPID: 400, tpgidOutput: "0\n"))
+    }
+
     func testTheSignalGoesToTheWholeGroup() {
         XCTAssertEqual(ProcessTree.windowChangedArguments(group: 42), ["-WINCH", "-42"])
     }

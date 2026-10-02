@@ -12,6 +12,11 @@ private final class FakeTerminal {
     var executable: String? = "/opt/homebrew/bin/devmachine"
     /// The steps (by their arguments' first words) that end with an error.
     var failing: Set<String> = []
+    /// Steps whose script never prints a marker: stopped, or still going.
+    var silent: Set<String> = []
+    /// What the pane's shell reports: true back at its prompt, nil unknown.
+    var atPrompt: Bool?
+    var promptChecks = 0
     var printed: [String] = []
     var tasks: [(String, Int)] = []
     var ended: [Bool] = []
@@ -28,9 +33,14 @@ private final class FakeTerminal {
             writeScript: { script, nonce in
                 let path = "/tmp/steps/\(nonce).sh"
                 self.scripts[path] = script
+                guard !self.silent.contains(where: { script.contains($0) }) else { return path }
                 let fails = self.failing.contains { script.contains($0) }
                 self.printed.append(fails ? TerminalStepMarker.fail(nonce: nonce) : TerminalStepMarker.ok(nonce: nonce))
                 return path
+            },
+            isAtPrompt: { _ in
+                self.promptChecks += 1
+                return self.atPrompt
             },
             runProcess: { arguments, input, output in
                 self.processes.append((arguments, input))
@@ -132,6 +142,54 @@ final class MachineStepRunnerTests: XCTestCase {
         XCTAssertEqual(runner.problem, "The terminal below did not start.")
     }
 
+    func testAStepThatDiesWithoutAMarkerFailsOnceTheShellIsBackAtItsPrompt() async {
+        let terminal = FakeTerminal()
+        terminal.silent = ["machines add"]
+        terminal.atPrompt = true
+        let runner = MachineStepRunner(hooks: terminal.hooks, pollInterval: 1_000_000)
+        let steps = plan()
+
+        await runner.run(steps)
+
+        XCTAssertEqual(runner.phase, .failed(step: steps[0].id))
+        XCTAssertEqual(runner.problem, MachineStepRunner.endedWithoutMarker)
+        XCTAssertEqual(terminal.ended, [false])
+    }
+
+    func testAStepStillRunningIsNotMistakenForADeadOne() async {
+        let terminal = FakeTerminal()
+        terminal.silent = ["machines add"]
+        terminal.atPrompt = false
+        let runner = MachineStepRunner(
+            hooks: terminal.hooks, pollInterval: 1_000_000, stepTimeout: 0.2)
+        let steps = plan()
+
+        await runner.run(steps)
+
+        XCTAssertGreaterThan(terminal.promptChecks, 2)
+        XCTAssertEqual(runner.phase, .failed(step: steps[0].id))
+        XCTAssertEqual(runner.problem, MachineStepRunner.timedOut)
+    }
+
+    func testStoppingATerminalStepInterruptsItAndEndsTheRun() async throws {
+        let terminal = FakeTerminal()
+        terminal.silent = ["machines add"]
+        let runner = MachineStepRunner(hooks: terminal.hooks, pollInterval: 1_000_000)
+        let steps = plan(packages: ["docker"])
+        let run = Task { await runner.run(steps) }
+        try await waitFor { runner.status(of: steps[0]) == .running && !terminal.typed.isEmpty }
+
+        runner.stop()
+        await run.value
+
+        XCTAssertEqual(terminal.typed.last, "\u{03}")
+        XCTAssertEqual(runner.phase, .failed(step: steps[0].id))
+        XCTAssertEqual(runner.problem, MachineStepRunner.stopped)
+        XCTAssertEqual(steps.map { runner.status(of: $0) }, [.failed, .waiting, .waiting])
+        XCTAssertEqual(terminal.typed.count, 2, "nothing after the stopped step was typed")
+        XCTAssertEqual(terminal.ended, [false])
+    }
+
     func testResetForgetsTheRun() async {
         let terminal = FakeTerminal()
         let runner = MachineStepRunner(hooks: terminal.hooks, pollInterval: 1_000_000)
@@ -142,6 +200,15 @@ final class MachineStepRunnerTests: XCTestCase {
 
         XCTAssertEqual(runner.phase, .idle)
         XCTAssertEqual(runner.status(of: steps[0]), .waiting)
+    }
+}
+
+@MainActor
+private func waitFor(_ condition: () -> Bool) async throws {
+    let deadline = Date().addingTimeInterval(2)
+    while !condition() {
+        if Date() > deadline { return XCTFail("condition never became true") }
+        try await Task.sleep(nanoseconds: 2_000_000)
     }
 }
 
@@ -196,6 +263,33 @@ final class MachineStepRunnerBackgroundTests: XCTestCase {
         XCTAssertEqual(runner.phase, .succeeded)
         XCTAssertEqual(terminal.processes.map(\.arguments), [steps[0].arguments] + steps.map(\.arguments))
         XCTAssertEqual(terminal.processes[1].input, Data("right".utf8))
+    }
+
+    func testStoppingABackgroundStepCancelsItsProcess() async throws {
+        var hooks = FakeTerminal().hooks
+        let started = Flag()
+        let cancelled = Flag()
+        hooks.runProcess = { _, _, _ in
+            started.set()
+            do {
+                try await Task.sleep(nanoseconds: 10_000_000_000)
+            } catch {
+                cancelled.set()
+                throw error
+            }
+            return 0
+        }
+        let runner = MachineStepRunner(hooks: hooks, pollInterval: 1_000_000)
+        let steps = passwordPlan()
+        let run = Task { await runner.run(steps, inTerminal: false, password: SecretText("hunter2")) }
+        try await waitFor { started.value }
+
+        runner.stop()
+        await run.value
+
+        XCTAssertTrue(cancelled.value)
+        XCTAssertEqual(runner.phase, .failed(step: steps[0].id))
+        XCTAssertEqual(runner.problem, MachineStepRunner.stopped)
     }
 
     func testACommandThatCannotStartFailsTheStep() async {
@@ -371,6 +465,148 @@ final class AddMachineModelTests: XCTestCase {
         XCTAssertEqual(model.agentKeysError, "no agent")
     }
 
+    private func passwordModel(
+        _ terminal: FakeTerminal, machines: MachinesStore? = nil
+    ) async -> AddMachineModel {
+        let fingerprint = "SHA256:" + String(repeating: "L", count: 43)
+        let resolved: MachinesStore
+        if let machines { resolved = machines } else { resolved = await store(newCLISnapshot) }
+        let model = AddMachineModel(
+            machines: resolved,
+            runner: MachineStepRunner(hooks: terminal.hooks, pollInterval: 1_000_000),
+            findLima: { nil }, onAdded: {})
+        model.wizard.choose(.server)
+        model.wizard.draft.name = "backup"
+        model.wizard.draft.address = "203.0.113.20"
+        model.wizard.draft.login = .password
+        model.wizard.draft.password = SecretText("hunter2")
+        model.wizard.draft.fingerprint = fingerprint
+        return model
+    }
+
+    func testAFailedRunForgetsThePasswordAndItsRetryAsksForItAgain() async {
+        let terminal = FakeTerminal()
+        terminal.processStatus = { $0.starts(with: ["machines", "add"]) ? 1 : 0 }
+        let model = await passwordModel(terminal)
+        model.wizard.next()
+        model.wizard.next()
+
+        await model.create()
+
+        XCTAssertEqual(model.runner.phase, .failed(step: model.wizard.plan[0].id))
+        XCTAssertEqual(model.wizard.draft.password.value, "")
+        XCTAssertFalse(model.canRetry)
+
+        await model.retry()
+
+        XCTAssertEqual(model.wizard.stage, .details)
+        XCTAssertEqual(model.wizard.draft.name, "backup")
+        XCTAssertEqual(terminal.processes.count, 1, "nothing ran again without a password")
+    }
+
+    func testEditAnswersAfterAFailureKeepsThemAndASecondCreateRunsTheFixedPlan() async {
+        let terminal = FakeTerminal()
+        terminal.processStatus = { $0.contains("203.0.113.20") ? 1 : 0 }
+        let model = await passwordModel(terminal)
+        model.wizard.next()
+        model.wizard.next()
+        await model.create()
+
+        model.editAnswers()
+        XCTAssertEqual(model.wizard.stage, .details)
+        model.wizard.draft.address = "203.0.113.21"
+        model.wizard.draft.password = SecretText("hunter2")
+        model.wizard.next()
+        model.wizard.next()
+        await model.create()
+
+        XCTAssertEqual(model.runner.phase, .succeeded)
+        XCTAssertEqual(terminal.processes.filter { $0.arguments.contains("203.0.113.21") }.count, 1)
+    }
+
+    func testClosingAfterAFailureReopensOnTheAnswers() async {
+        let terminal = FakeTerminal()
+        terminal.processStatus = { _ in 1 }
+        let model = await passwordModel(terminal)
+        model.wizard.next()
+        model.wizard.next()
+        await model.create()
+
+        model.close()
+        model.openPage()
+
+        XCTAssertEqual(model.wizard.stage, .details)
+        XCTAssertEqual(model.wizard.draft.address, "203.0.113.20")
+    }
+
+    func testLeavingThePageForgetsThePassword() async {
+        let model = await passwordModel(FakeTerminal())
+
+        model.leavePage()
+
+        XCTAssertEqual(model.wizard.draft.password.value, "")
+        XCTAssertEqual(model.wizard.draft.name, "backup")
+    }
+
+    func testReadingTheContextAgainNeverCarriesThePassword() async {
+        let model = await passwordModel(FakeTerminal())
+
+        model.refreshContext()
+
+        XCTAssertEqual(model.wizard.draft.password.value, "")
+        XCTAssertEqual(model.wizard.draft.address, "203.0.113.20")
+    }
+
+    func testANewerCLIFoundWhileReviewingSendsThePersonBackToWhatItNeeds() async {
+        let snapshot = Snapshots()
+        snapshot.value = .none
+        let machines = MachinesStore(read: { snapshot.value }, remove: { _ in })
+        await machines.load()
+        let model = AddMachineModel(
+            machines: machines, runner: MachineStepRunner(hooks: FakeTerminal().hooks), findLima: { nil },
+            onAdded: {})
+        model.wizard.choose(.server)
+        model.wizard.draft.name = "backup"
+        model.wizard.draft.address = "203.0.113.20"
+        model.wizard.draft.login = .password
+        model.wizard.next()
+        model.wizard.next()
+        XCTAssertEqual(model.wizard.stage, .review)
+
+        snapshot.value = newCLISnapshot
+        await machines.load()
+        model.openPage()
+
+        XCTAssertTrue(model.wizard.unattended)
+        XCTAssertEqual(model.wizard.stage, .details)
+        XCTAssertTrue(model.wizard.problems.contains { $0.field == .password })
+    }
+
+    func testTheMachineThisRunAlreadyAddedDoesNotBlockItsOwnName() async {
+        let terminal = FakeTerminal()
+        terminal.processStatus = { $0.starts(with: ["sync"]) ? 1 : 0 }
+        let snapshot = Snapshots()
+        snapshot.value = newCLISnapshot
+        let machines = MachinesStore(read: { snapshot.value }, remove: { _ in })
+        await machines.load()
+        let model = await passwordModel(terminal, machines: machines)
+        model.wizard.next()
+        model.wizard.next()
+        await model.create()
+        XCTAssertEqual(model.runner.phase, .failed(step: model.wizard.plan.last!.id))
+
+        snapshot.value = MachinesSnapshot(
+            hasConfiguration: true,
+            machines: [ConfiguredMachine(
+                name: "backup", hosts: ["203.0.113.20"], adminUser: "root", port: 22, workspaces: [],
+                packages: [], isSelf: false)],
+            packages: [], cliVersion: MachineUnattendedAdd.minimumCLIVersion)
+        await machines.load()
+        model.editAnswers()
+
+        XCTAssertFalse(model.wizard.problems.contains { $0.field == .name })
+    }
+
     func testOpeningThePageKeepsAnswersNotRunYet() async {
         let model = AddMachineModel(
             machines: await store(.none), runner: MachineStepRunner(hooks: FakeTerminal().hooks),
@@ -425,6 +661,25 @@ final class MachinesStoreTests: XCTestCase {
         XCTAssertEqual(store.remoteMachineNames, [])
     }
 
+    func testALoadAskedForDuringAnotherRunsAgainAfterIt() async throws {
+        let reads = Counter()
+        let gate = Gate()
+        let store = MachinesStore(read: {
+            reads.increment()
+            await gate.wait()
+            return .none
+        }, remove: { _ in })
+        let first = Task { await store.load() }
+        try await waitFor { reads.value == 1 }
+
+        await store.load()
+        await store.load()
+        await gate.open()
+        await first.value
+
+        XCTAssertEqual(reads.value, 2)
+    }
+
     func testARefusedRemovalShowsTheCLIsWords() async {
         struct Refused: Error, LocalizedError {
             var errorDescription: String? { "machine staging still has workspaces: umbrella" }
@@ -433,6 +688,46 @@ final class MachinesStoreTests: XCTestCase {
         await store.removeMachine("staging")
         XCTAssertEqual(store.removalError?.details, "machine staging still has workspaces: umbrella")
     }
+}
+
+private final class Snapshots: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = MachinesSnapshot.none
+    var value: MachinesSnapshot {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = 0
+    var value: Int { lock.withLock { stored } }
+    func increment() { lock.withLock { stored += 1 } }
+}
+
+/// Holds every read until opened; opened for good, so nothing stays held.
+private actor Gate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        waiters.forEach { $0.resume() }
+        waiters = []
+    }
+}
+
+private final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = false
+    var value: Bool { lock.withLock { stored } }
+    func set() { lock.withLock { stored = true } }
 }
 
 private final class RemovedNames: @unchecked Sendable {

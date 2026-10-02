@@ -11,6 +11,13 @@ public enum ProcessTree {
         return value
     }
 
+    /// A shell is back at its prompt when it is its own terminal's
+    /// foreground group again (a shell leads its group, so the group is its
+    /// pid). Nil when `ps` printed nothing usable.
+    public static func isAtPrompt(shellPID: Int, tpgidOutput: String) -> Bool? {
+        foregroundGroup(fromTPGID: tpgidOutput).map { $0 == shellPID }
+    }
+
     public static func tpgidArguments(pid: Int) -> [String] {
         ["-o", "tpgid=", "-p", "\(pid)"]
     }

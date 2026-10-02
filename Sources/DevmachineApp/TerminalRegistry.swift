@@ -317,6 +317,31 @@ final class TerminalRegistry: NSObject {
         redrawAfterReattach(kind)
     }
 
+    /// Whether a local pane's shell is back at its prompt: the Add machine
+    /// wizard's terminal steps end on a marker, and this tells a step that
+    /// died without one from a step still running. Nil when it cannot tell.
+    func isAtPrompt(_ kind: TerminalKind) async -> Bool? {
+        guard !DemoMode.isActive, case let .local(session, _) = kind, let term = terminals[kind] else { return nil }
+        let directShell = term.process.shellPid
+        let zmx = LocalTools.zmxPath()
+        return await Task.detached { () -> Bool? in
+            let runner = ProcessRunner()
+            var shell = Int(directShell)
+            if let zmx {
+                let socketDirectory = Zmx.socketDirectory()
+                let name = Zmx.sessionName(from: session, socketDirectory: socketDirectory)
+                guard let listing = try? runner.run(
+                    executable: zmx, args: Zmx.listArguments, environment: ["ZMX_DIR": socketDirectory]),
+                    let pid = Zmx.pid(of: name, in: listing) else { return nil }
+                shell = pid
+            }
+            guard shell > 0, let output = try? runner.run(
+                executable: "/bin/ps", args: ProcessTree.tpgidArguments(pid: shell), environment: nil)
+            else { return nil }
+            return ProcessTree.isAtPrompt(shellPID: shell, tpgidOutput: output)
+        }.value
+    }
+
     /// Replaces ssh for a command sent to a session's host; tests record here.
     var hostCommandRunner: ((_ alias: String, _ command: String) -> Void)?
     private var checkingCopyMode = false

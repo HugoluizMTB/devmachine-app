@@ -41,6 +41,7 @@ struct AddMachinePage: View {
             state.openPage()
             Task { await machines.load() }
         }
+        .onDisappear { state.leavePage() }
         .confirmationDialog(
             "Create \(draft.name.trimmingCharacters(in: .whitespaces))?", isPresented: $confirming
         ) {
@@ -106,7 +107,7 @@ struct AddMachinePage: View {
     }
 
     private func close() {
-        if !state.isRunning, runner.phase == .succeeded { state.startOver() }
+        state.close()
         if model.activePage == .addMachine { model.activePage = nil }
     }
 }
@@ -457,9 +458,20 @@ private struct AddMachineRunView: View {
                     title: "Could not add \(state.wizard.draft.name)",
                     cause: runner.problem,
                     details: failureDetails(step)),
-                retry: { Task { await state.retry() } })
-            DMButton("Close", variant: .outline, size: .small, action: onClose)
-                .frame(maxWidth: .infinity)
+                retry: state.canRetry ? { Task { await state.retry() } } : nil)
+            if !state.canRetry {
+                Text(verbatim: "The password is not kept after a run. Type it again to try again.")
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: m.space.sm) {
+                DMButton("Edit answers", variant: state.canRetry ? .outline : .primary, size: .small) {
+                    state.editAnswers()
+                }
+                DMButton("Close", variant: .ghost, size: .small, action: onClose)
+            }
+            .frame(maxWidth: .infinity)
         case .running, .idle:
             Text(verbatim: state.wizard.unattended
                 ? "Each command's output shows on the left as it runs. Nothing here asks a question."
@@ -467,6 +479,9 @@ private struct AddMachineRunView: View {
                 .font(.dm(11.5))
                 .foregroundStyle(Color.dmMuted)
                 .fixedSize(horizontal: false, vertical: true)
+            if runner.phase == .running {
+                DMButton("Stop", systemImage: "stop.fill", variant: .dangerOutline, size: .small) { state.stop() }
+            }
         }
     }
 
