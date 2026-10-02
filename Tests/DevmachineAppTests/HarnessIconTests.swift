@@ -64,14 +64,18 @@ final class HarnessIconLibraryTests: XCTestCase {
         let checkout = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let library = HarnessIconLibrary(directory: HarnessIconLibrary.directory(inCheckout: checkout))
-        let known = HarnessRegistry.builtIn.adapters.map(\.id) + [.pi]
-        for id in known {
+        for id in HarnessRegistry.builtIn.adapters.map(\.id) {
             XCTAssertNotNil(library.icon(for: id), id.rawValue)
         }
         XCTAssertFalse(try XCTUnwrap(library.icon(for: .claude)).isTemplate)
-        XCTAssertTrue(try XCTUnwrap(library.icon(for: .codex)).isTemplate)
-        XCTAssertTrue(FileManager.default.fileExists(
-            atPath: checkout.appendingPathComponent("Resources/HarnessIcons/LICENSE-orca.txt").path))
+        XCTAssertFalse(try XCTUnwrap(library.icon(for: .antigravity)).isTemplate)
+        for id in [HarnessID.codex, .pi, .opencode, .kimi, .cline] {
+            XCTAssertTrue(try XCTUnwrap(library.icon(for: id)).isTemplate, id.rawValue)
+        }
+        for license in ["LICENSE-orca.txt", "LICENSE-lobe-icons.txt"] {
+            XCTAssertTrue(FileManager.default.fileExists(
+                atPath: checkout.appendingPathComponent("Resources/HarnessIcons/\(license)").path), license)
+        }
     }
 }
 

@@ -6,7 +6,7 @@ final class HarnessRegistryTests: XCTestCase {
     func testBuiltInAdaptersAreRegisteredInPresentationOrder() {
         let registry = HarnessRegistry.builtIn
 
-        XCTAssertEqual(registry.adapters.map(\.id), [.claude, .codex])
+        XCTAssertEqual(registry.adapters.map(\.id), [.claude, .codex, .pi, .antigravity, .opencode, .kimi, .cline])
         XCTAssertNil(registry.adapter(for: HarnessID(rawValue: "unknown")))
     }
 
@@ -34,6 +34,63 @@ final class HarnessRegistryTests: XCTestCase {
         XCTAssertEqual(codex.processNames, ["codex"])
         XCTAssertEqual(codex.startupCommand, "codex")
         XCTAssertEqual(codex.uploadStoragePolicy, .appManaged)
+    }
+
+    func testEveryOtherHarnessLaunchesItsCLIAndIsKnownByItsPrograms() throws {
+        let expected: [(HarnessID, String, String, String, Set<String>)] = [
+            (.pi, "Pi", "Pi", "pi", ["pi"]),
+            (.antigravity, "Antigravity CLI", "Antigravity", "agy", ["agy"]),
+            (.opencode, "opencode", "opencode", "opencode", ["opencode"]),
+            (.kimi, "Kimi Code", "Kimi", "kimi", ["kimi", "kimi-code"]),
+            (.cline, "Cline", "Cline", "cline", ["cline", ".cline"]),
+        ]
+        for (id, title, shortTitle, executable, programs) in expected {
+            let adapter = try XCTUnwrap(HarnessRegistry.builtIn.adapter(for: id), id.rawValue)
+            XCTAssertEqual(adapter.descriptor.title, title)
+            XCTAssertEqual(adapter.descriptor.shortTitle, shortTitle)
+            XCTAssertFalse(adapter.descriptor.helpText.isEmpty)
+            XCTAssertEqual(adapter.executableName, executable)
+            XCTAssertEqual(adapter.startupCommand, executable)
+            XCTAssertEqual(adapter.processNames, programs)
+            XCTAssertEqual(adapter.uploadStoragePolicy, .appManaged)
+            XCTAssertNil(adapter.usageProvider(locator: SystemExecutableLocator(
+                path: "/missing", knownDirectories: [], loginShellLookup: nil)))
+        }
+    }
+
+    func testNoTwoHarnessesShareAColorOrAProgram() {
+        let adapters = HarnessRegistry.builtIn.adapters
+        XCTAssertEqual(Set(adapters.map { "\($0.descriptor.color)" }).count, adapters.count)
+        let programs = adapters.flatMap(\.processNames)
+        XCTAssertEqual(Set(programs).count, programs.count)
+    }
+
+    func testTheRegistryListsEveryProgramOfEveryHarness() {
+        let names = HarnessRegistry.builtIn.processNames
+        XCTAssertEqual(names[.kimi], ["kimi", "kimi-code"])
+        XCTAssertEqual(names[.antigravity], ["agy"])
+        XCTAssertEqual(names.count, HarnessRegistry.builtIn.adapters.count)
+    }
+
+    func testALocalSessionIsDetectedByTheNativeChildTheLauncherStarts() {
+        var settings = AppSettings.empty
+        settings.enabledHarnesses = [.claude, .pi, .kimi, .cline, .opencode]
+        let sessions = [
+            ZmxSession(name: "a", pid: 10, clients: 1, directory: nil),
+            ZmxSession(name: "b", pid: 20, clients: 1, directory: nil),
+            ZmxSession(name: "c", pid: 30, clients: 1, directory: nil),
+        ]
+        let entries = [
+            ProcessTree.Entry(pid: 11, parent: 10, command: "node"),
+            ProcessTree.Entry(pid: 12, parent: 11, command: "/Users/alice/.npm/lib/node_modules/cline/bin/.cline"),
+            ProcessTree.Entry(pid: 21, parent: 20, command: "kimi-code"),
+            ProcessTree.Entry(pid: 31, parent: 30, command: "pip"),
+        ]
+
+        let detected = SessionHarnessFacade(registry: .builtIn).detect(
+            sessions: sessions, entries: entries, settings: settings)
+
+        XCTAssertEqual(detected, ["a": [.cline], "b": [.kimi], "c": []])
     }
 
     func testUploadPolicyUsesRegistryOrderAndFallsBackToAppStorage() {

@@ -168,7 +168,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.context.isPolling)
         model.activePage = nil
         XCTAssertTrue(model.context.isPolling)
-        for harnesses: Set<HarnessID> in [[.codex], []] {
+        for harnesses: Set<HarnessID> in [[HarnessID(rawValue: "aider")], []] {
             model.sessionsByAlias["acme-devmachine"] = [
                 TmuxSession(name: "dash", windows: 1, harnesses: harnesses)]
             model.syncContext()

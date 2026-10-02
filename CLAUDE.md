@@ -518,7 +518,8 @@ Rules:
 - Session badges, launch commands, process matching, upload storage, context
   support, and usage capabilities come from adapters/facades. Views do not
   switch on Claude, Codex, executable names, or provider colors.
-- Home stacks one usage card per enabled harness. A harness whose CLI is not
+- Home stacks one usage card per enabled harness that has a usage provider
+  (Claude, Codex; the others have none). A harness whose CLI is not
   found still gets its card, showing "CLI not found", so Home never disagrees
   with Settings. The CLI is looked up on every read: inherited PATH, known
   directories, then the login shell's `command -v` (mise/asdf/nvm installs an
@@ -533,9 +534,26 @@ Rules:
   `Resources/HarnessIcons/<HarnessID>.svg`, loaded by name (`HarnessIconLibrary`):
   a new harness gets its icon by adding a file. An SVG drawn in `currentColor`
   takes the row's tint; one with its own colours keeps them. No file → the
-  hover dot stays. The icons come from Orca (MIT, `LICENSE-orca.txt` beside them).
+  hover dot stays. Claude, Codex and Pi come from Orca (MIT, `LICENSE-orca.txt`);
+  Antigravity, opencode, Kimi and Cline from lobe-icons (MIT,
+  `LICENSE-lobe-icons.txt`). A new icon names its source in one of those files.
 - The Context / Files / Git panel belongs to every selected session. Unsupported
   provider context shows an empty state while Files and Git remain available.
+- **Context reads a harness through one `ContextHarnessReader`** (Core,
+  `ContextRoots.readers`, the one table): it finds the project's sessions,
+  newest first, and reads one into a `ContextHarnessPass`. Each reader loads its
+  own storage: JSONL per session (Claude, Codex, Pi, Kimi, Antigravity), a JSON
+  file listed in SQLite (Cline), or rows in one SQLite file (opencode). SQLite
+  is opened `mode=ro` (never `immutable=1`, which misses rows still in the
+  WAL); a locked or missing database reads as no sessions. `ContextFacade`
+  serves every harness in the table, local or remote: the remote
+  `devmachine-infer` answers with the same ids. A harness is detected only
+  while it is enabled, by exact program name (`pi` is never `pip`); the session's
+  detected harnesses pick the transcript before the newest-file fallback.
+- **Remote Cline is not detected.** tmux reports the pane's foreground program,
+  and Cline's npm launcher is `node`; the native `.cline` it starts is a child
+  tmux does not name. Matching bare `node` would badge every Node program.
+  Locally the process tree shows `.cline`, so a local session is detected.
 
 ## Performance rules (learned from a 2 GB footprint)
 - Poll only while a view is visible (`onAppear`/`onDisappear` begin/end, refcount),

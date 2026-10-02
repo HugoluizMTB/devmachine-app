@@ -107,6 +107,8 @@ struct SystemExecutableLocator: ExecutableLocating {
     private static var defaultKnownDirectories: [URL] {
         [
             URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".local/bin"),
+            URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".opencode/bin"),
+            URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".kimi-code/bin"),
             URL(fileURLWithPath: "/opt/homebrew/bin"),
             URL(fileURLWithPath: "/usr/local/bin")
         ]
@@ -156,4 +158,45 @@ struct CodexHarnessAdapter: CodingHarnessAdapter {
         return CodexUsageProvider(transport: CodexAppServerTransport(
             resolveExecutable: { locator.executable(named: executableName) }))
     }
+}
+
+/// A harness the app launches, recognizes and reads context for, with no
+/// usage provider and no image folder of its own.
+struct BasicHarnessAdapter: CodingHarnessAdapter {
+    let descriptor: HarnessDescriptor
+    let executableName: String
+    let processNames: Set<String>
+    let uploadStoragePolicy = UploadStoragePolicy.appManaged
+
+    var id: HarnessID { descriptor.id }
+    var startupCommand: String { executableName }
+
+    init(id: HarnessID, title: String, shortTitle: String, color: Color, executableName: String, processNames: Set<String>) {
+        descriptor = HarnessDescriptor(
+            id: id, title: title, shortTitle: shortTitle, systemImage: "circle.fill", color: color,
+            helpText: "\(title) is running in this session")
+        self.executableName = executableName
+        self.processNames = processNames
+    }
+
+    static let pi = BasicHarnessAdapter(
+        id: .pi, title: "Pi", shortTitle: "Pi", color: .purple, executableName: "pi", processNames: ["pi"])
+    static let antigravity = BasicHarnessAdapter(
+        id: .antigravity, title: "Antigravity CLI", shortTitle: "Antigravity", color: .blue,
+        executableName: "agy", processNames: ["agy"])
+    /// The npm launcher is `node`; the program it starts is the native
+    /// `opencode`, which is what the process list shows.
+    static let opencode = BasicHarnessAdapter(
+        id: .opencode, title: "opencode", shortTitle: "opencode", color: .mint,
+        executableName: "opencode", processNames: ["opencode"])
+    /// Kimi Code renames its process to `kimi-code`; a native build may
+    /// still show the binary's own name.
+    static let kimi = BasicHarnessAdapter(
+        id: .kimi, title: "Kimi Code", shortTitle: "Kimi", color: .indigo,
+        executableName: "kimi", processNames: ["kimi", "kimi-code"])
+    /// The npm `cline` is a `node` script that starts the native binary,
+    /// hard-linked as `.cline`; only that child names the harness.
+    static let cline = BasicHarnessAdapter(
+        id: .cline, title: "Cline", shortTitle: "Cline", color: .teal,
+        executableName: "cline", processNames: ["cline", ".cline"])
 }
