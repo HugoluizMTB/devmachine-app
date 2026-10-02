@@ -277,7 +277,9 @@ enum DemoData {
             CLIPackage(
                 name: name, scope: "machine",
                 installedOn: declared.contains(name) ? ["machine \(machineName)"] : [],
-                summary: "DNS zones on \(name == "cloudflare" ? "Cloudflare" : "Hostinger").")
+                summary: "DNS zones on \(name == "cloudflare" ? "Cloudflare" : "Hostinger").",
+                kind: "dns", category: "DNS",
+                credentials: [PackageCredential(name: name, kind: "secret", scope: "machine")])
         }
     }
 

@@ -124,7 +124,10 @@ final class CaddyStore: ObservableObject {
         self.dnsSetup = dnsSetup ?? DNSSetupStore(
             service: service,
             runner: DemoMode.isActive ? DemoDNSSyncRunner() as any PrepareRunning : ProcessPrepareRunner())
-        if DemoMode.isActive { self.dnsSetup.canRunSync = { true } }
+        if DemoMode.isActive {
+            self.dnsSetup.canRunSync = { true }
+            self.dnsSetup.canEditMachineSettings = { true }
+        }
         self.dnsSetup.onConfigurationChanged = { [weak self] in self?.refresh(force: true) }
         self.dnsSetup.onSyncEnded = { [weak self] machine in
             guard let self, self.dnsMachine == machine else { return }

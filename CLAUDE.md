@@ -701,19 +701,22 @@ once may fail there.
   Only `dns providers` answering with a zone ends it: a finished sync that
   still sees none keeps the card on "Run sync". A machine that could not
   be asked shows no card (fails open).
-- Declared providers come from `packages list` (`installed_on`). Which
-  packages are DNS providers comes from `kind`/`category` when the CLI
-  gives them, else the summary "DNS zones on …" (`packages list` has no
-  kind yet). The credential name is the package name.
-- Add = `packages add <p> --machine <m> --yes` then `secrets set <p>
-  --stdin`: both local to this Mac, behind a confirm. The token goes on
-  stdin only, never argv, logs or the job output. Run sync = `sync
-  --machine <m> --tags <p> --yes` then `credentials push --machine <m>
-  --yes`, behind a confirm, streamed in the card and a `BGTask`; a CLI
-  older than 0.7.24 gets the commands instead.
-- Hostinger's `hostinger.zones` is shown as a `config.yml` snippet to add
-  by hand: the CLI has no command that sets a machine setting. The app
-  never edits `config.yml`.
+- Declared providers come from `packages list` (`installed_on`). A CLI
+  that reports `kind`/`credentials` (0.7.27+) is read by `kind == "dns"`
+  alone; an older one by the summary "DNS zones on …". The token is stored
+  under the package's declared secret credential, else the package name.
+- Add = `packages add <p> --machine <m> --yes`, then the zones if typed,
+  then `secrets set <secret> --stdin`: all local to this Mac, behind one
+  confirm. The token goes on stdin only, never argv, logs or the job
+  output. Run sync = `sync --machine <m> --tags <p> --yes` then
+  `credentials push --machine <m> --yes`, behind a confirm, streamed in
+  the card and a `BGTask`; a CLI older than 0.7.24 gets the commands.
+- Hostinger's `hostinger.zones` is set with `machines edit <m> --set
+  hostinger.zones=[…] --yes` behind a confirm on CLI 0.7.27+, after the
+  package is added (the CLI refuses a setting for a package not there).
+  Zones are plain names only (`DNSProviderCatalog.zones`). An older CLI
+  gets a `config.yml` snippet; the app never edits `config.yml`. Demo
+  mode refuses every write.
 - `DEVMACHINE_DEMO_WALK=dns-setup` captures every state; its sync is
   `DemoDNSSyncRunner`, which starts no process.
 

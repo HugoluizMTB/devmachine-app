@@ -28,6 +28,7 @@ public struct DNSProviderAnswer: Codable, Equatable, Sendable {
 /// The step of the setup that is running or failed.
 public enum DNSSetupStep: Equatable, Sendable {
     case install
+    case saveZones
     case saveToken
     case sync
 }
@@ -66,7 +67,39 @@ public enum DNSSetupState: Equatable, Sendable {
     }
 }
 
+/// A credential a package declares, as `packages list` reports it (CLI
+/// 0.7.27+). It never carries a value.
+public struct PackageCredential: Codable, Equatable, Sendable {
+    public let name: String
+    public let kind: String
+    public let scope: String?
+    public let env: String?
+    public let path: String?
+
+    public init(name: String, kind: String, scope: String? = nil, env: String? = nil, path: String? = nil) {
+        self.name = name
+        self.kind = kind
+        self.scope = scope
+        self.env = env
+        self.path = path
+    }
+}
+
 public enum DNSProviderSetup {
+    /// The first CLI with `machines edit --set`, and with `kind` and
+    /// `credentials` in `packages list`.
+    public static let machineSettingsMinimumCLIVersion = SemanticVersion(major: 0, minor: 7, patch: 27)
+
+    public static func canEditMachineSettings(cliVersion: SemanticVersion?) -> Bool {
+        guard let cliVersion else { return false }
+        return cliVersion >= machineSettingsMinimumCLIVersion
+    }
+
+    /// The value is read as YAML by the CLI, so the zones go as a flow list.
+    public static func zonesArguments(setting: String, machine: String, zones: [String]) -> [String] {
+        ["machines", "edit", machine, "--set", "\(setting)=[\(zones.joined(separator: ", "))]", "--yes"]
+    }
+
     /// `declared` is the DNS packages the configuration asks for on the
     /// machine (`packages list`), `answers` what `dns providers` said (it
     /// lists only what a sync applied). A nil input is one that could not be
@@ -121,9 +154,9 @@ public enum DNSProviderSetup {
 
     /// The same steps for a terminal, for a CLI too old to run them from here.
     /// A plain sync shows its plan and asks before it applies anything.
-    public static func manualCommands(package: String, machine: String, declared: Bool) -> [String] {
+    public static func manualCommands(package: String, credential: String, machine: String, declared: Bool) -> [String] {
         (declared ? [] : ["devmachine packages add \(package) --machine \(machine)"]) + [
-            "devmachine secrets set \(package)",
+            "devmachine secrets set \(credential)",
             "devmachine sync --machine \(machine)",
             "devmachine credentials push --machine \(machine)",
         ]
@@ -132,13 +165,31 @@ public enum DNSProviderSetup {
 
 /// Which packages are DNS providers, and what each one needs beyond a token.
 public enum DNSProviderCatalog {
-    /// `packages list` does not report a package's kind yet; until it does,
+    /// A CLI that reports kinds (0.7.27+) leaves `kind` out for an ordinary
+    /// package, so the kind alone decides. An older one reports none, and
     /// the provider packages' own summary ("DNS zones on …") decides.
-    public static func isProvider(kind: String?, category: String?, summary: String?) -> Bool {
-        if kind != nil || category != nil {
-            return kind?.lowercased() == "dns" || category?.lowercased() == "dns"
-        }
+    public static func isProvider(kind: String?, summary: String?, listReportsKinds: Bool) -> Bool {
+        if listReportsKinds { return kind?.lowercased() == "dns" }
         return summary?.hasPrefix("DNS zones") ?? false
+    }
+
+    /// The secret the package declares, else its first credential, else
+    /// the package's own name (what every provider used before the CLI
+    /// reported credentials).
+    public static func secretName(package: String, credentials: [PackageCredential]?) -> String {
+        let declared = credentials ?? []
+        return (declared.first { $0.kind == "secret" } ?? declared.first)?.name ?? package
+    }
+
+    /// The zones typed in the card. Nil when one of them is not a plain
+    /// domain name: the list is written into YAML.
+    public static func zones(from text: String) -> [String]? {
+        let names = text.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-"))
+        guard names.allSatisfy({ $0.unicodeScalars.allSatisfy(allowed.contains) }) else { return nil }
+        return names
     }
 
     /// Hostinger's token may lack the Domains portfolio permission; it then
@@ -149,8 +200,8 @@ public enum DNSProviderCatalog {
         zonesSettings[package]
     }
 
-    /// The machine setting to add to `config.yml` by hand: the CLI has no
-    /// command that sets a machine's setting.
+    /// The machine setting to add to `config.yml` by hand, for a CLI older
+    /// than `machines edit --set`.
     public static func zonesSnippet(package: String, machine: String, zones: String) -> String? {
         guard let setting = zonesSetting(for: package) else { return nil }
         let names = zones.split(separator: ",")

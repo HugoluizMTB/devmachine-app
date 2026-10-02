@@ -19,12 +19,16 @@ enum DNSSetupContent {
             return "\(provider) on \(machine) sees no domain"
         case .working(.install):
             return "Adding \(name) to \(machine)…"
+        case .working(.saveZones):
+            return "Saving the \(name) zones…"
         case .working(.saveToken):
             return "Saving the \(name) token…"
         case .working(.sync):
             return "Syncing \(name) on \(machine)…"
         case .failed(.install, _, _):
             return "\(name) was not added"
+        case .failed(.saveZones, _, _):
+            return "The \(name) zones were not saved"
         case .failed(.saveToken, _, _):
             return "The \(name) token was not saved"
         case .failed(.sync, _, _):
@@ -56,17 +60,34 @@ enum DNSSetupContent {
         }
     }
 
-    static let zonesGap = "The CLI has no command that sets a machine setting yet, so add this to "
-        + "config.yml in the CLI's configuration folder, then run sync."
+    static let zonesIntro = "Optional: the domains this token may manage, when it lacks Domains portfolio "
+        + "permission, separated by commas."
+
+    static let zonesApplied = "They go into this machine's settings in your devmachine configuration; "
+        + "sync applies them."
+
+    static let zonesGap = "Your devmachine CLI can't set a machine setting (it needs "
+        + "\(DNSProviderSetup.machineSettingsMinimumCLIVersion) or newer), so add this to config.yml in "
+        + "the CLI's configuration folder, then run sync."
+
+    static let zonesInvalid = "Only domain names, separated by commas."
+
+    static let zonesSaved = "Zones saved. Run sync to apply them."
 
     static let noCatalog = "The packages release offers no DNS provider package. Check what it has with:"
 
     static let oldCLIBody = "Your devmachine CLI can't sync one package from here (it needs "
         + "\(MachinePrepare.minimumCLIVersion) or newer). Update it, or run this in a terminal:"
 
-    static func installConfirmation(_ package: String, machine: String) -> String {
-        "This adds \(package) to \(machine) in your devmachine configuration and stores its token in "
-            + "the CLI's secret store, both on this Mac. The machine changes only when you run sync."
+    static func installConfirmation(_ package: String, machine: String, zones: [String] = []) -> String {
+        let setting = zones.isEmpty ? "" : ", sets the zones it may manage to \(zones.joined(separator: ", "))"
+        return "This adds \(package) to \(machine) in your devmachine configuration\(setting) and stores its "
+            + "token in the CLI's secret store, all on this Mac. The machine changes only when you run sync."
+    }
+
+    static func zonesConfirmation(_ package: String, machine: String, zones: [String]) -> String {
+        "This sets the zones \(package) may manage on \(machine) to \(zones.joined(separator: ", ")), in your "
+            + "devmachine configuration on this Mac. The machine changes only when you run sync."
     }
 
     static func syncConfirmation(_ package: String, machine: String) -> String {
@@ -94,6 +115,7 @@ struct DNSProviderSetupCard: View {
     @State private var showsTokenField = false
     @State private var confirmInstall: String?
     @State private var confirmSync: String?
+    @State private var confirmZones: String?
 
     var body: some View {
         if setup.state.showsCard, let machine = setup.machine {
@@ -118,7 +140,25 @@ struct DNSProviderSetupCard: View {
                 }
                 Button("Cancel", role: .cancel) { confirmInstall = nil }
             } message: {
-                Text(verbatim: DNSSetupContent.installConfirmation(confirmInstall ?? "", machine: machine))
+                Text(verbatim: DNSSetupContent.installConfirmation(
+                    confirmInstall ?? "", machine: machine, zones: confirmInstall.map(typedZones) ?? []))
+            }
+            .confirmationDialog(
+                confirmZones.map { "Set the \($0) zones on \(machine)?" } ?? "",
+                isPresented: Binding(get: { confirmZones != nil }, set: { if !$0 { confirmZones = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Save the zones") {
+                    if let package = confirmZones {
+                        let value = zones
+                        Task { await setup.saveZones(package, zones: value) }
+                    }
+                    confirmZones = nil
+                }
+                Button("Cancel", role: .cancel) { confirmZones = nil }
+            } message: {
+                Text(verbatim: DNSSetupContent.zonesConfirmation(
+                    confirmZones ?? "", machine: machine, zones: confirmZones.map(typedZones) ?? []))
             }
             .confirmationDialog(
                 confirmSync.map { "Sync \($0) on \(machine)?" } ?? "",
@@ -222,7 +262,7 @@ struct DNSProviderSetupCard: View {
                 DMButton("Add \(package)", systemImage: "plus", size: .small) {
                     confirmInstall = package
                 }
-                .disabled(DNSProviderSetup.secretInput(token) == nil)
+                .disabled(DNSProviderSetup.secretInput(token) == nil || !zonesAreValid)
             }
         }
     }
@@ -232,6 +272,15 @@ struct DNSProviderSetupCard: View {
         paragraph(DNSSetupContent.body(problem, provider: provider))
         if problem == .noZones {
             zonesHint(provider, machine: machine)
+            if setup.canEditMachineSettings(), DNSProviderCatalog.zonesSetting(for: provider) != nil {
+                DMButton("Save the zones", variant: .outline, size: .small) { confirmZones = provider }
+                    .disabled(typedZones(provider).isEmpty || !zonesAreValid)
+            }
+        }
+        if setup.savedZones == provider {
+            Label(DNSSetupContent.zonesSaved, systemImage: "checkmark.circle.fill")
+                .font(.dm(11.5))
+                .foregroundStyle(Color.dmMuted)
         }
         if setup.savedToken == provider {
             Label("Token saved. Run sync to deliver it.", systemImage: "checkmark.circle.fill")
@@ -257,7 +306,8 @@ struct DNSProviderSetupCard: View {
         } else {
             paragraph(DNSSetupContent.oldCLIBody)
             DMCommandBlock(DNSProviderSetup.manualCommands(
-                package: provider, machine: machine, declared: setup.isDeclared(provider)))
+                package: provider, credential: setup.secretName(provider), machine: machine,
+                declared: setup.isDeclared(provider)))
         }
     }
 
@@ -270,18 +320,33 @@ struct DNSProviderSetupCard: View {
     @ViewBuilder
     private func zonesHint(_ package: String, machine: String) -> some View {
         if DNSProviderCatalog.zonesSetting(for: package) != nil {
+            let canEdit = setup.canEditMachineSettings()
             VStack(alignment: .leading, spacing: m.space.sm) {
-                paragraph("Optional: the domains this token may manage, when it lacks Domains portfolio "
-                    + "permission. " + DNSSetupContent.zonesGap)
+                paragraph(DNSSetupContent.zonesIntro + " "
+                    + (canEdit ? DNSSetupContent.zonesApplied : DNSSetupContent.zonesGap))
                 TextField(domain.isEmpty ? "example.com" : domain, text: $zones)
                     .dmField()
                     .frame(maxWidth: m.pt(360))
-                if let snippet = DNSProviderCatalog.zonesSnippet(
+                if !zonesAreValid {
+                    paragraph(DNSSetupContent.zonesInvalid)
+                }
+                if !canEdit, let snippet = DNSProviderCatalog.zonesSnippet(
                     package: package, machine: machine, zones: zones.isEmpty ? domain : zones) {
                     DMCommandBlock(snippet.components(separatedBy: "\n"))
                 }
             }
         }
+    }
+
+    private var zonesAreValid: Bool {
+        DNSProviderCatalog.zones(from: zones) != nil
+    }
+
+    /// What the CLI will be asked to set: nothing when it cannot, or the
+    /// package has no zones setting.
+    private func typedZones(_ package: String) -> [String] {
+        guard setup.canEditMachineSettings(), DNSProviderCatalog.zonesSetting(for: package) != nil else { return [] }
+        return DNSProviderCatalog.zones(from: zones) ?? []
     }
 
     private func paragraph(_ text: String) -> some View {
@@ -293,8 +358,9 @@ struct DNSProviderSetupCard: View {
 
     private func install(_ package: String) {
         let value = token
+        let zoneText = typedZones(package).joined(separator: ", ")
         token = ""
-        Task { await setup.install(package, token: value) }
+        Task { await setup.install(package, token: value, zones: zoneText) }
     }
 
     private func save(_ package: String) {

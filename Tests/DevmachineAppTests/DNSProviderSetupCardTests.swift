@@ -38,6 +38,19 @@ final class DNSProviderSetupCardTests: XCTestCase {
         XCTAssertFalse(DNSSetupContent.body(.noZones, provider: "cloudflare").contains("Domains portfolio"))
     }
 
+    func testTheConfirmationsNameTheZonesTheCLIWillSet() {
+        XCTAssertTrue(DNSSetupContent.installConfirmation("hostinger", machine: "box", zones: ["example.com"])
+            .contains("sets the zones it may manage to example.com"))
+        XCTAssertFalse(DNSSetupContent.installConfirmation("hostinger", machine: "box").contains("zones"))
+        XCTAssertTrue(DNSSetupContent.zonesConfirmation("hostinger", machine: "box", zones: ["example.com", "example.net"])
+            .contains("example.com, example.net"))
+    }
+
+    func testAnOlderCLIIsToldWhichVersionSetsTheZones() {
+        XCTAssertTrue(DNSSetupContent.zonesGap.contains("0.7.27"))
+        XCTAssertTrue(DNSSetupContent.zonesGap.contains("config.yml"))
+    }
+
     func testTheCardRendersInEveryStateAndNotWhenReady() throws {
         let cases: [(answers: [DNSProviderAnswer]?, job: DNSSetupJob?, declared: Bool, shows: Bool)] = [
             ([], nil, false, true),

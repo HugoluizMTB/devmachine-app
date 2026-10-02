@@ -20,6 +20,9 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
     var declared: [String] = []
     var providers = #"{"providers":[]}"#
     var secretFails = false
+    /// A CLI 0.7.27+ reports kinds and credentials; its hostinger secret is
+    /// named apart from the package, to prove the name is read.
+    var reportsKinds = false
 
     var calls: [[String]] { lock.withLock { storedCalls } }
     var inputs: [Data?] { lock.withLock { storedInputs } }
@@ -47,6 +50,7 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
         let declared = self.declared
         let providers = self.providers
         let secretFails = self.secretFails
+        let reportsKinds = self.reportsKinds
         lock.unlock()
         switch args {
         case ["--format", "json", "machines", "list"]:
@@ -57,6 +61,16 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
             return (#"{"machines":[],"workspaces":[],"domain":"example.com"}"#, "", 0)
         case ["--format", "json", "packages", "list"]:
             let on = { (name: String) in declared.contains(name) ? #"["machine box"]"# : "[]" }
+            if reportsKinds {
+                return (#"""
+                {"packages":[
+                    {"name":"caddy","scope":"machine","summary":"A reverse proxy.","credentials":[],"installed_on":["machine box"]},
+                    {"name":"hostinger","scope":"machine","kind":"dns","summary":"DNS zones on Hostinger.",
+                     "credentials":[{"name":"hostinger-api","kind":"secret","scope":"machine","env":"HOSTINGER_API_TOKEN"}],
+                     "installed_on":\#(on("hostinger"))}
+                ]}
+                """#, "", 0)
+            }
             return (#"""
             {"packages":[
                 {"name":"caddy","scope":"machine","summary":"A reverse proxy.","installed_on":["machine box"]},
@@ -71,8 +85,12 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
         case ["packages", "add", "hostinger", "--machine", "box", "--yes"]:
             lock.withLock { self.declared.append("hostinger") }
             return ("added hostinger to machine box\n", "", 0)
-        case ["secrets", "set", "hostinger", "--stdin"]:
+        case ["secrets", "set", "hostinger", "--stdin"], ["secrets", "set", "hostinger-api", "--stdin"]:
             return secretFails ? ("", "error: the keychain is locked\n", 1) : ("", "", 0)
+        case ["machines", "edit", "box", "--set", "hostinger.zones=[example.com, example.net]", "--yes"]:
+            return declared.contains("hostinger")
+                ? ("set hostinger.zones\n", "", 0)
+                : ("", "error: hostinger is not installed on box\n", 1)
         default:
             return ("", "unexpected args: \(args)", 1)
         }
@@ -113,10 +131,12 @@ final class DNSSetupStoreTests: XCTestCase {
     }
 
     private func loadedStore(
-        _ cli: DNSSetupCLIRunner, sync: FakeSyncRunner = FakeSyncRunner(), canRunSync: Bool = true
+        _ cli: DNSSetupCLIRunner, sync: FakeSyncRunner = FakeSyncRunner(), canRunSync: Bool = true,
+        canEditSettings: Bool = true
     ) async throws -> CaddyStore {
         let service = CaddyService(cli: DevmachineCLI(executable: "/fake/devmachine", runner: cli))
-        let setup = DNSSetupStore(service: service, runner: sync, canRunSync: { canRunSync })
+        let setup = DNSSetupStore(
+            service: service, runner: sync, canRunSync: { canRunSync }, canEditMachineSettings: { canEditSettings })
         let store = CaddyStore(
             service: service, selection: SitesMachineSelection(defaults: defaults), dnsSetup: setup)
         store.refresh()
@@ -246,5 +266,68 @@ final class DNSSetupStoreTests: XCTestCase {
 
         XCTAssertNil(store.dnsSetup.machine)
         XCTAssertEqual(store.dnsSetup.state, .unknown)
+    }
+
+    func testANewCLIStoresTheTokenUnderTheCredentialThePackageDeclares() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.reportsKinds = true
+        let store = try await loadedStore(cli)
+        XCTAssertEqual(store.dnsSetup.catalog.map(\.name), ["hostinger"])
+
+        await store.dnsSetup.install("hostinger", token: "tok-1")
+
+        XCTAssertTrue(cli.calls.contains(["secrets", "set", "hostinger-api", "--stdin"]))
+        XCTAssertFalse(cli.calls.contains(["secrets", "set", "hostinger", "--stdin"]))
+    }
+
+    func testInstallSetsTheZonesAfterTheAddAndBeforeTheToken() async throws {
+        let cli = DNSSetupCLIRunner()
+        let store = try await loadedStore(cli)
+
+        await store.dnsSetup.install("hostinger", token: "tok-1", zones: "example.com, example.net")
+
+        let edit = ["machines", "edit", "box", "--set", "hostinger.zones=[example.com, example.net]", "--yes"]
+        let add = cli.calls.firstIndex(of: ["packages", "add", "hostinger", "--machine", "box", "--yes"])
+        let zones = cli.calls.firstIndex(of: edit)
+        let secret = cli.calls.firstIndex(of: ["secrets", "set", "hostinger", "--stdin"])
+        XCTAssertNotNil(add)
+        XCTAssertNotNil(zones)
+        XCTAssertLessThan(add ?? 0, zones ?? 0)
+        XCTAssertLessThan(zones ?? 0, secret ?? 0)
+        XCTAssertEqual(store.dnsSetup.state, .notSynced(provider: "hostinger", problem: .notApplied))
+    }
+
+    func testAnOlderCLINeverRunsMachinesEdit() async throws {
+        let cli = DNSSetupCLIRunner()
+        let store = try await loadedStore(cli, canEditSettings: false)
+
+        await store.dnsSetup.install("hostinger", token: "tok-1", zones: "example.com, example.net")
+
+        XCTAssertFalse(cli.calls.contains { $0.first == "machines" && $0.contains("edit") })
+        XCTAssertTrue(cli.calls.contains(["secrets", "set", "hostinger", "--stdin"]))
+    }
+
+    func testZonesSavedOnAMachineWithTheProviderStillAskForSync() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.providers = #"{"providers":[{"name":"hostinger","zones":[]}]}"#
+        let store = try await loadedStore(cli)
+
+        await store.dnsSetup.saveZones("hostinger", zones: "example.com, example.net")
+
+        XCTAssertTrue(cli.calls.contains(
+            ["machines", "edit", "box", "--set", "hostinger.zones=[example.com, example.net]", "--yes"]))
+        XCTAssertEqual(store.dnsSetup.savedZones, "hostinger")
+        XCTAssertEqual(store.dnsSetup.state, .notSynced(provider: "hostinger", problem: .noZones))
+    }
+
+    func testZonesThatAreNotNamesNeverReachTheCLI() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        let store = try await loadedStore(cli)
+
+        await store.dnsSetup.saveZones("hostinger", zones: "example.com]: x")
+
+        XCTAssertFalse(cli.calls.contains { $0.first == "machines" && $0.contains("edit") })
     }
 }

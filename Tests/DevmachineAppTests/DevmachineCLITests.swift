@@ -202,20 +202,51 @@ final class DevmachineCLITests: XCTestCase {
         }
     }
 
-    func testPackagesCarryTheirSummaryAndKindWhenTheCLIGivesThem() throws {
+    func testANewCLIFindsTheDNSProvidersByKindAndReportsTheirCredentials() throws {
         let body = #"""
         {"packages":[
-            {"name":"hostinger","scope":"machine","source":"release","summary":"DNS zones on Hostinger.","installed_on":["machine box"]},
-            {"name":"caddy","scope":"machine","source":"release","kind":"role","summary":"A reverse proxy.","installed_on":[]},
-            {"name":"cloudflare","scope":"machine","source":"release","kind":"dns","installed_on":null}
+            {"name":"hostinger","scope":"machine","source":"release","summary":"DNS zones on Hostinger.","category":"DNS","kind":"dns",
+             "credentials":[{"name":"hostinger","kind":"secret","scope":"machine","env":"HOSTINGER_API_TOKEN"}],"installed_on":["machine box"]},
+            {"name":"lookalike","scope":"machine","source":"local","summary":"DNS zones on paper.","credentials":[],"installed_on":[]},
+            {"name":"ghost","source":"missing","credentials":null,"installed_on":["machine box"]}
         ]}
         """#
         let runner = CLIRecordingRunner(result: (body, "", 0))
 
         let packages = try DevmachineCLI(executable: "/x", runner: runner).packages()
 
-        XCTAssertEqual(packages.filter(\.isDNSProvider).map(\.name), ["hostinger", "cloudflare"])
-        XCTAssertEqual(packages.first?.summary, "DNS zones on Hostinger.")
+        XCTAssertEqual(CLIPackage.dnsProviders(in: packages).map(\.name), ["hostinger"])
+        XCTAssertEqual(packages.first?.credentials, [
+            PackageCredential(name: "hostinger", kind: "secret", scope: "machine", env: "HOSTINGER_API_TOKEN"),
+        ])
+        XCTAssertEqual(packages.first?.secretName, "hostinger")
+    }
+
+    func testAnOlderCLIFindsTheDNSProvidersByTheirSummary() throws {
+        let body = #"""
+        {"packages":[
+            {"name":"hostinger","scope":"machine","source":"release","summary":"DNS zones on Hostinger.","installed_on":["machine box"]},
+            {"name":"caddy","scope":"machine","source":"release","summary":"A reverse proxy.","installed_on":[]},
+            {"name":"cloudflare","scope":"machine","source":"release","summary":"DNS zones on Cloudflare.","installed_on":null}
+        ]}
+        """#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+
+        let packages = try DevmachineCLI(executable: "/x", runner: runner).packages()
+
+        XCTAssertEqual(CLIPackage.dnsProviders(in: packages).map(\.name), ["hostinger", "cloudflare"])
+        XCTAssertNil(packages.first?.credentials)
+        XCTAssertEqual(packages.first?.secretName, "hostinger")
+    }
+
+    func testAMachineSettingIsSetThroughMachinesEdit() throws {
+        let runner = CLIRecordingRunner(result: ("", "", 0))
+
+        try DevmachineCLI(executable: "/x", runner: runner)
+            .setZones(setting: "hostinger.zones", machine: "box", zones: ["example.com"])
+
+        XCTAssertEqual(
+            runner.calls.first?.args, ["machines", "edit", "box", "--set", "hostinger.zones=[example.com]", "--yes"])
     }
 
     func testDNSListDecodesTheCLIJSONContractAndPassesTheProvider() throws {

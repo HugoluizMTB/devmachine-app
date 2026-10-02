@@ -17,6 +17,8 @@ final class DNSSetupStore: ObservableObject {
     @Published private(set) var output: [String: [String]] = [:]
     /// The provider whose token was saved last, for a short confirmation.
     @Published private(set) var savedToken: String?
+    /// The provider whose zones were saved last.
+    @Published private(set) var savedZones: String?
 
     /// A configuration change on this Mac (a package added): the packages
     /// list is read again.
@@ -27,6 +29,9 @@ final class DNSSetupStore: ObservableObject {
     /// `sync --tags` records only what it applied from CLI 0.7.24 on; an
     /// older CLI gets the commands to run in a terminal.
     var canRunSync: () -> Bool
+    /// `machines edit --set` exists from CLI 0.7.27 on; an older CLI gets
+    /// the `config.yml` snippet to add by hand.
+    var canEditMachineSettings: () -> Bool
 
     private let service: CaddyService
     private var runner: any PrepareRunning
@@ -37,11 +42,15 @@ final class DNSSetupStore: ObservableObject {
     init(
         service: CaddyService,
         runner: any PrepareRunning = ProcessPrepareRunner(),
-        canRunSync: @escaping () -> Bool = { MachineReadinessStore.shared.canPrepareInApp }
+        canRunSync: @escaping () -> Bool = { MachineReadinessStore.shared.canPrepareInApp },
+        canEditMachineSettings: @escaping () -> Bool = {
+            DNSProviderSetup.canEditMachineSettings(cliVersion: MachineReadinessStore.shared.snapshot?.cliVersion)
+        }
     ) {
         self.service = service
         self.runner = runner
         self.canRunSync = canRunSync
+        self.canEditMachineSettings = canEditMachineSettings
     }
 
     var state: DNSSetupState {
@@ -60,6 +69,11 @@ final class DNSSetupStore: ObservableObject {
         return declared?.first ?? catalog.first?.name
     }
 
+    /// The name the package's token is stored under.
+    func secretName(_ package: String) -> String {
+        catalog.first { $0.name == package }?.secretName ?? package
+    }
+
     func isDeclared(_ package: String) -> Bool {
         declared?.contains(package) ?? false
     }
@@ -71,14 +85,15 @@ final class DNSSetupStore: ObservableObject {
         if !sameMachine {
             self.machine = machine
             savedToken = nil
+            savedZones = nil
         }
         if let packages {
-            let catalog = packages.filter(\.isDNSProvider)
+            let catalog = CLIPackage.dnsProviders(in: packages)
             if self.catalog != catalog { self.catalog = catalog }
         }
         let declared: [String]?
         if let machine, let packages {
-            let listed = packages.filter { $0.isDNSProvider && $0.isInstalled(onMachine: machine) }.map(\.name)
+            let listed = CLIPackage.dnsProviders(in: packages).filter { $0.isInstalled(onMachine: machine) }.map(\.name)
             added[machine] = added[machine]?.subtracting(listed)
             declared = listed + (added[machine] ?? []).sorted()
         } else {
@@ -88,19 +103,33 @@ final class DNSSetupStore: ObservableObject {
         if self.answers != answers { self.answers = answers }
     }
 
-    /// Adds `package` to the machine in the configuration and stores its
-    /// token. Both stay on this Mac; the machine changes only on sync.
-    func install(_ package: String, token: String) async {
+    /// Adds `package` to the machine in the configuration, sets its zones
+    /// when some were typed and the CLI can, and stores its token. All of it
+    /// stays on this Mac; the machine changes only on sync. The zones come
+    /// after the add: the CLI refuses a setting for a package not there.
+    func install(_ package: String, token: String, zones: String = "") async {
         guard let machine, !isRunning(machine) else { return }
+        let zoneList = zonesToSet(package, zones)
+        guard zoneList != nil || zones.trimmingCharacters(in: .whitespaces).isEmpty || !canEditMachineSettings()
+        else { return }
         let run = begin(machine, .install)
+        if DemoMode.isActive { return fail(machine, run: run, step: .install, error: Self.demoRefusal) }
         let service = self.service
+        let secret = secretName(package)
         if let failure = await perform({ try service.addPackage(package, machine: machine) }) {
             return fail(machine, run: run, step: .install, error: failure)
         }
         added[machine, default: []].insert(package)
         if !(declared ?? []).contains(package) { declared = (declared ?? []) + [package] }
+        if let zoneList, let setting = DNSProviderCatalog.zonesSetting(for: package) {
+            jobs[machine] = .running(.saveZones)
+            if let failure = await perform({ try service.setZones(setting: setting, machine: machine, zones: zoneList) }) {
+                onConfigurationChanged()
+                return fail(machine, run: run, step: .saveZones, error: failure)
+            }
+        }
         jobs[machine] = .running(.saveToken)
-        if let failure = await perform({ try service.setSecret(package, value: token) }) {
+        if let failure = await perform({ try service.setSecret(secret, value: token) }) {
             onConfigurationChanged()
             return fail(machine, run: run, step: .saveToken, error: failure)
         }
@@ -110,11 +139,31 @@ final class DNSSetupStore: ObservableObject {
         onConfigurationChanged()
     }
 
+    /// Writes the zones the provider may manage into the machine's
+    /// settings (`machines edit --set`); the next sync applies them.
+    func saveZones(_ package: String, zones: String) async {
+        guard let machine, !isRunning(machine), canEditMachineSettings(),
+              let setting = DNSProviderCatalog.zonesSetting(for: package),
+              let zoneList = zonesToSet(package, zones) else { return }
+        let run = begin(machine, .saveZones)
+        if DemoMode.isActive { return fail(machine, run: run, step: .saveZones, error: Self.demoRefusal) }
+        let service = self.service
+        if let failure = await perform({ try service.setZones(setting: setting, machine: machine, zones: zoneList) }) {
+            return fail(machine, run: run, step: .saveZones, error: failure)
+        }
+        guard runs[machine] == run else { return }
+        jobs[machine] = .finished
+        savedZones = package
+        onConfigurationChanged()
+    }
+
     func saveToken(_ package: String, token: String) async {
         guard let machine, !isRunning(machine) else { return }
         let run = begin(machine, .saveToken)
+        if DemoMode.isActive { return fail(machine, run: run, step: .saveToken, error: Self.demoRefusal) }
         let service = self.service
-        if let failure = await perform({ try service.setSecret(package, value: token) }) {
+        let secret = secretName(package)
+        if let failure = await perform({ try service.setSecret(secret, value: token) }) {
             return fail(machine, run: run, step: .saveToken, error: failure)
         }
         guard runs[machine] == run else { return }
@@ -168,6 +217,16 @@ final class DNSSetupStore: ObservableObject {
         runs[machine] = nil
     }
 
+    private static let demoRefusal = DevmachineCLIError.commandFailed(
+        "Demo mode never changes a configuration or a secret.")
+
+    /// Nil when nothing usable was typed, or the CLI cannot set it.
+    private func zonesToSet(_ package: String, _ text: String) -> [String]? {
+        guard canEditMachineSettings(), DNSProviderCatalog.zonesSetting(for: package) != nil,
+              let zones = DNSProviderCatalog.zones(from: text), !zones.isEmpty else { return nil }
+        return zones
+    }
+
     private func isRunning(_ machine: String) -> Bool {
         if case .running = jobs[machine] { return true }
         return false
@@ -179,6 +238,7 @@ final class DNSSetupStore: ObservableObject {
         jobs[machine] = .running(step)
         output[machine] = []
         savedToken = nil
+        savedZones = nil
         return run
     }
 
@@ -213,6 +273,7 @@ final class DNSSetupStore: ObservableObject {
     ) {
         if let runner { self.runner = runner }
         canRunSync = { true }
+        canEditMachineSettings = { true }
         update(machine: machine, packages: packages, answers: answers)
         jobs[machine] = job
         output[machine] = lines
@@ -224,6 +285,7 @@ final class DNSSetupStore: ObservableObject {
         runs = [:]
         added = [:]
         savedToken = nil
+        savedZones = nil
     }
     #endif
 }

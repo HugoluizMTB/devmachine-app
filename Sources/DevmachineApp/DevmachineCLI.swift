@@ -145,18 +145,20 @@ struct CLIPackage: Codable, Equatable, Sendable {
     let scope: String
     let installedOn: [String]
     var summary: String?
-    /// Not in `packages list` yet; read when a newer CLI adds it.
+    /// `kind`, `category` and `credentials` come from CLI 0.7.27 on. A
+    /// nil `credentials` means the CLI did not report them at all.
     var kind: String?
     var category: String?
+    var credentials: [PackageCredential]?
 
     enum CodingKeys: String, CodingKey {
-        case name, scope, summary, kind, category
+        case name, scope, summary, kind, category, credentials
         case installedOn = "installed_on"
     }
 
     init(
         name: String, scope: String, installedOn: [String], summary: String? = nil,
-        kind: String? = nil, category: String? = nil
+        kind: String? = nil, category: String? = nil, credentials: [PackageCredential]? = nil
     ) {
         self.name = name
         self.scope = scope
@@ -164,6 +166,7 @@ struct CLIPackage: Codable, Equatable, Sendable {
         self.summary = summary
         self.kind = kind
         self.category = category
+        self.credentials = credentials
     }
 
     /// A package the configuration asks for that no recipe provides comes
@@ -176,10 +179,21 @@ struct CLIPackage: Codable, Equatable, Sendable {
         summary = try c.decodeIfPresent(String.self, forKey: .summary)
         kind = try c.decodeIfPresent(String.self, forKey: .kind)
         category = try c.decodeIfPresent(String.self, forKey: .category)
+        credentials = try c.decodeIfPresent([PackageCredential].self, forKey: .credentials)
     }
 
-    var isDNSProvider: Bool {
-        DNSProviderCatalog.isProvider(kind: kind, category: category, summary: summary)
+    /// The name its token is stored under with `secrets set`.
+    var secretName: String {
+        DNSProviderCatalog.secretName(package: name, credentials: credentials)
+    }
+
+    /// A list from a CLI that reports kinds is read by kind alone; one from
+    /// an older CLI by the providers' summary.
+    static func dnsProviders(in packages: [CLIPackage]) -> [CLIPackage] {
+        let reportsKinds = packages.contains { $0.kind != nil || $0.credentials != nil }
+        return packages.filter {
+            DNSProviderCatalog.isProvider(kind: $0.kind, summary: $0.summary, listReportsKinds: reportsKinds)
+        }
     }
 
     func isInstalled(onMachine machine: String) -> Bool {
@@ -384,6 +398,17 @@ struct DevmachineCLI: Sendable {
         let result = try runner.runCapturing(
             executable: executable,
             args: DNSProviderSetup.addArguments(package: package, machine: machine),
+            environment: environment()
+        )
+        try requireSuccess(result)
+    }
+
+    /// Writes a package setting into the machine's `settings:` in the
+    /// configuration on this Mac (CLI 0.7.27+); `sync` applies it.
+    func setZones(setting: String, machine: String, zones: [String]) throws {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: DNSProviderSetup.zonesArguments(setting: setting, machine: machine, zones: zones),
             environment: environment()
         )
         try requireSuccess(result)

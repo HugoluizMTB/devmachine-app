@@ -107,6 +107,10 @@ struct CaddyService: Sendable {
         try resolvedCLI().addPackage(package, machine: machine)
     }
 
+    func setZones(setting: String, machine: String, zones: [String]) throws {
+        try resolvedCLI().setZones(setting: setting, machine: machine, zones: zones)
+    }
+
     func setSecret(_ name: String, value: String) throws {
         try resolvedCLI().setSecret(name, value: value)
     }
