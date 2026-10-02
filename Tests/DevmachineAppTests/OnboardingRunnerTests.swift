@@ -39,6 +39,13 @@ private final class FakeMac: @unchecked Sendable {
     }
 }
 
+private final class AgentQuestions: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [[DetectedAgent]?] = []
+    var values: [[DetectedAgent]?] { lock.withLock { stored } }
+    func record(_ value: [DetectedAgent]?) { lock.withLock { stored.append(value) } }
+}
+
 private let claude = DetectedAgent(kind: .claude, executablePath: "/Users/alice/.local/bin/claude")
 
 @MainActor
@@ -46,7 +53,7 @@ final class OnboardingRunnerTests: XCTestCase {
     private func makeRunner(_ mac: FakeMac, panes: FakePanes, poll: UInt64 = 5_000_000) -> OnboardingRunner {
         OnboardingRunner(
             home: "/Users/alice", launcher: panes,
-            detect: { mac.detection }, agentPollInterval: poll)
+            detect: { _ in mac.detection }, agentPollInterval: poll)
     }
 
     func testOneButtonCarriesAFreshMacToTheEnd() async throws {
@@ -144,6 +151,26 @@ final class OnboardingRunnerTests: XCTestCase {
         mac.detection = OnboardingDetection(
             cliFound: true, adminMachine: "acme", missingPackageMachines: [], agents: [claude])
         try await waitFor { runner.flow.phase == .complete }
+    }
+
+    func testOnlyTheFirstReadLooksForAgentsAndLaterOnesReuseThem() async throws {
+        let asked = AgentQuestions()
+        let runner = OnboardingRunner(
+            home: "/Users/alice", launcher: FakePanes(),
+            detect: { known in
+                asked.record(known)
+                return OnboardingDetection(
+                    cliFound: false, adminMachine: nil, missingPackageMachines: [], agents: known ?? [claude])
+            },
+            agentPollInterval: 5_000_000)
+        await runner.refresh()
+
+        runner.startAgent(.claude)
+        try await waitFor { asked.values.count >= 3 }
+        runner.leave()
+
+        XCTAssertEqual(asked.values.first, .some(nil))
+        XCTAssertTrue(asked.values.dropFirst().allSatisfy { $0 == [claude] })
     }
 
     func testAnAgentThatQuitsIsReportedAndTheButtonsComeBack() async throws {

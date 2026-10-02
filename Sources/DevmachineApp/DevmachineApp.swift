@@ -73,6 +73,11 @@ struct DevmachineApp: App {
                         stats.loadMachines()
                         MachinesStore.shared.requestLoad()
                     }
+                    model.onLeftOnboarding = {
+                        stats.loadMachines()
+                        MachinesStore.shared.requestLoad()
+                        MachineReadinessStore.shared.requestCheck()
+                    }
                     readiness.onPrepared = { [weak model] machine in
                         model?.refreshWorkspaces(onMachine: machine)
                         stats.refresh()

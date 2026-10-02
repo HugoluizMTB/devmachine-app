@@ -309,8 +309,12 @@ final class MachineReadinessStore: ObservableObject {
         if states != next { states = next }
     }
 
+    /// The CLI's folder is being watched. Before setup writes it there is
+    /// nothing to watch, so each check tries again until there is.
+    var isWatchingConfiguration: Bool { watcher?.isWatching ?? false }
+
     private func watch(_ directory: String) {
-        guard watcher?.directory != directory else { return }
+        guard watcher?.directory != directory || watcher?.isWatching != true else { return }
         watcher = ConfigDirectoryWatcher(directory: directory) { [weak self] in
             self?.onConfigurationChanged?()
             self?.requestCheck()
@@ -357,6 +361,9 @@ final class ConfigDirectoryWatcher {
         folderSource = source(directory)
         watchConfigFile()
     }
+
+    /// False when the folder did not exist when the watcher was made.
+    var isWatching: Bool { folderSource != nil }
 
     deinit {
         folderSource?.cancel()

@@ -33,7 +33,10 @@ final class OnboardingRunner: ObservableObject {
 
     private let home: String
     private let launcher: any OnboardingPaneLaunching
-    private let detect: @Sendable () async -> OnboardingDetection
+    /// Reads the Mac. Given the agents already found, it reuses them and
+    /// reads only the CLI and its configuration; nil looks for agents too,
+    /// which starts a login shell per agent.
+    private let detect: @Sendable ([DetectedAgent]?) async -> OnboardingDetection
     private let agentPollInterval: UInt64
     private var paneNumber = 0
     private var detecting = false
@@ -43,15 +46,21 @@ final class OnboardingRunner: ObservableObject {
     init(
         home: String = NSHomeDirectory(),
         launcher: (any OnboardingPaneLaunching)? = nil,
-        detect: @escaping @Sendable () async -> OnboardingDetection = {
-            await Task.detached { OnboardingDetector.detect() }.value
-        },
-        agentPollInterval: UInt64 = 4_000_000_000
+        detect: (@Sendable ([DetectedAgent]?) async -> OnboardingDetection)? = nil,
+        agentPollInterval: UInt64 = 10_000_000_000
     ) {
         self.home = home
         self.launcher = launcher ?? TerminalRegistry.shared
-        self.detect = detect
+        self.detect = detect ?? Self.liveDetect
         self.agentPollInterval = agentPollInterval
+    }
+
+    /// Demo mode reads no CLI and no agent: it shows a Mac with nothing yet.
+    private static let liveDetect: @Sendable ([DetectedAgent]?) async -> OnboardingDetection = { known in
+        guard !DemoMode.isActive else { return DemoSetupFlow.freshMac }
+        return await Task.detached {
+            OnboardingDetector.detect(agents: { known ?? AgentDetector.detect() })
+        }.value
     }
 
     /// Demo screenshots: a flow in any state, with no program behind it.
@@ -82,7 +91,7 @@ final class OnboardingRunner: ObservableObject {
         detecting = true
         repeat {
             detectAgain = false
-            let next = await detect()
+            let next = await detect(flow.hasDetected ? flow.detection.agents : nil)
             perform(flow.receive(next))
         } while detectAgain
         detecting = false
@@ -92,6 +101,10 @@ final class OnboardingRunner: ObservableObject {
         switch effect {
         case nil:
             break
+        case let .runStep(step, _) where DemoMode.isActive:
+            perform(flow.refuse(step))
+        case .launchAgent where DemoMode.isActive:
+            perform(flow.agentExited())
         case let .runStep(step, command):
             launch(OnboardingPrograms.step(command)) { [weak self] code in
                 guard let self else { return }
@@ -131,8 +144,9 @@ final class OnboardingRunner: ObservableObject {
         launcher.close(kind)
     }
 
-    /// An agent never says it is done, so the Mac is read every few seconds
-    /// while it works; the page moves on by itself once setup is complete.
+    /// An agent never says it is done, so the Mac is read every ten seconds
+    /// while it works (the CLI and its configuration only: the agents found
+    /// at the start are reused); the page moves on once setup is complete.
     private func watchAgent() {
         agentWatch?.cancel()
         let interval = agentPollInterval

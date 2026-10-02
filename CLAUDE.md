@@ -594,15 +594,24 @@ Rules:
   the CLI lists a package as soon as it is declared. Failures wait for Try
   again, Back or "Ask <agent> to fix it".
 - **The agent path starts the agent as the pane's program** with the prompt
-  as one argument (`AgentPrompt.setup`), and the Mac is re-read every few
-  seconds until setup is complete. Quitting the agent early offers the button
-  for the steps still missing.
+  as one argument (`AgentPrompt.setup`), and the Mac is re-read every 10
+  seconds until setup is complete. Only the first read looks for agents
+  (a login shell per agent); every later one reuses them and reads the CLI
+  and its configuration only. Quitting the agent early offers the button
+  for the steps still missing. Demo mode reads no CLI or agent and refuses
+  every step and agent (`OnboardingDemoTests`).
 - **It ends on "Start using Devmachine"**: `completeOnboarding` reads the CLI
   again, fills the empty Connection fields, saves them and opens Home, with
   no restart. Settings → Connection shows what the CLI reports read-only
   ("Change…", "Edit"), re-reads it each time it opens, and an issue the setup
   fixes (no CLI; a folder other than the CLI's own with no `config.yml`)
   carries a button back into onboarding.
+- **Leaving onboarding reads the CLI once, off the main thread**, and hands
+  that answer to the workspace load. Then `onLeftOnboarding` reloads the
+  machine lists (Home's stats machines, `MachinesStore`, readiness), so a
+  machine the setup just added shows without a relaunch. The config
+  folder watcher is made again on any check while the folder it watches
+  did not exist when it was made (`isWatchingConfiguration`).
 - The main window opens at 80% of the screen when AppKit has no saved frame
   for it (`MainWindowSizing`, read before any window exists); a saved frame
   always wins. Demo walk: `DEVMACHINE_DEMO_WALK=setup-flow`.

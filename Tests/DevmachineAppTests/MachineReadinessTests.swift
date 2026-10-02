@@ -447,6 +447,25 @@ final class MachineReadinessContentTests: XCTestCase {
 
 @MainActor
 final class ConfigDirectoryWatcherTests: XCTestCase {
+    func testAFolderThatDoesNotExistYetIsWatchedOnceItDoes() async throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("devmachine-watch-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var snapshot = ReadinessSnapshot()
+        snapshot.configDirectory = folder.path
+        let next = snapshot
+        let store = MachineReadinessStore(
+            read: { next }, runner: ProcessPrepareRunner(cli: { throw DevmachineCLIError.commandFailed("no") }),
+            listensForReports: false)
+
+        await store.check()
+        XCTAssertFalse(store.isWatchingConfiguration, "nothing to watch before setup writes the folder")
+
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        await store.check()
+        XCTAssertTrue(store.isWatchingConfiguration)
+    }
+
     func testASaveByRenameIsSeenOnce() async throws {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("devmachine-watch-\(UUID().uuidString)")

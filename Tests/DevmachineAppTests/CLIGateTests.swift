@@ -86,6 +86,42 @@ final class CLIGateTests: XCTestCase {
         XCTAssertEqual(SettingsStore(defaults: suite).settings, store.settings, "saved, not only in memory")
     }
 
+    func testStartUsingReadsTheCLIOnceAndNeverOnTheMainThread() async {
+        let store = SettingsStore(defaults: UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!)
+        let reads = MainThreadLog()
+        let model = AppModel(
+            store: SessionStore(runner: NeverCalledRunner()),
+            services: fixtureServices(workspaces: [workspace]),
+            cliAvailabilityCheck: {
+                reads.record("cli")
+                return true
+            },
+            detectSettings: {
+                reads.record("detect")
+                return detectedFixture
+            },
+            defaults: UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!)
+
+        await model.completeOnboarding(saving: store)
+
+        XCTAssertEqual(reads.names.filter { $0 == "detect" }.count, 1)
+        XCTAssertFalse(reads.onMain, "the CLI was read on the main thread")
+        XCTAssertEqual(model.workspaces, [workspace])
+        XCTAssertEqual(model.settings?.workspaceAliases, detectedFixture.workspaceAliases)
+    }
+
+    func testLeavingOnboardingTellsTheMachineListsToReadAgain() async {
+        let store = SettingsStore(defaults: UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!)
+        let model = model(cliFound: { true }, detected: detectedFixture)
+        var reloads = 0
+        model.onLeftOnboarding = { reloads += 1 }
+
+        await model.completeOnboarding(saving: store)
+        await model.skipOnboarding(saving: store)
+
+        XCTAssertEqual(reloads, 2)
+    }
+
     func testStartUsingKeepsValuesTheUserAlreadySaved() async {
         let suite = UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!
         let store = SettingsStore(defaults: suite)
@@ -154,5 +190,21 @@ private final class NeverCalledRunner: CommandRunner, @unchecked Sendable {
     func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
         XCTFail("no command should run while the devmachine CLI gate is active: \(executable) \(args)")
         return ""
+    }
+}
+
+private final class MainThreadLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [String] = []
+    private var sawMain = false
+    var names: [String] { lock.withLock { stored } }
+    var onMain: Bool { lock.withLock { sawMain } }
+
+    func record(_ name: String) {
+        let main = Thread.isMainThread
+        lock.withLock {
+            stored.append(name)
+            if main { sawMain = true }
+        }
     }
 }

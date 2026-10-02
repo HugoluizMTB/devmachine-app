@@ -1361,15 +1361,24 @@ final class AppModel: ObservableObject {
         showsOnboarding = true
     }
 
+    /// Home's machine cards and the machine lists read again when
+    /// onboarding ends: the setup may have just written the first machine.
+    var onLeftOnboarding: (() -> Void)?
+
+    /// One read of the CLI, off the main thread, handed to the workspace
+    /// load instead of a second one on it.
     private func leaveOnboarding(saving store: SettingsStore) async {
         let detected = await refreshDetected()
+        let check = cliAvailabilityCheck
+        let cliFound = await Task.detached { check() }.value
         let next = detected.filling(store.settings ?? .empty)
         if store.settings != next { store.settings = next }
         settings = next
-        cliMissing = !cliAvailabilityCheck()
+        cliMissing = !cliFound
         activePage = nil
         showsOnboarding = false
-        loadWorkspaces()
+        loadWorkspaces(detected: detected)
+        onLeftOnboarding?()
     }
 
     /// `DEVMACHINE_DEMO=1`: skips the CLI gate, Setup, and every ssh/CLI call
@@ -1407,9 +1416,9 @@ final class AppModel: ObservableObject {
         hasLoadedWorkspaces = true
     }
 
-    func loadWorkspaces() {
+    func loadWorkspaces(detected known: CLIDetectedSettings? = nil) {
         guard let settings else { return }
-        let detected = detectSettings()
+        let detected = known ?? detectSettings()
         if self.detected != detected { self.detected = detected }
         var settingsWithAliases = settings
         settingsWithAliases.workspaceAliases = detected.workspaceAliases

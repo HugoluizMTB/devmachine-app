@@ -7,6 +7,8 @@ enum OnboardingFailure: Equatable, Sendable {
     /// It exited 0, yet the Mac reads the same as before it ran: running it
     /// again blindly would loop forever, so it stops here instead.
     case unresolved
+    /// Demo mode shows the flow and runs nothing.
+    case demo
 
     func message(for step: OnboardingStepID) -> String {
         switch self {
@@ -14,6 +16,8 @@ enum OnboardingFailure: Equatable, Sendable {
             return "It stopped with exit code \(code). The terminal shows why."
         case .exited(nil):
             return "It was stopped before it finished."
+        case .demo:
+            return "Demo mode never runs a step."
         case .unresolved:
             switch step {
             case .installCLI: return "It finished, but the app still cannot find the devmachine CLI."
@@ -146,6 +150,12 @@ struct OnboardingFlow: Equatable, Sendable {
         finished.append(step)
         phase = .checking(step)
         return .refreshDetection
+    }
+
+    /// The step could not be started at all (demo mode).
+    mutating func refuse(_ step: OnboardingStepID) -> OnboardingEffect? {
+        guard phase == .running(step) else { return nil }
+        return fail(step, .demo)
     }
 
     mutating func retry() -> OnboardingEffect? {
