@@ -178,9 +178,13 @@ public struct PackageInfo: Equatable, Sendable {
     public let platforms: [String]
     /// The packages it brings in first: for `essentials`, what it is made of.
     public let needs: [String]
+    /// The catalog's heading for it, like "Coding agents"; empty when the
+    /// package names none.
+    public let category: String
 
     public init(
-        name: String, scope: String, summary: String, source: String, platforms: [String] = [], needs: [String] = []
+        name: String, scope: String, summary: String, source: String, platforms: [String] = [], needs: [String] = [],
+        category: String = ""
     ) {
         self.name = name
         self.scope = scope
@@ -188,6 +192,7 @@ public struct PackageInfo: Equatable, Sendable {
         self.source = source
         self.platforms = platforms
         self.needs = needs
+        self.category = category
     }
 }
 
@@ -200,17 +205,24 @@ public struct MachinePackageCard: Equatable, Sendable, Identifiable {
     public let isYours: Bool
     /// What `essentials` is made of; empty for any other package.
     public let contains: [String]
-    /// Always installed, shown checked and never toggled.
-    public var isLocked: Bool { name == MachinePackageCatalog.essentials }
+    /// Always installed, shown checked and never toggled: `essentials` on a
+    /// machine, the account package on a workspace.
+    public let isLocked: Bool
+    public let category: String
 
     public var id: String { name }
 
-    public init(name: String, summary: String, isRecommended: Bool, isYours: Bool, contains: [String] = []) {
+    public init(
+        name: String, summary: String, isRecommended: Bool, isYours: Bool, contains: [String] = [],
+        locked: Bool? = nil, category: String = ""
+    ) {
         self.name = name
         self.summary = summary
         self.isRecommended = isRecommended
         self.isYours = isYours
         self.contains = contains
+        self.isLocked = locked ?? (name == MachinePackageCatalog.essentials)
+        self.category = category
     }
 }
 

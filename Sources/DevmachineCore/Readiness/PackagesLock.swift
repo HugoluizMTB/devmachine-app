@@ -16,10 +16,13 @@ public struct PackagesLock: Equatable, Sendable {
 
     public let appliedAt: String?
     public let machines: [String: [Entry]]
+    /// Per workspace, what the last sync applied to its account.
+    public let workspaces: [String: [Entry]]
 
-    public init(appliedAt: String? = nil, machines: [String: [Entry]]) {
+    public init(appliedAt: String? = nil, machines: [String: [Entry]], workspaces: [String: [Entry]] = [:]) {
         self.appliedAt = appliedAt
         self.machines = machines
+        self.workspaces = workspaces
     }
 
     public static let fileName = "packages.lock"
@@ -33,11 +36,12 @@ public struct PackagesLock: Equatable, Sendable {
     }
 
     /// Reads the YAML the CLI writes (`yaml.v3`, any indent). Only the
-    /// `machines` map is read; nil means the text is not a lock at all.
+    /// `machines` and `workspaces` maps are read; nil means the text is not
+    /// a lock at all.
     public static func parse(_ text: String) -> PackagesLock? {
         var appliedAt: String?
-        var machines: [String: [Entry]] = [:]
-        var inMachines = false
+        var sections: [String: [String: [Entry]]] = ["machines": [:], "workspaces": [:]]
+        var section: String?
         var machineIndent: Int?
         var machine: String?
         var sawTopLevelKey = false
@@ -51,20 +55,19 @@ public struct PackagesLock: Equatable, Sendable {
             if indent == 0 {
                 sawTopLevelKey = true
                 guard let (key, value) = keyValue(trimmed) else { return nil }
-                inMachines = key == "machines"
+                section = sections[key] != nil && value != "{}" ? key : nil
                 machineIndent = nil
                 machine = nil
                 if key == "applied_at" { appliedAt = value.isEmpty ? nil : value }
-                if inMachines, value == "{}" { inMachines = false }
                 continue
             }
-            guard inMachines else { continue }
+            guard let section else { continue }
 
             if !trimmed.hasPrefix("-"), machineIndent == nil || indent == machineIndent,
                let (key, value) = keyValue(trimmed) {
                 machineIndent = indent
                 machine = key
-                machines[key, default: []] = []
+                sections[section, default: [:]][key] = []
                 if value == "[]" { machine = nil }
                 continue
             }
@@ -72,14 +75,15 @@ public struct PackagesLock: Equatable, Sendable {
             let item = trimmed.hasPrefix("-") ? String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces) : trimmed
             guard let (key, value) = keyValue(item) else { continue }
             if key == "name", trimmed.hasPrefix("-") {
-                machines[machine, default: []].append(Entry(name: value))
-            } else if key == "version", var entries = machines[machine], let last = entries.popLast() {
+                sections[section, default: [:]][machine, default: []].append(Entry(name: value))
+            } else if key == "version", var entries = sections[section]?[machine], let last = entries.popLast() {
                 entries.append(Entry(name: last.name, version: value.isEmpty ? nil : value))
-                machines[machine] = entries
+                sections[section]?[machine] = entries
             }
         }
         guard sawTopLevelKey else { return nil }
-        return PackagesLock(appliedAt: appliedAt, machines: machines)
+        return PackagesLock(
+            appliedAt: appliedAt, machines: sections["machines"] ?? [:], workspaces: sections["workspaces"] ?? [:])
     }
 
     private static func keyValue(_ text: String) -> (String, String)? {

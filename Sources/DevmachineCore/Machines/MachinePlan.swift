@@ -13,6 +13,9 @@ public struct MachinePlanStep: Equatable, Sendable, Identifiable {
         case addMachine
         case addPackage(String)
         case newWorkspace
+        case editWorkspace
+        case forgetWorkspace
+        case destroyWorkspace
         case sync
     }
 

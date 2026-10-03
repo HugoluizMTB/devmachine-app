@@ -912,7 +912,7 @@ once may fail there.
   `sync`. A workspace name is its Linux account's: the CLI's
   `linuxUserName` rule, at most 32 characters, not a system account or
   the admin login, not a workspace the configuration has
-  (`MachineDraft.workspaceProblem`). Package cards are machine packages whose `platforms` hold `linux`
+  (`WorkspaceName.problem`, shared with the Workspaces page). Package cards are machine packages whose `platforms` hold `linux`
   or are empty (any): a server and a Lima machine are both Linux, so a
   `[macos]` package is never offered. Essentials is always installed
   (locked, its `needs` listed as included and not offered again on their

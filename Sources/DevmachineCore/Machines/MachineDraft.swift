@@ -161,33 +161,11 @@ public struct MachineDraft: Equatable, Sendable {
         return problems
     }
 
-    /// A workspace's name is its Linux account's (`useradd` on the
-    /// machine), so it follows the CLI's `linuxUserName` rule and Linux's
-    /// 32-character limit, and cannot be an account the machine already has.
-    static let workspacePattern = "^[a-z_][a-z0-9_-]*$"
-    static let workspaceMaxLength = 32
-    static let systemAccounts: Set<String> = [
-        "root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news", "uucp", "proxy",
-        "www-data", "backup", "list", "irc", "nobody", "messagebus", "sshd", "syslog", "ubuntu", "admin",
-        "caddy", "docker", "lima",
-    ]
-
+    /// The first workspace follows the same rule as any new one
+    /// (`WorkspaceName`); the admin login typed here is an account too.
     private func workspaceProblem(existingWorkspaces: [String]) -> String? {
-        let name = trimmedWorkspace
-        guard !name.isEmpty else { return nil }
-        if !Self.matches(name, Self.workspacePattern) {
-            return "Start with a letter, then use lower-case letters, digits, - and _."
-        }
-        if name.count > Self.workspaceMaxLength {
-            return "Use \(Self.workspaceMaxLength) characters or fewer: it becomes a Linux account name."
-        }
-        if Self.systemAccounts.contains(name) || name == trimmedUser {
-            return "\(name) is already an account on the machine. Pick another, like acme."
-        }
-        if existingWorkspaces.contains(name) {
-            return "A workspace named \(name) already exists."
-        }
-        return nil
+        guard !trimmedWorkspace.isEmpty else { return nil }
+        return WorkspaceName.problem(trimmedWorkspace, adminUser: trimmedUser, existing: existingWorkspaces)
     }
 
     private func serverProblems() -> [MachineDraftProblem] {
