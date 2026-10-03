@@ -37,6 +37,7 @@ struct DMLogView: View {
                     .textSelection(.enabled)
                     .padding(m.space.md)
                 }
+                .defaultScrollAnchor(.bottom)
                 .onAppear { scrollToEnd(proxy) }
                 .onChange(of: lines.count) { _, _ in scrollToEnd(proxy) }
             }
