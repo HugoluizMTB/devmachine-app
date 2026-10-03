@@ -113,6 +113,13 @@ final class MachinesStore: ObservableObject {
         snapshot.map { $0.machines.filter { !$0.isSelf }.map(\.name) }
     }
 
+    /// The pinned release's workspace packages, which decide the harnesses
+    /// that can be turned on; nil until a read listed any.
+    var workspacePackageNames: Set<String>? {
+        let names = (snapshot?.packages ?? []).filter { $0.scope == "workspace" }.map(\.name)
+        return names.isEmpty ? nil : Set(names)
+    }
+
     var packageCards: [MachinePackageCard] {
         MachinePackageCatalog.cards(from: (snapshot?.packages ?? []).map(\.info))
     }

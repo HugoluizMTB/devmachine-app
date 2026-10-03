@@ -335,3 +335,50 @@ final class WorkspaceFlowTests: XCTestCase {
         XCTAssertEqual(WorkspaceFlow.edit(acme).machine, "main")
     }
 }
+
+final class CodingAgentPackagesTests: XCTestCase {
+    private let harnesses: [(HarnessID, String?)] = [
+        (.claude, "claude-code"), (.codex, nil), (.pi, "pi"), (.kimi, "kimi-code"),
+    ]
+
+    func testOnlyAHarnessWithAPackageInTheReleaseCanBeTurnedOn() {
+        XCTAssertEqual(
+            CodingAgentPackages.activatable(harnesses: harnesses, available: ["claude-code", "pi", "zsh"]),
+            [.claude, .pi])
+    }
+
+    func testAListNotReadYetTrustsTheDeclaredPackage() {
+        XCTAssertEqual(CodingAgentPackages.activatable(harnesses: harnesses, available: nil), [.claude, .pi, .kimi])
+    }
+
+    func testOnlyTheHarnessesTurnedOnAreOfferedAndTheOthersAreHidden() {
+        let choice = CodingAgentPackages.choose(
+            harnesses: harnesses, enabled: [.claude, .codex], available: ["claude-code", "pi", "kimi-code"])
+        XCTAssertEqual(choice.offered, ["claude-code"])
+        XCTAssertEqual(choice.hidden, ["pi", "kimi-code"])
+    }
+
+    func testNoHarnessOnOffersNone() {
+        let choice = CodingAgentPackages.choose(harnesses: harnesses, enabled: [], available: nil)
+        XCTAssertEqual(choice.offered, [])
+        XCTAssertEqual(choice.hidden, ["claude-code", "pi", "kimi-code"])
+    }
+
+    func testHiddenAgentsAndWhatNeedsThemLeaveTheCardsUnlessTheWorkspaceHasThem() {
+        let packages = [
+            PackageInfo(name: "claude-code", scope: "workspace", summary: "", source: "release", category: "Coding agents"),
+            PackageInfo(name: "claude-plugins", scope: "workspace", summary: "", source: "release",
+                        needs: ["claude-code"], category: "Coding agents"),
+            PackageInfo(name: "pi", scope: "workspace", summary: "", source: "release", category: "Coding agents"),
+            PackageInfo(name: "devmachine-skills", scope: "workspace", summary: "", source: "release",
+                        category: "Coding agents"),
+            PackageInfo(name: "zsh", scope: "workspace", summary: "", source: "release", category: "Foundation"),
+        ]
+        XCTAssertEqual(
+            WorkspacePackageCatalog.cards(from: packages, hiding: ["claude-code"]).map(\.name),
+            ["zsh", "devmachine-skills", "pi"])
+        XCTAssertEqual(
+            WorkspacePackageCatalog.cards(from: packages, keeping: ["claude-code"], hiding: ["claude-code"]).map(\.name),
+            ["zsh", "claude-code", "claude-plugins", "devmachine-skills", "pi"])
+    }
+}

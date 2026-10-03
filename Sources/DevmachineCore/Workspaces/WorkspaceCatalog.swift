@@ -75,11 +75,18 @@ public enum WorkspacePackageCatalog {
     /// `keeping` are packages the workspace already has: one the list does
     /// not know (renamed, or from a folder that is gone) still gets a card,
     /// so it can be taken off.
+    ///
+    /// `hiding` are coding agents' packages that are not offered (their
+    /// harness is off): they leave, with anything that needs them, unless
+    /// the workspace already has them.
     public static func cards(
-        from packages: [PackageInfo], keeping: [String] = [], platform: String = MachinePackageCatalog.linux
+        from packages: [PackageInfo], keeping: [String] = [], hiding: Set<String> = [],
+        platform: String = MachinePackageCatalog.linux
     ) -> [MachinePackageCard] {
+        let hidden = hiding.subtracting(keeping)
         var cards = packages
             .filter { $0.scope == "workspace" && MachinePackageCatalog.runs($0, on: platform) }
+            .filter { !hidden.contains($0.name) && hidden.isDisjoint(with: $0.needs) }
             .map { package in
                 let summary = package.summary.trimmingCharacters(in: .whitespacesAndNewlines)
                 return MachinePackageCard(
@@ -120,6 +127,35 @@ public enum WorkspacePackageCatalog {
     private static func rank(_ category: String) -> Int {
         if let index = categoryOrder.firstIndex(of: category) { return index }
         return category.isEmpty ? categoryOrder.count + 1 : categoryOrder.count
+    }
+}
+
+/// Identifying a harness and activating it are different. Every known
+/// harness is identified; only one whose package (the workspace package
+/// that installs it) is in the pinned release can be turned on, and only
+/// the ones turned on are offered as a new workspace's coding agents.
+public struct CodingAgentPackages: Equatable, Sendable {
+    public let offered: [String]
+    /// Every other harness's package.
+    public let hidden: Set<String>
+
+    /// `available` is the release's package names; nil (not read yet)
+    /// trusts the package each harness declares.
+    public static func activatable(harnesses: [(HarnessID, String?)], available: Set<String>?) -> [HarnessID] {
+        harnesses.compactMap { id, package in
+            guard let package, available?.contains(package) ?? true else { return nil }
+            return id
+        }
+    }
+
+    public static func choose(
+        harnesses: [(HarnessID, String?)], enabled: [HarnessID], available: Set<String>?
+    ) -> CodingAgentPackages {
+        let on = Set(activatable(harnesses: harnesses, available: available)).intersection(enabled)
+        let packages = harnesses.compactMap { id, package in package.map { (id, $0) } }
+        return CodingAgentPackages(
+            offered: packages.filter { on.contains($0.0) }.map(\.1),
+            hidden: Set(packages.filter { !on.contains($0.0) }.map(\.1)))
     }
 }
 

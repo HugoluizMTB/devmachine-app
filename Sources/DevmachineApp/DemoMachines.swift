@@ -51,6 +51,9 @@ extension DemoData {
         workspacePackage("opencode", "Coding agents", "The opencode CLI for one account.", on: ["globex"]),
         workspacePackage("pi", "Coding agents", "The Pi coding agent for one account, from its standalone release.",
                          on: []),
+        workspacePackage("antigravity", "Coding agents", "Google's Antigravity CLI for one account.", on: []),
+        workspacePackage("kimi-code", "Coding agents", "The Kimi Code CLI for one account.", on: []),
+        workspacePackage("cline", "Coding agents", "The Cline CLI for one account.", on: []),
         workspacePackage("glab", "Developer tools", "The GitLab CLI in the account's own ~/.local/bin.", on: []),
         workspacePackage("sentry", "Developer tools", "The Sentry CLI in the account's own ~/.local/bin.", on: []),
     ]

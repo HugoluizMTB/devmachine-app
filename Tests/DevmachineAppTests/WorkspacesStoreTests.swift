@@ -35,7 +35,7 @@ private final class FakeCLI {
 final class WorkspacesStoreTests: XCTestCase {
     private let acme = WorkspaceSummary(
         name: "acme", machine: "main", user: "acme", packages: ["dev", "zsh"], settings: ["zsh.theme": "clean"])
-    private let gamma = WorkspaceSummary(name: "gamma", machine: "staging", user: "gamma", packages: [])
+    private let gamma = WorkspaceSummary(name: "gamma", machine: "staging", user: "gamma", packages: ["pi"])
 
     private func machines() -> MachinesStore {
         let snapshot = MachinesSnapshot(
@@ -54,6 +54,7 @@ final class WorkspacesStoreTests: XCTestCase {
                 CLIPackage(name: "zsh", scope: "workspace", installedOn: ["workspace acme"], category: "Foundation"),
                 CLIPackage(name: "mise", scope: "workspace", installedOn: [], category: "Foundation"),
                 CLIPackage(name: "pi", scope: "workspace", installedOn: [], category: "Coding agents"),
+                CLIPackage(name: "claude-code", scope: "workspace", installedOn: [], category: "Coding agents"),
                 CLIPackage(name: "docker", scope: "machine", installedOn: ["machine main"]),
             ])
         let store = MachinesStore(read: { snapshot }, remove: { _ in })
@@ -63,7 +64,8 @@ final class WorkspacesStoreTests: XCTestCase {
 
     private func makeStore(
         cli: FakeCLI, reads: WorkspaceReadTally = WorkspaceReadTally(), changed: WorkspaceChangeTally = WorkspaceChangeTally(),
-        lock: PackagesLock? = PackagesLock(machines: [:], workspaces: ["acme": [.init(name: "dev"), .init(name: "zsh")]])
+        lock: PackagesLock? = PackagesLock(machines: [:], workspaces: ["acme": [.init(name: "dev"), .init(name: "zsh")]]),
+        harnessesOn: [HarnessID] = [.pi]
     ) -> WorkspacesStore {
         let workspaces = [acme, gamma]
         return WorkspacesStore(
@@ -74,6 +76,10 @@ final class WorkspacesStoreTests: XCTestCase {
                 return WorkspacesSnapshot(workspaces: workspaces, lock: lock)
             },
             loadMachines: false,
+            codingAgents: { available in
+                CodingAgentPackages.choose(
+                    harnesses: [(.claude, "claude-code"), (.pi, "pi")], enabled: harnessesOn, available: available)
+            },
             onChanged: { changed.value += 1 })
     }
 
@@ -97,6 +103,32 @@ final class WorkspacesStoreTests: XCTestCase {
         XCTAssertEqual(flow?.draft.packages, ["dev", "zsh", "mise"])
         XCTAssertEqual(flow?.existingWorkspaces, ["acme", "gamma"])
         XCTAssertEqual(store.packageCards.map(\.name), ["workspace", "dev", "mise", "zsh", "pi"])
+        XCTAssertFalse(store.packageCards.contains { $0.name == "claude-code" }, "claude is off")
+    }
+
+    func testTheCodingAgentsOfferedAreOnlyTheHarnessesTurnedOn() async {
+        let store = makeStore(cli: FakeCLI(), harnessesOn: [.claude])
+        await store.load()
+        await store.startNew()
+        XCTAssertTrue(store.packageCards.contains { $0.name == "claude-code" })
+        XCTAssertFalse(store.packageCards.contains { $0.name == "pi" })
+        XCTAssertFalse(store.noCodingAgentOn)
+    }
+
+    func testNoHarnessOnOffersNoAgentAndSaysSo() async {
+        let store = makeStore(cli: FakeCLI(), harnessesOn: [])
+        await store.load()
+        await store.startNew()
+        XCTAssertEqual(store.packageCards.map(\.name), ["workspace", "dev", "mise", "zsh"])
+        XCTAssertTrue(store.noCodingAgentOn)
+    }
+
+    func testEditKeepsAnAgentTheWorkspaceHasEvenWithItsHarnessOff() async {
+        let store = makeStore(cli: FakeCLI(), harnessesOn: [])
+        await store.load()
+        store.startEdit("gamma")
+        XCTAssertTrue(store.packageCards.contains { $0.name == "pi" }, "so it can be taken off")
+        XCTAssertFalse(store.packageCards.contains { $0.name == "claude-code" })
     }
 
     func testCreatingRunsNewThenSyncAndReadsEverythingAgain() async {

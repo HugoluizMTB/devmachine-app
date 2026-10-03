@@ -22,7 +22,14 @@ enum DemoWorkspaces {
               settleNanoseconds: 600_000_000),
         .init(id: "workspaces-destroy", fileName: "141-workspaces-destroy.png", settleNanoseconds: 400_000_000),
         .init(id: "workspaces-settings", fileName: "142-workspaces-settings.png", settleNanoseconds: 500_000_000),
+        .init(id: "workspaces-new-no-agents", fileName: "143-workspaces-new-no-agents.png",
+              settleNanoseconds: 400_000_000),
+        .init(id: "workspaces-harnesses", fileName: "144-workspaces-harnesses.png", settleNanoseconds: 500_000_000),
     ]
+
+    /// Claude and Pi on; Codex too, which has no package, so Settings shows
+    /// it with no switch and no workspace is offered it.
+    static let harnessesOn: [HarnessID] = [.claude, .codex, .pi]
 
     static let refusal = "acme publishes app.example.com through edge, which would keep serving it with nothing "
         + "left to take it off: `devmachine expose rm app.example.com` first"
@@ -37,8 +44,9 @@ enum DemoWorkspaces {
         model.workspaces = DemoData.workspaces
         store.runner.reset()
         store.close()
-        if id == "workspaces-settings" {
-            DemoSnapshots.setupInitialSection = .workspaces
+        SettingsStore.shared.settings?.enabledHarnesses = id == "workspaces-new-no-agents" ? [] : harnessesOn
+        if id == "workspaces-settings" || id == "workspaces-harnesses" {
+            DemoSnapshots.setupInitialSection = id == "workspaces-settings" ? .workspaces : .harnesses
             model.showPage(.setup)
             return
         }
@@ -46,9 +54,9 @@ enum DemoWorkspaces {
         await store.load()
         try? await Task.sleep(nanoseconds: 150_000_000)
         switch id {
-        case "workspaces-new":
+        case "workspaces-new", "workspaces-new-no-agents":
             await startNew(store, name: "beta")
-            store.flow?.togglePackage("claude-code")
+            if id == "workspaces-new" { store.flow?.togglePackage("claude-code") }
         case "workspaces-new-taken":
             await startNew(store, name: "acme")
         case "workspaces-review":

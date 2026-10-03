@@ -10,6 +10,10 @@ struct HarnessDescriptor: Identifiable, Sendable {
     let systemImage: String
     let color: Color
     let helpText: String
+    /// The workspace package that installs it, nil when there is none.
+    /// Only a harness with one can be turned on; every harness is still
+    /// identified in sessions.
+    var packageName: String?
 }
 
 protocol CodingHarnessAdapter: Sendable {
@@ -123,7 +127,8 @@ struct ClaudeHarnessAdapter: CodingHarnessAdapter {
         shortTitle: "Claude",
         systemImage: "circle.fill",
         color: .orange,
-        helpText: "Claude Code is running in this session"
+        helpText: "Claude Code is running in this session",
+        packageName: "claude-code"
     )
     let executableName = "claude"
     let processNames: Set<String> = ["claude"]
@@ -138,6 +143,8 @@ struct ClaudeHarnessAdapter: CodingHarnessAdapter {
     }
 }
 
+/// No package installs Codex in a workspace yet, so it has no
+/// `packageName`: identified in sessions, with no toggle in Settings.
 struct CodexHarnessAdapter: CodingHarnessAdapter {
     let id = HarnessID.codex
     let descriptor = HarnessDescriptor(
@@ -171,32 +178,36 @@ struct BasicHarnessAdapter: CodingHarnessAdapter {
     var id: HarnessID { descriptor.id }
     var startupCommand: String { executableName }
 
-    init(id: HarnessID, title: String, shortTitle: String, color: Color, executableName: String, processNames: Set<String>) {
+    init(
+        id: HarnessID, title: String, shortTitle: String, color: Color, executableName: String,
+        processNames: Set<String>, packageName: String?
+    ) {
         descriptor = HarnessDescriptor(
             id: id, title: title, shortTitle: shortTitle, systemImage: "circle.fill", color: color,
-            helpText: "\(title) is running in this session")
+            helpText: "\(title) is running in this session", packageName: packageName)
         self.executableName = executableName
         self.processNames = processNames
     }
 
     static let pi = BasicHarnessAdapter(
-        id: .pi, title: "Pi", shortTitle: "Pi", color: .purple, executableName: "pi", processNames: ["pi"])
+        id: .pi, title: "Pi", shortTitle: "Pi", color: .purple, executableName: "pi", processNames: ["pi"],
+        packageName: "pi")
     static let antigravity = BasicHarnessAdapter(
         id: .antigravity, title: "Antigravity CLI", shortTitle: "Antigravity", color: .blue,
-        executableName: "agy", processNames: ["agy"])
+        executableName: "agy", processNames: ["agy"], packageName: "antigravity")
     /// The npm launcher is `node`; the program it starts is the native
     /// `opencode`, which is what the process list shows.
     static let opencode = BasicHarnessAdapter(
         id: .opencode, title: "opencode", shortTitle: "opencode", color: .mint,
-        executableName: "opencode", processNames: ["opencode"])
+        executableName: "opencode", processNames: ["opencode"], packageName: "opencode")
     /// Kimi Code renames its process to `kimi-code`; a native build may
     /// still show the binary's own name.
     static let kimi = BasicHarnessAdapter(
         id: .kimi, title: "Kimi Code", shortTitle: "Kimi", color: .indigo,
-        executableName: "kimi", processNames: ["kimi", "kimi-code"])
+        executableName: "kimi", processNames: ["kimi", "kimi-code"], packageName: "kimi-code")
     /// The npm `cline` is a `node` script that starts the native binary,
     /// hard-linked as `.cline`; only that child names the harness.
     static let cline = BasicHarnessAdapter(
         id: .cline, title: "Cline", shortTitle: "Cline", color: .teal,
-        executableName: "cline", processNames: ["cline", ".cline"])
+        executableName: "cline", processNames: ["cline", ".cline"], packageName: "cline")
 }

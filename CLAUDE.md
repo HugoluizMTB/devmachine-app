@@ -530,6 +530,21 @@ Rules:
   and Context panel, enabled or not and whether or not its CLI is on this Mac:
   many run only on a server. Enabling one only adds it to the launch choices
   and session defaults (and its usage card), and never needs its CLI here.
+- **Identifying a harness and activating it are different.** Identification
+  (icons, Context, process matching) covers every harness in the registry
+  and never looks at packages. Activation is the Settings → Harnesses switch,
+  shown only for a harness whose `HarnessDescriptor.packageName` (the
+  workspace package that installs it: claude-code, pi, antigravity,
+  opencode, kimi-code, cline; Codex has none) is in the pinned release's
+  `packages list` (`CodingAgentPackages.activatable`; before the list is
+  read, the declared name is trusted). Any other harness shows its row with
+  no switch, and its saved on/off is left as it was. The Workspaces page's
+  Coding agents group offers only the packages of harnesses turned on
+  (`CodingAgentPackages.choose`), hides the others and what needs them
+  (claude-plugins needs claude-code), keeps one a workspace already has so
+  Edit can take it off, and with none on says so and links to Settings →
+  Harnesses. The first run's skills picker is unrelated: it offers what
+  `skills add --agent` accepts (`SkillAgent`). Views never name a package.
 - **A harness on without its CLI on this Mac starts on remote workspaces
   only** (`LaunchPlace`): it is offered in the remote fallback, the
   per-workspace defaults and a remote workspace's new-session menu and ⌘K
@@ -1040,9 +1055,10 @@ once may fail there.
   workspace list.
 - Demo mode reads `DemoData.workspacesSnapshot` and refuses every run ("Demo
   mode never changes a workspace."). `DEVMACHINE_DEMO_WALK=workspaces`
-  captures `130`–`142`: list, new, a taken name, review, running, failed,
-  done, edit, edit review, forget, a refused forget, destroy, and Settings →
-  Workspaces.
+  captures `130`–`144`: list, new, a taken name, review, running, failed,
+  done, edit, edit review, forget, a refused forget, destroy, Settings →
+  Workspaces, a new workspace with no harness on, and Settings → Harnesses
+  (Codex with no switch). It turns on Claude, Codex and Pi.
 
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action

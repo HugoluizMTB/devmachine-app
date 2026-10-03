@@ -65,6 +65,7 @@ final class WorkspacesStore: ObservableObject {
     let machines: MachinesStore
     private let read: @Sendable () async throws -> WorkspacesSnapshot
     private let loadMachines: Bool
+    private let codingAgents: @MainActor (Set<String>?) -> CodingAgentPackages
     private let onChanged: @MainActor () -> Void
 
     init(
@@ -74,12 +75,17 @@ final class WorkspacesStore: ObservableObject {
             try await Task.detached { try WorkspacesReader.read(cli: DevmachineCLI.resolve()) }.value
         },
         loadMachines: Bool = true,
+        codingAgents: @escaping @MainActor (Set<String>?) -> CodingAgentPackages = { available in
+            HarnessSettingsFacade().codingAgentPackages(
+                for: SettingsStore.shared.settings ?? .empty, available: available)
+        },
         onChanged: @escaping @MainActor () -> Void = { WorkspacesStore.reloadEverything() }
     ) {
         self.machines = machines
         self.runner = runner
         self.read = read
         self.loadMachines = loadMachines
+        self.codingAgents = codingAgents
         self.onChanged = onChanged
     }
 
@@ -105,9 +111,16 @@ final class WorkspacesStore: ObservableObject {
         }
     }
 
+    /// Coding agents only for the harnesses turned on in Settings →
+    /// Harnesses; one the workspace already has stays, so it can be taken off.
     var packageCards: [MachinePackageCard] {
         WorkspacePackageCatalog.cards(
-            from: (machines.snapshot?.packages ?? []).map(\.info), keeping: flow?.current?.packages ?? [])
+            from: (machines.snapshot?.packages ?? []).map(\.info), keeping: flow?.current?.packages ?? [],
+            hiding: codingAgents(machines.workspacePackageNames).hidden)
+    }
+
+    var noCodingAgentOn: Bool {
+        codingAgents(machines.workspacePackageNames).offered.isEmpty
     }
 
     func syncState(_ workspace: WorkspaceSummary) -> WorkspaceSyncState {

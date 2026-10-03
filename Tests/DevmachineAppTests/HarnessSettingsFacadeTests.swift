@@ -42,6 +42,31 @@ final class HarnessSettingsFacadeTests: XCTestCase {
         )
     }
 
+    func testEachHarnessNamesThePackageThatInstallsItAndCodexHasNone() {
+        let packages = Dictionary(uniqueKeysWithValues: registry.adapters.map { ($0.id, $0.descriptor.packageName) })
+        XCTAssertEqual(packages, [
+            .claude: "claude-code", .codex: nil, .pi: "pi", .antigravity: "antigravity",
+            .opencode: "opencode", .kimi: "kimi-code", .cline: "cline",
+        ])
+    }
+
+    func testOnlyHarnessesWhosePackageTheReleaseHasCanBeTurnedOnButAllAreIdentified() {
+        let facade = HarnessSettingsFacade(registry: registry, locator: FakeLocator(available: []))
+        XCTAssertEqual(
+            facade.activatable(available: ["claude-code", "pi", "zsh"]).map(\.id), [.claude, .pi])
+        XCTAssertEqual(facade.harnesses.count, registry.adapters.count)
+        XCTAssertEqual(registry.processNames.keys.count, registry.adapters.count)
+    }
+
+    func testANewWorkspaceIsOfferedTheAgentsTurnedOn() {
+        let facade = HarnessSettingsFacade(registry: registry, locator: FakeLocator(available: []))
+        let choice = facade.codingAgentPackages(
+            for: makeSettings(enabledHarnesses: [.claude, .codex, .cline]),
+            available: ["claude-code", "cline", "pi"])
+        XCTAssertEqual(choice.offered, ["claude-code", "cline"])
+        XCTAssertTrue(choice.hidden.isSuperset(of: ["pi", "kimi-code", "opencode", "antigravity"]))
+    }
+
     func testAHarnessWithoutItsCLIOnThisMacIsStillTurnedOn() {
         let facade = HarnessSettingsFacade(registry: registry, locator: FakeLocator(available: ["claude"]))
         var settings = makeSettings()

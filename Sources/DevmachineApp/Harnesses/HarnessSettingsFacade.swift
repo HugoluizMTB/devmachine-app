@@ -144,6 +144,23 @@ struct HarnessSettingsFacade: Sendable {
         registry.adapters.map(\.descriptor)
     }
 
+    /// The harnesses Settings shows a toggle for: those whose package the
+    /// pinned release has (`available`, nil before it is read).
+    func activatable(available: Set<String>?) -> [HarnessDescriptor] {
+        let ids = CodingAgentPackages.activatable(harnesses: packageNames, available: available)
+        return harnesses.filter { ids.contains($0.id) }
+    }
+
+    /// A new workspace's coding agents: the packages of the harnesses
+    /// turned on, and the others' to leave out.
+    func codingAgentPackages(for settings: AppSettings, available: Set<String>?) -> CodingAgentPackages {
+        CodingAgentPackages.choose(harnesses: packageNames, enabled: settings.enabledHarnesses, available: available)
+    }
+
+    private var packageNames: [(HarnessID, String?)] {
+        registry.adapters.map { ($0.id, $0.descriptor.packageName) }
+    }
+
     func descriptor(for id: HarnessID) -> HarnessDescriptor? {
         registry.adapter(for: id)?.descriptor
     }

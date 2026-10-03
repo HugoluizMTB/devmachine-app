@@ -93,6 +93,7 @@ struct SetupPage: View {
     @EnvironmentObject var wallpapers: WallpaperStore
     @EnvironmentObject var savedCommands: RecentCommandStore
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
+    @ObservedObject private var machinesStore = MachinesStore.shared
 
     /// Not a theme id in the library — the chip that shows the built-in gradients.
     static let gradientTheme = "gradient"
@@ -308,7 +309,7 @@ struct SetupPage: View {
                 case .connection: connectionBlock
                 case .machines: MachinesSettingsView()
                 case .workspaces: workspacesBlock
-                case .harnesses: harnessesBlock
+                case .harnesses: harnessesBlock.task { await machinesStore.load() }
                 case .appearance: wallpaperBlock
                 case .terminal: terminalBlock
                 case .previews: previewsBlock
@@ -561,34 +562,48 @@ struct SetupPage: View {
         }
     }
 
+    private func harnessLabel(_ descriptor: HarnessDescriptor, detail: String) -> some View {
+        HStack(spacing: m.space.md) {
+            Image(systemName: descriptor.systemImage)
+                .font(.dm(10))
+                .foregroundStyle(descriptor.color)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: descriptor.title)
+                    .font(.dm(12.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                Text(verbatim: detail)
+                    .font(.dm(10))
+                    .foregroundStyle(.white.opacity(0.45))
+                if let note = remoteOnlyNote(descriptor.id) {
+                    Text(verbatim: note)
+                        .font(.dm(10))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+            }
+        }
+    }
+
     private var harnessesBlock: some View {
         VStack(alignment: .leading, spacing: m.pt(30)) {
             VStack(alignment: .leading, spacing: m.pt(10)) {
                 settingsHeading("Available harnesses")
+                let activatable = Set(harnessSettingsFacade.activatable(
+                    available: machinesStore.workspacePackageNames).map(\.id))
                 ForEach(harnessSettingsFacade.harnesses) { descriptor in
                     VStack(alignment: .leading, spacing: m.space.xs) {
-                        Toggle(isOn: harnessEnabledBinding(descriptor.id)) {
-                            HStack(spacing: m.space.md) {
-                                Image(systemName: descriptor.systemImage)
-                                    .font(.dm(10))
-                                    .foregroundStyle(descriptor.color)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(verbatim: descriptor.title)
-                                        .font(.dm(12.5, weight: .medium))
-                                        .foregroundStyle(.white.opacity(0.9))
-                                    Text(verbatim: "Make \(descriptor.shortTitle) available for session defaults.")
-                                        .font(.dm(10))
-                                        .foregroundStyle(.white.opacity(0.45))
-                                    if let note = remoteOnlyNote(descriptor.id) {
-                                        Text(verbatim: note)
-                                            .font(.dm(10))
-                                            .foregroundStyle(.white.opacity(0.45))
-                                    }
-                                }
+                        if activatable.contains(descriptor.id) {
+                            Toggle(isOn: harnessEnabledBinding(descriptor.id)) {
+                                harnessLabel(
+                                    descriptor, detail: "Make \(descriptor.shortTitle) available for session defaults "
+                                        + "and new workspaces.")
                             }
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                        } else {
+                            harnessLabel(
+                                descriptor, detail: "Recognized in sessions. No package in this release installs it, "
+                                    + "so it cannot be turned on.")
                         }
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
 
                         if let message = harnessErrors[descriptor.id] {
                             Text(verbatim: message)
@@ -598,9 +613,9 @@ struct SetupPage: View {
                         }
                     }
                 }
-                note("Turning a harness on adds it to the launch choices. Starting it on this Mac "
-                    + "needs its CLI here; a remote workspace never asks. Every harness is "
-                    + "recognized in a session either way.")
+                note("Turning a harness on adds it to the launch choices and to a new workspace's "
+                    + "coding agents. Starting it on this Mac needs its CLI here; a remote workspace "
+                    + "never asks. Every harness is recognized in a session either way.")
             }
 
             harnessIconToggle

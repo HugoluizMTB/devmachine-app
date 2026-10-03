@@ -173,6 +173,7 @@ struct WorkspacesPage: View {
 /// A flow on screen: its form, the review of the exact commands, or the run.
 private struct WorkspaceFlowView: View {
     @Environment(\.dmMetrics) private var m
+    @EnvironmentObject private var model: AppModel
     @ObservedObject var store: WorkspacesStore
     @ObservedObject var runner: MachineStepRunner
     let flow: WorkspaceFlow
@@ -209,14 +210,18 @@ private struct WorkspaceFlowView: View {
         Binding(get: { store.flow ?? flow }, set: { store.flow = $0 })
     }
 
+    private var agents: WorkspaceAgentsNote {
+        WorkspaceAgentsNote(noneOn: store.noCodingAgentOn) { model.openSettings(.harnesses) }
+    }
+
     @ViewBuilder
     private var stageBody: some View {
         if flow.stage == .review {
             WorkspaceReview(flow: flow)
         } else {
             switch flow.action {
-            case .new: WorkspaceNewForm(flow: flowBinding, cards: store.packageCards)
-            case .edit: WorkspaceEditForm(flow: flowBinding, cards: store.packageCards)
+            case .new: WorkspaceNewForm(flow: flowBinding, cards: store.packageCards, agents: agents)
+            case .edit: WorkspaceEditForm(flow: flowBinding, cards: store.packageCards, agents: agents)
             case .forget: WorkspaceForgetForm(flow: flow) { store.startDestroy(flow.name) }
             case .destroy: WorkspaceDestroyForm(flow: flowBinding)
             }
@@ -272,6 +277,7 @@ private struct WorkspaceNewForm: View {
     @Environment(\.dmMetrics) private var m
     @Binding var flow: WorkspaceFlow
     let cards: [MachinePackageCard]
+    let agents: WorkspaceAgentsNote
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
@@ -283,7 +289,7 @@ private struct WorkspaceNewForm: View {
                 TextField(WorkspaceName.example, text: $flow.draft.name).dmField()
             }
             machinePicker
-            WorkspacePackageCards(flow: $flow, cards: cards, note: WorkspacesContent.preselectionNote)
+            WorkspacePackageCards(flow: $flow, cards: cards, note: WorkspacesContent.preselectionNote, agents: agents)
             WorkspaceSyncToggle(sync: $flow.sync, machine: flow.machine)
         }
     }
@@ -319,13 +325,15 @@ private struct WorkspaceEditForm: View {
     @Environment(\.dmMetrics) private var m
     @Binding var flow: WorkspaceFlow
     let cards: [MachinePackageCard]
+    let agents: WorkspaceAgentsNote
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
             WorkspacePackageCards(
                 flow: $flow, cards: cards,
                 note: "Ticked: what \(flow.name) asks for now. A package taken off stays installed on the machine; "
-                    + "the sync only stops managing it.")
+                    + "the sync only stops managing it.",
+                agents: agents)
             settings
             WorkspaceSyncToggle(sync: $flow.sync, machine: flow.machine)
             AddMachineNote(text: "The machine, the Linux account and shared logins are not changed here: "
@@ -377,6 +385,10 @@ private struct WorkspacePackageCards: View {
     @Binding var flow: WorkspaceFlow
     let cards: [MachinePackageCard]
     let note: String
+    let agents: WorkspaceAgentsNote
+
+    private var groups: [WorkspacePackageCatalog.Group] { WorkspacePackageCatalog.groups(cards) }
+    private static let agentsTitle = "Coding agents"
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
@@ -391,9 +403,10 @@ private struct WorkspacePackageCards: View {
                 AddMachineNote(text: "The package list could not be read. The workspace gets only its account; "
                     + "add packages later with devmachine workspaces edit.")
             }
-            ForEach(WorkspacePackageCatalog.groups(cards), id: \.title) { group in
+            ForEach(groups, id: \.title) { group in
                 VStack(alignment: .leading, spacing: m.space.sm) {
                     DMSectionLabel(text: group.title.uppercased())
+                    if group.title == Self.agentsTitle { agents }
                     LazyVGrid(
                         columns: [GridItem(.adaptive(minimum: m.pt(240)), spacing: m.space.md, alignment: .top)],
                         alignment: .leading, spacing: m.space.md
@@ -407,6 +420,12 @@ private struct WorkspacePackageCards: View {
                     }
                 }
             }
+            if !groups.contains(where: { $0.title == Self.agentsTitle }) {
+                VStack(alignment: .leading, spacing: m.space.sm) {
+                    DMSectionLabel(text: Self.agentsTitle.uppercased())
+                    agents
+                }
+            }
         }
     }
 
@@ -414,6 +433,26 @@ private struct WorkspacePackageCards: View {
         if card.isLocked { return "ALWAYS INSTALLED" }
         if card.isRecommended { return "DEFAULT" }
         return card.isYours ? "YOURS" : nil
+    }
+}
+
+/// Coding agents are offered only for the harnesses turned on; the link
+/// goes to where they are turned on.
+private struct WorkspaceAgentsNote: View {
+    @Environment(\.dmMetrics) private var m
+    let noneOn: Bool
+    let openHarnesses: () -> Void
+
+    var body: some View {
+        HStack(spacing: m.space.sm) {
+            Text(verbatim: noneOn
+                ? "No coding agent is turned on, so none is offered here."
+                : "Only the coding agents turned on in Settings are offered.")
+                .font(.dm(11))
+                .foregroundStyle(noneOn ? Color.orange : Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            DMButton("Settings → Harnesses", variant: .link, size: .small, action: openHarnesses)
+        }
     }
 }
 
