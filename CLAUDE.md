@@ -534,8 +534,8 @@ Rules:
   (icons, Context, process matching) covers every harness in the registry
   and never looks at packages. Activation is the Settings → Harnesses switch,
   shown only for a harness whose `HarnessDescriptor.packageName` (the
-  workspace package that installs it: claude-code, pi, antigravity,
-  opencode, kimi-code, cline; Codex has none) is in the pinned release's
+  workspace package that installs it: claude-code, codex, pi, antigravity,
+  opencode, kimi-code, cline) is in the pinned release's
   `packages list` (`CodingAgentPackages.activatable`; before the list is
   read, the declared name is trusted). Any other harness shows its row with
   no switch, and its saved on/off is left as it was. The Workspaces page's
@@ -1050,9 +1050,12 @@ once may fail there.
   packages declare (`WorkspaceLogin`: the workspace's answer, then the
   configuration's, then the package's scope) with As configured / Shared /
   Own, written as `--share <login>=machine|own`, or `<login>=` to follow
-  the configuration again. `packages list` does not say whether a login
-  can be copied, so a Shared the package refuses fails at the sync, with
-  its message.
+  the configuration again. A login whose `credentials[].shareable` is
+  false (CLI 0.7.29 with `shareable`; always false for a secret or a file)
+  offers only As configured / Own, with the reason, and follows `own`
+  whatever the configuration says, as `sync` does. A CLI that leaves
+  `shareable` out keeps all three, and a Shared it refuses fails at the
+  sync with its message.
 - Edit mirrors the CLI's checks: a free-text setting is `<package>.<name>`
   for a package the workspace keeps, with a value (an empty `--set` would
   remove it). The machine and the account stay in the terminal.
@@ -1071,7 +1074,8 @@ once may fail there.
   captures `130`–`144`: list, new, a taken name, review, running, failed,
   done, edit, edit review, forget, a refused forget, destroy, Settings →
   Workspaces, a new workspace with no harness on, and Settings → Harnesses
-  (Codex with no switch). It turns on Claude, Codex and Pi.
+  (every harness with a package has a switch). It turns on Claude, Codex
+  and Pi, and Edit shows glab's login, which cannot be shared.
 
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action

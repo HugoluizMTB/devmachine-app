@@ -62,6 +62,32 @@ final class WorkspaceSharingTests: XCTestCase {
         ])
     }
 
+    func testALoginThatCannotBeSharedIsAlwaysItsOwnAndOffersNoShared() {
+        let logins = WorkspaceLogin.logins(
+            packages: ["glab", "codex", "claude-code"],
+            declared: [
+                "glab": [PackageCredential(name: "glab", kind: "secret", scope: "machine", shareable: false)],
+                "codex": [PackageCredential(name: "codex", kind: "manual", scope: "workspace", shareable: true)],
+                "claude-code": [PackageCredential(name: "claude", kind: "file", scope: "machine")],
+            ],
+            configuration: ["glab": "machine"])
+        XCTAssertEqual(logins.map(\.inherited), ["own", "own", "machine"])
+        XCTAssertEqual(logins.map(\.choices), [
+            ["", "own"], ["", "machine", "own"], ["", "machine", "own"],
+        ])
+        XCTAssertNotNil(logins[0].unshareableReason)
+        XCTAssertNil(logins[1].unshareableReason)
+        XCTAssertNil(logins[2].unshareableReason, "an older CLI does not say, so Shared stays offered")
+    }
+
+    func testTheShareableFlagDecodesAndAnOlderCLILeavesItOut() throws {
+        let new = try JSONDecoder().decode(
+            PackageCredential.self, from: Data(#"{"name":"codex","kind":"manual","shareable":true}"#.utf8))
+        XCTAssertEqual(new.shareable, true)
+        let old = try JSONDecoder().decode(PackageCredential.self, from: Data(#"{"name":"gh","kind":"secret"}"#.utf8))
+        XCTAssertNil(old.shareable)
+    }
+
     func testEditWritesOnlyTheAnswersThatChanged() {
         var flow = WorkspaceFlow.edit(acme)
         XCTAssertEqual(flow.sharing, ["claude": "own"])

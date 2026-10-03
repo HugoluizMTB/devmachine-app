@@ -27,8 +27,7 @@ enum DemoWorkspaces {
         .init(id: "workspaces-harnesses", fileName: "144-workspaces-harnesses.png", settleNanoseconds: 500_000_000),
     ]
 
-    /// Claude and Pi on; Codex too, which has no package, so Settings shows
-    /// it with no switch and no workspace is offered it.
+    /// Claude, Codex and Pi on; Cline is off, so a new workspace is not offered it.
     static let harnessesOn: [HarnessID] = [.claude, .codex, .pi]
 
     static let refusal = "acme publishes app.example.com through edge, which would keep serving it with nothing "
@@ -72,6 +71,7 @@ enum DemoWorkspaces {
         case "workspaces-edit", "workspaces-edit-review":
             store.startEdit("acme")
             store.flow?.togglePackage("pi")
+            store.flow?.togglePackage("glab")
             store.flow?.setSetting("zsh.plugins", "[git, docker]")
             store.flow?.setSetting("claude-code.auto_update", "false")
             store.flow?.setSharing("claude", nil)

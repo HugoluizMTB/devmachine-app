@@ -42,10 +42,10 @@ final class HarnessSettingsFacadeTests: XCTestCase {
         )
     }
 
-    func testEachHarnessNamesThePackageThatInstallsItAndCodexHasNone() {
+    func testEachHarnessNamesThePackageThatInstallsIt() {
         let packages = Dictionary(uniqueKeysWithValues: registry.adapters.map { ($0.id, $0.descriptor.packageName) })
         XCTAssertEqual(packages, [
-            .claude: "claude-code", .codex: nil, .pi: "pi", .antigravity: "antigravity",
+            .claude: "claude-code", .codex: "codex", .pi: "pi", .antigravity: "antigravity",
             .opencode: "opencode", .kimi: "kimi-code", .cline: "cline",
         ])
     }
@@ -54,6 +54,9 @@ final class HarnessSettingsFacadeTests: XCTestCase {
         let facade = HarnessSettingsFacade(registry: registry, locator: FakeLocator(available: []))
         XCTAssertEqual(
             facade.activatable(available: ["claude-code", "pi", "zsh"]).map(\.id), [.claude, .pi])
+        XCTAssertEqual(
+            facade.activatable(available: ["claude-code", "codex"]).map(\.id), [.claude, .codex],
+            "Codex gets its switch once the pinned release has the codex package")
         XCTAssertEqual(facade.harnesses.count, registry.adapters.count)
         XCTAssertEqual(registry.processNames.keys.count, registry.adapters.count)
     }

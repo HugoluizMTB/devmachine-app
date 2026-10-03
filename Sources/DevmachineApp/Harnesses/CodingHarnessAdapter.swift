@@ -143,8 +143,6 @@ struct ClaudeHarnessAdapter: CodingHarnessAdapter {
     }
 }
 
-/// No package installs Codex in a workspace yet, so it has no
-/// `packageName`: identified in sessions, with no toggle in Settings.
 struct CodexHarnessAdapter: CodingHarnessAdapter {
     let id = HarnessID.codex
     let descriptor = HarnessDescriptor(
@@ -153,7 +151,8 @@ struct CodexHarnessAdapter: CodingHarnessAdapter {
         shortTitle: "Codex",
         systemImage: "circle.fill",
         color: .green,
-        helpText: "OpenAI Codex is running in this session"
+        helpText: "OpenAI Codex is running in this session",
+        packageName: "codex"
     )
     let executableName = "codex"
     let processNames: Set<String> = ["codex"]

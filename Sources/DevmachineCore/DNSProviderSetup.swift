@@ -75,8 +75,15 @@ public struct PackageCredential: Codable, Equatable, Sendable {
     public let scope: String?
     public let env: String?
     public let path: String?
+    /// Whether a workspace can take this login from the machine (CLI
+    /// 0.7.29+, the rule `sync` enforces); nil from an older CLI.
+    public let shareable: Bool?
 
-    public init(name: String, kind: String, scope: String? = nil, env: String? = nil, path: String? = nil) {
+    public init(
+        name: String, kind: String, scope: String? = nil, env: String? = nil, path: String? = nil,
+        shareable: Bool? = nil
+    ) {
+        self.shareable = shareable
         self.name = name
         self.kind = kind
         self.scope = scope

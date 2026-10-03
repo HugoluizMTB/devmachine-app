@@ -53,17 +53,19 @@ extension DemoData {
                          on: ["acme", "globex"]),
         workspacePackage("claude-code", "Coding agents", "The Claude Code CLI for one account. Logging in is a "
             + "person's job, once.", on: ["acme", "initech"],
-            credentials: [PackageCredential(name: "claude", kind: "file", scope: "machine")],
+            credentials: [PackageCredential(name: "claude", kind: "file", scope: "machine", shareable: true)],
             variables: [PackageVariable(name: "auto_update", summary: "Let Claude Code update itself.",
                                         default: .bool(true), type: .boolean)]),
         workspacePackage("opencode", "Coding agents", "The opencode CLI for one account.", on: ["globex"]),
         workspacePackage("pi", "Coding agents", "The Pi coding agent for one account, from its standalone release.",
                          on: []),
+        workspacePackage("codex", "Coding agents", "OpenAI's Codex CLI for one account, from its standalone release.",
+                         on: [], credentials: [PackageCredential(name: "codex", kind: "manual", scope: "workspace", shareable: true)]),
         workspacePackage("antigravity", "Coding agents", "Google's Antigravity CLI for one account.", on: []),
         workspacePackage("kimi-code", "Coding agents", "The Kimi Code CLI for one account.", on: []),
         workspacePackage("cline", "Coding agents", "The Cline CLI for one account.", on: []),
         workspacePackage("glab", "Developer tools", "The GitLab CLI in the account's own ~/.local/bin.", on: [],
-                         credentials: [PackageCredential(name: "glab", kind: "secret", scope: "workspace")]),
+                         credentials: [PackageCredential(name: "glab", kind: "secret", scope: "workspace", shareable: false)]),
         workspacePackage("sentry", "Developer tools", "The Sentry CLI in the account's own ~/.local/bin.", on: []),
     ]
 

@@ -66,13 +66,29 @@ public struct WorkspaceLogin: Equatable, Sendable, Identifiable {
     public let name: String
     public let package: String
     public let inherited: String
+    /// False when the package says a copy of its login does not work on
+    /// another account; nil when the CLI does not say (older than 0.7.29).
+    public let shareable: Bool?
 
     public var id: String { name }
 
-    public init(name: String, package: String, inherited: String) {
+    public init(name: String, package: String, inherited: String, shareable: Bool? = nil) {
         self.name = name
         self.package = package
         self.inherited = inherited
+        self.shareable = shareable
+    }
+
+    /// The answers Edit offers: "" follows the configuration. Shared is left
+    /// out only when the CLI says the login cannot be copied.
+    public var choices: [String] {
+        shareable == false ? ["", Self.own] : ["", Self.machine, Self.own]
+    }
+
+    public var unshareableReason: String? {
+        shareable == false
+            ? "\(package) says a copy of this login does not work on another account, so each workspace logs in itself."
+            : nil
     }
 
     public static let machine = "machine"
@@ -85,9 +101,15 @@ public struct WorkspaceLogin: Equatable, Sendable, Identifiable {
         return packages.flatMap { package in
             (declared[package] ?? []).compactMap { credential in
                 guard seen.insert(credential.name).inserted else { return nil }
+                // sync turns a login that cannot be shared into the
+                // workspace's own, whatever the configuration asks.
+                guard credential.shareable != false else {
+                    return WorkspaceLogin(name: credential.name, package: package, inherited: own, shareable: false)
+                }
                 let fallback = credential.scope == machine ? machine : own
                 return WorkspaceLogin(
-                    name: credential.name, package: package, inherited: configuration[credential.name] ?? fallback)
+                    name: credential.name, package: package, inherited: configuration[credential.name] ?? fallback,
+                    shareable: credential.shareable)
             }
         }
     }

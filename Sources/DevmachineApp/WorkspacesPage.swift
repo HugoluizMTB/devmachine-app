@@ -487,8 +487,7 @@ private struct WorkspaceLoginSharing: View {
         VStack(alignment: .leading, spacing: m.space.sm) {
             AddMachineFieldLabel(text: "Logins")
             Text(verbatim: "Shared: one login on the machine, copied into this workspace. Own: this workspace "
-                + "logs in for itself, for example to another account. A tool whose login cannot be copied "
-                + "refuses Shared when the sync runs.")
+                + "logs in for itself, for example to another account.")
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -504,13 +503,19 @@ private struct WorkspaceLoginSharing: View {
                     }
                     .frame(width: m.pt(160), alignment: .leading)
                     DMTabStrip(
-                        tabs: ["", WorkspaceLogin.machine, WorkspaceLogin.own],
+                        tabs: login.choices,
                         selection: Binding(
                             get: { flow.sharing[login.name] ?? "" },
                             set: { flow.setSharing(login.name, $0.isEmpty ? nil : $0) }),
                         title: { title($0, login: login) },
                         fontSize: 11.5, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
                         .fixedSize()
+                }
+                if let reason = login.unshareableReason {
+                    Text(verbatim: reason)
+                        .font(.dm(10.5))
+                        .foregroundStyle(Color.dmMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
