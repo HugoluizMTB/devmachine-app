@@ -116,6 +116,7 @@ private struct DMComponentsGallery: View {
                 ])
                 DMAgeLabel(since: Date().addingTimeInterval(-300))
             }
+            MachineJobToastGallery()
             DMBanner(message: "Couldn't refresh: ssh: connect to host timed out", lineLimit: 2) {
                 DMIconButton(systemImage: "arrow.clockwise", tint: nil) {}
             }
@@ -175,6 +176,28 @@ private struct DMButtonGallery: View {
                          isLoading: true) {}
                 DMButton("Save", isLoading: true) {}
                 DMButton(icon: "arrow.clockwise", label: "Refresh", isLoading: true) {}
+            }
+        }
+    }
+}
+
+private struct MachineJobToastGallery: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                MachineJobToast(
+                    job: MachineJobFixtures.job(.pending), startsFull: false, actions: MachineJobFixtures.actions)
+                MachineJobToast(
+                    job: MachineJobFixtures.job(.pending), startsFull: true, actions: MachineJobFixtures.actions)
+                MachineJobToast(
+                    job: MachineJobFixtures.job(.queued), startsFull: false, actions: MachineJobFixtures.actions)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                MachineJobToast(
+                    job: MachineJobFixtures.job(.running(step: 0)), startsFull: false,
+                    actions: MachineJobFixtures.actions)
+                MachineJobToast(job: MachineJobFixtures.succeeded, startsFull: false, actions: MachineJobFixtures.actions)
+                MachineJobToast(job: MachineJobFixtures.failed, startsFull: false, actions: MachineJobFixtures.actions)
             }
         }
     }

@@ -149,6 +149,20 @@ final class DMComponentsFitTests: XCTestCase {
                 DMJobStep(id: "caddy", title: "Caddy route pending", state: .attention, detail: "box could not be reached"),
             ])
         }
+        let phases: [(String, MachineJob, Bool)] = [
+            ("pending", MachineJobFixtures.job(.pending), false),
+            ("pending full", MachineJobFixtures.job(.pending), true),
+            ("queued", MachineJobFixtures.job(.queued), false),
+            ("running", MachineJobFixtures.job(.running(step: 0)), false),
+            ("running expanded", MachineJobFixtures.job(.running(step: 0), expanded: true), false),
+            ("succeeded", MachineJobFixtures.succeeded, false),
+            ("failed", MachineJobFixtures.failed, false),
+        ]
+        for (name, job, startsFull) in phases {
+            DMFitCheck.assertFits("machine job \(name)") {
+                MachineJobToast(job: job, startsFull: startsFull, actions: MachineJobFixtures.actions)
+            }
+        }
         DMFitCheck.assertFits("age label") {
             DMAgeLabel(since: Date().addingTimeInterval(-600))
         }

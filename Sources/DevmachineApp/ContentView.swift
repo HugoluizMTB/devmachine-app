@@ -12,6 +12,7 @@ struct ContentView: View {
     @EnvironmentObject private var stats: StatsStore
     @EnvironmentObject private var caddy: CaddyStore
     @EnvironmentObject private var updates: UpdateController
+    @EnvironmentObject private var jobs: MachineJobCenter
     @State private var dragStartWidth: CGFloat? = nil
     @State private var contextDragStartWidth: CGFloat?
     @StateObject private var quickPublish = QuickPublishState()
@@ -65,6 +66,7 @@ struct ContentView: View {
                     UpdateBanner()
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+                MachineJobStack()
                 ForEach(caddy.jobs) { job in
                     PublishJobCard(
                         job: job,
@@ -82,6 +84,8 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.2), value: model.activeTasks)
             .animation(.easeInOut(duration: 0.2), value: caddy.jobs)
             .animation(.easeInOut(duration: 0.2), value: updates.showsBanner)
+            .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.id))
+            .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.phase))
         }
         .onAppear {
             model.settings = settingsStore.settings
