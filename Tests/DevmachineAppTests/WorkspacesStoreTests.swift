@@ -53,7 +53,10 @@ final class WorkspacesStoreTests: XCTestCase {
                 CLIPackage(name: "dev", scope: "workspace", installedOn: ["workspace acme"], category: "Foundation"),
                 CLIPackage(name: "zsh", scope: "workspace", installedOn: ["workspace acme"], category: "Foundation"),
                 CLIPackage(name: "mise", scope: "workspace", installedOn: [], category: "Foundation"),
-                CLIPackage(name: "pi", scope: "workspace", installedOn: [], category: "Coding agents"),
+                CLIPackage(
+                    name: "pi", scope: "workspace", installedOn: [], category: "Coding agents",
+                    credentials: [PackageCredential(name: "pi", kind: "file", scope: "workspace")],
+                    variables: [PackageVariable(name: "port", summary: "", default: .int(3000), type: .number)]),
                 CLIPackage(name: "claude-code", scope: "workspace", installedOn: [], category: "Coding agents"),
                 CLIPackage(name: "docker", scope: "machine", installedOn: ["machine main"]),
             ])
@@ -65,7 +68,8 @@ final class WorkspacesStoreTests: XCTestCase {
     private func makeStore(
         cli: FakeCLI, reads: WorkspaceReadTally = WorkspaceReadTally(), changed: WorkspaceChangeTally = WorkspaceChangeTally(),
         lock: PackagesLock? = PackagesLock(machines: [:], workspaces: ["acme": [.init(name: "dev"), .init(name: "zsh")]]),
-        harnessesOn: [HarnessID] = [.pi]
+        harnessesOn: [HarnessID] = [.pi],
+        defaults: [String]? = nil, sharing: [String: String] = [:]
     ) -> WorkspacesStore {
         let workspaces = [acme, gamma]
         return WorkspacesStore(
@@ -73,7 +77,9 @@ final class WorkspacesStoreTests: XCTestCase {
             runner: MachineStepRunner(hooks: cli.hooks, pollInterval: 1_000_000),
             read: {
                 await reads.bump()
-                return WorkspacesSnapshot(workspaces: workspaces, lock: lock)
+                return WorkspacesSnapshot(
+                    workspaces: workspaces, lock: lock, defaults: defaults, sharing: sharing,
+                    reportsSharing: defaults != nil)
             },
             loadMachines: false,
             codingAgents: { available in
@@ -129,6 +135,41 @@ final class WorkspacesStoreTests: XCTestCase {
         store.startEdit("gamma")
         XCTAssertTrue(store.packageCards.contains { $0.name == "pi" }, "so it can be taken off")
         XCTAssertFalse(store.packageCards.contains { $0.name == "claude-code" })
+    }
+
+    func testTheConfiguredDefaultsArePreselectedOnCLI0729() async {
+        let store = makeStore(cli: FakeCLI(), defaults: ["zsh", "pi"])
+        await store.load()
+        await store.startNew()
+        XCTAssertEqual(store.flow?.draft.packages, ["zsh", "pi"])
+        XCTAssertTrue(store.knowsDefaults)
+    }
+
+    func testEditListsTheLoginsOfItsPackagesWithWhatTheyFollow() async {
+        let store = makeStore(cli: FakeCLI(), defaults: [], sharing: ["pi": "machine"])
+        await store.load()
+        store.startEdit("gamma")
+        XCTAssertEqual(store.logins, [WorkspaceLogin(name: "pi", package: "pi", inherited: "machine")])
+        XCTAssertTrue(store.reportsSharing)
+    }
+
+    func testATypedNumberThatIsNotOneHoldsContinue() async {
+        let store = makeStore(cli: FakeCLI(), defaults: [])
+        await store.load()
+        store.startEdit("gamma")
+        XCTAssertEqual(store.variables.map(\.package), ["pi"])
+        store.flow?.setSetting("pi.port", "eighty")
+        XCTAssertFalse(store.canContinue)
+        store.flow?.setSetting("pi.port", "8080")
+        XCTAssertTrue(store.canContinue)
+    }
+
+    func testAnOlderCLIShowsNoLogins() async {
+        let store = makeStore(cli: FakeCLI())
+        await store.load()
+        store.startEdit("gamma")
+        XCTAssertFalse(store.reportsSharing)
+        XCTAssertFalse(store.knowsDefaults)
     }
 
     func testCreatingRunsNewThenSyncAndReadsEverythingAgain() async {

@@ -131,6 +131,37 @@ final class DevmachineCLITests: XCTestCase {
         XCTAssertEqual(runner.calls.first?.args, ["--format", "json", "workspaces", "list"])
     }
 
+    func testWorkspaceSummariesReadEachWorkspacesOwnLoginAnswers() throws {
+        let body = #"{"workspaces":[{"name":"acme","machine":"main","user":"acme","packages":[],"credentials":{"claude":"own"}}]}"#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+
+        let workspaces = try DevmachineCLI(executable: "/x", runner: runner).workspaceSummaries()
+
+        XCTAssertEqual(workspaces.first?.credentials, ["claude": "own"])
+        XCTAssertEqual(workspaces.first?.packages, [])
+    }
+
+    func testConfigShowReadsTheDefaultPackagesAndTopLevelLoginAnswers() throws {
+        let body = #"{"machines":[],"workspaces":[],"defaults":{"workspace":["dev","zsh"]},"credentials":{"gh":"machine"}}"#
+        let show = try JSONDecoder().decode(CLIConfigShow.self, from: Data(body.utf8))
+        XCTAssertEqual(show.defaultWorkspacePackages, ["dev", "zsh"])
+        XCTAssertEqual(show.credentials, ["gh": "machine"])
+
+        let older = try JSONDecoder().decode(CLIConfigShow.self, from: Data(#"{"machines":[]}"#.utf8))
+        XCTAssertNil(older.defaultWorkspacePackages)
+        XCTAssertNil(older.credentials)
+    }
+
+    func testAPackageReadsItsDeclaredVariables() throws {
+        let body = #"{"packages":[{"name":"zsh","scope":"workspace","installed_on":[],"#
+            + #""variables":[{"name":"theme","summary":"The prompt.","default":"clean","type":"string"}]}]}"#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+
+        let packages = try DevmachineCLI(executable: "/x", runner: runner).packages()
+
+        XCTAssertEqual(packages.first?.info.variables.map(\.name), ["theme"])
+    }
+
     func testBeforeTheConfigurationExistsThereIsNoWorkspaceAndNoListCall() throws {
         let runner = CLIRecordingRunner(result: (#"{"path":"/Users/alice/.config/devmachine","source":"default"}"#, "", 0))
 
@@ -139,6 +170,25 @@ final class DevmachineCLITests: XCTestCase {
 
         XCTAssertEqual(snapshot, .none)
         XCTAssertEqual(runner.calls.map(\.args), [["--format", "json", "config", "path"]])
+    }
+
+    func testCLI0729IsAskedForTheDefaultsAndAnOlderOneIsNot() throws {
+        let show = #"{"machines":[],"workspaces":[],"defaults":{"workspace":["zsh"]},"credentials":{"gh":"own"}}"#
+        for (version, expectDefaults) in [("devmachine 0.7.29", true), ("devmachine 0.7.28", false)] {
+            let runner = ScriptedCLIRunner(answers: [
+                "config path": #"{"path":"/Users/alice/.config/devmachine","source":"default"}"#,
+                "version": version,
+                "workspaces list": #"{"workspaces":[]}"#,
+                "config show": show,
+            ])
+            let snapshot = try WorkspacesReader.read(
+                cli: DevmachineCLI(executable: "/x", runner: runner), fileExists: { _ in true },
+                readLock: { _ in .missing })
+            XCTAssertEqual(snapshot.defaults, expectDefaults ? ["zsh"] : nil, version)
+            XCTAssertEqual(snapshot.sharing, expectDefaults ? ["gh": "own"] : [:], version)
+            XCTAssertEqual(snapshot.reportsSharing, expectDefaults, version)
+            XCTAssertEqual(runner.asked.contains("config show"), expectDefaults, version)
+        }
     }
 
     func testListDecodesTheCLIJSONContractForTheNamedMachine() throws {
@@ -650,5 +700,43 @@ final class DevmachineCLITransferTests: XCTestCase {
         XCTAssertEqual(runner.calls.first?.args, [
             "--format", "json", "upload", "--workspace", "acme", "--dir", "/home/acme/proj", "--", "/Users/alice/x.png"
         ])
+    }
+}
+
+/// Answers each CLI command (its words without flags) with a fixed output.
+private final class ScriptedCLIRunner: CommandRunner, @unchecked Sendable {
+    private let answers: [String: String]
+    private let lock = NSLock()
+    private var commands: [String] = []
+
+    init(answers: [String: String]) {
+        self.answers = answers
+    }
+
+    var asked: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return commands
+    }
+
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        try runCapturing(executable: executable, args: args, environment: environment).stdout
+    }
+
+    func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        let words = args.filter { !$0.hasPrefix("--") && $0 != "json" }.joined(separator: " ")
+        lock.lock()
+        commands.append(words)
+        lock.unlock()
+        guard let answer = answers[words] else { return ("", "unknown command \(words)", 1) }
+        return (answer, "", 0)
+    }
+
+    func runCapturing(
+        executable: String, args: [String], environment: [String: String]?, input: Data?,
+        onBytesWritten: (@Sendable (Int) -> Void)?
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        try runCapturing(executable: executable, args: args, environment: environment)
     }
 }

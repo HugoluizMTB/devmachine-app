@@ -43,26 +43,37 @@ extension DemoData {
         workspacePackage("dev", "Foundation", "The tools a workspace is expected to have: the GitHub CLI, bun "
             + "and Node through mise.", on: ["acme", "globex", "initech"]),
         workspacePackage("zsh", "Foundation", "zsh as the login shell, a prompt and a tmux config.",
-                         on: ["acme", "globex", "initech"]),
+                         on: ["acme", "globex", "initech"], variables: [
+                            PackageVariable(name: "plugins", summary: "Oh My Zsh plugins to load.",
+                                            default: .array([.string("git")]), type: .list),
+                            PackageVariable(name: "theme", summary: "The prompt theme.", default: .string("clean"),
+                                            type: .string),
+                         ]),
         workspacePackage("mise", "Foundation", "mise, the per-project runtime manager, for one account.",
                          on: ["acme", "globex"]),
         workspacePackage("claude-code", "Coding agents", "The Claude Code CLI for one account. Logging in is a "
-            + "person's job, once.", on: ["acme", "initech"]),
+            + "person's job, once.", on: ["acme", "initech"],
+            credentials: [PackageCredential(name: "claude", kind: "file", scope: "machine")],
+            variables: [PackageVariable(name: "auto_update", summary: "Let Claude Code update itself.",
+                                        default: .bool(true), type: .boolean)]),
         workspacePackage("opencode", "Coding agents", "The opencode CLI for one account.", on: ["globex"]),
         workspacePackage("pi", "Coding agents", "The Pi coding agent for one account, from its standalone release.",
                          on: []),
         workspacePackage("antigravity", "Coding agents", "Google's Antigravity CLI for one account.", on: []),
         workspacePackage("kimi-code", "Coding agents", "The Kimi Code CLI for one account.", on: []),
         workspacePackage("cline", "Coding agents", "The Cline CLI for one account.", on: []),
-        workspacePackage("glab", "Developer tools", "The GitLab CLI in the account's own ~/.local/bin.", on: []),
+        workspacePackage("glab", "Developer tools", "The GitLab CLI in the account's own ~/.local/bin.", on: [],
+                         credentials: [PackageCredential(name: "glab", kind: "secret", scope: "workspace")]),
         workspacePackage("sentry", "Developer tools", "The Sentry CLI in the account's own ~/.local/bin.", on: []),
     ]
 
-    private static func workspacePackage(_ name: String, _ category: String, _ summary: String, on: [String])
-        -> CLIPackage {
+    private static func workspacePackage(
+        _ name: String, _ category: String, _ summary: String, on: [String],
+        credentials: [PackageCredential] = [], variables: [PackageVariable] = []
+    ) -> CLIPackage {
         CLIPackage(
             name: name, scope: "workspace", installedOn: on.map { "workspace \($0)" }, summary: summary,
-            source: "release", category: category)
+            source: "release", category: category, credentials: credentials, variables: variables)
     }
 
     /// The configuration's workspaces with what the last sync applied:
@@ -71,7 +82,7 @@ extension DemoData {
         workspaces: [
             WorkspaceSummary(
                 name: "acme", machine: "main", user: "acme", packages: ["dev", "zsh", "mise", "claude-code"],
-                settings: ["zsh.theme": "robbyrussell"]),
+                settings: ["zsh.theme": "robbyrussell"], credentials: ["claude": "own"]),
             WorkspaceSummary(name: "globex", machine: "main", user: "globex", packages: ["dev", "zsh", "mise", "opencode"]),
             WorkspaceSummary(name: "initech", machine: "main", user: "initech", packages: ["dev", "zsh", "claude-code"]),
             WorkspaceSummary(name: "umbrella", machine: "staging", user: "umbrella", packages: ["zsh"]),
@@ -80,7 +91,8 @@ extension DemoData {
             "acme": ["workspace", "mise", "dev", "zsh", "claude-code"].map { PackagesLock.Entry(name: $0) },
             "globex": ["workspace", "mise", "dev", "zsh", "opencode"].map { PackagesLock.Entry(name: $0) },
             "initech": ["workspace", "mise", "dev", "zsh"].map { PackagesLock.Entry(name: $0) },
-        ]))
+        ]),
+        defaults: ["dev", "zsh", "mise"], sharing: ["claude": "machine"], reportsSharing: true)
 
     static let machinesSnapshot = MachinesSnapshot(
         hasConfiguration: true,

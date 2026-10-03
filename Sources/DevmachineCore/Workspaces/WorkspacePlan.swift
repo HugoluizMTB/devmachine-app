@@ -41,19 +41,25 @@ public struct WorkspaceChanges: Equatable, Sendable {
     public var remove: [String]
     public var set: [WorkspaceSetting]
     public var unset: [String]
+    public var share: [WorkspaceShare]
 
-    public init(add: [String] = [], remove: [String] = [], set: [WorkspaceSetting] = [], unset: [String] = []) {
+    public init(
+        add: [String] = [], remove: [String] = [], set: [WorkspaceSetting] = [], unset: [String] = [],
+        share: [WorkspaceShare] = []
+    ) {
         self.add = add
         self.remove = remove
         self.set = set
         self.unset = unset
+        self.share = share
     }
 
-    public var isEmpty: Bool { add.isEmpty && remove.isEmpty && set.isEmpty && unset.isEmpty }
+    public var isEmpty: Bool { add.isEmpty && remove.isEmpty && set.isEmpty && unset.isEmpty && share.isEmpty }
 
     /// The flags that turn `packages` and `settings` into the chosen ones.
     public static func between(
-        packages: [String], settings: [String: String], chosenPackages: [String], chosenSettings: [WorkspaceSetting]
+        packages: [String], settings: [String: String], chosenPackages: [String], chosenSettings: [WorkspaceSetting],
+        sharing: [String: String] = [:], chosenSharing: [String: String] = [:]
     ) -> WorkspaceChanges {
         let chosenKeys = Set(chosenSettings.map(\.trimmedKey))
         return WorkspaceChanges(
@@ -62,7 +68,10 @@ public struct WorkspaceChanges: Equatable, Sendable {
             set: chosenSettings
                 .filter { settings[$0.trimmedKey] != $0.trimmedValue }
                 .map { WorkspaceSetting(key: $0.trimmedKey, value: $0.trimmedValue) },
-            unset: settings.keys.filter { !chosenKeys.contains($0) }.sorted())
+            unset: settings.keys.filter { !chosenKeys.contains($0) }.sorted(),
+            share: Set(sharing.keys).union(chosenSharing.keys).sorted()
+                .filter { sharing[$0] != chosenSharing[$0] }
+                .map { WorkspaceShare(name: $0, value: chosenSharing[$0] ?? "") })
     }
 }
 
@@ -90,6 +99,7 @@ public enum WorkspacePlan {
         arguments += changes.remove.flatMap { ["--rm", $0] }
         arguments += changes.set.flatMap { ["--set", "\($0.key)=\($0.value)"] }
         arguments += changes.unset.flatMap { ["--unset", $0] }
+        arguments += changes.share.flatMap { ["--share", "\($0.name)=\($0.value)"] }
         let edit = MachinePlanStep(
             kind: .editWorkspace, title: "Change \(name)", arguments: arguments + ["--yes"], asksInTerminal: false)
         return [edit] + (sync ? [syncStep(machine: machine)] : [])

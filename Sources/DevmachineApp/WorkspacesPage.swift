@@ -220,8 +220,14 @@ private struct WorkspaceFlowView: View {
             WorkspaceReview(flow: flow)
         } else {
             switch flow.action {
-            case .new: WorkspaceNewForm(flow: flowBinding, cards: store.packageCards, agents: agents)
-            case .edit: WorkspaceEditForm(flow: flowBinding, cards: store.packageCards, agents: agents)
+            case .new:
+                WorkspaceNewForm(
+                    flow: flowBinding, cards: store.packageCards, agents: agents,
+                    note: WorkspacesContent.preselectionNote(defaults: store.knowsDefaults ? store.defaults : nil))
+            case .edit:
+                WorkspaceEditForm(
+                    flow: flowBinding, cards: store.packageCards, agents: agents, variables: store.variables,
+                    logins: store.reportsSharing ? store.logins : nil)
             case .forget: WorkspaceForgetForm(flow: flow) { store.startDestroy(flow.name) }
             case .destroy: WorkspaceDestroyForm(flow: flowBinding)
             }
@@ -266,7 +272,7 @@ private struct WorkspaceFlowView: View {
                 .disabled(!flow.canAdvance)
             default:
                 DMButton("Continue") { store.next() }
-                    .disabled(!flow.canAdvance)
+                    .disabled(!store.canContinue)
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -278,6 +284,7 @@ private struct WorkspaceNewForm: View {
     @Binding var flow: WorkspaceFlow
     let cards: [MachinePackageCard]
     let agents: WorkspaceAgentsNote
+    let note: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
@@ -289,7 +296,7 @@ private struct WorkspaceNewForm: View {
                 TextField(WorkspaceName.example, text: $flow.draft.name).dmField()
             }
             machinePicker
-            WorkspacePackageCards(flow: $flow, cards: cards, note: WorkspacesContent.preselectionNote, agents: agents)
+            WorkspacePackageCards(flow: $flow, cards: cards, note: note, agents: agents)
             WorkspaceSyncToggle(sync: $flow.sync, machine: flow.machine)
         }
     }
@@ -326,6 +333,14 @@ private struct WorkspaceEditForm: View {
     @Binding var flow: WorkspaceFlow
     let cards: [MachinePackageCard]
     let agents: WorkspaceAgentsNote
+    /// What each package declares (CLI 0.7.29+); empty, settings are free text.
+    let variables: [(package: String, variables: [PackageVariable])]
+    /// Nil on a CLI that does not report login answers.
+    let logins: [WorkspaceLogin]?
+
+    private var declaredKeys: Set<String> {
+        Set(variables.flatMap { package, declared in declared.map { "\(package).\($0.name)" } })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
@@ -334,23 +349,37 @@ private struct WorkspaceEditForm: View {
                 note: "Ticked: what \(flow.name) asks for now. A package taken off stays installed on the machine; "
                     + "the sync only stops managing it.",
                 agents: agents)
+            if !variables.isEmpty {
+                ForEach(variables, id: \.package) { package, declared in
+                    WorkspaceVariableFields(flow: $flow, package: package, variables: declared)
+                }
+            }
             settings
+            if let logins, !logins.isEmpty {
+                WorkspaceLoginSharing(flow: $flow, logins: logins)
+            }
             WorkspaceSyncToggle(sync: $flow.sync, machine: flow.machine)
-            AddMachineNote(text: "The machine, the Linux account and shared logins are not changed here: "
-                + "use devmachine workspaces edit --user or --share in a terminal.")
+            AddMachineNote(text: logins == nil
+                ? "The machine, the Linux account and shared logins are not changed here: "
+                    + "use devmachine workspaces edit --user or --share in a terminal."
+                : "The machine and the Linux account are not changed here: use devmachine workspaces edit "
+                    + "--machine or --user in a terminal.")
         }
     }
 
     private var settings: some View {
         VStack(alignment: .leading, spacing: m.space.sm) {
-            AddMachineFieldLabel(text: "Settings")
-            Text(verbatim: "A package's variables, written as <package>.<name>, like zsh.theme. "
-                + "The CLI reads each value as YAML.")
+            AddMachineFieldLabel(text: variables.isEmpty ? "Settings" : "Other settings")
+            Text(verbatim: variables.isEmpty
+                ? "A package's variables, written as <package>.<name>, like zsh.theme. The CLI reads each value as YAML."
+                : "Settings no package above declares, written as <package>.<name>. The CLI reads each value as YAML.")
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(Array(flow.settings.indices), id: \.self) { index in
-                settingRow(index)
+                if !declaredKeys.contains(flow.settings[index].key) {
+                    settingRow(index)
+                }
             }
             DMButton("Add a setting", systemImage: "plus", variant: .ghost, size: .small) { flow.addSetting() }
         }
@@ -376,6 +405,122 @@ private struct WorkspaceEditForm: View {
             if let problem {
                 WorkspaceWarning(text: problem)
             }
+        }
+    }
+}
+
+/// One package's declared settings as typed fields. An empty field (or
+/// Default) leaves the package's default; the CLI validates every value.
+private struct WorkspaceVariableFields: View {
+    @Environment(\.dmMetrics) private var m
+    @Binding var flow: WorkspaceFlow
+    let package: String
+    let variables: [PackageVariable]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.space.md) {
+            AddMachineFieldLabel(text: "\(package) settings")
+            ForEach(variables, id: \.name) { variable in
+                field(variable)
+            }
+        }
+    }
+
+    private func key(_ variable: PackageVariable) -> String { "\(package).\(variable.name)" }
+
+    private func binding(_ variable: PackageVariable) -> Binding<String> {
+        Binding(get: { flow.settingValue(key(variable)) }, set: { flow.setSetting(key(variable), $0) })
+    }
+
+    @ViewBuilder
+    private func field(_ variable: PackageVariable) -> some View {
+        let value = flow.settingValue(key(variable))
+        VStack(alignment: .leading, spacing: m.space.xxs) {
+            HStack(spacing: m.space.md) {
+                Text(verbatim: variable.name)
+                    .font(.dm(11.5, design: .monospaced))
+                    .foregroundStyle(Color.dmRowText)
+                    .frame(width: m.pt(160), alignment: .leading)
+                if variable.type == .boolean {
+                    DMTabStrip(
+                        tabs: ["", "true", "false"], selection: binding(variable),
+                        title: { $0.isEmpty ? "Default (\(variable.defaultText))" : ($0 == "true" ? "On" : "Off") },
+                        fontSize: 11.5, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
+                        .fixedSize()
+                } else {
+                    TextField(variable.defaultText, text: binding(variable))
+                        .font(.system(size: m.pt(11.5), design: .monospaced))
+                        .dmField()
+                }
+            }
+            if let problem = variable.problem(value) {
+                WorkspaceWarning(text: problem)
+            } else {
+                Text(verbatim: hint(variable))
+                    .font(.dm(10.5))
+                    .foregroundStyle(Color.dmMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func hint(_ variable: PackageVariable) -> String {
+        var parts = [variable.summary.trimmingCharacters(in: .whitespacesAndNewlines)].filter { !$0.isEmpty }
+        switch variable.type {
+        case .list: parts.append("A list, like [a, b].")
+        case .map: parts.append("A map, like {key: value}.")
+        default: break
+        }
+        parts.append("Empty keeps the default: \(variable.defaultText).")
+        return parts.joined(separator: " ")
+    }
+}
+
+/// Each login the workspace's packages use: follow the configuration, or
+/// say here that it is shared from the machine or kept by the workspace.
+private struct WorkspaceLoginSharing: View {
+    @Environment(\.dmMetrics) private var m
+    @Binding var flow: WorkspaceFlow
+    let logins: [WorkspaceLogin]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            AddMachineFieldLabel(text: "Logins")
+            Text(verbatim: "Shared: one login on the machine, copied into this workspace. Own: this workspace "
+                + "logs in for itself, for example to another account. A tool whose login cannot be copied "
+                + "refuses Shared when the sync runs.")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(logins) { login in
+                HStack(spacing: m.space.md) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: login.name)
+                            .font(.dm(12, weight: .medium))
+                            .foregroundStyle(Color.dmRowText)
+                        Text(verbatim: "from \(login.package)")
+                            .font(.dm(10.5))
+                            .foregroundStyle(Color.dmMuted)
+                    }
+                    .frame(width: m.pt(160), alignment: .leading)
+                    DMTabStrip(
+                        tabs: ["", WorkspaceLogin.machine, WorkspaceLogin.own],
+                        selection: Binding(
+                            get: { flow.sharing[login.name] ?? "" },
+                            set: { flow.setSharing(login.name, $0.isEmpty ? nil : $0) }),
+                        title: { title($0, login: login) },
+                        fontSize: 11.5, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
+                        .fixedSize()
+                }
+            }
+        }
+    }
+
+    private func title(_ value: String, login: WorkspaceLogin) -> String {
+        switch value {
+        case WorkspaceLogin.machine: return "Shared"
+        case WorkspaceLogin.own: return "Own"
+        default: return "As configured (\(login.inherited == WorkspaceLogin.machine ? "shared" : "own"))"
         }
     }
 }
@@ -675,7 +820,14 @@ enum WorkspacesContent {
         + "project, like acme: lower-case letters, digits, - and _."
 
     static let preselectionNote = "Ticked: what devmachine setup makes every new workspace get (dev, zsh, mise). "
-        + "If you changed defaults.workspace, tick what you want here: the app cannot read it."
+        + "This devmachine CLI does not say what defaults.workspace holds; version 0.7.29 or newer does."
+
+    static func preselectionNote(defaults: [String]?) -> String {
+        guard let defaults else { return preselectionNote }
+        return defaults.isEmpty
+            ? "Nothing is ticked: defaults.workspace in your configuration is empty."
+            : "Ticked: defaults.workspace in your configuration (\(defaults.joined(separator: ", ")))."
+    }
 
     static func title(_ flow: WorkspaceFlow?) -> String {
         switch flow?.action {

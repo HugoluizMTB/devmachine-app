@@ -1036,13 +1036,26 @@ once may fail there.
   (there it moves the workspace). "Apply it now" off skips the sync.
 - The name uses the wizard's rule (`WorkspaceName`); the machine picker lists
   non-self machines only. Package cards are workspace packages for Linux,
-  grouped by `category`, the account package `workspace` locked on. The
-  preselection is the CLI's setup default (`dev`, `zsh`, `mise`,
-  `WorkspacePackageCatalog.cliDefaults`): no CLI command prints the
-  configured `defaults.workspace`, and the form says so.
-- Edit mirrors the CLI's checks: a setting is `<package>.<name>` for a package
-  the workspace keeps, with a value (an empty `--set` would remove it). The
-  machine, the account and `--share` stay in the terminal.
+  grouped by `category`, the account package `workspace` locked on.
+- **CLI 0.7.29 reports what the page used to guess** (`WorkspaceJSON`, read
+  from `version`; an older CLI keeps the fallbacks). `config show` gives
+  `defaults.workspace`, which is the preselection and the DEFAULT badge
+  (fallback: the setup's own `dev`, `zsh`, `mise`, and the form says it
+  cannot read yours), and the top-level login answers. `packages list` gives
+  each package's `variables`: Edit shows one typed field per declared
+  variable of the packages kept (boolean as Default/On/Off, list and map as
+  YAML text, a number checked before Continue), empty meaning the default;
+  anything else stays in the free-text "Other settings". `workspaces list`
+  gives each workspace's own `credentials`: Edit lists the logins its
+  packages declare (`WorkspaceLogin`: the workspace's answer, then the
+  configuration's, then the package's scope) with As configured / Shared /
+  Own, written as `--share <login>=machine|own`, or `<login>=` to follow
+  the configuration again. `packages list` does not say whether a login
+  can be copied, so a Shared the package refuses fails at the sync, with
+  its message.
+- Edit mirrors the CLI's checks: a free-text setting is `<package>.<name>`
+  for a package the workspace keeps, with a value (an empty `--set` would
+  remove it). The machine and the account stay in the terminal.
 - **Forget and Destroy are different on purpose.** Forget is `workspaces rm
   <w> --yes` behind a confirm: only this Mac's configuration changes. Destroy
   is `workspaces destroy <w> --confirm <w>` (+ `--keep-dns`, a checkbox) and

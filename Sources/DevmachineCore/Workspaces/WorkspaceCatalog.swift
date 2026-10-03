@@ -3,7 +3,7 @@ import Foundation
 /// A value from `workspaces list --format json`'s `settings`, any JSON. It
 /// is shown and sent back as text the CLI reads as YAML, which every JSON
 /// value already is.
-public indirect enum SettingValue: Decodable, Equatable, Sendable {
+public indirect enum SettingValue: Codable, Equatable, Sendable {
     case string(String)
     case int(Int)
     case double(Double)
@@ -28,6 +28,19 @@ public indirect enum SettingValue: Decodable, Equatable, Sendable {
             self = .array(value)
         } else {
             self = .object(try container.decode([String: SettingValue].self))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case let .string(value): try container.encode(value)
+        case let .int(value): try container.encode(value)
+        case let .double(value): try container.encode(value)
+        case let .bool(value): try container.encode(value)
+        case let .array(values): try container.encode(values)
+        case let .object(values): try container.encode(values)
+        case .null: try container.encodeNil()
         }
     }
 
@@ -81,7 +94,7 @@ public enum WorkspacePackageCatalog {
     /// the workspace already has them.
     public static func cards(
         from packages: [PackageInfo], keeping: [String] = [], hiding: Set<String> = [],
-        platform: String = MachinePackageCatalog.linux
+        defaults: [String] = cliDefaults, platform: String = MachinePackageCatalog.linux
     ) -> [MachinePackageCard] {
         let hidden = hiding.subtracting(keeping)
         var cards = packages
@@ -91,7 +104,7 @@ public enum WorkspacePackageCatalog {
                 let summary = package.summary.trimmingCharacters(in: .whitespacesAndNewlines)
                 return MachinePackageCard(
                     name: package.name, summary: summary.isEmpty ? "No description." : summary,
-                    isRecommended: cliDefaults.contains(package.name), isYours: package.source == "local",
+                    isRecommended: defaults.contains(package.name), isYours: package.source == "local",
                     locked: package.name == account, category: package.category)
             }
         for name in keeping where !cards.contains(where: { $0.name == name }) {
@@ -115,9 +128,10 @@ public enum WorkspacePackageCatalog {
         return titles.map { title in Group(title: title, cards: cards.filter { Self.title($0.category) == title }) }
     }
 
-    /// The CLI's own defaults that this release has.
-    public static func preselected(from cards: [MachinePackageCard]) -> [String] {
-        cliDefaults.filter { name in cards.contains { $0.name == name } }
+    /// The defaults (`defaults.workspace`, or the setup's own on an older
+    /// CLI) that are offered as cards.
+    public static func preselected(from cards: [MachinePackageCard], defaults: [String] = cliDefaults) -> [String] {
+        defaults.filter { name in cards.contains { $0.name == name } }
     }
 
     private static func title(_ category: String) -> String {

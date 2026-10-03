@@ -31,6 +31,7 @@ private struct CLIWorkspaceDetailList: Decodable {
         let user: String
         let packages: [String]?
         let settings: [String: SettingValue]?
+        let credentials: [String: String]?
     }
 
     let workspaces: [Row]
@@ -84,9 +85,17 @@ struct CLIConfigShow: Decodable, Equatable, Sendable {
     let machines: [CLIConfigMachine]
     let workspaces: [CLIConfigWorkspace]
     let domain: String
+    /// `defaults.workspace` and the top-level login answers, CLI 0.7.29+;
+    /// nil from an older CLI, which leaves them out.
+    var defaultWorkspacePackages: [String]?
+    var credentials: [String: String]?
+
+    private struct Defaults: Decodable {
+        let workspace: [String]?
+    }
 
     enum CodingKeys: String, CodingKey {
-        case machines, workspaces, domain
+        case machines, workspaces, domain, defaults, credentials
     }
 
     init(machines: [CLIConfigMachine], workspaces: [CLIConfigWorkspace], domain: String) {
@@ -101,6 +110,8 @@ struct CLIConfigShow: Decodable, Equatable, Sendable {
         machines = try c.decodeIfPresent([CLIConfigMachine].self, forKey: .machines) ?? []
         workspaces = try c.decodeIfPresent([CLIConfigWorkspace].self, forKey: .workspaces) ?? []
         domain = try c.decodeIfPresent(String.self, forKey: .domain) ?? ""
+        defaultWorkspacePackages = try c.decodeIfPresent(Defaults.self, forKey: .defaults)?.workspace
+        credentials = try c.decodeIfPresent([String: String].self, forKey: .credentials)
     }
 }
 
@@ -173,17 +184,20 @@ struct CLIPackage: Codable, Equatable, Sendable {
     /// `platforms` (empty is any) and `needs` come from CLI 0.7.27 on.
     var platforms: [String] = []
     var needs: [String] = []
+    /// What `--set` accepts per package, CLI 0.7.29+.
+    var variables: [PackageVariable]?
 
     enum CodingKeys: String, CodingKey {
-        case name, scope, summary, source, kind, category, credentials, platforms, needs
+        case name, scope, summary, source, kind, category, credentials, platforms, needs, variables
         case installedOn = "installed_on"
     }
 
     init(
         name: String, scope: String, installedOn: [String], summary: String? = nil, source: String = "",
         kind: String? = nil, category: String? = nil, credentials: [PackageCredential]? = nil,
-        platforms: [String] = [], needs: [String] = []
+        platforms: [String] = [], needs: [String] = [], variables: [PackageVariable]? = nil
     ) {
+        self.variables = variables
         self.name = name
         self.scope = scope
         self.installedOn = installedOn
@@ -210,6 +224,7 @@ struct CLIPackage: Codable, Equatable, Sendable {
         credentials = try c.decodeIfPresent([PackageCredential].self, forKey: .credentials)
         platforms = try c.decodeIfPresent([String].self, forKey: .platforms) ?? []
         needs = try c.decodeIfPresent([String].self, forKey: .needs) ?? []
+        variables = try c.decodeIfPresent([PackageVariable].self, forKey: .variables)
     }
 
     /// The name its token is stored under with `secrets set`.
@@ -233,7 +248,7 @@ struct CLIPackage: Codable, Equatable, Sendable {
     var info: PackageInfo {
         PackageInfo(
             name: name, scope: scope, summary: summary ?? "", source: source, platforms: platforms, needs: needs,
-            category: category ?? "")
+            category: category ?? "", variables: variables ?? [])
     }
 }
 
@@ -487,7 +502,7 @@ struct DevmachineCLI: Sendable {
         return try JSONDecoder().decode(CLIWorkspaceDetailList.self, from: Data(result.stdout.utf8)).workspaces.map {
             WorkspaceSummary(
                 name: $0.name, machine: $0.machine, user: $0.user, packages: $0.packages ?? [],
-                settings: ($0.settings ?? [:]).mapValues(\.text))
+                settings: ($0.settings ?? [:]).mapValues(\.text), credentials: $0.credentials ?? [:])
         }
     }
 

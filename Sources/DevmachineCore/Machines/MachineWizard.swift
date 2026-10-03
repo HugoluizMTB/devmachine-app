@@ -181,11 +181,14 @@ public struct PackageInfo: Equatable, Sendable {
     /// The catalog's heading for it, like "Coding agents"; empty when the
     /// package names none.
     public let category: String
+    /// The settings it declares (CLI 0.7.29+), empty before.
+    public let variables: [PackageVariable]
 
     public init(
         name: String, scope: String, summary: String, source: String, platforms: [String] = [], needs: [String] = [],
-        category: String = ""
+        category: String = "", variables: [PackageVariable] = []
     ) {
+        self.variables = variables
         self.name = name
         self.scope = scope
         self.summary = summary

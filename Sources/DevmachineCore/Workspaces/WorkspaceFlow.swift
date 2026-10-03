@@ -7,15 +7,21 @@ public struct WorkspaceSummary: Equatable, Sendable, Identifiable {
     public let user: String
     public let packages: [String]
     public let settings: [String: String]
+    /// Its own login answers, `machine` or `own` (CLI 0.7.29+).
+    public let credentials: [String: String]
 
     public var id: String { name }
 
-    public init(name: String, machine: String, user: String, packages: [String], settings: [String: String] = [:]) {
+    public init(
+        name: String, machine: String, user: String, packages: [String], settings: [String: String] = [:],
+        credentials: [String: String] = [:]
+    ) {
         self.name = name
         self.machine = machine
         self.user = user
         self.packages = packages
         self.settings = settings
+        self.credentials = credentials
     }
 }
 
@@ -67,6 +73,8 @@ public struct WorkspaceFlow: Equatable, Sendable {
     /// Edit: the packages chosen, and the settings as they will be.
     public var packages: [String] = []
     public var settings: [WorkspaceSetting] = []
+    /// Edit: the workspace's own login answers as they will be.
+    public var sharing: [String: String] = [:]
     /// New and Edit end with `sync`, unless the person turns it off.
     public var sync = true
     /// Destroy: the name typed again.
@@ -92,6 +100,7 @@ public struct WorkspaceFlow: Equatable, Sendable {
     public static func edit(_ workspace: WorkspaceSummary) -> WorkspaceFlow {
         var flow = WorkspaceFlow(action: .edit(workspace.name), machines: [], existing: [], current: workspace)
         flow.packages = workspace.packages
+        flow.sharing = workspace.credentials
         flow.settings = workspace.settings.keys.sorted().map {
             WorkspaceSetting(key: $0, value: workspace.settings[$0] ?? "")
         }
@@ -124,7 +133,8 @@ public struct WorkspaceFlow: Equatable, Sendable {
     public var changes: WorkspaceChanges {
         guard let current else { return WorkspaceChanges() }
         return WorkspaceChanges.between(
-            packages: current.packages, settings: current.settings, chosenPackages: packages, chosenSettings: settings)
+            packages: current.packages, settings: current.settings, chosenPackages: packages, chosenSettings: settings,
+            sharing: current.credentials, chosenSharing: sharing)
     }
 
     public var canAdvance: Bool {
@@ -193,6 +203,27 @@ public struct WorkspaceFlow: Equatable, Sendable {
             list.append(package)
         }
         if action == .new { draft.packages = list } else { packages = list }
+    }
+
+    /// A declared variable's value as set, empty when it is left at its default.
+    public func settingValue(_ key: String) -> String {
+        settings.first { $0.key == key }?.value ?? ""
+    }
+
+    /// An empty value takes the setting out, back to the package's default.
+    public mutating func setSetting(_ key: String, _ value: String) {
+        let index = settings.firstIndex { $0.key == key }
+        switch (index, value.isEmpty) {
+        case let (index?, true): settings.remove(at: index)
+        case let (index?, false): settings[index].value = value
+        case (nil, false): settings.append(WorkspaceSetting(key: key, value: value))
+        case (nil, true): break
+        }
+    }
+
+    /// `machine`, `own`, or nil to follow what the configuration says.
+    public mutating func setSharing(_ login: String, _ value: String?) {
+        sharing[login] = value
     }
 
     public mutating func addSetting() {

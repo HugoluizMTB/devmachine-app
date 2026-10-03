@@ -72,6 +72,9 @@ enum DemoWorkspaces {
         case "workspaces-edit", "workspaces-edit-review":
             store.startEdit("acme")
             store.flow?.togglePackage("pi")
+            store.flow?.setSetting("zsh.plugins", "[git, docker]")
+            store.flow?.setSetting("claude-code.auto_update", "false")
+            store.flow?.setSharing("claude", nil)
             store.flow?.addSetting()
             if let last = store.flow?.settings.indices.last {
                 store.flow?.settings[last] = WorkspaceSetting(key: "pi.model", value: "fast")

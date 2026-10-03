@@ -6,6 +6,12 @@ import DevmachineCore
 struct WorkspacesSnapshot: Equatable, Sendable {
     var workspaces: [WorkspaceSummary]
     var lock: PackagesLock?
+    /// `defaults.workspace`, nil from a CLI older than `WorkspaceJSON`.
+    var defaults: [String]?
+    /// The configuration's top-level login answers.
+    var sharing: [String: String] = [:]
+    /// The CLI reports each workspace's login answers, so Edit can change them.
+    var reportsSharing = false
 
     static let none = WorkspacesSnapshot(workspaces: [], lock: nil)
 }
@@ -28,7 +34,14 @@ enum WorkspacesReader {
         case let .text(text): lock = PackagesLock.parse(text)
         case .unreadable: lock = nil
         }
-        return WorkspacesSnapshot(workspaces: try cli.workspaceSummaries(), lock: lock)
+        var snapshot = WorkspacesSnapshot(workspaces: try cli.workspaceSummaries(), lock: lock)
+        let version = (try? cli.version()).flatMap { SemanticVersion.first(in: $0) }
+        if WorkspaceJSON.isSupported(cliVersion: version), let show = try? cli.configShow() {
+            snapshot.defaults = show.defaultWorkspacePackages
+            snapshot.sharing = show.credentials ?? [:]
+            snapshot.reportsSharing = show.defaultWorkspacePackages != nil
+        }
+        return snapshot
     }
 }
 
@@ -116,7 +129,45 @@ final class WorkspacesStore: ObservableObject {
     var packageCards: [MachinePackageCard] {
         WorkspacePackageCatalog.cards(
             from: (machines.snapshot?.packages ?? []).map(\.info), keeping: flow?.current?.packages ?? [],
-            hiding: codingAgents(machines.workspacePackageNames).hidden)
+            hiding: codingAgents(machines.workspacePackageNames).hidden, defaults: defaults)
+    }
+
+    /// The configured `defaults.workspace` on CLI 0.7.29+, else the setup's.
+    var defaults: [String] { snapshot?.defaults ?? WorkspacePackageCatalog.cliDefaults }
+    var knowsDefaults: Bool { snapshot?.defaults != nil }
+    var reportsSharing: Bool { snapshot?.reportsSharing ?? false }
+
+    /// The logins the edited workspace's packages use.
+    var logins: [WorkspaceLogin] {
+        guard let flow else { return [] }
+        let declared = Dictionary(
+            (machines.snapshot?.packages ?? []).map { ($0.name, $0.credentials ?? []) }, uniquingKeysWith: { a, _ in a })
+        return WorkspaceLogin.logins(
+            packages: [WorkspacePackageCatalog.account] + flow.packages, declared: declared,
+            configuration: snapshot?.sharing ?? [:])
+    }
+
+    /// A typed value the CLI would store as text where a number is meant.
+    var variableProblems: [String] {
+        guard let flow else { return [] }
+        return variables.flatMap { package, declared in
+            declared.compactMap { $0.problem(flow.settingValue("\(package).\($0.name)")) }
+        }
+    }
+
+    var canContinue: Bool {
+        (flow?.canAdvance ?? false) && variableProblems.isEmpty
+    }
+
+    /// The variables each of the edited workspace's packages declares.
+    var variables: [(package: String, variables: [PackageVariable])] {
+        guard let flow else { return [] }
+        let info = Dictionary(
+            (machines.snapshot?.packages ?? []).map { ($0.name, $0.variables ?? []) }, uniquingKeysWith: { a, _ in a })
+        return flow.packages.compactMap { package in
+            let declared = info[package] ?? []
+            return declared.isEmpty ? nil : (package, declared)
+        }
     }
 
     var noCodingAgentOn: Bool {
@@ -158,7 +209,7 @@ final class WorkspacesStore: ObservableObject {
         if loadMachines { await machines.load() }
         start(.new(
             machines: machineChoices, existingWorkspaces: workspaces.map(\.name),
-            packages: WorkspacePackageCatalog.preselected(from: packageCards)))
+            packages: WorkspacePackageCatalog.preselected(from: packageCards, defaults: defaults)))
     }
 
     func startEdit(_ name: String) {
