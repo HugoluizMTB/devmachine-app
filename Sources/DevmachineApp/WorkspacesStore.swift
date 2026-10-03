@@ -37,9 +37,9 @@ enum WorkspacesReader {
         var snapshot = WorkspacesSnapshot(workspaces: try cli.workspaceSummaries(), lock: lock)
         let version = (try? cli.version()).flatMap { SemanticVersion.first(in: $0) }
         if WorkspaceJSON.isSupported(cliVersion: version), let show = try? cli.configShow() {
-            snapshot.defaults = show.defaultWorkspacePackages
+            snapshot.defaults = show.defaultWorkspacePackages ?? []
             snapshot.sharing = show.credentials ?? [:]
-            snapshot.reportsSharing = show.defaultWorkspacePackages != nil
+            snapshot.reportsSharing = true
         }
         return snapshot
     }

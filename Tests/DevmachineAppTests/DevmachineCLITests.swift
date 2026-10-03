@@ -172,6 +172,19 @@ final class DevmachineCLITests: XCTestCase {
         XCTAssertEqual(runner.calls.map(\.args), [["--format", "json", "config", "path"]])
     }
 
+    func testCLI0729WithoutADefaultsKeyStillReportsSharingAndAnEmptyDefault() throws {
+        let runner = ScriptedCLIRunner(answers: [
+            "config path": #"{"path":"/Users/alice/.config/devmachine","source":"default"}"#,
+            "version": "devmachine 0.7.29",
+            "workspaces list": #"{"workspaces":[]}"#,
+            "config show": #"{"machines":[],"workspaces":[]}"#,
+        ])
+        let snapshot = try WorkspacesReader.read(
+            cli: DevmachineCLI(executable: "/x", runner: runner), fileExists: { _ in true }, readLock: { _ in .missing })
+        XCTAssertEqual(snapshot.defaults, [])
+        XCTAssertTrue(snapshot.reportsSharing)
+    }
+
     func testCLI0729IsAskedForTheDefaultsAndAnOlderOneIsNot() throws {
         let show = #"{"machines":[],"workspaces":[],"defaults":{"workspace":["zsh"]},"credentials":{"gh":"own"}}"#
         for (version, expectDefaults) in [("devmachine 0.7.29", true), ("devmachine 0.7.28", false)] {
