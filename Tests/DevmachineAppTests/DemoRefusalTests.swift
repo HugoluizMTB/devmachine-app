@@ -93,4 +93,29 @@ final class DemoRefusalTests: XCTestCase {
         }
         XCTAssertEqual(center.job(id)?.phase, .failed(cause: "Demo mode never runs a devmachine command."))
     }
+
+    func testADNSSyncFailsInTheCornerWithoutResolvingTheCLI() async throws {
+        let center = MachineJobCenter(runner: ProcessJobRunner(cli: {
+            XCTFail("demo mode resolved the CLI for a DNS sync")
+            throw DevmachineCLIError.commandFailed("no")
+        }))
+        let setup = DNSSetupStore(
+            service: CaddyService(cli: DevmachineCLI(executable: "/fake", runner: DemoMode.runner)),
+            center: { center }, canRunSync: { true })
+        setup.update(
+            machine: "main",
+            packages: [CLIPackage(name: "hostinger", scope: "machine", installedOn: ["machine main"],
+                                  summary: "DNS zones on Hostinger.")],
+            answers: [])
+
+        let id = try XCTUnwrap(setup.sync("hostinger"))
+
+        let deadline = Date().addingTimeInterval(5)
+        while setup.state == .working(.sync), Date() < deadline {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(center.job(id)?.phase, .failed(cause: "Demo mode never runs a devmachine command."))
+        XCTAssertEqual(setup.state, .failed(.sync, cause: "Demo mode never runs a devmachine command.",
+                                            details: "$ devmachine sync --machine main --tags hostinger --yes"))
+    }
 }

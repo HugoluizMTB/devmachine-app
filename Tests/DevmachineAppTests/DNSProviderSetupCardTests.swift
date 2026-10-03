@@ -51,6 +51,10 @@ final class DNSProviderSetupCardTests: XCTestCase {
         XCTAssertTrue(DNSSetupContent.zonesGap.contains("config.yml"))
     }
 
+    func testARunningSyncPointsToTheCornerInsteadOfALog() {
+        XCTAssertTrue(DNSSetupContent.syncingBody.contains("corner"))
+    }
+
     func testTheCardRendersInEveryStateAndNotWhenReady() throws {
         let cases: [(answers: [DNSProviderAnswer]?, job: DNSSetupJob?, declared: Bool, shows: Bool)] = [
             ([], nil, false, true),
@@ -67,8 +71,7 @@ final class DNSProviderSetupCardTests: XCTestCase {
             let listed = item.declared ? packages : packages.map {
                 CLIPackage(name: $0.name, scope: $0.scope, installedOn: [], summary: $0.summary)
             }
-            setup.seedDemo(machine: "box", packages: listed, answers: item.answers, job: item.job,
-                           lines: ["$ devmachine sync --machine box --tags hostinger --yes"])
+            setup.seedDemo(machine: "box", packages: listed, answers: item.answers, job: item.job)
             XCTAssertEqual(setup.state.showsCard, item.shows)
 
             guard item.shows else { continue }

@@ -121,9 +121,7 @@ final class CaddyStore: ObservableObject {
         self.service = service
         self.selection = selection
         self.cache = cache
-        self.dnsSetup = dnsSetup ?? DNSSetupStore(
-            service: service,
-            runner: DemoMode.isActive ? DemoDNSSyncRunner() as any MachineJobRunning : ProcessJobRunner())
+        self.dnsSetup = dnsSetup ?? DNSSetupStore(service: service)
         if DemoMode.isActive {
             self.dnsSetup.canRunSync = { true }
             self.dnsSetup.canEditMachineSettings = { true }

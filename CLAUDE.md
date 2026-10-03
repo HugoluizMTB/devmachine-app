@@ -885,16 +885,19 @@ once may fail there.
   then `secrets set <secret> --stdin`: all local to this Mac, behind one
   confirm. The token goes on stdin only, never argv, logs or the job
   output. Run sync = `sync --machine <m> --tags <p> --yes` then
-  `credentials push --machine <m> --yes`, behind a confirm, streamed in
-  the card and a `BGTask`; a CLI older than 0.7.24 gets the commands.
+  `credentials push --machine <m> --yes`, behind a confirm, as a machine
+  job in the corner (`MachineJobCenter`), which holds the log; the card
+  only says where it stands. A failed job retried or dismissed in the
+  corner moves the card with it. A CLI older than 0.7.24 gets the commands.
 - Hostinger's `hostinger.zones` is set with `machines edit <m> --set
   hostinger.zones=[…] --yes` behind a confirm on CLI 0.7.27+, after the
   package is added (the CLI refuses a setting for a package not there).
   Zones are plain names only (`DNSProviderCatalog.zones`). An older CLI
   gets a `config.yml` snippet; the app never edits `config.yml`. Demo
   mode refuses every write.
-- `DEVMACHINE_DEMO_WALK=dns-setup` captures every state; its sync is
-  `DemoDNSSyncRunner`, which starts no process.
+- `DEVMACHINE_DEMO_WALK=dns-setup` captures every state; its sync runs on
+  a demo center whose runner is `DemoDNSSyncRunner`, which starts no
+  process. Outside the walk, demo mode's sync fails in the corner.
 
 ## Machines and the Add machine wizard
 - **Settings → Machines lists the CLI's configuration** (`MachinesStore`:
