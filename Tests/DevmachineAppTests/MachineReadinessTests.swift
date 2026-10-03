@@ -153,8 +153,8 @@ private func snapshot(
 
 @MainActor
 final class MachineReadinessStoreTests: XCTestCase {
-    private func makeStore(_ box: SnapshotBox, runner: FakePrepareRunner = FakePrepareRunner()) -> MachineReadinessStore {
-        MachineReadinessStore(read: { box.read() }, runner: runner, listensForReports: false)
+    private func makeStore(_ box: SnapshotBox, center: MachineJobCenter? = nil) -> MachineReadinessStore {
+        MachineReadinessStore(read: { box.read() }, jobs: { center }, listensForReports: false)
     }
 
     func testStatesComeFromTheSnapshot() async {
@@ -213,74 +213,156 @@ final class MachineReadinessStoreTests: XCTestCase {
         XCTAssertEqual(store.state(for: "main"), .ready)
     }
 
-    func testPrepareAddsThenSyncsOnlyThePackageAndRefreshes() async {
+    func testPrepareAddsThenSyncsOnlyThePackageAsACornerJobAndRefreshes() async throws {
         let box = SnapshotBox(snapshot(declared: ["main": false], applied: false))
         let runner = FakePrepareRunner()
         runner.lines = ["PLAY RECAP", "main : ok=3 changed=1 failed=0"]
         runner.onRun = { arguments in
             if arguments.first == "sync" { box.current = snapshot(stamp: "2") }
         }
-        let store = makeStore(box, runner: runner)
+        let center = MachineJobCenter(runner: runner, successSeconds: 60)
+        let store = makeStore(box, center: center)
         var prepared: [String] = []
         store.onPrepared = { prepared.append($0) }
         await store.check()
         XCTAssertEqual(store.state(for: "main"), .notDeclared)
 
-        await store.prepare("main")
+        let id = try XCTUnwrap(store.prepare("main"))
 
+        XCTAssertEqual(store.preparing["main"], id)
+        XCTAssertEqual(store.prepareStatus("main"), .running)
+        XCTAssertEqual(center.job(id)?.plan.title, "Prepare main")
+        try await waitFor { prepared == ["main"] }
         XCTAssertEqual(runner.calls, [
             ["packages", "add", "devmachine-app", "--machine", "main", "--yes"],
             ["sync", "--machine", "main", "--tags", "devmachine-app", "--yes"],
         ])
-        XCTAssertEqual(store.jobs["main"]?.phase, .succeeded)
-        XCTAssertTrue(store.jobs["main"]?.output.contains("main : ok=3 changed=1 failed=0") ?? false)
+        XCTAssertTrue(center.job(id)?.log.lines.contains("main : ok=3 changed=1 failed=0") ?? false)
+        XCTAssertEqual(store.prepareStatus("main"), .succeeded)
         XCTAssertEqual(store.state(for: "main"), .ready)
-        XCTAssertEqual(prepared, ["main"])
+        XCTAssertEqual(store.machinesNeedingAttention, ["main"], "the finished job stays until the corner lets it go")
+
+        store.dismissPrepare("main")
+        XCTAssertNil(center.job(id))
+        XCTAssertNil(store.preparing["main"])
+        XCTAssertEqual(store.machinesNeedingAttention, [])
     }
 
-    func testPrepareSkipsTheAddWhenAlreadyDeclared() async {
+    func testAPrepareJobThatLeavesTheCornerLeavesTheCard() async throws {
         let box = SnapshotBox(snapshot(declared: ["main": true], applied: false))
         let runner = FakePrepareRunner()
         runner.onRun = { _ in box.current = snapshot(stamp: "2") }
-        let store = makeStore(box, runner: runner)
+        let center = MachineJobCenter(runner: runner, successSeconds: 0)
+        let store = makeStore(box, center: center)
         await store.check()
 
-        await store.prepare("main")
+        store.prepare("main")
 
+        try await waitFor { store.preparing["main"] == nil }
+        XCTAssertNil(store.prepareStatus("main"))
+        XCTAssertEqual(store.machinesNeedingAttention, [])
+    }
+
+    func testPrepareSkipsTheAddWhenAlreadyDeclared() async throws {
+        let box = SnapshotBox(snapshot(declared: ["main": true], applied: false))
+        let runner = FakePrepareRunner()
+        runner.onRun = { _ in box.current = snapshot(stamp: "2") }
+        let center = MachineJobCenter(runner: runner, successSeconds: 60)
+        let store = makeStore(box, center: center)
+        await store.check()
+
+        store.prepare("main")
+
+        try await waitFor { store.prepareStatus("main") == .succeeded }
         XCTAssertEqual(runner.calls, [["sync", "--machine", "main", "--tags", "devmachine-app", "--yes"]])
     }
 
-    func testAFailedSyncShowsTheExactErrorAndTheWholeLog() async {
+    func testASecondPrepareWhileOneRunsStartsNothing() async throws {
+        let box = SnapshotBox(snapshot(declared: ["main": true], applied: false))
+        let runner = FakePrepareRunner()
+        let center = MachineJobCenter(runner: runner, successSeconds: 60)
+        let store = makeStore(box, center: center)
+        await store.check()
+
+        let first = store.prepare("main")
+        let second = store.prepare("main")
+
+        XCTAssertNotNil(first)
+        XCTAssertNil(second)
+        XCTAssertEqual(center.jobs.count, 1)
+        try await waitFor { center.job(first!)?.phase != .running(step: 0) }
+    }
+
+    func testAFailedSyncLeavesTheCornerJobFailedAndTheCardShowsItsCauseThenARetrySucceeds() async throws {
         let box = SnapshotBox(snapshot(declared: ["main": true], applied: false))
         let runner = FakePrepareRunner()
         runner.statuses = [1]
         runner.lines = ["TASK [devmachine-app]", "error: 1 task(s) failed on main: exit status 2"]
-        let store = makeStore(box, runner: runner)
+        let center = MachineJobCenter(runner: runner, successSeconds: 60)
+        let store = makeStore(box, center: center)
         var prepared: [String] = []
         store.onPrepared = { prepared.append($0) }
         await store.check()
 
-        await store.prepare("main")
+        let id = try XCTUnwrap(store.prepare("main"))
 
-        guard case let .failed(error) = store.jobs["main"]?.phase else {
-            return XCTFail("expected a failure, got \(String(describing: store.jobs["main"]))")
-        }
-        XCTAssertEqual(error.cause, "1 task(s) failed on main: exit status 2")
-        XCTAssertTrue(error.details.contains("TASK [devmachine-app]"))
-        XCTAssertTrue(error.details.contains("$ devmachine sync --machine main --tags devmachine-app --yes"))
+        try await waitFor { if case .failed = center.job(id)?.phase { return true } else { return false } }
+        XCTAssertEqual(center.job(id)?.phase, .failed(cause: "1 task(s) failed on main: exit status 2"))
+        XCTAssertEqual(store.prepareStatus("main"), .failed(DMErrorState(
+            title: "main was not prepared", cause: "1 task(s) failed on main: exit status 2", details: ""),
+            inCorner: true))
+        XCTAssertEqual(store.machinesNeedingAttention, ["main"])
         XCTAssertEqual(prepared, [])
+
+        store.showPrepareInCorner("main")
+        store.showPrepareInCorner("main")
+        XCTAssertEqual(center.job(id)?.expanded, true)
+
+        runner.lines = []
+        runner.onRun = { _ in box.current = snapshot(stamp: "2") }
+        store.retryPrepare("main")
+
+        try await waitFor { prepared == ["main"] }
+        XCTAssertEqual(store.preparing["main"], id)
+        XCTAssertEqual(store.prepareStatus("main"), .succeeded)
+        XCTAssertEqual(store.state(for: "main"), .ready)
+    }
+
+    func testASyncThatLeavesTheMachineUnreadySaysSo() async throws {
+        let box = SnapshotBox(snapshot(declared: ["main": true], applied: false))
+        let runner = FakePrepareRunner()
+        let center = MachineJobCenter(runner: runner, successSeconds: 60)
+        let store = makeStore(box, center: center)
+        var prepared: [String] = []
+        store.onPrepared = { prepared.append($0) }
+        await store.check()
+
+        store.prepare("main")
+
+        try await waitFor { store.prepareFailure["main"] != nil }
+        let failure = DMErrorState(
+            title: "main still isn't ready",
+            cause: "The sync finished, but the configuration does not show devmachine-app applied there.",
+            details: "")
+        XCTAssertEqual(store.prepareFailure["main"], failure)
+        XCTAssertEqual(store.prepareStatus("main"), .failed(failure, inCorner: false))
+        XCTAssertEqual(prepared, [])
+        XCTAssertEqual(store.machinesNeedingAttention, ["main"])
     }
 
     func testAnOldCLINeverRunsPrepare() async {
         let runner = FakePrepareRunner()
-        let store = makeStore(SnapshotBox(snapshot(declared: ["main": true], applied: false, version: "0.7.23")), runner: runner)
+        let center = MachineJobCenter(runner: runner)
+        let store = makeStore(
+            SnapshotBox(snapshot(declared: ["main": true], applied: false, version: "0.7.23")), center: center)
         await store.check()
         XCTAssertFalse(store.canPrepareInApp)
 
-        await store.prepare("main")
+        XCTAssertNil(store.prepare("main"))
 
         XCTAssertEqual(runner.calls, [])
-        XCTAssertNil(store.jobs["main"])
+        XCTAssertTrue(center.jobs.isEmpty)
+        XCTAssertNil(store.preparing["main"])
     }
 
     func testCheckingWhenActiveIsThrottled() async {
@@ -420,22 +502,23 @@ final class SessionProblemModelTests: XCTestCase {
 final class MachineReadinessContentTests: XCTestCase {
     func testTitles() {
         XCTAssertEqual(
-            MachineReadinessContent.title(machine: "main", state: .notApplied, job: nil),
+            MachineReadinessContent.title(machine: "main", state: .notApplied, status: nil),
             "main isn't ready for the app yet")
         XCTAssertEqual(
-            MachineReadinessContent.title(machine: "main", state: .outdated(detail: ""), job: nil),
+            MachineReadinessContent.title(machine: "main", state: .outdated(detail: ""), status: nil),
             "main's devmachine-app package is out of date")
         XCTAssertEqual(
-            MachineReadinessContent.title(machine: "main", state: .notApplied, job: PrepareJob(phase: .running, output: [])),
+            MachineReadinessContent.title(machine: "main", state: .notApplied, status: .running),
             "Preparing main…")
+        XCTAssertEqual(MachineReadinessContent.preparingBody, "Preparing… the card in the corner shows the log")
     }
 
     func testTheSidebarLineForEachRun() {
-        XCTAssertEqual(MachineReadinessContent.compactLine(machine: "main", phase: .running), "Preparing main…")
-        XCTAssertEqual(MachineReadinessContent.compactLine(machine: "main", phase: .succeeded), "main is ready")
+        XCTAssertEqual(MachineReadinessContent.compactLine(machine: "main", status: .running), "Preparing main…")
+        XCTAssertEqual(MachineReadinessContent.compactLine(machine: "main", status: .succeeded), "main is ready")
         XCTAssertEqual(
             MachineReadinessContent.compactLine(
-                machine: "main", phase: .failed(DMErrorState(title: "x", cause: nil, details: ""))),
+                machine: "main", status: .failed(DMErrorState(title: "x", cause: nil, details: ""), inCorner: true)),
             "Prepare failed")
     }
 
@@ -463,8 +546,7 @@ final class ConfigDirectoryWatcherTests: XCTestCase {
         snapshot.configDirectory = folder.path
         let next = snapshot
         let store = MachineReadinessStore(
-            read: { next }, runner: ProcessJobRunner(cli: { throw DevmachineCLIError.commandFailed("no") }),
-            listensForReports: false)
+            read: { next }, jobs: { nil }, listensForReports: false)
 
         await store.check()
         XCTAssertFalse(store.isWatchingConfiguration, "nothing to watch before setup writes the folder")

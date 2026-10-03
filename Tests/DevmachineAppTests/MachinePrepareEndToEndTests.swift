@@ -22,9 +22,10 @@ final class MachinePrepareEndToEndTests: XCTestCase {
             DevmachineCLI(
                 executable: binary, socketFileExists: { _ in false }, processEnvironment: processEnvironment)
         }
+        let center = MachineJobCenter(runner: ProcessJobRunner(cli: cli), successSeconds: 2)
         let store = MachineReadinessStore(
             read: { await Task.detached { ReadinessReader.read(cli: cli) }.value },
-            runner: ProcessJobRunner(cli: cli),
+            jobs: { center },
             listensForReports: false)
 
         await store.check()
@@ -36,21 +37,24 @@ final class MachinePrepareEndToEndTests: XCTestCase {
         XCTAssertTrue(store.canPrepareInApp)
 
         var streamedWhileRunning = 0
-        let prepare = Task { await store.prepare(machine) }
-        while store.jobs[machine]?.phase == .running || store.jobs[machine] == nil {
-            streamedWhileRunning = max(streamedWhileRunning, store.jobs[machine]?.output.count ?? 0)
+        let id = try XCTUnwrap(store.prepare(machine))
+        while store.prepareStatus(machine) == .running {
+            streamedWhileRunning = max(streamedWhileRunning, center.job(id)?.log.lines.count ?? 0)
             try await Task.sleep(nanoseconds: 100_000_000)
         }
-        await prepare.value
-        let job = try XCTUnwrap(store.jobs[machine])
-        print("E2E log:\n" + job.output.joined(separator: "\n"))
-        print("E2E lines seen while running: \(streamedWhileRunning) of \(job.output.count)")
-        XCTAssertEqual(job.phase, .succeeded)
+        let lines = center.job(id)?.log.lines ?? []
+        print("E2E log:\n" + lines.joined(separator: "\n"))
+        print("E2E lines seen while running: \(streamedWhileRunning) of \(lines.count)")
         XCTAssertGreaterThan(streamedWhileRunning, 2)
+        let deadline = Date().addingTimeInterval(60)
+        while store.state(for: machine) != .ready, store.prepareFailure[machine] == nil, Date() < deadline {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        XCTAssertEqual(store.prepareStatus(machine), .succeeded)
         XCTAssertEqual(store.state(for: machine), .ready)
 
-        try await Task.sleep(nanoseconds: 9_000_000_000)
-        XCTAssertNil(store.jobs[machine])
+        try await Task.sleep(nanoseconds: 3_000_000_000)
+        XCTAssertNil(store.preparing[machine])
         XCTAssertEqual(store.machinesNeedingAttention, [])
     }
 }

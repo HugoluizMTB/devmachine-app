@@ -266,4 +266,11 @@ final class MachineJobCenter: ObservableObject {
             self.remove(id)
         }
     }
+
+    #if DEBUG
+    /// Demo walks only: jobs at one fixed moment, with nothing running.
+    func seedDemo(_ jobs: [MachineJob]) {
+        self.jobs = jobs
+    }
+    #endif
 }

@@ -568,14 +568,13 @@ enum DemoSnapshots {
         case "ready-home":
             DemoMachineReady.seed(MachineReadinessStore.shared, model: model)
         case "ready-running":
-            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, script: .prepareSlow)
-            Task { await MachineReadinessStore.shared.prepare(DemoMachineReady.machine) }
+            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, prepare: .running(step: 1))
         case "ready-failed":
-            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, script: .prepareFails)
-            await MachineReadinessStore.shared.prepare(DemoMachineReady.machine)
+            DemoMachineReady.seed(
+                MachineReadinessStore.shared, model: model,
+                prepare: .failed(cause: "1 task(s) failed on staging: exit status 2"))
         case "ready-done":
-            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, script: .prepareSucceeds)
-            await MachineReadinessStore.shared.prepare(DemoMachineReady.machine)
+            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, prepare: .succeeded(nil))
         case "preview-browser":
             if let directory = targetDirectory {
                 await DemoPreviewBrowserCheck.run(

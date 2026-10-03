@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import DevmachineCore
 
@@ -64,15 +65,13 @@ enum ReadinessReader {
     }
 }
 
-enum PreparePhase: Equatable {
+/// Where a machine's Prepare stands, read from its job in the corner and
+/// from the check after it. `inCorner` says the failure is that job's own,
+/// so its log and Retry are there.
+enum PrepareStatus: Equatable {
     case running
     case succeeded
-    case failed(DMErrorState)
-}
-
-struct PrepareJob: Equatable {
-    var phase: PreparePhase
-    var output: [String]
+    case failed(DMErrorState, inCorner: Bool)
 }
 
 /// Whether each configured machine has `devmachine-app`, and the one-click
@@ -86,13 +85,17 @@ final class MachineReadinessStore: ObservableObject {
     /// Demo mode reads nothing either; a walk hands it a fixed state.
     static let shared = NSClassFromString("XCTestCase") == nil && !DemoMode.isActive
         ? MachineReadinessStore()
-        : MachineReadinessStore(read: { nil }, runner: ProcessJobRunner(cli: {
-            throw DevmachineCLIError.commandFailed("no CLI under tests or in demo mode")
-        }))
+        : NSClassFromString("XCTestCase") != nil
+            ? MachineReadinessStore(read: { nil }, jobs: { nil })
+            : MachineReadinessStore(read: { nil })
 
     @Published private(set) var snapshot: ReadinessSnapshot?
     @Published private(set) var states: [String: MachineReadiness] = [:]
-    @Published private(set) var jobs: [String: PrepareJob] = [:]
+    /// The corner job each machine's Prepare runs as.
+    @Published private(set) var preparing: [String: UUID] = [:]
+    /// A Prepare whose sync succeeded but left the machine unready.
+    @Published private(set) var prepareFailure: [String: DMErrorState] = [:]
+    @Published private var preparePhases: [String: MachineJobPhase] = [:]
 
     /// A sync just made a machine ready: its sessions and stats are read again.
     var onPrepared: ((String) -> Void)?
@@ -101,11 +104,10 @@ final class MachineReadinessStore: ObservableObject {
     var onConfigurationChanged: (() -> Void)?
 
     private var read: @Sendable () async -> ReadinessSnapshot?
-    private var runner: any MachineJobRunning
+    private let jobs: @MainActor () -> MachineJobCenter?
     private var observed: [String: (failure: PackageCallFailure, lockStamp: String?)] = [:]
-    /// The run each machine's card belongs to; a run that was replaced (a
-    /// dismissed card, a new run) writes nothing when it ends.
-    private var runs: [String: UUID] = [:]
+    private var jobsWatch: AnyCancellable?
+    private weak var watchedCenter: MachineJobCenter?
     private var checking = false
     private var lastCheck = Date.distantPast
     private var checkAgain = false
@@ -116,11 +118,11 @@ final class MachineReadinessStore: ObservableObject {
         read: @escaping @Sendable () async -> ReadinessSnapshot? = {
             await Task.detached { ReadinessReader.read(cli: { try DevmachineCLI.resolve() }) }.value
         },
-        runner: any MachineJobRunning = ProcessJobRunner(),
+        jobs: @escaping @MainActor () -> MachineJobCenter? = { AppModel.shared?.jobs },
         listensForReports: Bool = true
     ) {
         self.read = read
-        self.runner = runner
+        self.jobs = jobs
         guard listensForReports else { return }
         reportObserver = NotificationCenter.default.addObserver(
             forName: PackageCallReports.notification, object: nil, queue: .main
@@ -148,7 +150,18 @@ final class MachineReadinessStore: ObservableObject {
 
     /// Machines that need the person, in configuration order.
     var machinesNeedingAttention: [String] {
-        (snapshot?.machines ?? []).filter { state(for: $0).needsAttention || jobs[$0] != nil }
+        (snapshot?.machines ?? []).filter { state(for: $0).needsAttention || prepareStatus($0) != nil }
+    }
+
+    func prepareStatus(_ machine: String) -> PrepareStatus? {
+        if let failure = prepareFailure[machine] { return .failed(failure, inCorner: false) }
+        switch preparePhases[machine] {
+        case .pending, .queued, .running: return .running
+        case .succeeded: return .succeeded
+        case let .failed(cause):
+            return .failed(DMErrorState(title: "\(machine) was not prepared", cause: cause, details: ""), inCorner: true)
+        case .cancelled, nil: return nil
+        }
     }
 
     func requestCheck() {
@@ -191,79 +204,100 @@ final class MachineReadinessStore: ObservableObject {
         requestCheck()
     }
 
-    func prepare(_ machine: String) async {
-        guard canPrepareInApp, jobs[machine]?.phase != .running else { return }
-        let steps = MachinePrepare.steps(machine: machine, declared: isDeclared(machine))
-        let run = UUID()
-        runs[machine] = run
-        jobs[machine] = PrepareJob(phase: .running, output: [])
-        let task = AppModel.shared?.beginTask(label: "Preparing \(machine)…", total: steps.count)
-        let sink = ProcessOutputSink { [weak self] lines in
-            guard self?.runs[machine] == run, var job = self?.jobs[machine], job.output.count < lines.count
-            else { return }
-            job.output = lines
-            self?.jobs[machine] = job
+    /// Adds and syncs only `devmachine-app` as a job in the corner, which
+    /// holds its log; the card reads where it stands from there.
+    @discardableResult
+    func prepare(_ machine: String) -> UUID? {
+        guard canPrepareInApp, let center = jobs(), !isPreparing(machine, in: center) else { return nil }
+        if let previous = preparing[machine] { center.dismiss(previous) }
+        prepareFailure[machine] = nil
+        let plan = MachineJobPlan(
+            machine: machine, title: "Prepare \(machine)",
+            steps: MachinePrepare.steps(machine: machine, declared: isDeclared(machine)))
+        watch(center)
+        var started: UUID?
+        let id = center.run(plan) { [weak self] outcome in
+            guard let started else { return }
+            self?.prepareFinished(machine, job: started, outcome: outcome)
         }
-        let succeeded = await runSteps(steps, machine: machine, run: run, task: task, sink: sink)
-        if let task {
-            if succeeded { AppModel.shared?.finishTask(task) } else { AppModel.shared?.dropTask(task) }
+        started = id
+        preparing[machine] = id
+        followJobs(center.jobs)
+        return id
+    }
+
+    /// A failed corner job runs again in place; a sync that left the machine
+    /// unready starts a new Prepare.
+    func retryPrepare(_ machine: String) {
+        guard let center = jobs() else { return }
+        if prepareFailure[machine] == nil, let id = preparing[machine], case .failed = center.job(id)?.phase {
+            center.retry(id)
+        } else {
+            prepare(machine)
         }
     }
 
-    private func runSteps(
-        _ steps: [[String]], machine: String, run: UUID, task: UUID?, sink: ProcessOutputSink
-    ) async -> Bool {
-        for (index, arguments) in steps.enumerated() {
-            sink.receive("$ devmachine " + arguments.joined(separator: " "))
-            let status: Int32
-            do {
-                status = try await runner.run(arguments: arguments, output: sink.receive)
-            } catch {
-                fail(machine, run: run, lines: sink.snapshot, fallback: error.localizedDescription)
-                return false
-            }
-            guard status == 0 else {
-                fail(machine, run: run, lines: sink.snapshot, fallback: "devmachine exited with status \(status).")
-                return false
-            }
-            if let task { AppModel.shared?.setTask(task, completed: index + 1) }
-        }
+    func showPrepareInCorner(_ machine: String) {
+        guard let center = jobs(), let id = preparing[machine], center.job(id)?.expanded == false else { return }
+        center.toggleExpanded(id)
+    }
 
-        guard runs[machine] == run else { return false }
+    func dismissPrepare(_ machine: String) {
+        if let id = preparing[machine] { jobs()?.dismiss(id) }
+        preparing[machine] = nil
+        prepareFailure[machine] = nil
+        followJobs(jobs()?.jobs ?? [])
+    }
+
+    private func isPreparing(_ machine: String, in center: MachineJobCenter) -> Bool {
+        center.jobs.contains { job in
+            guard job.plan.machine == machine, job.plan.title == "Prepare \(machine)" else { return false }
+            switch job.phase {
+            case .pending, .queued, .running: return true
+            case .succeeded, .failed, .cancelled: return false
+            }
+        }
+    }
+
+    private func prepareFinished(_ machine: String, job: UUID, outcome: MachineJobOutcome) {
+        guard outcome == .succeeded, preparing[machine] == job else { return }
         observed[machine] = nil
-        await check()
-        let lines = sink.snapshot
-        guard runs[machine] == run else { return false }
-        guard state(for: machine) == .ready || state(for: machine) == .unknown else {
-            jobs[machine] = PrepareJob(phase: .failed(DMErrorState(
-                title: "\(machine) still isn't ready",
-                cause: "The sync finished, but the configuration does not show devmachine-app applied there.",
-                details: lines.joined(separator: "\n"))), output: lines)
-            return false
-        }
-        jobs[machine] = PrepareJob(phase: .succeeded, output: lines)
-        onPrepared?(machine)
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.successCardSeconds * 1_000_000_000)
-            if self?.runs[machine] == run, self?.jobs[machine]?.phase == .succeeded { self?.jobs[machine] = nil }
+            guard let self else { return }
+            await self.check()
+            guard self.preparing[machine] == job else { return }
+            let state = self.state(for: machine)
+            guard state == .ready || state == .unknown else {
+                self.prepareFailure[machine] = DMErrorState(
+                    title: "\(machine) still isn't ready",
+                    cause: "The sync finished, but the configuration does not show devmachine-app applied there.",
+                    details: "")
+                return
+            }
+            self.onPrepared?(machine)
         }
-        return true
     }
 
-    private static let successCardSeconds: UInt64 = 8
-
-    func dismissJob(_ machine: String) {
-        jobs[machine] = nil
-        runs[machine] = nil
+    private func watch(_ center: MachineJobCenter) {
+        guard watchedCenter !== center else { return }
+        watchedCenter = center
+        jobsWatch = center.$jobs.sink { [weak self] jobs in
+            MainActor.assumeIsolated { self?.followJobs(jobs) }
+        }
     }
 
-    private func fail(_ machine: String, run: UUID, lines: [String], fallback: String) {
-        guard runs[machine] == run else { return }
-        let cause = MachinePrepare.failureCause(lines) ?? FailureCause(message: fallback)?.summary ?? fallback
-        jobs[machine] = PrepareJob(phase: .failed(DMErrorState(
-            title: "\(machine) was not prepared",
-            cause: cause,
-            details: lines.isEmpty ? fallback : lines.joined(separator: "\n"))), output: lines)
+    /// A Prepare job that left the corner (gone after its success, dismissed,
+    /// cancelled) takes its card with it.
+    private func followJobs(_ jobs: [MachineJob]) {
+        var phases: [String: MachineJobPhase] = [:]
+        var live: [String: UUID] = [:]
+        for (machine, id) in preparing {
+            guard let job = jobs.first(where: { $0.id == id }) else { continue }
+            phases[machine] = job.phase
+            live[machine] = id
+        }
+        if live != preparing { preparing = live }
+        if phases != preparePhases { preparePhases = phases }
     }
 
     private func apply(_ next: ReadinessSnapshot?) {
@@ -306,20 +340,33 @@ final class MachineReadinessStore: ObservableObject {
     /// Demo walks only: a fixed state, with no real CLI behind it.
     func seedDemo(
         snapshot: ReadinessSnapshot, observed: [String: PackageCallFailure] = [:],
-        afterPrepare: ReadinessSnapshot? = nil, runner: (any MachineJobRunning)? = nil
+        afterPrepare: ReadinessSnapshot? = nil
     ) {
         let next = afterPrepare ?? snapshot
         read = { next }
-        if let runner { self.runner = runner }
-        jobs = [:]
-        runs = [:]
+        preparing = [:]
+        prepareFailure = [:]
+        preparePhases = [:]
         self.snapshot = snapshot
         self.observed = observed.mapValues { ($0, snapshot.lock?.appliedAt) }
         recompute()
     }
 
-    func seedDemoJob(_ machine: String, _ job: PrepareJob?) {
-        jobs[machine] = job
+    /// Demo walks only: a Prepare job in the corner, at one fixed moment.
+    func seedDemoPrepare(_ machine: String, phase: MachineJobPhase, log: [String]) {
+        guard let center = jobs() else { return }
+        let plan = MachineJobPlan(
+            machine: machine, title: "Prepare \(machine)",
+            steps: MachinePrepare.steps(machine: machine, declared: isDeclared(machine)))
+        var lines = JobLog()
+        lines.append(contentsOf: log)
+        let job = MachineJob(
+            id: UUID(), plan: plan, phase: phase, log: lines, expanded: true,
+            currentCommand: plan.steps.last.map { "devmachine " + $0.joined(separator: " ") })
+        watch(center)
+        center.seedDemo([job])
+        preparing[machine] = job.id
+        followJobs(center.jobs)
     }
     #endif
 }

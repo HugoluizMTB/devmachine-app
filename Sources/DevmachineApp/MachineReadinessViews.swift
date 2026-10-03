@@ -6,8 +6,8 @@ import DevmachineCore
 enum MachineReadinessContent {
     static let prepareTitle = "Prepare"
 
-    static func title(machine: String, state: MachineReadiness, job: PrepareJob?) -> String {
-        switch job?.phase {
+    static func title(machine: String, state: MachineReadiness, status: PrepareStatus?) -> String {
+        switch status {
         case .running: return "Preparing \(machine)…"
         case .succeeded: return "\(machine) is ready"
         case .failed, nil: break
@@ -26,10 +26,12 @@ enum MachineReadinessContent {
         + "is pinned once for every machine, so the app doesn't move it for you. Run this in a terminal:"
 
     static let updateCLITitle = "Update the CLI first"
-    static let showDetailsTitle = "Show details"
+    static let showInCornerTitle = "Show in corner"
+    static let retryTitle = "Try again"
+    static let preparingBody = "Preparing… the card in the corner shows the log"
 
-    static func compactLine(machine: String, phase: PreparePhase) -> String {
-        switch phase {
+    static func compactLine(machine: String, status: PrepareStatus) -> String {
+        switch status {
         case .running: return "Preparing \(machine)…"
         case .succeeded: return "\(machine) is ready"
         case .failed: return "Prepare failed"
@@ -43,8 +45,9 @@ enum MachineReadinessContent {
 }
 
 /// One machine that is missing what the app runs on it: a calm card with
-/// one Prepare button, the live log while it runs, and the exact error with
-/// Try again when it fails. `compact` is the sidebar's version.
+/// one Prepare button. Prepare runs as a job in the corner, which holds its
+/// log; the card says where it stands and offers Retry when it fails.
+/// `compact` is the sidebar's version.
 struct MachineReadinessCard: View {
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var model: AppModel
@@ -53,12 +56,12 @@ struct MachineReadinessCard: View {
     var compact = false
 
     private var state: MachineReadiness { store.state(for: machine) }
-    private var job: PrepareJob? { store.jobs[machine] }
+    private var status: PrepareStatus? { store.prepareStatus(machine) }
 
     var body: some View {
         Group {
-            if compact, let job {
-                compactJobLine(job)
+            if compact, let status {
+                compactStatusLine(status)
             } else {
                 VStack(alignment: .leading, spacing: compact ? m.space.sm : m.space.md) {
                     header
@@ -70,27 +73,30 @@ struct MachineReadinessCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// The sidebar is too narrow for a log: a running, failed or finished
-    /// Prepare is one line there, and the log stays on Home and in the
-    /// corner card.
-    private func compactJobLine(_ job: PrepareJob) -> some View {
+    /// The sidebar is too narrow for more: a running, failed or finished
+    /// Prepare is one line there.
+    private func compactStatusLine(_ status: PrepareStatus) -> some View {
         HStack(spacing: m.space.sm) {
             icon
-            Text(verbatim: MachineReadinessContent.compactLine(machine: machine, phase: job.phase))
+            Text(verbatim: MachineReadinessContent.compactLine(machine: machine, status: status))
                 .font(.dm(11.5, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 0)
-            switch job.phase {
+            switch status {
             case .running:
                 EmptyView()
+            case .failed(_, inCorner: true):
+                DMButton(MachineReadinessContent.showInCornerTitle, variant: .link, size: .small) {
+                    store.showPrepareInCorner(machine)
+                }
             case .failed:
-                DMButton(MachineReadinessContent.showDetailsTitle, variant: .link, size: .small) {
-                    model.goHome()
+                DMButton(MachineReadinessContent.retryTitle, variant: .link, size: .small) {
+                    store.retryPrepare(machine)
                 }
             case .succeeded:
-                DMButton(icon: "xmark", label: "Dismiss", size: .small) { store.dismissJob(machine) }
+                DMButton(icon: "xmark", label: "Dismiss", size: .small) { store.dismissPrepare(machine) }
             }
         }
     }
@@ -98,20 +104,20 @@ struct MachineReadinessCard: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: m.space.sm) {
             icon
-            Text(verbatim: MachineReadinessContent.title(machine: machine, state: state, job: job))
+            Text(verbatim: MachineReadinessContent.title(machine: machine, state: state, status: status))
                 .font(.dm(compact ? 11.5 : 12.5, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            if case .succeeded = job?.phase {
-                DMButton(icon: "xmark", label: "Dismiss", size: .small) { store.dismissJob(machine) }
+            if status == .succeeded {
+                DMButton(icon: "xmark", label: "Dismiss", size: .small) { store.dismissPrepare(machine) }
             }
         }
     }
 
     @ViewBuilder
     private var icon: some View {
-        switch job?.phase {
+        switch status {
         case .running:
             ProgressView().controlSize(.mini)
         case .succeeded:
@@ -125,14 +131,19 @@ struct MachineReadinessCard: View {
 
     @ViewBuilder
     private var content: some View {
-        switch job?.phase {
+        switch status {
         case .running:
-            DMLogView(lines: job?.output ?? [])
+            paragraph(MachineReadinessContent.preparingBody)
         case .succeeded:
             EmptyView()
-        case let .failed(error):
-            DMErrorStateView(state: error, retry: { Task { await store.prepare(machine) } })
+        case let .failed(error, inCorner):
+            DMErrorStateView(state: error, retry: { store.retryPrepare(machine) })
                 .frame(maxWidth: .infinity)
+            if inCorner {
+                DMButton(MachineReadinessContent.showInCornerTitle, variant: .link, size: .small) {
+                    store.showPrepareInCorner(machine)
+                }
+            }
         case nil:
             idle
         }
@@ -143,7 +154,7 @@ struct MachineReadinessCard: View {
         if state.needsPrepare, store.canPrepareInApp {
             paragraph(MachineReadinessContent.missingBody)
             DMButton(MachineReadinessContent.prepareTitle, systemImage: "wrench.and.screwdriver", size: .small) {
-                Task { await store.prepare(machine) }
+                store.prepare(machine)
             }
         } else if state.needsPrepare {
             paragraph(MachineReadinessContent.oldCLIBody)

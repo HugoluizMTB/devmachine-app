@@ -70,4 +70,27 @@ final class DemoRefusalTests: XCTestCase {
             XCTAssertEqual(error.localizedDescription, "Demo mode never runs a devmachine command.")
         }
     }
+
+    func testPrepareFailsInTheCornerWithoutResolvingTheCLI() async throws {
+        let center = MachineJobCenter(runner: ProcessJobRunner(cli: {
+            XCTFail("demo mode resolved the CLI for Prepare")
+            throw DevmachineCLIError.commandFailed("no")
+        }))
+        var snapshot = ReadinessSnapshot()
+        snapshot.machines = ["main"]
+        snapshot.declared = ["main": true]
+        snapshot.lock = PackagesLock(machines: ["main": []])
+        snapshot.cliVersion = SemanticVersion("0.7.24")
+        let ready = snapshot
+        let store = MachineReadinessStore(read: { ready }, jobs: { center }, listensForReports: false)
+        await store.check()
+
+        let id = try XCTUnwrap(store.prepare("main"))
+
+        let deadline = Date().addingTimeInterval(5)
+        while center.job(id)?.phase == .running(step: 0), Date() < deadline {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(center.job(id)?.phase, .failed(cause: "Demo mode never runs a devmachine command."))
+    }
 }
