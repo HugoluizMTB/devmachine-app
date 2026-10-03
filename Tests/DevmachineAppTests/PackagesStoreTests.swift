@@ -1,0 +1,167 @@
+import XCTest
+import DevmachineCore
+@testable import DevmachineApp
+
+@MainActor
+final class PackagesStoreTests: XCTestCase {
+    private let main = PackageTarget.machine("main", isSelf: false)
+
+    private func snapshot() -> PackagesSnapshot {
+        PackagesSnapshot(
+            entries: [
+                PackageEntry(name: "docker", scope: "machine", source: "release", summary: "", category: "Containers",
+                             platforms: [], needs: [], credentialNames: [], installedOn: []),
+                PackageEntry(name: "node", scope: "machine", source: "release", summary: "", category: nil,
+                             platforms: [], needs: [], credentialNames: [], installedOn: ["machine main"]),
+            ],
+            targets: [main], lock: PackagesLock(machines: ["main": [.init(name: "node")]]),
+            cliVersion: SemanticVersion(major: 0, minor: 7, patch: 30), configDirectory: "/Users/alice/.config/devmachine")
+    }
+
+    func testLoadPublishesStatuses() async {
+        let snap = snapshot()
+        let store = PackagesStore(read: { snap }, edit: { _ in }, jobs: { nil })
+        await store.load()
+        XCTAssertEqual(store.phase, .loaded)
+        XCTAssertEqual(store.snapshot?.statuses(for: main)["node"], .applied)
+        XCTAssertEqual(store.snapshot?.statuses(for: main)["docker"], .available)
+    }
+
+    func testApplyRunsEditsInOrderThenRequestsSync() async {
+        let snap = snapshot()
+        let edits = Recorder()
+        let center = MachineJobCenter(runner: NoRunner())
+        let store = PackagesStore(read: { snap }, edit: { edits.add($0) }, jobs: { center })
+        let ok = await store.apply(PackageChanges(adds: ["docker"], removes: ["node"]), on: main)
+        XCTAssertTrue(ok)
+        XCTAssertEqual(edits.all, [
+            ["packages", "add", "docker", "--machine", "main", "--yes"],
+            ["packages", "rm", "node", "--machine", "main", "--yes"],
+        ])
+        XCTAssertEqual(center.jobs.first?.request, SyncRequest(machine: "main", tags: ["docker"], full: true, reasons: ["Packages"]))
+        XCTAssertEqual(center.jobs.first?.phase, .pending)
+        XCTAssertFalse(store.applying)
+    }
+
+    func testApplyStopsAtFirstFailureWithoutSyncRequest() async {
+        let snap = snapshot()
+        let edits = Recorder()
+        let center = MachineJobCenter(runner: NoRunner())
+        let store = PackagesStore(read: { snap }, edit: { args in
+            edits.add(args)
+            if args[2] == "node" { throw DevmachineCLIError.commandFailed("error: node is not in the release") }
+        }, jobs: { center })
+        let ok = await store.apply(PackageChanges(adds: ["docker", "node", "zsh"], removes: []), on: main)
+        XCTAssertFalse(ok)
+        XCTAssertEqual(edits.all.count, 2)
+        XCTAssertNotNil(store.applyError)
+        XCTAssertTrue(center.jobs.isEmpty)
+        XCTAssertFalse(store.applying)
+    }
+
+    func testSyncPendingAsksFullWhenARemovalWaits() async {
+        var snap = snapshot()
+        snap.lock = PackagesLock(machines: ["main": [.init(name: "node"), .init(name: "old")]])
+        snap.entries.append(PackageEntry(name: "old", scope: "machine", source: "release", summary: "", category: nil,
+                                         platforms: [], needs: [], credentialNames: [], installedOn: []))
+        let final = snap
+        let center = MachineJobCenter(runner: NoRunner())
+        let store = PackagesStore(read: { final }, edit: { _ in }, jobs: { center })
+        await store.load()
+        store.syncPending(on: main)
+        XCTAssertEqual(center.jobs.first?.request?.full, true)
+    }
+
+    func testReadFailureIsAnErrorState() async {
+        let store = PackagesStore(read: { throw DevmachineCLIError.commandFailed("boom") }, edit: { _ in }, jobs: { nil })
+        await store.load()
+        guard case .failed = store.phase else { return XCTFail("expected failed") }
+    }
+
+    func testAConfigurationChangeReadsAgain() async throws {
+        let reads = Recorder()
+        let snap = snapshot()
+        let store = PackagesStore(read: { reads.add([]); return snap }, edit: { _ in }, jobs: { nil })
+        await store.load()
+        NotificationCenter.default.post(name: ConfigDirectoryWatcher.changed, object: nil)
+        let deadline = Date().addingTimeInterval(2)
+        while reads.all.count < 2 && Date() < deadline { try await Task.sleep(nanoseconds: 5_000_000) }
+        XCTAssertEqual(reads.all.count, 2)
+    }
+
+    func testStatusesForAMachineCountItsWorkspaces() {
+        let snap = PackagesSnapshot(
+            entries: [
+                PackageEntry(name: "node", scope: "machine", source: "release", summary: "", category: nil,
+                             platforms: [], needs: [], credentialNames: [], installedOn: []),
+                PackageEntry(name: "web", scope: "workspace", source: "release", summary: "", category: nil,
+                             platforms: [], needs: ["node"], credentialNames: [], installedOn: ["workspace acme"]),
+            ],
+            targets: [main, .workspace("acme", machine: "main")], lock: nil, cliVersion: nil, configDirectory: nil)
+        XCTAssertEqual(snap.statuses(for: main)["node"], .appliedAsDependency(of: "web"))
+    }
+}
+
+final class PackagesReaderTests: XCTestCase {
+    func testReadBuildsTargetsAndEntries() throws {
+        let cli = DevmachineCLI(executable: "/fake/devmachine", runner: PackagesCLIRunner())
+        let snap = try PackagesReader.read(cli: cli, readLock: { _ in .unreadable })
+        XCTAssertNil(snap.lock)
+        XCTAssertEqual(snap.targets, [
+            .machine("main", isSelf: false), .machine("mac", isSelf: true), .workspace("acme", machine: "main"),
+        ])
+        XCTAssertEqual(snap.configDirectory, "/Users/alice/.config/devmachine")
+        XCTAssertEqual(snap.cliVersion, SemanticVersion(major: 0, minor: 7, patch: 30))
+        XCTAssertEqual(snap.entries, [
+            PackageEntry(name: "cloudflare", scope: "machine", source: "release", summary: "DNS", category: "Network",
+                         platforms: ["linux"], needs: ["caddy"], credentialNames: ["cloudflare-token"],
+                         installedOn: ["machine main"]),
+            PackageEntry(name: "caddy", scope: "machine", source: "local", summary: "", category: nil,
+                         platforms: [], needs: [], credentialNames: [], installedOn: []),
+        ])
+    }
+
+    func testAMissingLockIsEmpty() throws {
+        let cli = DevmachineCLI(executable: "/fake/devmachine", runner: PackagesCLIRunner())
+        let snap = try PackagesReader.read(cli: cli, readLock: { _ in .missing })
+        XCTAssertEqual(snap.lock, PackagesLock(machines: [:]))
+    }
+}
+
+private final class Recorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [[String]] = []
+    func add(_ args: [String]) { lock.withLock { calls.append(args) } }
+    var all: [[String]] { lock.withLock { calls } }
+}
+
+private struct NoRunner: MachineJobRunning {
+    func run(arguments: [String], output: @escaping @Sendable (String) -> Void) async throws -> Int32 { 0 }
+}
+
+private struct PackagesCLIRunner: CommandRunner {
+    func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+        switch args {
+        case ["--format", "json", "config", "show"]:
+            return #"""
+            {"machines":[{"name":"main"},{"name":"mac","self":true}],
+             "workspaces":[{"name":"acme","machine":"main","user":"alice"}],"domain":"example.com"}
+            """#
+        case ["--format", "json", "packages", "list"]:
+            return #"""
+            {"packages":[
+              {"name":"cloudflare","scope":"machine","source":"release","summary":"DNS","category":"Network",
+               "platforms":["linux"],"needs":["caddy"],"installed_on":["machine main"],
+               "credentials":[{"name":"cloudflare-token","kind":"token"}]},
+              {"name":"caddy","scope":"machine","source":"local"}
+            ]}
+            """#
+        case ["version"]:
+            return "devmachine 0.7.30\n"
+        case ["--format", "json", "config", "path"]:
+            return #"{"path":"/Users/alice/.config/devmachine","source":"default"}"#
+        default:
+            throw DevmachineCLIError.commandFailed("unexpected \(args)")
+        }
+    }
+}

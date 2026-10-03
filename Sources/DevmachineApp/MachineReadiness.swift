@@ -296,6 +296,7 @@ final class MachineReadinessStore: ObservableObject {
     private func watch(_ directory: String) {
         guard watcher?.directory != directory || watcher?.isWatching != true else { return }
         watcher = ConfigDirectoryWatcher(directory: directory) { [weak self] in
+            NotificationCenter.default.post(name: ConfigDirectoryWatcher.changed, object: nil)
             self?.onConfigurationChanged?()
             self?.requestCheck()
         }
@@ -329,6 +330,10 @@ final class MachineReadinessStore: ObservableObject {
 /// Bursts settle for a second before one callback.
 @MainActor
 final class ConfigDirectoryWatcher {
+    /// Posted on the main thread each time the readiness store's watcher
+    /// sees the folder change, for every page that reads the configuration.
+    static let changed = Notification.Name("DevmachineConfigDirectoryChanged")
+
     let directory: String
     private let onChange: @MainActor () -> Void
     private var folderSource: DispatchSourceFileSystemObject?

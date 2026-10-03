@@ -250,6 +250,13 @@ struct CLIPackage: Codable, Equatable, Sendable {
             name: name, scope: scope, summary: summary ?? "", source: source, platforms: platforms, needs: needs,
             category: category ?? "", variables: variables ?? [])
     }
+
+    var entry: PackageEntry {
+        PackageEntry(
+            name: name, scope: scope, source: source, summary: summary ?? "", category: category,
+            platforms: platforms, needs: needs, credentialNames: (credentials ?? []).map(\.name),
+            installedOn: installedOn)
+    }
 }
 
 private struct CLIPackageList: Decodable {
@@ -585,6 +592,12 @@ struct DevmachineCLI: Sendable {
         let result = try runner.runCapturing(executable: executable, args: ["version"], environment: environment())
         try requireSuccess(result)
         return result.stdout
+    }
+
+    /// `packages add|rm`: changes the configuration only; a sync applies it.
+    func runPackageEdit(_ arguments: [String]) throws {
+        let result = try runner.runCapturing(executable: executable, args: arguments, environment: environment())
+        try requireSuccess(result)
     }
 
     /// Every machine and workspace the CLI knows about, plus the base domain
