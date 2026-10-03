@@ -148,6 +148,12 @@ final class PaletteDispatcherTests: XCTestCase {
         XCTAssertEqual(model.requestedSettingsSection, .appearance)
     }
 
+    func testThePackagesCommandOpensSettingsOnPackages() {
+        run(.openSettings(.packages))
+        XCTAssertEqual(model.activePage, .setup)
+        XCTAssertEqual(model.requestedSettingsSection, .packages)
+    }
+
     func testTheHealthCheckRunsAndShowsItsPane() {
         run(.runHealthCheck)
         XCTAssertEqual(health.runs, 1)

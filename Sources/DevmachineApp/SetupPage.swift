@@ -5,13 +5,14 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case connection, machines, workspaces, harnesses, appearance, terminal, previews, advanced, about
+    case connection, machines, workspaces, packages, harnesses, appearance, terminal, previews, advanced, about
 
     var title: String {
         switch self {
         case .connection: return "Connection"
         case .machines: return "Machines"
         case .workspaces: return "Workspaces"
+        case .packages: return "Packages"
         case .harnesses: return "Harnesses"
         case .appearance: return "Appearance"
         case .terminal: return "Terminal"
@@ -26,6 +27,7 @@ enum SettingsSection: String, CaseIterable {
         case .connection: return "The host this app talks to, and the devmachine configuration it reads."
         case .machines: return "The servers and local machines in the devmachine configuration."
         case .workspaces: return "Which workspaces the sidebar shows and the app reaches."
+        case .packages: return "Browse the catalog, and add or remove packages on a machine or workspace."
         case .harnesses: return "Choose what new sessions start with."
         case .appearance: return "The wallpaper behind the panes, and the size of the interface."
         case .terminal: return "How a terminal looks, and how many stay connected."
@@ -40,6 +42,7 @@ enum SettingsSection: String, CaseIterable {
         case .connection: return "network"
         case .machines: return "server.rack"
         case .workspaces: return "square.grid.2x2"
+        case .packages: return "shippingbox"
         case .harnesses: return "sparkles"
         case .appearance: return "photo"
         case .terminal: return "terminal"
@@ -309,6 +312,7 @@ struct SetupPage: View {
                 case .connection: connectionBlock
                 case .machines: MachinesSettingsView()
                 case .workspaces: workspacesBlock
+                case .packages: PackagesSettingsView()
                 case .harnesses: harnessesBlock.task { await machinesStore.load() }
                 case .appearance: wallpaperBlock
                 case .terminal: terminalBlock

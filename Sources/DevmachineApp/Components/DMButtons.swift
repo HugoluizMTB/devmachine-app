@@ -86,15 +86,19 @@ struct DMIconButton: View {
 }
 
 /// A small labelled chip whose background shows only under the pointer:
-/// the shortcut chips, the suggested ports.
+/// the shortcut chips, the suggested ports. A `selected` chip keeps its
+/// background: a filter that is on.
 struct DMChipButtonStyle: ButtonStyle {
+    var selected = false
+
     func makeBody(configuration: Configuration) -> some View {
-        DMChipButtonBody(configuration: configuration)
+        DMChipButtonBody(configuration: configuration, selected: selected)
     }
 }
 
 private struct DMChipButtonBody: View {
     let configuration: ButtonStyleConfiguration
+    let selected: Bool
     @Environment(\.dmMetrics) private var m
     @State private var hovering = false
 
@@ -103,13 +107,19 @@ private struct DMChipButtonBody: View {
             .foregroundStyle(Color.dmRowText)
             .padding(.horizontal, m.space.md)
             .padding(.vertical, m.space.xs)
-            .background(hovering ? Color.dmHover : Color.clear, in: RoundedRectangle(cornerRadius: m.radius.keyCap))
+            .background(fill, in: RoundedRectangle(cornerRadius: m.radius.keyCap))
             .contentShape(Rectangle())
             .opacity(configuration.isPressed ? 0.7 : 1)
             .onHover { hovering = $0 }
+    }
+
+    private var fill: Color {
+        if selected { return .dmActive }
+        return hovering ? .dmHover : .clear
     }
 }
 
 extension ButtonStyle where Self == DMChipButtonStyle {
     static var dmChip: DMChipButtonStyle { DMChipButtonStyle() }
+    static func dmChip(selected: Bool) -> DMChipButtonStyle { DMChipButtonStyle(selected: selected) }
 }

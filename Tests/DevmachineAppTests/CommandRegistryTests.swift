@@ -95,6 +95,12 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(Set(panes), Set(SettingsSection.allCases))
     }
 
+    func testThePackagesCommandOpensItsSettingsPane() {
+        let packages = command("settings.packages", in: context())
+        XCTAssertEqual(packages?.title, "Packages")
+        XCTAssertEqual(packages?.action, .openSettings(.packages))
+    }
+
     func testNoSubdomainCommandsWithoutACaddyMachine() {
         let all = commands(context(hasCaddyMachine: false))
         XCTAssertFalse(all.contains { command in

@@ -53,6 +53,8 @@ enum PackagesReader {
 /// `packages add|rm` that change a selection, and the sync that applies it.
 @MainActor
 final class PackagesStore: ObservableObject {
+    static let shared = PackagesStore()
+
     enum Phase: Equatable {
         case loading
         case loaded
