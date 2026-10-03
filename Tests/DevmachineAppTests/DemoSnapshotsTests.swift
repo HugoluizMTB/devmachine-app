@@ -254,6 +254,47 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(Set(DemoSnapshots.machineReadyScreens.map(\.fileName)).count, 9)
     }
 
+    func testThePackagesWalkIsItsOwnSet() {
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "packages"]).map(\.id), [
+            "packages-all", "packages-selected", "packages-confirm", "packages-pending", "packages-running",
+            "packages-succeeded", "packages-failed",
+        ])
+        XCTAssertEqual(Set(DemoSnapshots.packagesScreens.map(\.fileName)).count, 7)
+    }
+
+    func testThePackagesWalkTicksOneInstallAndOneRemovalOnMain() {
+        let page = DemoPackages.page(for: "packages-selected")
+        XCTAssertEqual(page.target, DemoPackages.target)
+        let statuses = DemoPackages.snapshot(after: .none).statuses(for: DemoPackages.target)
+        let changes = page.selection.changes(statuses: statuses)
+        XCTAssertEqual(changes, PackageChanges(adds: ["postgres"], removes: ["redis"]))
+        XCTAssertNil(DemoPackages.page(for: "packages-all").target)
+        XCTAssertTrue(DemoPackages.page(for: "packages-pending").selection.names.isEmpty)
+    }
+
+    func testThePackagesWalkShowsEveryPillOnMain() {
+        let statuses = DemoPackages.snapshot(after: .none).statuses(for: DemoPackages.target)
+        XCTAssertEqual(statuses["redis"], .applied)
+        XCTAssertEqual(statuses["git"], .appliedAsDependency(of: "essentials"))
+        XCTAssertEqual(statuses["tailscale"], .pendingInstall)
+        XCTAssertEqual(statuses["postgres"], .available)
+        let saved = DemoPackages.snapshot(after: .saved).statuses(for: DemoPackages.target)
+        XCTAssertEqual(saved["postgres"], .pendingInstall)
+        XCTAssertEqual(saved["redis"], .pendingRemove)
+        let synced = DemoPackages.snapshot(after: .synced).statuses(for: DemoPackages.target)
+        XCTAssertEqual(synced["postgres"], .applied)
+        XCTAssertEqual(synced["redis"], .available)
+    }
+
+    func testThePackagesWalksJobIsTheSyncTheSelectionAsksFor() {
+        let pending = DemoPackages.job(.pending)
+        XCTAssertEqual(
+            pending.request, SyncRequest(machine: "main", tags: ["postgres"], full: true, reasons: ["Packages"]))
+        XCTAssertEqual(pending.plan.title, "Sync main")
+        XCTAssertEqual(DemoPackages.job(.running(step: 0)).plan.steps, [["sync", "--machine", "main", "--yes"]])
+        XCTAssertTrue(DemoPackages.job(.running(step: 0)).expanded)
+    }
+
     func testTheFileViewerWalkIsItsOwnSet() {
         XCTAssertEqual(DemoSnapshots.fileViewerScreens.map(\.fileName), ["40-file-viewer.png"])
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "file-viewer"]).map(\.id),

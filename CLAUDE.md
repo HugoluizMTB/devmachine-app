@@ -211,7 +211,8 @@ Rules:
   `showsCount = false` (the bar alone), and one that ends at once uses
   `dropTask` so it does not blink a finished card. The small
   `ProgressView().controlSize(.small)` inside a panel stays what it is: that
-  panel loading its own content, not a job.
+  panel loading its own content, not a job. A `devmachine` run against a
+  machine is a machine job instead (see Machine jobs).
 - **`.clipped()` / `.clipShape` do NOT clip hit-testing.** A `scaledToFill` image
   overflows its container and its invisible overflow still swallows clicks over
   neighboring views (this once killed the sidebar's right edge for a whole day).
@@ -1013,9 +1014,38 @@ once may fail there.
   CLI's terminal flow, and `cli-socket-` shots (Home and Stats on a CLI
   whose socket path is too long). Demo mode scans no server and reads no agent
   (`DemoData.addMachineScan`, `addMachineAgentKeys`) and refuses every run:
-  `MachineStepRunner.run`, `MachinesStore.removeMachine` and
-  `ProcessPrepareRunner` (Prepare, DNS sync) each refuse before reaching a
-  terminal or the CLI (`DemoRefusalTests`).
+  `MachineStepRunner.run`, `MachinesStore.removeMachine`,
+  `PackagesStore.apply` and `ProcessJobRunner` (every machine job: Prepare,
+  DNS sync, Packages sync) each refuse before reaching a terminal or the CLI
+  (`DemoRefusalTests`).
+
+## Machine jobs
+- **Every `devmachine` run against a machine is a machine job** (`MachineJobCenter`,
+  `MachineJobToast` in the corner stack): Prepare, the DNS provider sync and the
+  Packages page's sync. A screen never streams a sync into its own layout.
+- **A sync is asked for, not started** (`requestSync`): the card asks "Sync
+  <machine>?" and runs only on its button, which is the confirm the VPS-writes
+  rule needs. Two asks for one machine merge into one card (tags join, full
+  wins). One job runs per machine; the next waits as queued.
+- **A tagged sync never records a removal** (the CLI's lock only updates tagged
+  entries), so a request with a removal, or a CLI before 0.7.24, starts full.
+- The log keeps the newest 5000 lines (`JobLog`) and arrives in batches
+  (`JobOutputBuffer`): a hop per line carrying the whole log froze the window.
+- `DMLogView` anchors its scroll at the bottom: `scrollTo` alone, on a lazy
+  stack of wrapped lines, stopped a line or two short of the error.
+
+## Packages page
+- Settings → Packages reads `packages list`, `config show` and `packages.lock`.
+  Declared is `installed_on`; applied is the lock (machines and workspaces).
+  A package the lock has because another one `needs` it is "via <parent>",
+  never "pending removal"; a workspace always has `workspace` (the CLI adds it).
+- "Pending" is derived from config and lock, so a sync put off with Later is
+  still offered ("Sync now") after a relaunch.
+- Apply runs `packages add|rm … --yes` one by one; the first failure stops it and
+  asks for no sync. Removing never uninstalls: the row and the confirm say so.
+- `DEVMACHINE_DEMO_WALK=packages` (`DemoPackages`) seeds the store and the
+  corner at each moment (every machine, `main` with two ticks, the confirm,
+  the sync pending, running, done, failed); nothing runs.
 
 ## Workspaces page
 - **`AppPage.workspaces` lists every workspace by machine** (`WorkspacesStore`:

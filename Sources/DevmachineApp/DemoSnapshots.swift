@@ -30,6 +30,9 @@ enum DemoSnapshots {
     /// Read by `SetupPage.issues` so Connection shows the issue a remedy
     /// answers (no CLI, or setup never ran) for one screen.
     static var settingsIssueRemedy: SettingsIssue.Remedy?
+    /// Read by `SetupPage` so Packages opens on a target with rows ticked
+    /// for one screen. Same rule as `subdomainsInitialTab`.
+    static var packagesInitialPage = PackagesPageState()
     static var settingsNoMachine = false
 
     private static let acmeAlias = "acme-devmachine"
@@ -70,7 +73,7 @@ enum DemoSnapshots {
         case "pull-requests", "publish-port", "publish-port-via", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
              "worktree-remove", "worktrees-merged", "worktree-foreign",
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
-             "file-viewer":
+             "file-viewer", "packages-confirm":
             return .panel
         default:
             return .window
@@ -259,6 +262,17 @@ enum DemoSnapshots {
         Screen(id: "dns-ready", fileName: "85-dns-ready.png", settleNanoseconds: 700_000_000),
     ]
 
+    /// The Packages walk (`DEVMACHINE_DEMO_WALK=packages`): see `DemoPackages`.
+    static let packagesScreens: [Screen] = [
+        Screen(id: "packages-all", fileName: "100-packages-all.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-selected", fileName: "101-packages-selected.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-confirm", fileName: "102-packages-confirm.png", settleNanoseconds: 300_000_000),
+        Screen(id: "packages-pending", fileName: "103-packages-pending.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-running", fileName: "104-packages-running.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-succeeded", fileName: "105-packages-succeeded.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-failed", fileName: "106-packages-failed.png", settleNanoseconds: 500_000_000),
+    ]
+
     /// The file viewer walk (`DEVMACHINE_DEMO_WALK=file-viewer`): a Swift file
     /// in the viewer, highlighted. It is also the check that a packaged app
     /// finds the highlighter's script inside its own bundle.
@@ -339,6 +353,7 @@ enum DemoSnapshots {
         case "publish-via": return publishViaScreens
         case "setup-flow": return setupFlowScreens
         case "dns-setup": return dnsSetupScreens
+        case "packages": return packagesScreens
         #if DEBUG
         case "machines": return DemoAddMachine.screens
         case "workspaces": return DemoWorkspaces.screens
@@ -452,6 +467,8 @@ enum DemoSnapshots {
             case "cli-update-available", "cli-update-running", "cli-update-updated", "cli-update-failed",
                  "cli-update-old":
                 view = await cliUpdateView(screen.id)
+            case "packages-confirm":
+                view = DemoPackages.confirmView()
             case "ready-old-cli", "ready-outdated":
                 view = readinessCardView(screen.id, model: environment.model)
             case "install-cli", "install-cli-running", "install-cli-failed":
@@ -470,6 +487,7 @@ enum DemoSnapshots {
         PreviewStore.shared.closeAll()
         #if DEBUG
         DemoDNSWalk.reset()
+        DemoPackages.reset()
         #endif
         environment.model.goHome()
     }
@@ -502,6 +520,10 @@ enum DemoSnapshots {
         }
         if DemoWorkspaces.handles(screen.id) {
             await DemoWorkspaces.prepare(screen.id, model: model)
+            return
+        }
+        if DemoPackages.handles(screen.id) {
+            DemoPackages.prepare(screen.id, model: model)
             return
         }
         #endif
@@ -574,7 +596,9 @@ enum DemoSnapshots {
                 MachineReadinessStore.shared, model: model,
                 prepare: .failed(cause: "1 task(s) failed on staging: exit status 2"))
         case "ready-done":
-            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, prepare: .succeeded(nil))
+            DemoMachineReady.seed(
+                MachineReadinessStore.shared, model: model,
+                prepare: .succeeded(SyncSummary(ok: 3, changed: 1, failed: 0)))
         case "preview-browser":
             if let directory = targetDirectory {
                 await DemoPreviewBrowserCheck.run(

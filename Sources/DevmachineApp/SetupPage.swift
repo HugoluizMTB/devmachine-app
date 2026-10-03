@@ -303,7 +303,7 @@ struct SetupPage: View {
         if section == .packages {
             VStack(alignment: .leading, spacing: m.pt(18)) {
                 sectionTitle
-                PackagesSettingsView()
+                PackagesSettingsView(page: DemoSnapshots.packagesInitialPage)
             }
             .padding(m.space.xxl)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
