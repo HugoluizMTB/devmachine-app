@@ -401,6 +401,26 @@ final class MoshConnectorTests: XCTestCase {
         XCTAssertEqual(pid, 4242)
     }
 
+    func testALoopbackMachineGoesToSSHAndEndsTheServer() {
+        for host in ["127.0.0.1", "localhost", "::1"] {
+            let runner = ScriptedRunner { exe, args in
+                if exe.hasSuffix("/ssh"), args.first == "-G" { return ("hostname \(host)\nport 50022\n", "", 0) }
+                if exe.hasSuffix("/ssh") { return (self.connectLine, self.detached, 0) }
+                return ("", "", 1)
+            }
+            let result = connector(runner, lookup: { _ in ["127.0.0.1", "::1"] })
+                .connect(alias: "acme-devmachine", session: "dev", machine: nil)
+            guard case let .ssh(reason, _, pid) = result else { return XCTFail("\(host): \(result)") }
+            XCTAssertEqual(reason, .loopback, host)
+            XCTAssertEqual(pid, 4242, host)
+        }
+    }
+
+    func testALoopbackFallbackIsQuietAndRemembered() {
+        XCTAssertFalse(MoshFallbackReason.loopback.showsNotice)
+        XCTAssertTrue(MoshFallbackReason.loopback.isRemembered)
+    }
+
     func testTheCLIHelpIsReadOncePerAppSession() {
         let support = ResolveSupport()
         let runner = ScriptedRunner { exe, args in
