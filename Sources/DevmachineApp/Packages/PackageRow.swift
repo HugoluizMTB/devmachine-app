@@ -12,24 +12,34 @@ struct PackageRow: View {
     let toggle: () -> Void
     @Environment(\.dmMetrics) private var m
 
-    private var block: PackageBlock? {
+    private var block: PackageBlock? { Self.block(entry: entry, status: status, target: target) }
+
+    static func block(entry: PackageEntry, status: PackageStatus?, target: PackageTarget?) -> PackageBlock? {
         guard let target else { return nil }
         return PackageAvailability.block(entry: entry, status: status ?? .available, target: target)
     }
 
-    private var isDeclared: Bool {
+    /// Ticked means "on the target once applied": a ticked row in the
+    /// selection flips what the target has now.
+    static func isChecked(status: PackageStatus?, isSelected: Bool) -> Bool {
+        let declared: Bool
         switch status ?? .available {
-        case .applied, .pendingInstall, .appliedAsDependency: return true
-        case .available, .pendingRemove: return false
+        case .applied, .pendingInstall, .appliedAsDependency: declared = true
+        case .available, .pendingRemove: declared = false
         }
+        return declared != isSelected
+    }
+
+    static func isDisabled(target: PackageTarget?, block: PackageBlock?) -> Bool {
+        target == nil || block != nil
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: m.space.md) {
-            Toggle("", isOn: Binding(get: { isDeclared != isSelected }, set: { _ in toggle() }))
+            Toggle("", isOn: Binding(get: { Self.isChecked(status: status, isSelected: isSelected) }, set: { _ in toggle() }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-                .disabled(target == nil || block != nil)
+                .disabled(Self.isDisabled(target: target, block: block))
                 .help(Text(verbatim: help))
             VStack(alignment: .leading, spacing: m.space.xs) {
                 HStack(spacing: m.space.sm) {

@@ -42,6 +42,12 @@ final class DMComponentsFitTests: XCTestCase {
         DMFitCheck.assertFits("chip button") {
             Button("Commit") {}.buttonStyle(.dmChip).font(.dm(11))
         }
+        DMFitCheck.assertFits("selected chip button") {
+            Button("Tools") {}.buttonStyle(.dmChip(selected: true)).font(.dm(11))
+        }
+        DMFitCheck.assertFits("resting chip button") {
+            Button("Other") {}.buttonStyle(.dmChip(selected: false)).font(.dm(11))
+        }
         DMFitCheck.assertFits("chip") { DMChip(title: "Nature", selected: true) {} }
         DMFitCheck.assertFits("key cap") { DMKeyCap(key: "⌘") }
     }

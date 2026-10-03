@@ -86,10 +86,11 @@ struct DMIconButton: View {
 }
 
 /// A small labelled chip whose background shows only under the pointer:
-/// the shortcut chips, the suggested ports. A `selected` chip keeps its
-/// background: a filter that is on.
+/// the shortcut chips, the suggested ports. A chip given a `selected` state is
+/// a filter: it rests on a faint fill so it reads as a button, and a filter
+/// that is on keeps a stronger one.
 struct DMChipButtonStyle: ButtonStyle {
-    var selected = false
+    var selected: Bool?
 
     func makeBody(configuration: Configuration) -> some View {
         DMChipButtonBody(configuration: configuration, selected: selected)
@@ -98,7 +99,7 @@ struct DMChipButtonStyle: ButtonStyle {
 
 private struct DMChipButtonBody: View {
     let configuration: ButtonStyleConfiguration
-    let selected: Bool
+    let selected: Bool?
     @Environment(\.dmMetrics) private var m
     @State private var hovering = false
 
@@ -114,8 +115,9 @@ private struct DMChipButtonBody: View {
     }
 
     private var fill: Color {
-        if selected { return .dmActive }
-        return hovering ? .dmHover : .clear
+        if selected == true { return .dmActive }
+        if hovering { return .dmHover }
+        return selected == false ? .dmBand : .clear
     }
 }
 

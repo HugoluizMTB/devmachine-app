@@ -296,36 +296,52 @@ struct SetupPage: View {
         .onTapGesture { section = item }
     }
 
+    /// Packages scrolls its own rows so its Apply bar stays in view; every
+    /// other section scrolls whole.
+    @ViewBuilder
     private var sectionBody: some View {
-        ScrollView(.vertical) {
+        if section == .packages {
             VStack(alignment: .leading, spacing: m.pt(18)) {
-                VStack(alignment: .leading, spacing: m.space.xs) {
-                    Text(section.title)
-                        .font(.dm(15, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text(section.subtitle)
-                        .font(.dm(11))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                switch section {
-                case .connection: connectionBlock
-                case .machines: MachinesSettingsView()
-                case .workspaces: workspacesBlock
-                case .packages: PackagesSettingsView()
-                case .harnesses: harnessesBlock.task { await machinesStore.load() }
-                case .appearance: wallpaperBlock
-                case .terminal: terminalBlock
-                case .previews: previewsBlock
-                case .advanced: advancedBlock
-                case .about: UpdatesSettingsView()
-                }
+                sectionTitle
+                PackagesSettingsView()
             }
             .padding(m.space.xxl)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: m.pt(18)) {
+                    sectionTitle
+                    switch section {
+                    case .connection: connectionBlock
+                    case .machines: MachinesSettingsView()
+                    case .workspaces: workspacesBlock
+                    case .packages: EmptyView()
+                    case .harnesses: harnessesBlock.task { await machinesStore.load() }
+                    case .appearance: wallpaperBlock
+                    case .terminal: terminalBlock
+                    case .previews: previewsBlock
+                    case .advanced: advancedBlock
+                    case .about: UpdatesSettingsView()
+                    }
+                }
+                .padding(m.space.xxl)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.automatic)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .scrollIndicators(.automatic)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var sectionTitle: some View {
+        VStack(alignment: .leading, spacing: m.space.xs) {
+            Text(section.title)
+                .font(.dm(15, weight: .semibold))
+                .foregroundStyle(.white)
+            Text(section.subtitle)
+                .font(.dm(11))
+                .foregroundStyle(.white.opacity(0.5))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var footer: some View {

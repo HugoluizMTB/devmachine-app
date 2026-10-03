@@ -59,14 +59,15 @@ final class PackagesPageRenderTests: XCTestCase {
         try snapshotPNG(view, name: "devmachine-packages")
     }
 
-    func testTheWholePageRendersWithATargetThatWaitsForASync() async throws {
+    func testTheWholePageRendersWithATargetASyncToRunAndASelection() async throws {
         let snap = snapshot()
         let store = PackagesStore(read: { snap }, edit: { _ in }, jobs: { nil })
         await store.load()
-        let view = PackagesSettingsView(store: store, target: .workspace("acme", machine: "main"))
+        var page = PackagesPageState(target: .workspace("acme", machine: "main"))
+        page.selection.toggle("gh")
+        let view = PackagesSettingsView(store: store, page: page)
             .padding(24)
-            .frame(width: 820)
-            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: 820, height: 420)
             .background(Color.dmContentBg)
             .environment(\.colorScheme, .dark)
         try snapshotPNG(view, name: "devmachine-packages-page")

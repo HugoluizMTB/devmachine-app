@@ -1,38 +1,60 @@
 import SwiftUI
 import DevmachineCore
 
+/// The target the page acts on and the rows ticked for it. A selection
+/// belongs to one target, so choosing another one empties it.
+struct PackagesPageState: Equatable {
+    private(set) var target: PackageTarget?
+    var selection = PackageSelection()
+
+    init(target: PackageTarget? = nil) {
+        self.target = target
+    }
+
+    mutating func choose(_ next: PackageTarget?) {
+        guard next != target else { return }
+        target = next
+        selection.clear()
+    }
+
+    /// A reload that no longer lists the target goes back to every machine.
+    mutating func keep(targets: [PackageTarget]) {
+        if let target, !targets.contains(target) { choose(nil) }
+    }
+}
+
 /// Settings → Packages: the catalog and the local packages, what each
 /// machine and workspace has, and a selection that `packages add|rm` saves
-/// before the job center asks to sync.
+/// before the job center asks to sync. It owns its scrolling so the Apply
+/// bar stays in view under the rows.
 struct PackagesSettingsView: View {
     @Environment(\.dmMetrics) private var m
     @ObservedObject var store: PackagesStore = .shared
-    @State private var target: PackageTarget?
+    @State private var page: PackagesPageState
     @State private var filter = PackageFilter()
-    @State private var selection = PackageSelection()
     @State private var confirming = false
 
-    init(store: PackagesStore = .shared, target: PackageTarget? = nil) {
+    init(store: PackagesStore = .shared, page: PackagesPageState = PackagesPageState()) {
         self.store = store
-        _target = State(initialValue: target)
+        _page = State(initialValue: page)
     }
+
+    private var target: PackageTarget? { page.target }
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
             content
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear { store.requestLoad() }
-        .onChange(of: target) { _, _ in selection.clear() }
-        .onChange(of: store.snapshot?.targets) { _, targets in
-            if let target, !(targets ?? []).contains(target) { self.target = nil }
-        }
+        .onChange(of: store.snapshot?.targets) { _, targets in page.keep(targets: targets ?? []) }
         .confirmationDialog(
             "Change packages on \(target?.title ?? "")?",
             isPresented: $confirming,
             presenting: target.map { ($0, changes) }
         ) { target, changes in
             Button("Apply") {
-                Task { if await store.apply(changes, on: target) { selection.clear() } }
+                Task { if await store.apply(changes, on: target) { page.selection.clear() } }
             }
             Button("Cancel", role: .cancel) {}
         } message: { _, changes in
@@ -57,10 +79,9 @@ struct PackagesSettingsView: View {
     @ViewBuilder
     private func loaded(_ snapshot: PackagesSnapshot) -> some View {
         let statuses = target.map { snapshot.statuses(for: $0) }
-        let rows = filter.apply(snapshot.entries, statuses: statuses)
         PackagesHeader(
-            targets: snapshot.targets, target: $target, filter: $filter,
-            categories: PackageFilter.categories(in: snapshot.entries))
+            targets: snapshot.targets, target: Binding(get: { page.target }, set: { page.choose($0) }),
+            filter: $filter, categories: PackageFilter.categories(in: snapshot.entries))
         if let target, let statuses, let request = PackagePending.syncRequest(statuses: statuses, target: target) {
             HStack(spacing: m.space.md) {
                 Text(verbatim: "Some packages wait for a sync on \(request.machine).")
@@ -74,6 +95,20 @@ struct PackagesSettingsView: View {
             DMErrorStateView(state: error, retry: nil)
             DMButton("Dismiss", variant: .ghost, size: .small) { store.applyError = nil }
         }
+        ScrollView(.vertical) {
+            rows(snapshot, statuses: statuses)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .scrollIndicators(.automatic)
+        .frame(maxHeight: .infinity)
+        if let target, !page.selection.names.isEmpty {
+            footer(target: target, changes: page.selection.changes(statuses: statuses ?? [:]))
+        }
+    }
+
+    @ViewBuilder
+    private func rows(_ snapshot: PackagesSnapshot, statuses: [String: PackageStatus]?) -> some View {
+        let rows = filter.apply(snapshot.entries, statuses: statuses)
         if filter.tab == .local, !snapshot.entries.contains(where: \.isLocal) {
             localEmptyState(snapshot.configDirectory)
         } else if rows.isEmpty {
@@ -86,20 +121,17 @@ struct PackagesSettingsView: View {
                     DMTableRow(index: index) {
                         PackageRow(
                             entry: entry, target: target, status: statuses.map { $0[entry.name] ?? .available },
-                            isSelected: selection.names.contains(entry.name),
-                            toggle: { selection.toggle(entry.name) })
+                            isSelected: page.selection.names.contains(entry.name),
+                            toggle: { page.selection.toggle(entry.name) })
                     }
                 }
             }
-        }
-        if let target, !selection.names.isEmpty {
-            footer(target: target, changes: selection.changes(statuses: statuses ?? [:]))
         }
     }
 
     private var changes: PackageChanges {
         guard let target, let snapshot = store.snapshot else { return PackageChanges(adds: [], removes: []) }
-        return selection.changes(statuses: snapshot.statuses(for: target))
+        return page.selection.changes(statuses: snapshot.statuses(for: target))
     }
 
     private func localEmptyState(_ directory: String?) -> some View {
@@ -118,7 +150,7 @@ struct PackagesSettingsView: View {
                 .font(.dm(12, weight: .medium))
                 .foregroundStyle(Color.dmRowText)
             Spacer(minLength: m.space.md)
-            DMButton("Clear", variant: .ghost, size: .small) { selection.clear() }
+            DMButton("Clear", variant: .ghost, size: .small) { page.selection.clear() }
             DMButton("Apply", variant: .primary, size: .small, isLoading: store.applying) { confirming = true }
                 .disabled(changes.isEmpty)
         }
@@ -126,12 +158,15 @@ struct PackagesSettingsView: View {
         .dmSurface(Color.dmBand, radius: DMRadius.panel)
     }
 
+    static let removalNote =
+        "Removing stops managing a package; the software stays on the machine until you remove it by hand."
+
     static func confirmMessage(_ changes: PackageChanges) -> String {
         var lines: [String] = []
         if !changes.adds.isEmpty { lines.append("Install: \(changes.adds.joined(separator: ", "))") }
         if !changes.removes.isEmpty {
             lines.append("Remove: \(changes.removes.joined(separator: ", "))")
-            lines.append("Removing stops managing a package; the software stays on the machine until you remove it by hand.")
+            lines.append(removalNote)
         }
         return lines.joined(separator: "\n")
     }

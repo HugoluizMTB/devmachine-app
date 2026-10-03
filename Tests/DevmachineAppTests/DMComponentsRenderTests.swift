@@ -50,6 +50,8 @@ private struct DMComponentsGallery: View {
                 DMIconButton(systemImage: "star.fill", tint: .yellow) {}
                 DMIconButton(systemImage: "xmark", size: 10) {}.disabled(true)
                 Button("Commit") {}.buttonStyle(.dmChip).font(.dm(11))
+                Button("Tools") {}.buttonStyle(.dmChip(selected: true)).font(.dm(11))
+                Button("Other") {}.buttonStyle(.dmChip(selected: false)).font(.dm(11))
             }
             DMButtonGallery()
             DMSearchField(prompt: "Find a file", text: $query) {
