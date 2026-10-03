@@ -535,6 +535,39 @@ final class HarnessIconSettingTests: XCTestCase {
     }
 }
 
+final class HarnessIconStyleSettingTests: XCTestCase {
+    func testIconsKeepTheirBrandColorsByDefault() {
+        XCTAssertEqual(goodSettings.harnessIconStyle, .color)
+        XCTAssertEqual(AppSettings.empty.harnessIconStyle, .color)
+    }
+
+    func testSettingsSavedBeforeItExistedReadAsColor() throws {
+        let saved = #"{"opsRepoPath":"/Users/alice/.config/devmachine","hostAlias":"devmachine","publicIP":"203.0.113.7","baseDomain":"example.com","showsHarnessIcons":true}"#
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(saved.utf8))
+        XCTAssertEqual(decoded.harnessIconStyle, .color)
+        XCTAssertTrue(decoded.showsHarnessIcons)
+    }
+
+    func testAnUnknownStyleReadsAsColor() throws {
+        let saved = #"{"opsRepoPath":"/Users/alice/.config/devmachine","hostAlias":"devmachine","publicIP":"203.0.113.7","baseDomain":"example.com","harnessIconStyle":"neon"}"#
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: Data(saved.utf8)).harnessIconStyle, .color)
+    }
+
+    func testMonochromeSurvivesASave() throws {
+        var settings = goodSettings
+        settings.harnessIconStyle = .monochrome
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.harnessIconStyle, .monochrome)
+    }
+
+    func testTheInitializerTakesIt() {
+        let settings = AppSettings(
+            opsRepoPath: "/Users/alice/.config/devmachine", hostAlias: "devmachine",
+            publicIP: "203.0.113.7", baseDomain: "example.com", harnessIconStyle: .monochrome)
+        XCTAssertEqual(settings.harnessIconStyle, .monochrome)
+    }
+}
+
 final class AppSettingsLinkOpeningTests: XCTestCase {
     func testLinksOpenInTheDefaultBrowserByDefault() {
         XCTAssertEqual(AppSettings.empty.linkOpening, .defaultBrowser)

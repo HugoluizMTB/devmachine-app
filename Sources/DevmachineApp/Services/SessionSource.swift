@@ -31,7 +31,7 @@ struct CommandSessionSource: SessionSource {
     }
 
     func sessions(for workspace: Workspace, settings: AppSettings) throws -> [TmuxSession] {
-        try store.sessions(for: workspace, processNames: facade.processNames(for: settings))
+        try store.sessions(for: workspace, processNames: facade.processNames)
     }
 
     func localSessions(settings: AppSettings) throws -> LocalSessionSnapshot {
@@ -48,6 +48,6 @@ struct CommandSessionSource: SessionSource {
         }
         return LocalSessionSnapshot(
             sessions: sessions,
-            harnesses: facade.detect(sessions: sessions, entries: entries, settings: settings))
+            harnesses: facade.detect(sessions: sessions, entries: entries))
     }
 }

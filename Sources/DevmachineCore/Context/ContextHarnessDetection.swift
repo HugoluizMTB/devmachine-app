@@ -1,70 +1,44 @@
 import Foundation
 
-/// Picks which harness a local session belongs to: the pane's current
-/// command when known, else whichever harness has the most recently
-/// modified transcript for this project directory.
-public struct ContextRoots: Sendable {
-    public var claudeProjectsDir: URL
-    public var codexSessionsDir: URL
-    public var piSessionsDir: URL
-
-    public init(
-        claudeProjectsDir: URL = ClaudeHarness.projectsDir,
-        codexSessionsDir: URL = CodexHarness.sessionsDir,
-        piSessionsDir: URL = PiHarness.sessionsDir
-    ) {
-        self.claudeProjectsDir = claudeProjectsDir
-        self.codexSessionsDir = codexSessionsDir
-        self.piSessionsDir = piSessionsDir
-    }
-}
-
+/// Picks which harness a local session belongs to: the harnesses the caller
+/// already knows run there (the session's processes, or the pane's current
+/// command), else whichever harness has the most recently modified
+/// transcript for this project directory.
 public enum ContextHarnessDetection {
     public static func detect(
-        project: URL, paneCommand: String?, roots: ContextRoots = ContextRoots(),
+        project: URL, paneCommand: String?, harnesses: Set<HarnessID> = [],
+        roots: ContextRoots = ContextRoots(), processNames: [HarnessID: Set<String>] = [:],
         fileManager: FileManager = .default
     ) -> (harness: HarnessID, transcripts: [ContextTranscriptFile])? {
-        func transcripts(for harness: HarnessID) -> [ContextTranscriptFile] {
-            switch harness {
-            case .claude:
-                return ClaudeHarness.recentTranscripts(
-                    for: project, projectsDir: roots.claudeProjectsDir, fileManager: fileManager
-                )
-            case .codex:
-                return CodexHarness.recentTranscripts(
-                    for: project, sessionsDir: roots.codexSessionsDir, fileManager: fileManager
-                )
-            case .pi:
-                return PiHarness.recentTranscripts(
-                    for: project, sessionsDir: roots.piSessionsDir, fileManager: fileManager
-                )
-            default:
-                return []
+        let readers = roots.readers
+        func newest(of candidates: [any ContextHarnessReader]) -> (HarnessID, [ContextTranscriptFile])? {
+            var best: (HarnessID, [ContextTranscriptFile])?
+            for reader in candidates {
+                let files = reader.recentTranscripts(for: project, limit: 4, fileManager: fileManager)
+                guard let first = files.first else { continue }
+                if best == nil || first.modified > best!.1[0].modified { best = (reader.harness, files) }
             }
+            return best
         }
 
-        if let paneCommand {
-            let lowered = paneCommand.lowercased()
-            let named: HarnessID? = lowered.contains("claude") ? .claude
-                : lowered.contains("codex") ? .codex
-                : lowered.contains("pi") ? .pi
-                : nil
-            if let named {
-                let files = transcripts(for: named)
-                if !files.isEmpty { return (named, files) }
-            }
+        let named = harnesses.union(paneCommand.map { self.harnesses(running: $0, processNames: processNames) } ?? [])
+        if !named.isEmpty, let found = newest(of: readers.filter { named.contains($0.harness) }) {
+            return found
         }
+        return newest(of: readers)
+    }
 
-        let claude = transcripts(for: .claude)
-        let codex = transcripts(for: .codex)
-        let pi = transcripts(for: .pi)
-
-        let candidates: [(HarnessID, [ContextTranscriptFile])] = [(.claude, claude), (.codex, codex), (.pi, pi)]
-        let withNewest = candidates.compactMap { harness, files -> (HarnessID, [ContextTranscriptFile], Date)? in
-            guard let newest = files.first?.modified else { return nil }
-            return (harness, files, newest)
-        }
-        guard let best = withNewest.max(by: { $0.2 < $1.2 }) else { return nil }
-        return (best.0, best.1)
+    /// The harnesses whose program the pane runs, by exact program name: a
+    /// pane running `pip` is not Pi. A harness with no names given is known
+    /// by its id.
+    public static func harnesses(running paneCommand: String, processNames: [HarnessID: Set<String>]) -> Set<HarnessID> {
+        let head = paneCommand.split(separator: " ").first.map(String.init) ?? paneCommand
+        var program = (head as NSString).lastPathComponent
+        if program.hasPrefix("-") { program.removeFirst() }
+        guard !program.isEmpty else { return [] }
+        let catalog = processNames.isEmpty
+            ? Dictionary(uniqueKeysWithValues: ContextRoots.supportedHarnesses.map { ($0, Set([$0.rawValue])) })
+            : processNames
+        return Set(catalog.compactMap { $0.value.contains(program) ? $0.key : nil })
     }
 }

@@ -8,41 +8,59 @@ struct HarnessIcon {
     let isTemplate: Bool
 }
 
-/// Harness icons are files named after the harness id (`claude.svg`), so a
-/// new harness gets its icon by adding a file, not by adding a case.
+/// Harness icons are files named after the harness id, so a new harness gets
+/// its icon by adding a file, not by adding a case. `<id>.svg` is always the
+/// monochrome drawing in `currentColor`; `<id>-color.svg`, when there is one,
+/// is the brand-color version the `.color` style prefers.
 @MainActor
 final class HarnessIconLibrary {
     static let bundled = HarnessIconLibrary(directory: bundledDirectory())
+    static let colorSuffix = "-color"
+
+    private struct Key: Hashable {
+        let id: HarnessID
+        let style: HarnessIconStyle
+    }
 
     private let directory: URL?
-    private var cache: [HarnessID: HarnessIcon?] = [:]
+    private var cache: [Key: HarnessIcon?] = [:]
 
     init(directory: URL?) {
         self.directory = directory
     }
 
-    func icon(for id: HarnessID) -> HarnessIcon? {
-        if let cached = cache[id] { return cached }
-        let icon = load(id)
-        cache[id] = icon
+    func icon(for id: HarnessID, style: HarnessIconStyle) -> HarnessIcon? {
+        let key = Key(id: id, style: style)
+        if let cached = cache[key] { return cached }
+        let icon = load(id, style: style)
+        cache[key] = icon
         return icon
     }
 
+    /// Every style falls back to the monochrome file, so it alone decides.
     func hasIcon(for id: HarnessID) -> Bool {
-        icon(for: id) != nil
+        icon(for: id, style: .monochrome) != nil
     }
 
-    private func load(_ id: HarnessID) -> HarnessIcon? {
-        guard let directory, Self.isPlainName(id.rawValue) else { return nil }
-        let url = directory.appendingPathComponent(id.rawValue).appendingPathExtension("svg")
-        guard let data = try? Data(contentsOf: url), let image = NSImage(data: data) else { return nil }
+    private func load(_ id: HarnessID, style: HarnessIconStyle) -> HarnessIcon? {
+        guard directory != nil, Self.isHarnessName(id.rawValue),
+              let mono = read(id.rawValue) else { return nil }
+        if style == .color, let color = read(id.rawValue + Self.colorSuffix) { return color }
+        return mono
+    }
+
+    private func read(_ name: String) -> HarnessIcon? {
+        guard let url = directory?.appendingPathComponent(name).appendingPathExtension("svg"),
+              let data = try? Data(contentsOf: url), let image = NSImage(data: data) else { return nil }
         let isTemplate = String(decoding: data, as: UTF8.self).contains("currentColor")
         image.isTemplate = isTemplate
         return HarnessIcon(image: image, isTemplate: isTemplate)
     }
 
-    private static func isPlainName(_ name: String) -> Bool {
-        !name.isEmpty && name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+    /// A plain file name, and never a color variant's own name.
+    private static func isHarnessName(_ name: String) -> Bool {
+        !name.isEmpty && !name.hasSuffix(colorSuffix)
+            && name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
     }
 
     static func directory(inCheckout root: URL) -> URL {

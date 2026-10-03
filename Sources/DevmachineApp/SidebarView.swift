@@ -233,7 +233,9 @@ struct SidebarView: View {
     /// configured program.
     private func newSessionButton(alias: String, action: @escaping () -> Void) -> some View {
         Menu {
-            ForEach(harnessSettingsFacade.launchOptions(for: settingsStore.settings ?? .empty)) { option in
+            ForEach(harnessSettingsFacade.launchOptions(
+                for: settingsStore.settings ?? .empty,
+                on: alias == Workspace.local.alias ? .thisMac : .remote)) { option in
                 Button {
                     model.openSession(in: alias, startup: .program(option.choice))
                 } label: {
@@ -378,7 +380,9 @@ struct SidebarView: View {
         return DMRow(
             leading: glyph.reservesLeadingSlot ? AnyView(
                 SidebarHarnessIcon(
-                    icon: glyph.icon.flatMap(icons.icon(for:)),
+                    icon: glyph.icon.flatMap {
+                        icons.icon(for: $0, style: settingsStore.settings?.harnessIconStyle ?? .color)
+                    },
                     help: badges.first { $0.id == glyph.icon }?.helpText)
             ) : nil,
             title: title,

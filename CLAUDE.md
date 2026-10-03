@@ -391,7 +391,7 @@ Rules:
 - **The Local workspace lists what `zmx ls` reports**, merged with what the app
   remembers (`LocalSessionScan.merge`): a session started outside the app shows
   up, and a remembered one that has no shell yet shows without a client count.
-  One `ps -axo pid=,ppid=,comm=` per poll detects every enabled coding harness.
+  One `ps -axo pid=,ppid=,comm=` per poll detects every registered coding harness.
 - **A local pane runs the account's login shell** (`LocalShell`: the user
   database first, then `SHELL`, then `/bin/zsh`), never a fixed zsh: a bash or
   fish user got a zsh with none of their configuration.
@@ -515,8 +515,21 @@ Rules:
   inside its field. WebKit's "Open Link in New Window" reads "New Tab".
 
 ## Coding harnesses
-- Multiple harnesses may be enabled globally. Enabling one validates only its
-  local CLI; a failed check does not change settings.
+- **Detection never depends on the toggle.** Every harness in
+  `HarnessRegistry.builtIn` is detected, badged, gets its icon, upload folder
+  and Context panel, enabled or not and whether or not its CLI is on this Mac:
+  many run only on a server. Enabling one only adds it to the launch choices
+  and session defaults (and its usage card), and never needs its CLI here.
+- **A harness on without its CLI on this Mac starts on remote workspaces
+  only** (`LaunchPlace`): it is offered in the remote fallback, the
+  per-workspace defaults and a remote workspace's new-session menu and ⌘K
+  commands, never for This Mac. A This Mac default naming one starts a plain
+  shell (`HarnessSettingsFacade.localSessionProgram`), the way a harness
+  turned off does, and its Settings row says "Not on this Mac — remote
+  workspaces only". Whether a CLI is here comes from `CLIAvailability`:
+  looked up (a missing one costs a login shell) off the main thread at launch
+  and when Settings opens, then cached; only a read before the first lookup
+  ends pays for it itself.
 - This Mac has one Terminal-or-harness default. Remote workspaces inherit one
   remote fallback and may override it individually.
 - Remote choices are declarative. Never probe or modify a VPS to validate a
@@ -524,7 +537,8 @@ Rules:
 - Session badges, launch commands, process matching, upload storage, context
   support, and usage capabilities come from adapters/facades. Views do not
   switch on Claude, Codex, executable names, or provider colors.
-- Home stacks one usage card per enabled harness. A harness whose CLI is not
+- Home stacks one usage card per enabled harness that has a usage provider
+  (Claude, Codex; the others have none). A harness whose CLI is not
   found still gets its card, showing "CLI not found", so Home never disagrees
   with Settings. The CLI is looked up on every read: inherited PATH, known
   directories, then the login shell's `command -v` (mise/asdf/nvm installs an
@@ -536,12 +550,43 @@ Rules:
   `codex app-server`. It never calls `thread/start` or `turn/start`, so the
   refresh does not start a model turn or consume inference tokens.
 - Sidebar harness icons (Settings → Harnesses, off by default) are files in
-  `Resources/HarnessIcons/<HarnessID>.svg`, loaded by name (`HarnessIconLibrary`):
-  a new harness gets its icon by adding a file. An SVG drawn in `currentColor`
-  takes the row's tint; one with its own colours keeps them. No file → the
-  hover dot stays. The icons come from Orca (MIT, `LICENSE-orca.txt` beside them).
+  `Resources/HarnessIcons/`, loaded by name (`HarnessIconLibrary`): a new
+  harness gets its icon by adding a file. `<HarnessID>.svg` is always the
+  monochrome drawing in `currentColor` (it takes the row's tint, and every
+  built-in harness must have one); `<HarnessID>-color.svg` is the optional
+  brand-color version. Settings → Harnesses → Icon style
+  (`AppSettings.harnessIconStyle`, `.color` by default) picks it: Original
+  colors uses `-color` when it exists, else the monochrome file; Monochrome
+  never reads `-color`. A `-color` name is never a harness id. No monochrome
+  file → no icon, the hover dot stays. Brand colors exist for Claude, Codex,
+  Antigravity and Kimi; Pi, opencode and Cline are black and white anyway.
+  Claude, Codex and Pi come from Orca (MIT, `LICENSE-orca.txt`); codex-color,
+  Antigravity, opencode, Kimi and Cline from lobe-icons (MIT,
+  `LICENSE-lobe-icons.txt`). A new icon names its source in one of those files.
+  `DEVMACHINE_DEMO_ICON_STYLE=monochrome` switches the `harness-icons` demo walk.
 - The Context / Files / Git panel belongs to every selected session. Unsupported
   provider context shows an empty state while Files and Git remain available.
+- **Context reads a harness through one `ContextHarnessReader`** (Core,
+  `ContextRoots.readers`, the one table): it finds the project's sessions,
+  newest first, and reads one into a `ContextHarnessPass`. Each reader loads its
+  own storage: JSONL per session (Claude, Codex, Pi, Kimi, Antigravity), a JSON
+  file listed in SQLite (Cline), or rows in one SQLite file (opencode). SQLite
+  is opened `mode=ro` (never `immutable=1`, which misses rows still in the
+  WAL); a locked or missing database reads as no sessions. `ContextFacade`
+  serves every harness in the table, local or remote: the remote
+  `devmachine-infer` answers with the same ids. A harness is detected by exact
+  program name (`pi` is never `pip`); the session's detected harnesses pick the
+  transcript before the newest-file fallback.
+- **A remote pane is matched by every program under it, not only the one in
+  front.** tmux names the foreground program, and Cline's npm launcher is
+  `node`; the native `.cline` it starts is a child. So the session listing
+  (`RemoteCommands.listSessions`, still one ssh per poll) also returns each
+  pane's pid and the host's `ps -A -o pid=,ppid=,comm=`, and
+  `TmuxListParser` walks the pane's descendants with
+  `ProcessTree.matchingPrograms`, as the local scan does. Bare `node` matches
+  nothing. tmux runs last in that command: its exit code is the command's,
+  and 127 is how a host without tmux is told apart. Without a process table
+  the pane's own command still counts.
 
 ## Performance rules (learned from a 2 GB footprint)
 - Poll only while a view is visible (`onAppear`/`onDisappear` begin/end, refcount),

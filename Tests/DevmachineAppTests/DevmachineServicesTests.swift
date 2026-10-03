@@ -153,8 +153,8 @@ final class DevmachineServicesTests: XCTestCase {
         let cli: @Sendable () throws -> DevmachineCLI = { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }
 
         let project = URL(fileURLWithPath: "/Users/alice/dev/acme")
-        let projectsDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let transcriptDir = projectsDir.appendingPathComponent(ClaudeHarness.slug(for: project))
+        let roots = ContextRoots(home: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let transcriptDir = roots.claudeProjectsDir.appendingPathComponent(ClaudeHarness.slug(for: project))
         try FileManager.default.createDirectory(at: transcriptDir, withIntermediateDirectories: true)
         try #"{"timestamp":"2026-01-01T00:00:00Z","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}"#
             .write(to: transcriptDir.appendingPathComponent("s1.jsonl"), atomically: true, encoding: .utf8)
@@ -162,7 +162,7 @@ final class DevmachineServicesTests: XCTestCase {
             runner: CLIServiceRunner(result: ("", "", 0)),
             resolver: ContextGitHubResolver(runner: CLIServiceRunner(result: ("", "", 0))),
             githubHosts: ["github.com"],
-            roots: ContextRoots(claudeProjectsDir: projectsDir)
+            roots: roots
         )
         let source = CLIContextSource(cli: cli, nativeEngine: engine)
 
@@ -234,10 +234,51 @@ final class DevmachineServicesTests: XCTestCase {
             cwd: "/home/acme/dev", isClaude: true, updatedAt: "now", plan: nil, prs: [], links: []))
         let facade = ContextFacade(source: source)
         let target = CommandTarget.remote(alias: "acme-devmachine", session: "dash")
-        XCTAssertNil(try facade.context(for: target, harnesses: [.codex], settings: settings))
+        XCTAssertNil(try facade.context(for: target, harnesses: [HarnessID(rawValue: "aider")], settings: settings))
         XCTAssertNil(try facade.context(for: target, harnesses: [], settings: settings))
         XCTAssertEqual(source.calls, [])
         XCTAssertNotNil(try facade.context(for: target, harnesses: [.claude, .codex], settings: settings))
         XCTAssertEqual(source.calls, [target])
+    }
+
+    func testContextFacadeServesEveryHarnessThatHasAReader() {
+        let facade = ContextFacade(source: FixtureContextSource())
+        for harness in [HarnessID.claude, .codex, .pi, .opencode, .kimi, .cline, .antigravity] {
+            XCTAssertTrue(facade.supports([harness]), harness.rawValue)
+        }
+        XCTAssertFalse(facade.supports([HarnessID(rawValue: "aider")]))
+    }
+
+    func testCLIContextSourceHandsTheSessionsHarnessesToTheNativeEngine() throws {
+        let machinesBody = #"[{"name":"studio","self":true}]"#
+        let runner = CLIStagedRunner(machines: (machinesBody, "", 0))
+        let cli: @Sendable () throws -> DevmachineCLI = { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }
+        let project = URL(fileURLWithPath: "/Users/alice/dev/acme")
+        let roots = ContextRoots(home: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let claude = roots.claudeProjectsDir.appendingPathComponent(ClaudeHarness.slug(for: project))
+        let pi = roots.piSessionsDir.appendingPathComponent(PiHarness.slug(for: project))
+        for dir in [pi, claude] {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try "{}".write(to: dir.appendingPathComponent("s1.jsonl"), atomically: true, encoding: .utf8)
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        let engine = NativeContextEngine(
+            runner: CLIServiceRunner(result: ("", "", 0)),
+            resolver: ContextGitHubResolver(runner: CLIServiceRunner(result: ("", "", 0))),
+            githubHosts: ["github.com"], roots: roots)
+        let facade = ContextFacade(source: CLIContextSource(cli: cli, nativeEngine: engine))
+
+        let state = try facade.context(
+            for: .local(session: "shell", path: project.path), harnesses: [.pi], settings: settings)
+
+        XCTAssertEqual(state?.harness, .pi)
+    }
+
+    func testARemoteAnswerKeepsAnyHarnessId() throws {
+        for id in ["antigravity", "opencode", "pi", "kimi", "cline"] {
+            let json = #"{"cwd":"/home/alice/dev","harness":"\#(id)","updatedAt":"now","prs":[],"links":[]}"#
+            let state = try JSONDecoder().decode(ContextState.self, from: Data(json.utf8))
+            XCTAssertEqual(state.harness, HarnessID(rawValue: id))
+        }
     }
 }

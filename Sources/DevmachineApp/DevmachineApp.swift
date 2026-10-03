@@ -28,6 +28,7 @@ struct DevmachineApp: App {
         MainWindowSizer.readSavedFrame()
         let facade = HarnessSettingsFacade()
         harnessSettingsFacade = facade
+        Task.detached(priority: .utility) { facade.refreshAvailability() }
         // `DEVMACHINE_DEMO=1`: every store seeds itself from `DemoData` (see
         // `DemoMode.swift`) instead of reading real usage files, the CLI, or
         // ssh/gh. This is the one place that picks a provider list, so it is

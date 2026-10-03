@@ -100,6 +100,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// A session running a known harness shows that harness's icon before
     /// its name in the sidebar. Off by default: the sidebar stays as it was.
     public var showsHarnessIcons: Bool
+    /// How those icons are drawn: in the harness's brand colors, or in the
+    /// row's own tint.
+    public var harnessIconStyle: HarnessIconStyle
     /// Workspaces left out of the sidebar, by ssh alias. A list of what to
     /// hide, not of what to show: a workspace added to `~/.ssh/config` later
     /// appears on its own, which is what you want from a machine that gains
@@ -163,6 +166,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         remoteTerminalMode: RemoteTerminalMode = .automatic,
         copyOnSelect: Bool = true,
         showsHarnessIcons: Bool = false,
+        harnessIconStyle: HarnessIconStyle = .color,
         hiddenWorkspaces: [String] = [],
         workspaceAliases: [String: String] = [:],
         enabledHarnesses: [HarnessID] = [.claude],
@@ -186,6 +190,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.remoteTerminalMode = remoteTerminalMode
         self.copyOnSelect = copyOnSelect
         self.showsHarnessIcons = showsHarnessIcons
+        self.harnessIconStyle = harnessIconStyle
         self.hiddenWorkspaces = hiddenWorkspaces
         self.workspaceAliases = workspaceAliases
         self.enabledHarnesses = enabledHarnesses
@@ -207,7 +212,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, sshAgentSocket, wallpaper
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging, remoteTerminalMode
-        case copyOnSelect, showsHarnessIcons
+        case copyOnSelect, showsHarnessIcons, harnessIconStyle
         case hiddenWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram, linkOpening
     }
@@ -239,6 +244,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             try values.decodeIfPresent(RemoteTerminalMode.self, forKey: .remoteTerminalMode) ?? .automatic
         copyOnSelect = try values.decodeIfPresent(Bool.self, forKey: .copyOnSelect) ?? true
         showsHarnessIcons = try values.decodeIfPresent(Bool.self, forKey: .showsHarnessIcons) ?? false
+        harnessIconStyle = (try? values.decodeIfPresent(HarnessIconStyle.self, forKey: .harnessIconStyle)) ?? .color
         linkOpening = (try? values.decodeIfPresent(LinkOpening.self, forKey: .linkOpening)) ?? .defaultBrowser
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
@@ -294,6 +300,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(remoteTerminalMode, forKey: .remoteTerminalMode)
         try values.encode(copyOnSelect, forKey: .copyOnSelect)
         try values.encode(showsHarnessIcons, forKey: .showsHarnessIcons)
+        try values.encode(harnessIconStyle, forKey: .harnessIconStyle)
         try values.encode(hiddenWorkspaces, forKey: .hiddenWorkspaces)
         try values.encode(workspaceAliases, forKey: .workspaceAliases)
         try values.encode(enabledHarnesses, forKey: .enabledHarnesses)

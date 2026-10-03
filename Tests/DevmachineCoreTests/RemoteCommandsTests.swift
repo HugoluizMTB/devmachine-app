@@ -15,6 +15,16 @@ final class RemoteCommandsTests: XCTestCase {
         XCTAssertTrue(c.contains("list-panes -a"))
     }
 
+    func testListSessionsAlsoReportsEachPanesProcessAndTheProcessTableInTheSameCall() {
+        let c = RemoteCommands.listSessions
+        XCTAssertTrue(c.contains("#S|#{pane_current_command}|#{pane_pid}"))
+        XCTAssertTrue(c.contains(RemoteCommands.processSentinel))
+        XCTAssertTrue(c.contains("ps -A -o pid=,ppid=,comm="))
+        XCTAssertTrue(c.hasSuffix("2>/dev/null"))
+        XCTAssertLessThan(
+            try XCTUnwrap(c.range(of: "ps -A")).lowerBound, try XCTUnwrap(c.range(of: "list-panes")).lowerBound)
+    }
+
     func testAttachAndNewSessionNeverKill() {
         XCTAssertEqual(RemoteCommands.attach(session: "dash"), "tmux attach -t dash")
         XCTAssertEqual(RemoteCommands.newSession(name: "nova"), "tmux new-session -A -s 'nova'")

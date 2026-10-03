@@ -1,8 +1,11 @@
-The icons in this folder (claude.svg, codex.svg, pi.svg) are copied from Orca
-(https://github.com/stablyai/orca, commit d74388f8a2dad2bd4bbfe3b937aba66e6648258b):
+The icons in this folder claude.svg, claude-color.svg, codex.svg and pi.svg
+are copied from Orca (https://github.com/stablyai/orca, commit
+d74388f8a2dad2bd4bbfe3b937aba66e6648258b):
 src/renderer/src/components/status-bar/icons.tsx (ClaudeIcon, OpenAIIcon) and
-src/renderer/src/lib/agent-icon-glyphs.tsx (PiIcon). Each file is named after
-the app's HarnessID. Orca's license follows.
+src/renderer/src/lib/agent-icon-glyphs.tsx (PiIcon). claude-color.svg is
+ClaudeIcon as drawn there; claude.svg is the same path drawn in currentColor.
+Each file is named after the app's HarnessID; a "-color" file is the
+brand-colour version. Orca's license follows.
 
 MIT License
 

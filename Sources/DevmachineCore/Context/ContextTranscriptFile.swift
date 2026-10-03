@@ -5,10 +5,14 @@ import Foundation
 public struct ContextTranscriptFile: Equatable, Sendable {
     public let path: URL
     public let modified: Date
+    /// The session inside `path` when one file holds many (opencode's
+    /// database); nil when the file is the session.
+    public let session: String?
 
-    public init(path: URL, modified: Date) {
+    public init(path: URL, modified: Date, session: String? = nil) {
         self.path = path
         self.modified = modified
+        self.session = session
     }
 }
 

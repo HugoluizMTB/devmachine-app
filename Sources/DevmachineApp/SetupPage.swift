@@ -112,6 +112,7 @@ struct SetupPage: View {
     @State private var remoteTerminalMode = RemoteTerminalMode.automatic
     @State private var copyOnSelect = true
     @State private var showsHarnessIcons = false
+    @State private var harnessIconStyle = HarnessIconStyle.color
     @State private var linkOpening = LinkOpening.defaultBrowser
     @State private var hiddenWorkspaces: [String] = []
     @State private var enabledHarnesses = AppSettings.empty.enabledHarnesses
@@ -119,6 +120,9 @@ struct SetupPage: View {
     @State private var remoteSessionProgram = SessionLaunchChoice.terminal
     @State private var workspaceSessionPrograms: [String: SessionLaunchChoice] = [:]
     @State private var harnessErrors: [HarnessID: String] = [:]
+    /// Bumped once the CLIs on this Mac were looked up again, to redraw
+    /// what depends on them.
+    @State private var cliAvailabilityRead = 0
     /// Connection fields opened for typing. A field with a value shows it
     /// read-only until "Edit": what the CLI reports is rarely changed.
     @State private var editing: Set<SettingsIssue.Field> = []
@@ -139,6 +143,7 @@ struct SetupPage: View {
             remoteTerminalMode: remoteTerminalMode,
             copyOnSelect: copyOnSelect,
             showsHarnessIcons: showsHarnessIcons,
+            harnessIconStyle: harnessIconStyle,
             hiddenWorkspaces: hiddenWorkspaces,
             enabledHarnesses: enabledHarnesses,
             localSessionProgram: localSessionProgram,
@@ -207,6 +212,11 @@ struct SetupPage: View {
             // The CLI may have been installed or set up since launch.
             await model.refreshDetected()
             fillFromDetected()
+        }
+        .task {
+            let facade = harnessSettingsFacade
+            await Task.detached { facade.refreshAvailability() }.value
+            cliAvailabilityRead += 1
         }
         .onChange(of: model.requestedSettingsSection) { _, _ in openRequestedSection() }
     }
@@ -561,6 +571,11 @@ struct SetupPage: View {
                                     Text(verbatim: "Make \(descriptor.shortTitle) available for session defaults.")
                                         .font(.dm(10))
                                         .foregroundStyle(.white.opacity(0.45))
+                                    if let note = remoteOnlyNote(descriptor.id) {
+                                        Text(verbatim: note)
+                                            .font(.dm(10))
+                                            .foregroundStyle(.white.opacity(0.45))
+                                    }
                                 }
                             }
                         }
@@ -575,8 +590,9 @@ struct SetupPage: View {
                         }
                     }
                 }
-                note("Turning a harness on checks only this Mac. The app never "
-                    + "installs a CLI or probes a remote workspace.")
+                note("Turning a harness on adds it to the launch choices. Starting it on this Mac "
+                    + "needs its CLI here; a remote workspace never asks. Every harness is "
+                    + "recognized in a session either way.")
             }
 
             harnessIconToggle
@@ -587,6 +603,7 @@ struct SetupPage: View {
                     title: "This Mac",
                     detail: "New local sessions",
                     savedFor: Workspace.local.alias,
+                    place: .thisMac,
                     selection: $localSessionProgram
                 )
                 launchChoicePicker(
@@ -633,10 +650,12 @@ struct SetupPage: View {
         title: String,
         detail: String,
         savedFor alias: String,
+        place: LaunchPlace = .remote,
         showsCommandField: Bool = true,
         selection: Binding<SessionLaunchChoice>
     ) -> some View {
-        VStack(alignment: .trailing, spacing: m.space.sm) {
+        let options = launchOptions(on: place)
+        return VStack(alignment: .trailing, spacing: m.space.sm) {
             HStack(spacing: m.space.lg) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: title)
@@ -648,10 +667,10 @@ struct SetupPage: View {
                 }
                 Spacer(minLength: m.space.md)
                 Picker("", selection: Binding(
-                    get: { LaunchChoiceTag(selection.wrappedValue) },
+                    get: { LaunchChoiceTag(Self.offered(selection.wrappedValue, in: options)) },
                     set: { selection.wrappedValue = $0.choice(replacing: selection.wrappedValue) }
                 )) {
-                    ForEach(launchOptions) { option in
+                    ForEach(options) { option in
                         Text(verbatim: option.title)
                             .tag(LaunchChoiceTag(option.choice))
                     }
@@ -711,8 +730,21 @@ struct SetupPage: View {
         }
     }
 
-    private var launchOptions: [HarnessLaunchOption] {
-        SettingsDraft(value: draft).launchOptions(using: harnessSettingsFacade)
+    private func launchOptions(on place: LaunchPlace) -> [HarnessLaunchOption] {
+        _ = cliAvailabilityRead
+        return SettingsDraft(value: draft).launchOptions(using: harnessSettingsFacade, on: place)
+    }
+
+    private func remoteOnlyNote(_ id: HarnessID) -> String? {
+        _ = cliAvailabilityRead
+        return harnessSettingsFacade.remoteOnlyNote(for: id, in: draft)
+    }
+
+    /// A harness this list does not offer (its CLI is not on this Mac) shows
+    /// as the plain shell it falls back to.
+    static func offered(_ choice: SessionLaunchChoice, in options: [HarnessLaunchOption]) -> SessionLaunchChoice {
+        guard case .harness = choice, !options.contains(where: { $0.choice == choice }) else { return choice }
+        return .terminal
     }
 
     private func harnessEnabledBinding(_ id: HarnessID) -> Binding<Bool> {
@@ -750,8 +782,6 @@ struct SetupPage: View {
 
     private func harnessActivationMessage(_ error: HarnessActivationError) -> String {
         switch error {
-        case let .cliNotFound(title):
-            return "\(title) was not found on this Mac."
         case .harnessNotRegistered:
             return "This harness is not available."
         }
@@ -806,6 +836,21 @@ struct SetupPage: View {
             .controlSize(.small)
             note("A session running a harness shows its icon before the name. "
                 + "Terminal sessions show none.")
+            HStack(spacing: m.space.lg) {
+                Text(verbatim: "Icon style")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(showsHarnessIcons ? 0.85 : 0.4))
+                Picker("", selection: $harnessIconStyle) {
+                    ForEach(HarnessIconStyle.allCases, id: \.self) { style in
+                        Text(verbatim: style.title).tag(style)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .fixedSize()
+            }
+            .disabled(!showsHarnessIcons)
         }
     }
 
@@ -1080,6 +1125,7 @@ struct SetupPage: View {
             remoteTerminalMode = current.remoteTerminalMode
             copyOnSelect = current.copyOnSelect
             showsHarnessIcons = current.showsHarnessIcons
+            harnessIconStyle = current.harnessIconStyle
             linkOpening = current.linkOpening
             hiddenWorkspaces = current.hiddenWorkspaces
             applyHarnessSettings(current)

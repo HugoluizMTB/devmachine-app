@@ -23,7 +23,9 @@ struct CommandPaletteView: View {
         context.workspaces = model.visibleWorkspaces
         context.sessions = model.paletteItems()
         context.localSessions = model.localSessions
-        context.launchOptions = harnessSettingsFacade.launchOptions(for: settingsStore.settings ?? .empty)
+        context.launchOptions = harnessSettingsFacade.launchOptions(for: settingsStore.settings ?? .empty, on: .remote)
+        context.localLaunchOptions = harnessSettingsFacade.launchOptions(
+            for: settingsStore.settings ?? .empty, on: .thisMac)
         context.savedCommands = Dictionary(
             uniqueKeysWithValues: model.sidebarWorkspaces.map { ($0.alias, savedCommands.recents(for: $0.alias)) })
         context.machines = stats.machines.map(\.name)

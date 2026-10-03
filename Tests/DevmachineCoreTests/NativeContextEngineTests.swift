@@ -9,11 +9,7 @@ private struct StubRunner: CommandRunner {
 final class NativeContextEngineTests: XCTestCase {
     private func roots() -> ContextRoots {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        return ContextRoots(
-            claudeProjectsDir: base.appendingPathComponent("claude"),
-            codexSessionsDir: base.appendingPathComponent("codex"),
-            piSessionsDir: base.appendingPathComponent("pi")
-        )
+        return ContextRoots(home: base)
     }
 
     private func write(_ lines: [[String: Any]], to url: URL) throws {

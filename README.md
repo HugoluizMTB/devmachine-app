@@ -29,12 +29,14 @@ Builds a release bundle and installs `/Applications/Devmachine.app`. The first
 launch shows a Setup card: configuration folder, host ssh alias, public IP, base
 domain, wallpaper. Change them later with `⌘,`.
 
-Settings can enable multiple coding harnesses installed on this Mac. Each local
-or remote workspace chooses one default launch program, while remote choices
-remain declarative: the app does not install, inspect, or repair tools on the
-host.
+Settings can enable multiple coding harnesses installed on this Mac: Claude
+Code, OpenAI Codex, Pi, Antigravity CLI, opencode, Kimi Code and Cline. Each
+local or remote workspace chooses one default launch program, while remote
+choices remain declarative: the app does not install, inspect, or repair tools
+on the host. A session running any of them gets its badge and the Context
+panel.
 
-Enabled harnesses that are locally available receive usage cards on Home and
+Enabled harnesses that report usage (Claude Code, Codex) receive usage cards on Home and
 in the menu bar. With Claude Code and OpenAI Codex enabled, Home stacks both
 cards and the menu-bar Usage tab shows them side by side. Codex account limits
 and activity come from `codex app-server` account reads; they do not start a

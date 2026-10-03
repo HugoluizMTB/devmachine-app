@@ -45,6 +45,14 @@ private final class CountingRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
+private struct CodexOnThisMac: ExecutableLocating {
+    func executable(named name: String) -> URL? {
+        name == "codex" ? URL(fileURLWithPath: "/opt/homebrew/bin/codex") : nil
+    }
+}
+
+private let codexFacade = HarnessSettingsFacade(registry: .builtIn, locator: CodexOnThisMac())
+
 private final class HarnessProcessRunner: CommandRunner, @unchecked Sendable {
     private let lock = NSLock()
     private let zmxListing: String
@@ -168,7 +176,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.context.isPolling)
         model.activePage = nil
         XCTAssertTrue(model.context.isPolling)
-        for harnesses: Set<HarnessID> in [[.codex], []] {
+        for harnesses: Set<HarnessID> in [[HarnessID(rawValue: "aider")], []] {
             model.sessionsByAlias["acme-devmachine"] = [
                 TmuxSession(name: "dash", windows: 1, harnesses: harnesses)]
             model.syncContext()
@@ -178,7 +186,7 @@ final class AppModelTests: XCTestCase {
         }
     }
 
-    func testRemoteRefreshDetectsOnlyProcessesFromActiveHarnessAdapters() async throws {
+    func testRemoteRefreshDetectsEveryHarnessWhetherOrNotItIsEnabled() async throws {
         let runner = HarnessProcessRunner(remoteListing: """
         dash|1
         @@PANES@@
@@ -194,8 +202,51 @@ final class AppModelTests: XCTestCase {
         model.refresh(alias: "acme-devmachine")
 
         try await waitUntil { model.sessionsByAlias["acme-devmachine"] != nil }
-        XCTAssertEqual(model.sessionsByAlias["acme-devmachine"]?.first?.harnesses, [.codex])
+        XCTAssertEqual(model.sessionsByAlias["acme-devmachine"]?.first?.harnesses, [.claude, .codex])
         XCTAssertEqual(runner.callCount(for: "/usr/bin/ssh"), 1)
+    }
+
+    func testARemoteOpencodeSessionIsBadgedWithOnlyClaudeEnabled() async throws {
+        let runner = HarnessProcessRunner(remoteListing: """
+        dash|1
+        @@PANES@@
+        dash|opencode
+        """)
+        let model = AppModel(store: SessionStore(runner: runner))
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude])
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+
+        model.refresh(alias: "acme-devmachine")
+
+        try await waitUntil { model.sessionsByAlias["acme-devmachine"] != nil }
+        let session = try XCTUnwrap(model.sessionsByAlias["acme-devmachine"]?.first)
+        XCTAssertEqual(session.harnesses, [.opencode])
+        XCTAssertEqual(model.badges(for: session).map(\.id), [.opencode])
+    }
+
+    func testALocalOpencodeSessionIsBadgedWithOnlyClaudeEnabled() async throws {
+        let runner = HarnessProcessRunner(
+            zmxListing: "name=acme\tpid=100\tclients=1\tcwd=/Users/alice/dev/acme",
+            processListing: """
+             100 1 -zsh
+             200 100 node
+             300 200 /Users/alice/.opencode/bin/opencode
+            """)
+        let model = AppModel(
+            store: SessionStore(runner: HarnessProcessRunner()),
+            localRunner: runner,
+            sessionCommandSender: RecordingSessionCommandSender(),
+            zmxPath: "/fixtures/zmx")
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude])
+
+        model.scanLocalSessions()
+
+        try await waitUntil { model.localSessionHarnesses["acme"] != nil }
+        XCTAssertEqual(model.localSessionHarnesses["acme"], [.opencode])
     }
 
     func testLocalScanUsesOneProcessSnapshotForAllHarnessesAndSessions() async throws {
@@ -299,6 +350,7 @@ final class AppModelTests: XCTestCase {
         let sender = RecordingSessionCommandSender()
         let model = AppModel(
             store: SessionStore(runner: HarnessProcessRunner()),
+            harnessSettingsFacade: codexFacade,
             localRunner: runner,
             sessionCommandSender: sender,
             zmxPath: "/fixtures/zmx")
@@ -314,6 +366,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(
             sender.sent.first?.target,
             .local(session: "acme", path: "/Users/alice/dev/acme"))
+    }
+
+    func testALocalDefaultWhoseCLIIsNotOnThisMacStartsAPlainShell() async throws {
+        let runner = HarnessProcessRunner(
+            zmxListing: "name=acme\tpid=100\tclients=1\tcwd=/Users/alice/dev/acme")
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: HarnessProcessRunner()),
+            harnessSettingsFacade: codexFacade,
+            localRunner: runner,
+            sessionCommandSender: sender,
+            zmxPath: "/fixtures/zmx")
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude, .opencode],
+            localSessionProgram: .harness(.opencode), remoteSessionProgram: .harness(.opencode))
+
+        model.startProgram(in: .local(session: "acme", path: "/Users/alice/dev/acme"))
+        model.startProgram(in: .remote(alias: "acme-devmachine", session: "dash"))
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.map(\.command), ["opencode"])
+        XCTAssertEqual(sender.sent.first?.target, .remote(alias: "acme-devmachine", session: "dash"))
     }
 
     func testNewRemoteSessionUsesItsWorkspaceHarnessOverrideWithoutAProbe() async throws {
@@ -398,7 +473,7 @@ final class AppModelTests: XCTestCase {
             zmxListing: "name=project-q7\tpid=100\tclients=1\tcwd=/Users/alice/dev/project")
         let sender = RecordingSessionCommandSender()
         let model = AppModel(
-            store: SessionStore(runner: runner), localRunner: runner,
+            store: SessionStore(runner: runner), harnessSettingsFacade: codexFacade, localRunner: runner,
             sessionCommandSender: sender, zmxPath: "/fixtures/zmx",
             sessionSuffix: { "q7" })
         model.settings = AppSettings(

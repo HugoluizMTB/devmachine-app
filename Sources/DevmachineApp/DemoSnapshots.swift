@@ -178,6 +178,12 @@ enum DemoSnapshots {
         Screen(id: "sidebar-harness-icons", fileName: "35-sidebar-harness-icons.png", settleNanoseconds: 900_000_000),
     ]
 
+    /// `DEVMACHINE_DEMO_ICON_STYLE=monochrome` draws that walk's icons in the
+    /// row's tint; brand colors by default, as Settings starts.
+    static func iconStyle(from environment: [String: String]) -> HarnessIconStyle {
+        HarnessIconStyle(rawValue: environment["DEVMACHINE_DEMO_ICON_STYLE"] ?? "") ?? .color
+    }
+
     /// The update toast walk (`DEVMACHINE_DEMO_WALK=update-toast`): the update
     /// banner above a job card, at the default text size and at the largest.
     static let updateToastScreens: [Screen] = [
@@ -491,6 +497,8 @@ enum DemoSnapshots {
             model.stackWorkspace(acmeAlias)
         case "sidebar-harness-icons":
             environment.settingsStore.settings?.showsHarnessIcons = true
+            environment.settingsStore.settings?.harnessIconStyle = Self.iconStyle(
+                from: ProcessInfo.processInfo.environment)
             model.stackWorkspace(acmeAlias)
         case "session-claude":
             // A different workspace/session than the "sessions" grid, not

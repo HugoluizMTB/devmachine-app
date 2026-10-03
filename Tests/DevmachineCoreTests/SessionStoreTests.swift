@@ -41,6 +41,37 @@ final class SessionStoreTests: XCTestCase {
         )
     }
 
+    func testARemoteClinePaneIsKnownByTheNativeChildItsNodeLauncherStarts() throws {
+        let fake = FakeRunner(output: """
+        cline|1
+        pi|1
+        shell|1
+        @@PANES@@
+        cline|node|1000
+        pi|pi|2000
+        shell|zsh|3000
+        @@PROCS@@
+           1     0 systemd
+        1000     1 zsh
+        1001  1000 MainThread
+        1002  1001 .cline
+        2000     1 zsh
+        2001  2000 pi
+        3000     1 zsh
+        3001  3000 node
+        """)
+        let store = SessionStore(runner: fake)
+        let sessions = try store.sessions(
+            for: Workspace(name: "acme", alias: "acme-devmachine"),
+            processNames: [.pi: ["pi"], .cline: ["cline", ".cline"], .claude: ["claude"]])
+
+        XCTAssertEqual(sessions, [
+            TmuxSession(name: "cline", windows: 1, harnesses: [.cline]),
+            TmuxSession(name: "pi", windows: 1, harnesses: [.pi]),
+            TmuxSession(name: "shell", windows: 1, harnesses: [])
+        ])
+    }
+
     func testRunExecutesCommandOnTheAlias() throws {
         let fake = FakeRunner(output: "ok")
         let store = SessionStore(runner: fake)

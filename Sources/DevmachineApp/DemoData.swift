@@ -35,6 +35,11 @@ enum DemoData {
         ],
         "umbrella-devmachine": [
             TmuxSession(name: "web — dev server", windows: 1, harnesses: []),
+            TmuxSession(name: "pi — docs", windows: 1, harnesses: [.pi]),
+            TmuxSession(name: "agy — search", windows: 1, harnesses: [.antigravity]),
+            TmuxSession(name: "opencode — api", windows: 1, harnesses: [.opencode]),
+            TmuxSession(name: "kimi — tests", windows: 1, harnesses: [.kimi]),
+            TmuxSession(name: "cline — cleanup", windows: 1, harnesses: [.cline]),
         ],
     ]
 
@@ -475,13 +480,18 @@ enum DemoData {
         publicIP: machineAddress,
         baseDomain: "example.com",
         wallpaper: .gradient(name: "peaks"),
-        enabledHarnesses: [.claude, .codex],
+        enabledHarnesses: [.claude, .codex, .pi, .antigravity, .opencode, .kimi, .cline],
         localSessionProgram: .harness(.claude),
         remoteSessionProgram: .harness(.claude),
         workspaceSessionPrograms: [
             "globex-devmachine": .custom("npm run dev"),
             "initech-devmachine": .harness(.codex),
         ])
+
+    /// The CLIs the demo Mac has. Antigravity and Cline are left out, so
+    /// Settings shows a harness that only starts on a remote workspace.
+    static let executableLocator: any ExecutableLocating = DemoExecutableLocator(
+        installed: ["claude", "codex", "pi", "opencode", "kimi"])
 
     // MARK: Harness usage
 
@@ -731,4 +741,12 @@ extension DemoData {
                 "/home/acme/dev/api/.worktrees/search-index/.data/postgres/pg_wal",
             ],
             count: 214))
+}
+
+struct DemoExecutableLocator: ExecutableLocating {
+    let installed: Set<String>
+
+    func executable(named name: String) -> URL? {
+        installed.contains(name) ? URL(fileURLWithPath: "/opt/homebrew/bin").appendingPathComponent(name) : nil
+    }
 }

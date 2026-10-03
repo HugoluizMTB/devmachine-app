@@ -3,6 +3,14 @@ import DevmachineCore
 
 protocol ContextSource: Sendable {
     func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState?
+    /// `harnesses` are the ones seen running in the session.
+    func context(for target: CommandTarget, harnesses: Set<HarnessID>, settings: AppSettings) throws -> ContextState?
+}
+
+extension ContextSource {
+    func context(for target: CommandTarget, harnesses: Set<HarnessID>, settings: AppSettings) throws -> ContextState? {
+        try context(for: target, settings: settings)
+    }
 }
 
 /// Resolves a value once and reuses it for the rest of the app's run. A
@@ -41,7 +49,7 @@ struct CLIContextSource: ContextSource {
     init(
         cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
         selfMachine: SelfMachineCache = SelfMachineCache(),
-        nativeEngine: NativeContextEngine = NativeContextEngine()
+        nativeEngine: NativeContextEngine = NativeContextEngine(processNames: HarnessRegistry.builtIn.processNames)
     ) {
         self.cli = cli
         self.selfMachine = selfMachine
@@ -49,6 +57,10 @@ struct CLIContextSource: ContextSource {
     }
 
     func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState? {
+        try context(for: target, harnesses: [], settings: settings)
+    }
+
+    func context(for target: CommandTarget, harnesses: Set<HarnessID>, settings: AppSettings) throws -> ContextState? {
         switch target {
         case let .remote(alias, session):
             // Remote workspaces still go through the CLI's own devmachine-infer
@@ -62,7 +74,8 @@ struct CLIContextSource: ContextSource {
             // same as the package path was — a local session with no such
             // machine shows no context panel either way.
             guard try selfMachine.name(cli: cli) != nil else { return nil }
-            let result = nativeEngine.buildContext(cwd: (path as NSString).expandingTildeInPath)
+            let result = nativeEngine.buildContext(
+                cwd: (path as NSString).expandingTildeInPath, harnesses: harnesses)
             let data = try JSONEncoder().encode(result)
             return try JSONDecoder().decode(ContextState.self, from: data)
         }

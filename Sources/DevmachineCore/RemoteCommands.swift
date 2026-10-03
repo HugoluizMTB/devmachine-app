@@ -2,6 +2,7 @@ import Foundation
 
 public enum RemoteCommands {
     public static let paneSentinel = "@@PANES@@"
+    public static let processSentinel = "@@PROCS@@"
 
     public static var onePasswordSocketPath: String {
         NSHomeDirectory() + "/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
@@ -56,10 +57,17 @@ public enum RemoteCommands {
         return nil
     }
 
+    /// Sessions, the host's process table, then each pane's foreground
+    /// program and shell pid, in one login: a harness whose launcher is
+    /// `node` (Cline) is known only by the program it starts under the pane.
+    /// tmux runs last on purpose: its exit code is the command's, and 127
+    /// there is how a host without tmux is told apart.
     public static let listSessions =
         "tmux list-sessions -F '#S|#{session_windows}' 2>/dev/null"
+        + "; echo '\(processSentinel)'"
+        + "; ps -A -o pid=,ppid=,comm= 2>/dev/null"
         + "; echo '\(paneSentinel)'"
-        + "; tmux list-panes -a -F '#S|#{pane_current_command}' 2>/dev/null"
+        + "; tmux list-panes -a -F '#S|#{pane_current_command}|#{pane_pid}' 2>/dev/null"
 
     public static func attach(session: String) -> String {
         "tmux attach -t \(session)"
