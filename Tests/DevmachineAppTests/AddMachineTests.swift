@@ -337,6 +337,28 @@ final class AddMachineModelTests: XCTestCase {
         XCTAssertTrue(empty.wizard.limaFound)
     }
 
+    func testALimaMachineIsSizedFromThisMacOnlyOnACLIThatTakesTheSize() async {
+        let limits = LocalMachineSizeLimits(cores: 8, memoryBytes: 16 << 30, freeDiskBytes: 200 << 30)
+        func model(_ version: SemanticVersion) async -> AddMachineModel {
+            AddMachineModel(
+                machines: await store(MachinesSnapshot(
+                    hasConfiguration: true, machines: [], packages: [], cliVersion: version)),
+                runner: MachineStepRunner(hooks: FakeTerminal().hooks), findLima: { "/opt/homebrew/bin/limactl" },
+                onAdded: {}, macLimits: { limits })
+        }
+        let sized = await model(LocalMachineSizing.minimumCLIVersion)
+        XCTAssertEqual(sized.wizard.sizeLimits, limits)
+        XCTAssertEqual(sized.wizard.draft.localSize, limits.defaultSize)
+
+        sized.wizard.draft.localSize?.cpus = 6
+        sized.refreshContext()
+        XCTAssertEqual(sized.wizard.draft.localSize?.cpus, 6)
+
+        let older = await model(MachineUnattendedAdd.minimumCLIVersion)
+        XCTAssertNil(older.wizard.sizeLimits)
+        XCTAssertNil(older.wizard.sizeToCreate)
+    }
+
     func testCreatingRunsThePlanAndReloadsOnSuccess() async {
         let terminal = FakeTerminal()
         var added = 0

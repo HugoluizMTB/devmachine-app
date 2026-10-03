@@ -11,7 +11,8 @@ final class AddMachineModel: ObservableObject {
         ? AddMachineModel(
             findLima: { "/opt/homebrew/bin/limactl" },
             scanMachine: { address, port in DemoData.addMachineScan(address: address, port: port) },
-            listAgentKeys: { DemoData.addMachineAgentKeys })
+            listAgentKeys: { DemoData.addMachineAgentKeys },
+            macLimits: { DemoData.macLimits })
         : AddMachineModel()
 
     @Published var wizard: MachineWizard
@@ -34,6 +35,8 @@ final class AddMachineModel: ObservableObject {
     let firstRun: Bool
     /// The harnesses the skills are linked for at first: the ones in use on this Mac.
     private let skillAgents: () -> [String]
+    /// What this Mac can give a Lima machine: its cores, memory and free disk.
+    private let macLimits: () -> LocalMachineSizeLimits
     private let scanMachine: @Sendable (String, String) async throws -> MachineScan
     private let listAgentKeys: @Sendable () async throws -> [AgentKey]
 
@@ -50,8 +53,10 @@ final class AddMachineModel: ObservableObject {
             try await Task.detached { try DevmachineCLI.resolve().agentKeys() }.value
         },
         skillAgents: @escaping () -> [String] = { AddMachineModel.harnessesInUse() },
+        macLimits: @escaping () -> LocalMachineSizeLimits = { AddMachineModel.thisMacLimits() },
         firstRun: Bool = false
     ) {
+        self.macLimits = macLimits
         self.firstRun = firstRun
         self.skillAgents = skillAgents
         self.machines = machines
@@ -80,6 +85,7 @@ final class AddMachineModel: ObservableObject {
             scanMachine: { address, port in DemoData.addMachineScan(address: address, port: port) },
             listAgentKeys: { DemoData.addMachineAgentKeys },
             skillAgents: { ["claude", "codex"] },
+            macLimits: { DemoData.macLimits },
             firstRun: true)
     }
 
@@ -88,6 +94,15 @@ final class AddMachineModel: ObservableObject {
     func prepareFirstRun() async {
         await machines.load()
         startOver()
+    }
+
+    static func thisMacLimits(home: String = NSHomeDirectory()) -> LocalMachineSizeLimits {
+        let free = try? URL(fileURLWithPath: home)
+            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            .volumeAvailableCapacityForImportantUsage
+        return LocalMachineSizeLimits(
+            cores: ProcessInfo.processInfo.activeProcessorCount,
+            memoryBytes: ProcessInfo.processInfo.physicalMemory, freeDiskBytes: free ?? nil)
     }
 
     /// The harnesses enabled in Settings → Harnesses, and the ones whose
@@ -200,6 +215,9 @@ final class AddMachineModel: ObservableObject {
         next.draft = draft
         next.draft.password = SecretText()
         next.draft.hasConfiguration = hasConfiguration
+        if let limits = next.sizeLimits {
+            next.draft.localSize = draft.localSize.map(limits.clamped) ?? limits.defaultSize
+        }
         next.restore(stage)
         wizard = next
     }
@@ -212,7 +230,9 @@ final class AddMachineModel: ObservableObject {
             existingWorkspaces: machines.machines.flatMap(\.workspaces).filter { $0 != addedWorkspace },
             limaFound: findLima() != nil,
             unattended: machines.snapshot?.addsWithoutTerminal ?? false,
-            firstRun: firstRun)
+            firstRun: firstRun,
+            sizeLimits: LocalMachineSizing.isSupported(cliVersion: machines.snapshot?.cliVersion) ? macLimits() : nil)
+        wizard.draft.localSize = wizard.sizeLimits?.defaultSize
         wizard.draft.hasConfiguration = machines.snapshot?.hasConfiguration ?? true
         wizard.draft.packages = MachinePackageCatalog.suggested(from: machines.packageCards)
         if firstRun { wizard.draft.skillAgents = SkillAgent.ordered(skillAgents()) }

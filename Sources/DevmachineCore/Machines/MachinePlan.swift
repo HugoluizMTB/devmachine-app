@@ -152,7 +152,9 @@ public enum MachinePlan {
         let essentials = draft.essentials ? [] : ["--no-essentials"]
         return MachinePlanStep(
             kind: .createLocal, title: "Create \(draft.trimmedName) on this Mac and connect it",
-            arguments: ["machines", "create-local", draft.trimmedName, "--add"] + essentials, asksInTerminal: false)
+            arguments: ["machines", "create-local", draft.trimmedName, "--add"] + (draft.localSize?.arguments ?? [])
+                + essentials,
+            asksInTerminal: false)
     }
 
     /// Every answer as a flag. The password is read from stdin; the domain

@@ -62,7 +62,19 @@ extension DemoData {
         return snapshot
     }
 
-    static let unattendedCLI = MachineUnattendedAdd.minimumCLIVersion
+    /// The newest CLI the app knows: it adds unattended and sizes a Lima machine.
+    static let unattendedCLI = LocalMachineSizing.minimumCLIVersion
+
+    /// A CLI that adds unattended but makes a Lima machine at its own size.
+    static var unsizedMachinesSnapshot: MachinesSnapshot {
+        var snapshot = machinesSnapshot
+        snapshot.cliVersion = MachineUnattendedAdd.minimumCLIVersion
+        return snapshot
+    }
+
+    /// An invented Mac for the size controls, never the one capturing.
+    static let macLimits = LocalMachineSizeLimits(
+        cores: 10, memoryBytes: 32 << 30, freeDiskBytes: 400 << 30)
 
     /// Somebody with the CLI and no server yet: no `config.yml`, so no
     /// machine; a new CLI still lists the latest release's packages.

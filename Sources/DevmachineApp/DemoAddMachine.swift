@@ -30,6 +30,10 @@ enum DemoAddMachine {
         .init(id: "legacy-running", fileName: "117-legacy-running.png", settleNanoseconds: 900_000_000),
         .init(id: "cli-socket-home", fileName: "118-cli-socket-home.png", settleNanoseconds: 700_000_000),
         .init(id: "cli-socket-stats", fileName: "119-cli-socket-stats.png", settleNanoseconds: 700_000_000),
+        .init(id: "add-machine-local-details", fileName: "120-add-machine-local-details.png",
+              settleNanoseconds: 400_000_000),
+        .init(id: "add-machine-local-unsized", fileName: "121-add-machine-local-unsized.png",
+              settleNanoseconds: 400_000_000),
     ]
 
     /// What an older CLI printed for every machine under a long home folder.
@@ -47,6 +51,7 @@ enum DemoAddMachine {
         let legacy = id.hasPrefix("legacy")
         machines.seedDemo(
             legacy ? DemoData.legacyMachinesSnapshot
+                : id == "add-machine-local-unsized" ? DemoData.unsizedMachinesSnapshot
                 : (hasMachines ? DemoData.machinesSnapshot : DemoData.noMachinesSnapshot))
         model.workspaces = hasMachines ? DemoData.workspaces : []
         stats.seedDemo(hasMachines: hasMachines)
@@ -105,6 +110,10 @@ enum DemoAddMachine {
             state.wizard.draft.domain = "example.com"
             state.wizard.next()
             state.wizard.next()
+        case "add-machine-local-details", "add-machine-local-unsized":
+            state.wizard.choose(.localVM)
+            state.wizard.draft.name = "lab"
+            state.wizard.draft.workspace = "acme-lab"
         case "add-machine-local-review":
             state.wizard.choose(.localVM)
             state.wizard.draft.name = "lab"

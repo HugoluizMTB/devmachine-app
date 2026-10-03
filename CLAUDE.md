@@ -924,6 +924,15 @@ once may fail there.
   (`MachineStepRunner`, `runProcess`), output shown as it comes; `add` writes
   the machine only once its key is proved, so Try again simply runs the
   failed step again.
+- **A Lima machine is sized from this Mac on CLI 0.7.28+**
+  (`LocalMachineSizing`, `LocalMachineSizeLimits`): CPUs up to every core,
+  memory up to the Mac's minus 2 GiB, disk up to the free space minus
+  10 GiB (Lima's disk grows as it fills). The default is half the cores
+  (2–4), a quarter of the memory (4–8 GiB) and 40 GiB, clamped. The size
+  goes to `create-local --add --cpus --memory --disk` and the review
+  says it; an older CLI shows no controls, gets no flags, and a note
+  names its own default size. Demo and tests inject the limits
+  (`DemoData.macLimits`), never this Mac's.
 - **The password is a `SecretText`**: in a `SecureField`, on the add's
   stdin and nowhere else. The step carries only `input: .password`, never
   the value, so it is in no argument, step id, display line or log;

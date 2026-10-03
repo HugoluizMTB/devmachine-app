@@ -194,6 +194,7 @@ struct AddMachineDetailsView: View {
                 serverFields
             } else {
                 AddMachineNote(text: AddMachineContent.localNote(unattended: unattended))
+                localSizeFields
             }
             workspaceField
             if unattended, !state.wizard.draft.hasConfiguration, state.wizard.draft.kind == .server {
@@ -252,6 +253,61 @@ struct AddMachineDetailsView: View {
                 + "uses it once to install a key, then turns password login off. The app never sees it.")
             fingerprintField
         }
+    }
+
+    /// The Lima machine's size, from what this Mac has; a CLI without the
+    /// size flags makes it at its own default, and says so.
+    @ViewBuilder
+    private var localSizeFields: some View {
+        if let limits = state.wizard.sizeLimits, state.wizard.draft.localSize != nil {
+            VStack(alignment: .leading, spacing: m.space.sm) {
+                label("Size")
+                HStack(alignment: .top, spacing: m.space.md) {
+                    sizeStepper(
+                        "CPUs", value: sizeBinding(\.cpus), range: limits.cpus, step: 1, unit: "",
+                        hint: "This Mac has \(limits.cpus.upperBound).")
+                    sizeStepper(
+                        "Memory", value: sizeBinding(\.memoryGiB), range: limits.memoryGiB, step: 1, unit: " GiB",
+                        hint: "Up to \(limits.memoryGiB.upperBound) GiB: macOS keeps the rest.")
+                    sizeStepper(
+                        "Disk", value: sizeBinding(\.diskGiB), range: limits.diskGiB, step: 5, unit: " GiB",
+                        hint: "Grows as it fills, up to \(limits.diskGiB.upperBound) GiB.")
+                }
+                if let problem = problems.first(where: { $0.field == .size }) {
+                    warning(problem.message)
+                }
+            }
+        } else if unattended {
+            AddMachineNote(text: AddMachineContent.defaultSizeNote)
+        }
+    }
+
+    private func sizeBinding(_ keyPath: WritableKeyPath<LocalMachineSize, Int>) -> Binding<Int> {
+        Binding(
+            get: { state.wizard.draft.localSize?[keyPath: keyPath] ?? 0 },
+            set: { state.wizard.draft.localSize?[keyPath: keyPath] = $0 })
+    }
+
+    private func sizeStepper(
+        _ title: String, value: Binding<Int>, range: ClosedRange<Int>, step: Int, unit: String, hint: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: m.space.xs) {
+            Text(verbatim: title)
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+            Stepper(value: value, in: range, step: step) {
+                Text(verbatim: "\(value.wrappedValue)\(unit)")
+                    .font(.dm(14, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(Color.dmRowText)
+            }
+            Text(verbatim: hint)
+                .font(.dm(10.5))
+                .foregroundStyle(Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(m.space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dmSurface(Color.dmBand, radius: DMRadius.panel)
     }
 
     /// The first run makes a workspace unless the person turns it off, so the
@@ -480,6 +536,9 @@ struct AddMachineReviewView: View {
                 AddMachineNote(text: "First: " + step.displayLine + ".")
             }
             DMCommandBlock(wizard.plan.filter(\.isCommand).map(\.displayLine), wraps: true)
+            if draft.kind == .localVM, let size = wizard.sizeToCreate {
+                AddMachineNote(text: "\(draft.trimmedName) gets \(size.summary).")
+            }
             if wizard.plan.contains(where: { $0.input == .password }) {
                 AddMachineNote(text: "The password goes to the CLI on its standard input. "
                     + "It is never in a command line, a file or a log.")
@@ -703,6 +762,9 @@ enum AddMachineContent {
         summary: "What a new machine starts with: base tools, git, a firewall, SSH without passwords, "
             + "Caddy, and what this app reads from a machine.",
         isRecommended: true, isYours: false)
+
+    static let defaultSizeNote = "This devmachine CLI makes the machine at its own size: 2 CPUs, 4 GiB of "
+        + "memory, a 20 GiB disk. Version \(LocalMachineSizing.minimumCLIVersion) or newer lets you choose it here."
 
     static let workspaceHint = "A workspace is a Linux account on the machine where your sessions run. "
         + "Name it after your project, like acme. It gets the default workspace packages."

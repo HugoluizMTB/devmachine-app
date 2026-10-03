@@ -29,11 +29,15 @@ public struct MachineWizard: Equatable, Sendable {
     /// whole run happens without a terminal.
     public let unattended: Bool
     public let firstRun: Bool
+    /// What this Mac can give a Lima machine, on a CLI that takes the size
+    /// (`LocalMachineSizing`); nil keeps the CLI's default size.
+    public let sizeLimits: LocalMachineSizeLimits?
 
     public init(
         existingMachines: [String], existingWorkspaces: [String] = [], limaFound: Bool, unattended: Bool = false,
-        firstRun: Bool = false
+        firstRun: Bool = false, sizeLimits: LocalMachineSizeLimits? = nil
     ) {
+        self.sizeLimits = unattended ? sizeLimits : nil
         self.existingMachines = existingMachines
         self.existingWorkspaces = existingWorkspaces
         self.limaFound = limaFound
@@ -50,6 +54,9 @@ public struct MachineWizard: Equatable, Sendable {
             existingMachines: existingMachines, unattended: unattended, existingWorkspaces: existingWorkspaces)
         if requiresWorkspace, draft.trimmedWorkspace.isEmpty {
             problems.append(.init(field: .workspace, message: "Name your first workspace, like acme."))
+        }
+        if draft.kind == .localVM, let size = sizeToCreate, let limits = sizeLimits, !limits.contains(size) {
+            problems.append(.init(field: .size, message: "Choose a size this Mac can give the machine."))
         }
         return problems
     }
@@ -109,8 +116,14 @@ public struct MachineWizard: Equatable, Sendable {
         stage = .details
     }
 
+    /// The size `create-local` is given: none on a CLI without the flags.
+    public var sizeToCreate: LocalMachineSize? {
+        sizeLimits == nil ? nil : draft.localSize
+    }
+
     public var plan: [MachinePlanStep] {
         var draft = draft
+        draft.localSize = sizeToCreate
         if firstRun {
             draft.sync = true
             if draft.skipsWorkspace { draft.workspace = "" }

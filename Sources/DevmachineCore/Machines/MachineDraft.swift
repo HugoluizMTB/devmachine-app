@@ -23,7 +23,7 @@ public enum ServerKeySource: String, CaseIterable, Equatable, Sendable {
 }
 
 public enum MachineDraftField: Equatable, Sendable {
-    case name, address, user, port, keyFile, agentKey, password, fingerprint, domain, workspace
+    case name, address, user, port, keyFile, agentKey, password, fingerprint, domain, workspace, size
 }
 
 public struct MachineDraftProblem: Equatable, Sendable {
@@ -70,6 +70,8 @@ public struct MachineDraft: Equatable, Sendable {
     public var workspace = ""
     /// First run only: the person chose to make no workspace now.
     public var skipsWorkspace = false
+    /// A Lima machine's size; nil makes it at the CLI's default, with no flag.
+    public var localSize: LocalMachineSize?
     public var essentials = true
     /// Machine packages beyond essentials, in the order they were chosen.
     public var packages: [String] = []
