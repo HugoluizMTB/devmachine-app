@@ -234,7 +234,7 @@ struct SetupPage: View {
                 .background(Color.dmBand)
             VStack(spacing: 0) {
                 sectionBody
-                footer
+                if Self.showsFooter(for: section) { footer }
             }
             .frame(maxWidth: m.pt(880), maxHeight: .infinity)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -343,6 +343,8 @@ struct SetupPage: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
+
+    static func showsFooter(for section: SettingsSection) -> Bool { section != .packages }
 
     private var footer: some View {
         HStack(spacing: m.pt(10)) {

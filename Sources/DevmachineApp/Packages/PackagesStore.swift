@@ -11,11 +11,7 @@ struct PackagesSnapshot: Equatable, Sendable {
     var configDirectory: String?
 
     func statuses(for target: PackageTarget) -> [String: PackageStatus] {
-        var workspaces: [String] = []
-        if case let .machine(machineName, _) = target {
-            for case let .workspace(name, machine) in targets where machine == machineName { workspaces.append(name) }
-        }
-        return PackageStatusCheck.evaluate(entries: entries, target: target, lock: lock, workspacesOnMachine: workspaces)
+        PackageStatusCheck.evaluate(entries: entries, target: target, lock: lock)
     }
 }
 
@@ -98,7 +94,7 @@ final class PackagesStore: ObservableObject {
     }
 
     func load() async {
-        if DemoMode.isActive { return }
+        if isDemo() { return }
         if loading {
             loadAgain = true
             return

@@ -61,11 +61,13 @@ final class PackageStatusTests: XCTestCase {
         XCTAssertEqual(s["workspace"], .appliedAsDependency(of: "workspace"))
     }
 
-    func testMachineNeedsOfWorkspacePackagesAreDependencies() {
-        let lock = PackagesLock(machines: ["main": [.init(name: "docker")]])
-        let entries = [entry("docker"), entry("compose-dev", scope: "workspace", needs: ["docker"], on: ["workspace acme"])]
-        let s = PackageStatusCheck.evaluate(entries: entries, target: main, lock: lock, workspacesOnMachine: ["acme"])
-        XCTAssertEqual(s["docker"], .appliedAsDependency(of: "compose-dev"))
+    func testTransitiveNeedsOnAMachineAreDependencies() {
+        let lock = PackagesLock(machines: ["main": [.init(name: "a"), .init(name: "b"), .init(name: "c")]])
+        let entries = [entry("a", needs: ["b"], on: ["machine main"]), entry("b", needs: ["c"]), entry("c")]
+        let s = PackageStatusCheck.evaluate(entries: entries, target: main, lock: lock)
+        XCTAssertEqual(s["a"], .applied)
+        XCTAssertEqual(s["b"], .appliedAsDependency(of: "a"))
+        XCTAssertEqual(s["c"], .appliedAsDependency(of: "b"))
     }
 
     func testLockedNameWithNoEntryIsPendingRemove() {

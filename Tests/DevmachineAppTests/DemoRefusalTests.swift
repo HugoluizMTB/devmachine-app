@@ -88,7 +88,7 @@ final class DemoRefusalTests: XCTestCase {
         let id = try XCTUnwrap(store.prepare("main"))
 
         let deadline = Date().addingTimeInterval(5)
-        while center.job(id)?.phase == .running(step: 0), Date() < deadline {
+        while center.job(id)?.phase != .failed(cause: "Demo mode never runs a devmachine command."), Date() < deadline {
             try await Task.sleep(nanoseconds: 5_000_000)
         }
         XCTAssertEqual(center.job(id)?.phase, .failed(cause: "Demo mode never runs a devmachine command."))

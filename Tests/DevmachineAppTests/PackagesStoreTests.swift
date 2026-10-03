@@ -123,16 +123,13 @@ final class PackagesStoreTests: XCTestCase {
         XCTAssertEqual(reads.all.count, 2)
     }
 
-    func testStatusesForAMachineCountItsWorkspaces() {
-        let snap = PackagesSnapshot(
-            entries: [
-                PackageEntry(name: "node", scope: "machine", source: "release", summary: "", category: nil,
-                             platforms: [], needs: [], credentialNames: [], installedOn: []),
-                PackageEntry(name: "web", scope: "workspace", source: "release", summary: "", category: nil,
-                             platforms: [], needs: ["node"], credentialNames: [], installedOn: ["workspace acme"]),
-            ],
-            targets: [main, .workspace("acme", machine: "main")], lock: nil, cliVersion: nil, configDirectory: nil)
-        XCTAssertEqual(snap.statuses(for: main)["node"], .appliedAsDependency(of: "web"))
+    func testLoadInDemoModeNeverReads() async {
+        let reads = Recorder()
+        let snap = snapshot()
+        let store = PackagesStore(read: { reads.add([]); return snap },
+                                  edit: { _ in }, jobs: { nil }, isDemo: { true })
+        await store.load()
+        XCTAssertTrue(reads.all.isEmpty)
     }
 }
 

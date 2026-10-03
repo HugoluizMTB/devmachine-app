@@ -18,7 +18,7 @@ public enum PackageStatusCheck {
     public static let accountPackage = "workspace"
 
     public static func evaluate(
-        entries: [PackageEntry], target: PackageTarget, lock: PackagesLock?, workspacesOnMachine: [String] = []
+        entries: [PackageEntry], target: PackageTarget, lock: PackagesLock?
     ) -> [String: PackageStatus] {
         let declared = Set(entries.filter { $0.installedOn.contains(target.installedOnLabel) }.map(\.name))
         var parents: [String: String] = [:]
@@ -27,14 +27,6 @@ public enum PackageStatusCheck {
         if case .workspace = target, needs[accountPackage] != nil {
             roots.insert(accountPackage, at: 0)
             parents[accountPackage] = accountPackage
-        }
-        if case .machine = target {
-            let labels = Set(workspacesOnMachine.map { "workspace \($0)" })
-            for entry in entries where !labels.isDisjoint(with: entry.installedOn) {
-                for need in entry.needs where parents[need] == nil && !declared.contains(need) {
-                    parents[need] = entry.name
-                }
-            }
         }
         var queue = roots
         var included = Set(roots)

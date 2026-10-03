@@ -21,6 +21,11 @@ private struct SetupPageLocator: ExecutableLocating {
 }
 
 final class SetupPageTests: XCTestCase {
+    func testThePackagesSectionHasNoSaveFooter() {
+        XCTAssertFalse(SetupPage.showsFooter(for: .packages))
+        XCTAssertTrue(SetupPage.showsFooter(for: .connection))
+    }
+
     private let facade = HarnessSettingsFacade(
         registry: .builtIn,
         locator: SetupPageLocator(available: [])
