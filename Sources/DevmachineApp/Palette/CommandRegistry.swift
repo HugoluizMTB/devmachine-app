@@ -187,7 +187,8 @@ enum CommandRegistry {
         let alias = workspace.alias
         let prefix = "ws.\(alias)"
         let keywords = [workspace.name, "workspace"]
-        var commands = context.launchOptions.map { option in
+        let options = workspace.isLocal ? context.localLaunchOptions ?? context.launchOptions : context.launchOptions
+        var commands = options.map { option in
             PaletteCommand(
                 id: "\(prefix).new.\(option.id)", title: "New \(option.title) session",
                 subtitle: workspace.name, category: .workspace, systemImage: option.systemImage,

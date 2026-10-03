@@ -43,6 +43,18 @@ final class CommandRegistryTests: XCTestCase {
         commands(context).first { $0.id == id }
     }
 
+    func testAHarnessNotOnThisMacStartsOnlyOnARemoteWorkspace() {
+        var context = context()
+        let opencode = HarnessLaunchOption(
+            choice: .harness(.opencode), descriptor: HarnessRegistry.builtIn.adapter(for: .opencode)?.descriptor)
+        context.localLaunchOptions = context.launchOptions
+        context.launchOptions.append(opencode)
+
+        XCTAssertNotNil(command("ws.acme-devmachine.new.opencode", in: context))
+        XCTAssertNil(command("ws.\(Workspace.local.alias).new.opencode", in: context))
+        XCTAssertNotNil(command("ws.\(Workspace.local.alias).new.claude", in: context))
+    }
+
     func testEveryCommandIDIsUnique() {
         let ids = commands(context()).map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)

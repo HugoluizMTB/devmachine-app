@@ -659,7 +659,8 @@ final class AppModel: ObservableObject {
             guard let settings else { return nil }
             switch target {
             case .local:
-                return harnessSettingsFacade.startupCommand(for: settings.localSessionProgram)
+                return harnessSettingsFacade.startupCommand(
+                    for: harnessSettingsFacade.localSessionProgram(for: settings))
             case let .remote(alias, _):
                 return harnessSettingsFacade.startupCommand(for: settings.sessionProgram(for: alias))
             }

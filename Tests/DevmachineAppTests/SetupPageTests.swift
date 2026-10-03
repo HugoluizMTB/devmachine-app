@@ -36,7 +36,7 @@ final class SetupPageTests: XCTestCase {
         )
         let draft = SettingsDraft(value: settings)
 
-        let options = draft.launchOptions(using: facade)
+        let options = draft.launchOptions(using: facade, on: .remote)
 
         XCTAssertEqual(options.map(\.choice), [.terminal, .harness(.codex)])
         XCTAssertEqual(options.map(\.title), ["Terminal", "OpenAI Codex"])
@@ -52,6 +52,21 @@ final class SetupPageTests: XCTestCase {
         DemoSnapshots.settingsNoMachine = true
         XCTAssertEqual(SetupPage.notices(for: draft, demo: true).map(\.kind), [.noMachineYet])
         XCTAssertTrue(SetupPage.issues(for: draft, demo: true).isEmpty)
+    }
+
+    func testTheThisMacPickerShowsAPlainShellForAHarnessItCannotStart() {
+        let settings = AppSettings(
+            opsRepoPath: "/Users/alice/dev/ops", hostAlias: "example-host",
+            publicIP: "203.0.113.10", baseDomain: "example.com",
+            enabledHarnesses: [.claude, .opencode], localSessionProgram: .harness(.opencode))
+        let local = SettingsDraft(value: settings).launchOptions(using: facade, on: .thisMac)
+        let remote = SettingsDraft(value: settings).launchOptions(using: facade, on: .remote)
+
+        XCTAssertEqual(SetupPage.offered(settings.localSessionProgram, in: local), .terminal)
+        XCTAssertEqual(SetupPage.offered(.harness(.opencode), in: remote), .harness(.opencode))
+        XCTAssertEqual(SetupPage.offered(.custom("npm run dev"), in: local), .custom("npm run dev"))
+        XCTAssertEqual(
+            facade.remoteOnlyNote(for: .opencode, in: settings), HarnessSettingsFacade.remoteOnlyNote)
     }
 
     func testDisablingHarnessNormalizesEveryAffectedDraftChoice() {

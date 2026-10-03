@@ -81,7 +81,11 @@ struct PaletteContext {
     var workspaces: [Workspace] = []
     var sessions: [PaletteItem] = []
     var localSessions: [LocalSession] = []
+    /// What a remote workspace's new session may start.
     var launchOptions: [HarnessLaunchOption] = [.terminal]
+    /// What a session on this Mac may start: a harness needs its CLI here.
+    /// Nil means the same as `launchOptions`.
+    var localLaunchOptions: [HarnessLaunchOption]?
     var savedCommands: [String: [String]] = [:]
     var machines: [String] = []
     var hasCaddyMachine = false

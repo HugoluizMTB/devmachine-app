@@ -45,6 +45,14 @@ private final class CountingRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
+private struct CodexOnThisMac: ExecutableLocating {
+    func executable(named name: String) -> URL? {
+        name == "codex" ? URL(fileURLWithPath: "/opt/homebrew/bin/codex") : nil
+    }
+}
+
+private let codexFacade = HarnessSettingsFacade(registry: .builtIn, locator: CodexOnThisMac())
+
 private final class HarnessProcessRunner: CommandRunner, @unchecked Sendable {
     private let lock = NSLock()
     private let zmxListing: String
@@ -342,6 +350,7 @@ final class AppModelTests: XCTestCase {
         let sender = RecordingSessionCommandSender()
         let model = AppModel(
             store: SessionStore(runner: HarnessProcessRunner()),
+            harnessSettingsFacade: codexFacade,
             localRunner: runner,
             sessionCommandSender: sender,
             zmxPath: "/fixtures/zmx")
@@ -357,6 +366,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(
             sender.sent.first?.target,
             .local(session: "acme", path: "/Users/alice/dev/acme"))
+    }
+
+    func testALocalDefaultWhoseCLIIsNotOnThisMacStartsAPlainShell() async throws {
+        let runner = HarnessProcessRunner(
+            zmxListing: "name=acme\tpid=100\tclients=1\tcwd=/Users/alice/dev/acme")
+        let sender = RecordingSessionCommandSender()
+        let model = AppModel(
+            store: SessionStore(runner: HarnessProcessRunner()),
+            harnessSettingsFacade: codexFacade,
+            localRunner: runner,
+            sessionCommandSender: sender,
+            zmxPath: "/fixtures/zmx")
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10",
+            baseDomain: "example.com", enabledHarnesses: [.claude, .opencode],
+            localSessionProgram: .harness(.opencode), remoteSessionProgram: .harness(.opencode))
+
+        model.startProgram(in: .local(session: "acme", path: "/Users/alice/dev/acme"))
+        model.startProgram(in: .remote(alias: "acme-devmachine", session: "dash"))
+
+        try await waitUntil { sender.sent.count == 1 }
+        XCTAssertEqual(sender.sent.map(\.command), ["opencode"])
+        XCTAssertEqual(sender.sent.first?.target, .remote(alias: "acme-devmachine", session: "dash"))
     }
 
     func testNewRemoteSessionUsesItsWorkspaceHarnessOverrideWithoutAProbe() async throws {
@@ -441,7 +473,7 @@ final class AppModelTests: XCTestCase {
             zmxListing: "name=project-q7\tpid=100\tclients=1\tcwd=/Users/alice/dev/project")
         let sender = RecordingSessionCommandSender()
         let model = AppModel(
-            store: SessionStore(runner: runner), localRunner: runner,
+            store: SessionStore(runner: runner), harnessSettingsFacade: codexFacade, localRunner: runner,
             sessionCommandSender: sender, zmxPath: "/fixtures/zmx",
             sessionSuffix: { "q7" })
         model.settings = AppSettings(

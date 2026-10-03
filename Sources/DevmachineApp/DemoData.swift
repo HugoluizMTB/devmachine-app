@@ -538,6 +538,11 @@ enum DemoData {
             "initech-devmachine": .harness(.codex),
         ])
 
+    /// The CLIs the demo Mac has. Antigravity and Cline are left out, so
+    /// Settings shows a harness that only starts on a remote workspace.
+    static let executableLocator: any ExecutableLocating = DemoExecutableLocator(
+        installed: ["claude", "codex", "pi", "opencode", "kimi"])
+
     // MARK: Harness usage
 
     static var usageProviders: [any HarnessUsageProvider] {
@@ -786,4 +791,12 @@ extension DemoData {
                 "/home/acme/dev/api/.worktrees/search-index/.data/postgres/pg_wal",
             ],
             count: 214))
+}
+
+struct DemoExecutableLocator: ExecutableLocating {
+    let installed: Set<String>
+
+    func executable(named name: String) -> URL? {
+        installed.contains(name) ? URL(fileURLWithPath: "/opt/homebrew/bin").appendingPathComponent(name) : nil
+    }
 }

@@ -513,8 +513,17 @@ Rules:
   `HarnessRegistry.builtIn` is detected, badged, gets its icon, upload folder
   and Context panel, enabled or not and whether or not its CLI is on this Mac:
   many run only on a server. Enabling one only adds it to the launch choices
-  and session defaults (and its usage card); that still needs its local CLI,
-  and a failed check does not change settings.
+  and session defaults (and its usage card), and never needs its CLI here.
+- **A harness on without its CLI on this Mac starts on remote workspaces
+  only** (`LaunchPlace`): it is offered in the remote fallback, the
+  per-workspace defaults and a remote workspace's new-session menu and ⌘K
+  commands, never for This Mac. A This Mac default naming one starts a plain
+  shell (`HarnessSettingsFacade.localSessionProgram`), the way a harness
+  turned off does, and its Settings row says "Not on this Mac — remote
+  workspaces only". Whether a CLI is here comes from `CLIAvailability`:
+  looked up (a missing one costs a login shell) off the main thread at launch
+  and when Settings opens, then cached; only a read before the first lookup
+  ends pays for it itself.
 - This Mac has one Terminal-or-harness default. Remote workspaces inherit one
   remote fallback and may override it individually.
 - Remote choices are declarative. Never probe or modify a VPS to validate a

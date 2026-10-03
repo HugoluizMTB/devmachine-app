@@ -233,7 +233,9 @@ struct SidebarView: View {
     /// configured program.
     private func newSessionButton(alias: String, action: @escaping () -> Void) -> some View {
         Menu {
-            ForEach(harnessSettingsFacade.launchOptions(for: settingsStore.settings ?? .empty)) { option in
+            ForEach(harnessSettingsFacade.launchOptions(
+                for: settingsStore.settings ?? .empty,
+                on: alias == Workspace.local.alias ? .thisMac : .remote)) { option in
                 Button {
                     model.openSession(in: alias, startup: .program(option.choice))
                 } label: {

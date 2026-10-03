@@ -18,8 +18,8 @@ struct SettingsDraft: Equatable {
         return result
     }
 
-    func launchOptions(using facade: HarnessSettingsFacade) -> [HarnessLaunchOption] {
-        facade.launchOptions(for: value)
+    func launchOptions(using facade: HarnessSettingsFacade, on place: LaunchPlace) -> [HarnessLaunchOption] {
+        facade.launchOptions(for: value, on: place)
     }
 
     mutating func setHarness(
