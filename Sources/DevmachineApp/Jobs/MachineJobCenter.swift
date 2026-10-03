@@ -60,6 +60,8 @@ final class MachineJobCenter: ObservableObject {
         jobs.first { $0.id == id }
     }
 
+    /// `onFinish` hears every run that ends, so a retried failure reports
+    /// again; it is dropped once the job succeeds, is cancelled or dismissed.
     @discardableResult
     func requestSync(_ request: SyncRequest, onFinish: ((MachineJobOutcome) -> Void)? = nil) -> UUID {
         if let index = jobs.firstIndex(where: { $0.phase == .pending && $0.plan.machine == request.machine }),
@@ -76,6 +78,7 @@ final class MachineJobCenter: ObservableObject {
         return job.id
     }
 
+    /// `onFinish` hears every run that ends, as `requestSync` describes.
     @discardableResult
     func run(_ plan: MachineJobPlan, onFinish: ((MachineJobOutcome) -> Void)? = nil) -> UUID {
         let job = MachineJob(id: UUID(), plan: plan, phase: .pending, log: JobLog(), expanded: false)
@@ -121,13 +124,18 @@ final class MachineJobCenter: ObservableObject {
         if case .running = job.phase { return }
         let machine = job.plan.machine
         remove(id)
-        fire(id, .cancelled)
+        if case .failed = job.phase {
+            callbacks[id] = nil
+        } else {
+            fire(id, .cancelled)
+        }
         startNext(on: machine)
     }
 
     func toggleExpanded(_ id: UUID) {
         guard let index = index(of: id) else { return }
         jobs[index].expanded.toggle()
+        if case .succeeded = jobs[index].phase, !jobs[index].expanded { removeAfterSuccess(id) }
     }
 
     private func index(of id: UUID) -> Int? {
@@ -140,7 +148,8 @@ final class MachineJobCenter: ObservableObject {
     }
 
     private func fire(_ id: UUID, _ outcome: MachineJobOutcome) {
-        callbacks.removeValue(forKey: id)?.forEach { $0(outcome) }
+        let waiting = outcome == .failed ? callbacks[id] : callbacks.removeValue(forKey: id)
+        waiting?.forEach { $0(outcome) }
     }
 
     private func remove(_ id: UUID) {
@@ -188,6 +197,10 @@ final class MachineJobCenter: ObservableObject {
             var outcome = MachineJobOutcome.succeeded
             var fallback = ""
             for (step, arguments) in plan.steps.enumerated() {
+                if Task.isCancelled {
+                    outcome = .cancelled
+                    break
+                }
                 let command = "devmachine " + arguments.joined(separator: " ")
                 self?.beginStep(step, command: command, of: id)
                 buffer.receive("$ " + command)
@@ -226,7 +239,7 @@ final class MachineJobCenter: ObservableObject {
     private func finish(_ id: UUID, outcome: MachineJobOutcome, fallback: String) {
         tasks[id] = nil
         guard let index = index(of: id) else {
-            fire(id, outcome)
+            callbacks.removeValue(forKey: id)?.forEach { $0(outcome) }
             return
         }
         let machine = jobs[index].plan.machine

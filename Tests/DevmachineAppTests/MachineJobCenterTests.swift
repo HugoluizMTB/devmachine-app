@@ -155,6 +155,57 @@ final class MachineJobCenterTests: XCTestCase {
         await waitUntil { if case .succeeded = center.job(id)?.phase { return true } else { return false } }
         XCTAssertEqual(center.job(id)?.log.lines, ["$ devmachine a", "attempt"])
     }
+
+    func testRetriedJobReportsEveryFinish() async {
+        let attempts = Counter()
+        let runner = FakeJobRunner { _, _ in attempts.next() == 1 ? 1 : 0 }
+        let center = MachineJobCenter(runner: runner)
+        var outcomes: [MachineJobOutcome] = []
+        let id = center.run(MachineJobPlan(machine: "main", title: "A", steps: [["a"]]), onFinish: { outcomes.append($0) })
+        await waitUntil { outcomes == [.failed] }
+        center.retry(id)
+        await waitUntil { outcomes.count == 2 }
+        XCTAssertEqual(outcomes, [.failed, .succeeded])
+    }
+
+    func testDismissingAFailedJobReportsNothingMore() async {
+        let center = MachineJobCenter(runner: FakeJobRunner { _, _ in 1 })
+        var outcomes: [MachineJobOutcome] = []
+        let id = center.run(MachineJobPlan(machine: "main", title: "A", steps: [["a"]]), onFinish: { outcomes.append($0) })
+        await waitUntil { outcomes == [.failed] }
+        center.dismiss(id)
+        XCTAssertNil(center.job(id))
+        XCTAssertEqual(outcomes, [.failed])
+    }
+
+    func testCollapsedSuccessGoesAway() async {
+        let center = MachineJobCenter(runner: FakeJobRunner(), successSeconds: 0.05)
+        let id = center.run(MachineJobPlan(machine: "main", title: "A", steps: [["a"]]))
+        center.toggleExpanded(id)
+        await waitUntil { if case .succeeded = center.job(id)?.phase { return true } else { return false } }
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertNotNil(center.job(id))
+        center.toggleExpanded(id)
+        await waitUntil { center.job(id) == nil }
+    }
+
+    func testCancelBetweenStepsNeverStartsTheNextStep() async {
+        let gate = AsyncGate()
+        let runner = FakeJobRunner { args, _ in
+            if args == ["first"] { await gate.wait() }
+            return 0
+        }
+        let center = MachineJobCenter(runner: runner)
+        var outcome: MachineJobOutcome?
+        let id = center.run(
+            MachineJobPlan(machine: "main", title: "Two", steps: [["first"], ["second"]]), onFinish: { outcome = $0 })
+        await waitUntil { runner.calls == [["first"]] }
+        center.cancel(id)
+        await gate.open()
+        await waitUntil { outcome != nil }
+        XCTAssertEqual(outcome, .cancelled)
+        XCTAssertEqual(runner.calls, [["first"]])
+    }
 }
 
 private actor AsyncGate {
