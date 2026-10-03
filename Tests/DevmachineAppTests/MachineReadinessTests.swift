@@ -92,7 +92,7 @@ final class ReadinessReaderTests: XCTestCase {
     }
 }
 
-private final class FakePrepareRunner: PrepareRunning, @unchecked Sendable {
+private final class FakePrepareRunner: MachineJobRunning, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [[String]] = []
     var statuses: [Int32] = []
@@ -463,7 +463,7 @@ final class ConfigDirectoryWatcherTests: XCTestCase {
         snapshot.configDirectory = folder.path
         let next = snapshot
         let store = MachineReadinessStore(
-            read: { next }, runner: ProcessPrepareRunner(cli: { throw DevmachineCLIError.commandFailed("no") }),
+            read: { next }, runner: ProcessJobRunner(cli: { throw DevmachineCLIError.commandFailed("no") }),
             listensForReports: false)
 
         await store.check()

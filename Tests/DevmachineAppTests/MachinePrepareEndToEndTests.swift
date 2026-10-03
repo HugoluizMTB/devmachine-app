@@ -24,7 +24,7 @@ final class MachinePrepareEndToEndTests: XCTestCase {
         }
         let store = MachineReadinessStore(
             read: { await Task.detached { ReadinessReader.read(cli: cli) }.value },
-            runner: ProcessPrepareRunner(cli: cli),
+            runner: ProcessJobRunner(cli: cli),
             listensForReports: false)
 
         await store.check()

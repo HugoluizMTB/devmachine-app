@@ -123,7 +123,7 @@ final class CaddyStore: ObservableObject {
         self.cache = cache
         self.dnsSetup = dnsSetup ?? DNSSetupStore(
             service: service,
-            runner: DemoMode.isActive ? DemoDNSSyncRunner() as any PrepareRunning : ProcessPrepareRunner())
+            runner: DemoMode.isActive ? DemoDNSSyncRunner() as any MachineJobRunning : ProcessJobRunner())
         if DemoMode.isActive {
             self.dnsSetup.canRunSync = { true }
             self.dnsSetup.canEditMachineSettings = { true }

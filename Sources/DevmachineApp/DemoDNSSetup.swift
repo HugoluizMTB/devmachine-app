@@ -3,7 +3,7 @@ import DevmachineCore
 
 /// Demo mode's sync for the DNS setup card: it prints an invented log and
 /// never starts a process, so no demo click can reach a CLI or a machine.
-struct DemoDNSSyncRunner: PrepareRunning {
+struct DemoDNSSyncRunner: MachineJobRunning {
     enum Outcome: Sendable {
         case succeeds, fails, holds
     }

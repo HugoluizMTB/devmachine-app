@@ -58,7 +58,7 @@ final class DemoRefusalTests: XCTestCase {
     }
 
     func testAPrepareOrDNSSyncNeverResolvesTheCLI() async {
-        let runner = ProcessPrepareRunner(cli: {
+        let runner = ProcessJobRunner(cli: {
             XCTFail("demo mode resolved the CLI for a sync")
             throw DevmachineCLIError.commandFailed("no")
         })

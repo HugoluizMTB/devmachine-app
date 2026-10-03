@@ -97,7 +97,7 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
-private final class FakeSyncRunner: PrepareRunning, @unchecked Sendable {
+private final class FakeSyncRunner: MachineJobRunning, @unchecked Sendable {
     private let lock = NSLock()
     private var storedCalls: [[String]] = []
     var status: Int32 = 0

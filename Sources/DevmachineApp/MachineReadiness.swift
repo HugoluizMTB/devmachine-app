@@ -75,26 +75,6 @@ struct PrepareJob: Equatable {
     var output: [String]
 }
 
-protocol PrepareRunning: Sendable {
-    func run(arguments: [String], output: @escaping @Sendable (String) -> Void) async throws -> Int32
-}
-
-/// Runs a `devmachine` command in the background, never in a terminal
-/// session, with the same ssh agent the rest of the app hands the CLI.
-struct ProcessPrepareRunner: PrepareRunning {
-    var cli: @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() }
-
-    func run(arguments: [String], output: @escaping @Sendable (String) -> Void) async throws -> Int32 {
-        guard !DemoMode.isActive else {
-            throw DevmachineCLIError.commandFailed("Demo mode never runs a devmachine command.")
-        }
-        let instance = try cli()
-        return try await StreamingProcess.run(
-            executable: instance.executable, arguments: arguments,
-            environment: CLISelfUpdate.environment(base: instance.environment()), output: output)
-    }
-}
-
 /// Whether each configured machine has `devmachine-app`, and the one-click
 /// Prepare that puts it there. Checked at launch, whenever the CLI's
 /// configuration folder changes, and whenever a call into the package fails
@@ -106,7 +86,7 @@ final class MachineReadinessStore: ObservableObject {
     /// Demo mode reads nothing either; a walk hands it a fixed state.
     static let shared = NSClassFromString("XCTestCase") == nil && !DemoMode.isActive
         ? MachineReadinessStore()
-        : MachineReadinessStore(read: { nil }, runner: ProcessPrepareRunner(cli: {
+        : MachineReadinessStore(read: { nil }, runner: ProcessJobRunner(cli: {
             throw DevmachineCLIError.commandFailed("no CLI under tests or in demo mode")
         }))
 
@@ -121,7 +101,7 @@ final class MachineReadinessStore: ObservableObject {
     var onConfigurationChanged: (() -> Void)?
 
     private var read: @Sendable () async -> ReadinessSnapshot?
-    private var runner: any PrepareRunning
+    private var runner: any MachineJobRunning
     private var observed: [String: (failure: PackageCallFailure, lockStamp: String?)] = [:]
     /// The run each machine's card belongs to; a run that was replaced (a
     /// dismissed card, a new run) writes nothing when it ends.
@@ -136,7 +116,7 @@ final class MachineReadinessStore: ObservableObject {
         read: @escaping @Sendable () async -> ReadinessSnapshot? = {
             await Task.detached { ReadinessReader.read(cli: { try DevmachineCLI.resolve() }) }.value
         },
-        runner: any PrepareRunning = ProcessPrepareRunner(),
+        runner: any MachineJobRunning = ProcessJobRunner(),
         listensForReports: Bool = true
     ) {
         self.read = read
@@ -325,7 +305,7 @@ final class MachineReadinessStore: ObservableObject {
     /// Demo walks only: a fixed state, with no real CLI behind it.
     func seedDemo(
         snapshot: ReadinessSnapshot, observed: [String: PackageCallFailure] = [:],
-        afterPrepare: ReadinessSnapshot? = nil, runner: (any PrepareRunning)? = nil
+        afterPrepare: ReadinessSnapshot? = nil, runner: (any MachineJobRunning)? = nil
     ) {
         let next = afterPrepare ?? snapshot
         read = { next }

@@ -44,6 +44,9 @@ final class AppModel: ObservableObject {
     /// terminal key monitor — can report progress without being handed it.
     private(set) static weak var shared: AppModel?
 
+    /// The background `devmachine` jobs the app runs against machines.
+    let jobs = MachineJobCenter(cliVersion: { MachineReadinessStore.shared.snapshot?.cliVersion })
+
     /// Every workspace in `~/.ssh/config`, hidden ones included: Settings needs
     /// the whole list to offer the choice.
     @Published var workspaces: [Workspace] = []

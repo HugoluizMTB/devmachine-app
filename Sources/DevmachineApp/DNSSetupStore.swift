@@ -34,14 +34,14 @@ final class DNSSetupStore: ObservableObject {
     var canEditMachineSettings: () -> Bool
 
     private let service: CaddyService
-    private var runner: any PrepareRunning
+    private var runner: any MachineJobRunning
     private var runs: [String: UUID] = [:]
     /// Packages this store added that `packages list` has not shown yet.
     private var added: [String: Set<String>] = [:]
 
     init(
         service: CaddyService,
-        runner: any PrepareRunning = ProcessPrepareRunner(),
+        runner: any MachineJobRunning = ProcessJobRunner(),
         canRunSync: @escaping () -> Bool = { MachineReadinessStore.shared.canPrepareInApp },
         canEditMachineSettings: @escaping () -> Bool = {
             DNSProviderSetup.canEditMachineSettings(cliVersion: MachineReadinessStore.shared.snapshot?.cliVersion)
@@ -269,7 +269,7 @@ final class DNSSetupStore: ObservableObject {
     /// Demo walks only: a fixed state and a runner that never reaches a CLI.
     func seedDemo(
         machine: String, packages: [CLIPackage], answers: [DNSProviderAnswer]?,
-        job: DNSSetupJob? = nil, lines: [String] = [], runner: (any PrepareRunning)? = nil
+        job: DNSSetupJob? = nil, lines: [String] = [], runner: (any MachineJobRunning)? = nil
     ) {
         if let runner { self.runner = runner }
         canRunSync = { true }

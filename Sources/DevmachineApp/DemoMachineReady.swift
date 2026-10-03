@@ -36,7 +36,7 @@ enum DemoMachineReady {
 
     static func seed(_ store: MachineReadinessStore, model: AppModel, script: Script? = nil,
                      cliVersion: String = "0.7.24", outdated: Bool = false) {
-        let runner = script.map { ProcessPrepareRunner(cli: { [path = write($0)] in
+        let runner = script.map { ProcessJobRunner(cli: { [path = write($0)] in
             DevmachineCLI(executable: path, runner: DemoMode.runner)
         }) }
         store.seedDemo(
