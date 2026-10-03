@@ -35,6 +35,7 @@ enum PaletteAction: Equatable {
     case newNamedSession(alias: String)
     case newQuickSession
     case publishPort(workspace: String)
+    case newWorkspace
     case openFiles(alias: String)
     case workspaceHome(alias: String)
     case revealInFinder(path: String)

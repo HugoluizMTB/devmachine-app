@@ -341,6 +341,7 @@ enum DemoSnapshots {
         case "dns-setup": return dnsSetupScreens
         #if DEBUG
         case "machines": return DemoAddMachine.screens
+        case "workspaces": return DemoWorkspaces.screens
         #endif
         default: return screens
         }
@@ -497,6 +498,10 @@ enum DemoSnapshots {
         #if DEBUG
         if DemoAddMachine.handles(screen.id) {
             await DemoAddMachine.prepare(screen.id, model: model, stats: environment.statsStore)
+            return
+        }
+        if DemoWorkspaces.handles(screen.id) {
+            await DemoWorkspaces.prepare(screen.id, model: model)
             return
         }
         #endif

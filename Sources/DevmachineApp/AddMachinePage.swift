@@ -794,7 +794,7 @@ private struct AddMachineAnswers: View {
     }
 }
 
-private struct AddMachineNote: View {
+struct AddMachineNote: View {
     @Environment(\.dmMetrics) private var m
     let text: String
 

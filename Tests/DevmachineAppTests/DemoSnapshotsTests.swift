@@ -186,6 +186,14 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(DemoSnapshots.usagePaneHeight, 700)
     }
 
+    func testTheWorkspacesWalkShowsTheListEveryFlowAndEachRunState() {
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "workspaces"]).map(\.id), [
+            "workspaces-list", "workspaces-new", "workspaces-new-taken", "workspaces-review", "workspaces-running",
+            "workspaces-failed", "workspaces-done", "workspaces-edit", "workspaces-edit-review", "workspaces-forget",
+            "workspaces-forget-refused", "workspaces-destroy", "workspaces-settings",
+        ])
+    }
+
     func testTheWorktreeWalkIsItsOwnSetAndPickedByTheEnvironment() {
         let names = DemoSnapshots.worktreeScreens.map(\.fileName)
         XCTAssertEqual(names, [

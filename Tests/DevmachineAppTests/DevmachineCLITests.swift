@@ -114,6 +114,33 @@ final class DevmachineCLITests: XCTestCase {
         XCTAssertEqual(output, CLIOutput(stdout: #"{"status":"pending"}"#, stderr: "caddy refused the new file", exitCode: 1))
     }
 
+    func testWorkspaceSummariesKeepTheSettingsAsText() throws {
+        let body = #"{"workspaces":[{"name":"acme","machine":"main","user":"acme","packages":["zsh"],"#
+            + #""settings":{"zsh.theme":"clean","dev.ports":[3000,3001]}},"#
+            + #"{"name":"beta","machine":"main","user":"beta","packages":null}]}"#
+        let runner = CLIRecordingRunner(result: (body, "", 0))
+
+        let workspaces = try DevmachineCLI(executable: "/x", runner: runner).workspaceSummaries()
+
+        XCTAssertEqual(workspaces, [
+            WorkspaceSummary(
+                name: "acme", machine: "main", user: "acme", packages: ["zsh"],
+                settings: ["zsh.theme": "clean", "dev.ports": "[3000,3001]"]),
+            WorkspaceSummary(name: "beta", machine: "main", user: "beta", packages: []),
+        ])
+        XCTAssertEqual(runner.calls.first?.args, ["--format", "json", "workspaces", "list"])
+    }
+
+    func testBeforeTheConfigurationExistsThereIsNoWorkspaceAndNoListCall() throws {
+        let runner = CLIRecordingRunner(result: (#"{"path":"/Users/alice/.config/devmachine","source":"default"}"#, "", 0))
+
+        let snapshot = try WorkspacesReader.read(
+            cli: DevmachineCLI(executable: "/x", runner: runner), fileExists: { _ in false })
+
+        XCTAssertEqual(snapshot, .none)
+        XCTAssertEqual(runner.calls.map(\.args), [["--format", "json", "config", "path"]])
+    }
+
     func testListDecodesTheCLIJSONContractForTheNamedMachine() throws {
         let body = #"[{"host":"app.example.com","port":8080,"workspace":"alice","status":"published"}]"#
         let runner = CLIRecordingRunner(result: (body, "", 0))

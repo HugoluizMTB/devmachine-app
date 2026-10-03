@@ -131,6 +131,12 @@ final class PaletteDispatcherTests: XCTestCase {
         XCTAssertTrue(model.pendingAddSubdomain)
     }
 
+    func testNewWorkspaceOpensTheWorkspacesPageOnItsForm() {
+        run(.newWorkspace)
+        XCTAssertEqual(model.activePage, .workspaces)
+        XCTAssertTrue(model.pendingNewWorkspace)
+    }
+
     func testPublishAPortAsksForTheSheetOfThatWorkspace() {
         run(.publishPort(workspace: "acme"))
         XCTAssertEqual(model.pendingPublishWorkspace, "acme")

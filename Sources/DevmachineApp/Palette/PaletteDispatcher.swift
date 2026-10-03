@@ -101,6 +101,7 @@ struct PaletteDispatcher {
         case let .subdomains(machine):
             sites.prefer(machine: machine)
             model.showPage(.subdomains)
+        case .newWorkspace: model.requestNewWorkspace()
         case let .addSubdomain(machine):
             if let machine { sites.prefer(machine: machine) }
             model.requestAddSubdomain()

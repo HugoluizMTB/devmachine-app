@@ -67,6 +67,16 @@ final class CommandRegistryTests: XCTestCase {
         }
     }
 
+    func testWorkspacesHasAPageAndANewWorkspaceCommand() throws {
+        let all = commands(context())
+        let page = try XCTUnwrap(all.first { $0.id == "go.workspaces" })
+        XCTAssertEqual(page.title, "Workspaces…")
+        XCTAssertEqual(page.action, .showPage(.workspaces))
+        let new = try XCTUnwrap(all.first { $0.id == "action.new-workspace" })
+        XCTAssertEqual(new.title, "New workspace…")
+        XCTAssertEqual(new.action, .newWorkspace)
+    }
+
     func testTheOperatorSessionOpensTheLocalOperatorShell() {
         let operatorCommand = command("go.operator", in: context())
         XCTAssertEqual(

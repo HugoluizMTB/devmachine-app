@@ -505,8 +505,25 @@ struct SetupPage: View {
 
     /// A list of what to hide, never of what to show: a workspace that appears
     /// in `~/.ssh/config` later is visible without anyone opening Settings.
-    @ViewBuilder
     private var workspacesBlock: some View {
+        VStack(alignment: .leading, spacing: m.space.lg) {
+            HStack(spacing: m.space.md) {
+                Text(verbatim: "Add, change, forget or destroy a workspace on the Workspaces page. "
+                    + "Here you only choose which ones the sidebar shows.")
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                DMButton("Manage workspaces…", systemImage: "square.grid.2x2", variant: .outline, size: .small) {
+                    model.showPage(.workspaces)
+                }
+            }
+            workspaceVisibility
+        }
+    }
+
+    @ViewBuilder
+    private var workspaceVisibility: some View {
         if model.workspaces.isEmpty {
             note("No workspace yet. They are the ssh aliases ending in "
                 + "-\(hostAlias.isEmpty ? "devmachine" : hostAlias); the app reads them from "

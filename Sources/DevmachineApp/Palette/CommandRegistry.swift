@@ -22,6 +22,7 @@ enum CommandRegistry {
     }
 
     private static let subdomainKeywords = ["dns", "domains", "caddy", "sites", "expose", "https", "publish"]
+    private static let workspaceKeywords = ["workspace", "account", "linux user", "packages", "sync"]
     private static let statsKeywords = ["ram", "memory", "disk", "cpu", "load", "containers", "usage"]
 
     private static func fixed(_ context: PaletteContext) -> [Entry] {
@@ -60,6 +61,13 @@ enum CommandRegistry {
                     action: .openSession(.localSession(
                         name: Workspace.operatorSession, path: operatorSession?.path ?? NSHomeDirectory()))),
                 isAvailable: { _ in operatorSession != nil }),
+            Entry(command: PaletteCommand(
+                id: "go.workspaces", title: "Workspaces…", subtitle: "", category: .goTo,
+                systemImage: "square.grid.2x2", keywords: workspaceKeywords, action: .showPage(.workspaces))),
+            Entry(command: PaletteCommand(
+                id: "action.new-workspace", title: "New workspace…", subtitle: "", category: .action,
+                systemImage: "person.crop.square.badge.plus", keywords: workspaceKeywords + ["create", "add"],
+                action: .newWorkspace)),
             Entry(command: PaletteCommand(
                 id: "action.add-machine", title: "Add a machine…", subtitle: "", category: .action,
                 systemImage: "server.rack", keywords: ["server", "vps", "machine", "lima", "local", "setup", "new"],

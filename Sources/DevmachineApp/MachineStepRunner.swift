@@ -109,11 +109,12 @@ final class MachineStepRunner: ObservableObject {
     /// `limaMethod` is how a missing Lima is installed when the plan has that step.
     func run(
         _ steps: [MachinePlanStep], inTerminal: Bool = true, password: SecretText = SecretText(),
-        limaMethod: LimaInstall.Method = .release, label: String = "Adding a machine…"
+        limaMethod: LimaInstall.Method = .release, label: String = "Adding a machine…",
+        demoRefusal: String = MachineStepRunner.demoRefusal
     ) async {
         guard !DemoMode.isActive else {
             reset()
-            fail(steps.first, Self.demoRefusal)
+            fail(steps.first, demoRefusal)
             return
         }
         let token = UUID()

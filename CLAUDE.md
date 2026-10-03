@@ -999,6 +999,51 @@ once may fail there.
   `ProcessPrepareRunner` (Prepare, DNS sync) each refuse before reaching a
   terminal or the CLI (`DemoRefusalTests`).
 
+## Workspaces page
+- **`AppPage.workspaces` lists every workspace by machine** (`WorkspacesStore`:
+  `workspaces list --format json` with its `settings`, and `packages.lock`).
+  "Applied", "Waiting for sync" or "Not created yet" come from the lock's
+  `workspaces` map (`WorkspaceSync`): every declared package in it is applied.
+  A package taken off is not caught: the lock also lists what the declared
+  ones pull in. No `config.yml` yet means no workspace, without a list call.
+- **Reached from** the sidebar's + beside WORKSPACES ("New workspace…", under
+  the new-session items), ⌘K "Workspaces…" and "New workspace…"
+  (`requestNewWorkspace`, taken by the page through `pendingNewWorkspace`),
+  and Settings → Workspaces "Manage workspaces…". Settings keeps only the
+  sidebar visibility toggles; the page owns everything else.
+- **Every flow is a `WorkspaceFlow` (Core) and runs through
+  `MachineStepRunner` in the background**, with `MachineRunLayout`,
+  `DMLogView` and `SetupFailurePanel` (Retry, Report a bug), like the wizard.
+  New and Edit: form, review of the exact commands, a confirm, run. New is
+  `workspaces new <w> --machine <m> --packages a,b --yes` (`--packages=` when
+  every card is off) then `sync --machine <m> --yes`; Edit is `workspaces edit
+  <w> --add/--rm/--set/--unset … --yes` then the same sync, never `--machine`
+  (there it moves the workspace). "Apply it now" off skips the sync.
+- The name uses the wizard's rule (`WorkspaceName`); the machine picker lists
+  non-self machines only. Package cards are workspace packages for Linux,
+  grouped by `category`, the account package `workspace` locked on. The
+  preselection is the CLI's setup default (`dev`, `zsh`, `mise`,
+  `WorkspacePackageCatalog.cliDefaults`): no CLI command prints the
+  configured `defaults.workspace`, and the form says so.
+- Edit mirrors the CLI's checks: a setting is `<package>.<name>` for a package
+  the workspace keeps, with a value (an empty `--set` would remove it). The
+  machine, the account and `--share` stay in the terminal.
+- **Forget and Destroy are different on purpose.** Forget is `workspaces rm
+  <w> --yes` behind a confirm: only this Mac's configuration changes. Destroy
+  is `workspaces destroy <w> --confirm <w>` (+ `--keep-dns`, a checkbox) and
+  runs only once the name is typed exactly. The CLI's refusals (a site
+  published through another machine, an unreachable machine) are its
+  `error:` line, shown as the failure's cause; nothing is guessed.
+- Once a step changed the configuration, "Change answers" is gone (the name
+  now exists); Retry runs only what failed. Any run that changed something
+  reloads the sidebar, Settings → Machines, readiness and the cached
+  workspace list.
+- Demo mode reads `DemoData.workspacesSnapshot` and refuses every run ("Demo
+  mode never changes a workspace."). `DEVMACHINE_DEMO_WALK=workspaces`
+  captures `130`–`142`: list, new, a taken name, review, running, failed,
+  done, edit, edit review, forget, a refused forget, destroy, and Settings →
+  Workspaces.
+
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action
 in the app, behind a confirm, and never from tests. The app delegates publishing

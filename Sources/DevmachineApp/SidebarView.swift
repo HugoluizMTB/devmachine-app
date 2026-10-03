@@ -158,6 +158,12 @@ struct SidebarView: View {
                     ForEach(model.workspaces) { ws in
                         Button(ws.name) { model.newSession(alias: ws.alias) }
                     }
+                    Divider()
+                    Button {
+                        model.requestNewWorkspace()
+                    } label: {
+                        Label("New workspace…", systemImage: "person.crop.square.badge.plus")
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -165,7 +171,7 @@ struct SidebarView: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .foregroundStyle(Color.dmMuted)
-                .help("New session…")
+                .help("New session or workspace…")
             }
         )
         .safeAreaInset(edge: .top) {

@@ -22,6 +22,20 @@ private struct CLIWorkspaceList: Decodable {
     let workspaces: [CLIWorkspace]
 }
 
+/// `workspaces list`'s rows with their `settings`, which the cached
+/// `CLIWorkspace` leaves out.
+private struct CLIWorkspaceDetailList: Decodable {
+    struct Row: Decodable {
+        let name: String
+        let machine: String
+        let user: String
+        let packages: [String]?
+        let settings: [String: SettingValue]?
+    }
+
+    let workspaces: [Row]
+}
+
 struct CLIConfigPath: Decodable, Equatable, Sendable {
     let path: String
     let source: String
@@ -217,7 +231,9 @@ struct CLIPackage: Codable, Equatable, Sendable {
     }
 
     var info: PackageInfo {
-        PackageInfo(name: name, scope: scope, summary: summary ?? "", source: source, platforms: platforms, needs: needs)
+        PackageInfo(
+            name: name, scope: scope, summary: summary ?? "", source: source, platforms: platforms, needs: needs,
+            category: category ?? "")
     }
 }
 
@@ -458,6 +474,21 @@ struct DevmachineCLI: Sendable {
         )
         try requireSuccess(result)
         return try JSONDecoder().decode(CLIWorkspaceList.self, from: Data(result.stdout.utf8)).workspaces
+    }
+
+    /// Every workspace with its settings, for the Workspaces page.
+    func workspaceSummaries() throws -> [WorkspaceSummary] {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "workspaces", "list"],
+            environment: environment()
+        )
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLIWorkspaceDetailList.self, from: Data(result.stdout.utf8)).workspaces.map {
+            WorkspaceSummary(
+                name: $0.name, machine: $0.machine, user: $0.user, packages: $0.packages ?? [],
+                settings: ($0.settings ?? [:]).mapValues(\.text))
+        }
     }
 
     func listMachines() throws -> [CLIMachine] {

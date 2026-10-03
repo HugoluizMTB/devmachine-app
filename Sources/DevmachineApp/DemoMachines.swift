@@ -34,10 +34,50 @@ extension DemoData {
         CLIPackage(
             name: "acme-routes", scope: "machine", installedOn: [],
             summary: "Reverse-proxy routes for the acme apps that run outside devmachine.", source: "local"),
-        CLIPackage(
-            name: "zsh", scope: "workspace", installedOn: ["workspace acme"],
-            summary: "zsh with a prompt.", source: "release"),
+    ] + workspacePackages
+
+    /// Workspace packages for the Workspaces page, named like the release's.
+    static let workspacePackages: [CLIPackage] = [
+        workspacePackage("workspace", "Foundation", "The Linux account a person works in: a home nobody else can "
+            + "read, a git identity and ~/dev.", on: ["acme", "globex", "initech", "umbrella"]),
+        workspacePackage("dev", "Foundation", "The tools a workspace is expected to have: the GitHub CLI, bun "
+            + "and Node through mise.", on: ["acme", "globex", "initech"]),
+        workspacePackage("zsh", "Foundation", "zsh as the login shell, a prompt and a tmux config.",
+                         on: ["acme", "globex", "initech"]),
+        workspacePackage("mise", "Foundation", "mise, the per-project runtime manager, for one account.",
+                         on: ["acme", "globex"]),
+        workspacePackage("claude-code", "Coding agents", "The Claude Code CLI for one account. Logging in is a "
+            + "person's job, once.", on: ["acme", "initech"]),
+        workspacePackage("opencode", "Coding agents", "The opencode CLI for one account.", on: ["globex"]),
+        workspacePackage("pi", "Coding agents", "The Pi coding agent for one account, from its standalone release.",
+                         on: []),
+        workspacePackage("glab", "Developer tools", "The GitLab CLI in the account's own ~/.local/bin.", on: []),
+        workspacePackage("sentry", "Developer tools", "The Sentry CLI in the account's own ~/.local/bin.", on: []),
     ]
+
+    private static func workspacePackage(_ name: String, _ category: String, _ summary: String, on: [String])
+        -> CLIPackage {
+        CLIPackage(
+            name: name, scope: "workspace", installedOn: on.map { "workspace \($0)" }, summary: summary,
+            source: "release", category: category)
+    }
+
+    /// The configuration's workspaces with what the last sync applied:
+    /// initech waits for a sync, umbrella was never synced.
+    static let workspacesSnapshot = WorkspacesSnapshot(
+        workspaces: [
+            WorkspaceSummary(
+                name: "acme", machine: "main", user: "acme", packages: ["dev", "zsh", "mise", "claude-code"],
+                settings: ["zsh.theme": "robbyrussell"]),
+            WorkspaceSummary(name: "globex", machine: "main", user: "globex", packages: ["dev", "zsh", "mise", "opencode"]),
+            WorkspaceSummary(name: "initech", machine: "main", user: "initech", packages: ["dev", "zsh", "claude-code"]),
+            WorkspaceSummary(name: "umbrella", machine: "staging", user: "umbrella", packages: ["zsh"]),
+        ],
+        lock: PackagesLock(machines: [:], workspaces: [
+            "acme": ["workspace", "mise", "dev", "zsh", "claude-code"].map { PackagesLock.Entry(name: $0) },
+            "globex": ["workspace", "mise", "dev", "zsh", "opencode"].map { PackagesLock.Entry(name: $0) },
+            "initech": ["workspace", "mise", "dev", "zsh"].map { PackagesLock.Entry(name: $0) },
+        ]))
 
     static let machinesSnapshot = MachinesSnapshot(
         hasConfiguration: true,

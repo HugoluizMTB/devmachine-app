@@ -414,6 +414,8 @@ final class AppModel: ObservableObject {
     @Published var pendingPublishWorkspace: String?
     /// Asks the Subdomains page to open its Add subdomain sheet once shown.
     @Published var pendingAddSubdomain = false
+    /// The Workspaces page should open its New workspace form.
+    @Published var pendingNewWorkspace = false
     /// The Settings pane to open on, read once by the Settings page.
     @Published var requestedSettingsSection: SettingsSection?
     var selectionAnchor: SessionRef? = nil
@@ -1096,6 +1098,13 @@ final class AppModel: ObservableObject {
 
     func requestPublish(workspace: String) {
         pendingPublishWorkspace = workspace
+    }
+
+    /// The Workspaces page opens on its New workspace form
+    /// (`WorkspacesPage` takes the request).
+    func requestNewWorkspace() {
+        activePage = .workspaces
+        pendingNewWorkspace = true
     }
 
     func requestAddSubdomain() {
