@@ -67,6 +67,7 @@ final class PackagesStore: ObservableObject {
     private let read: @Sendable () async throws -> PackagesSnapshot
     private let edit: @Sendable ([String]) async throws -> Void
     private let jobs: @MainActor () -> MachineJobCenter?
+    private let isDemo: @MainActor () -> Bool
     private var loading = false
     /// A load asked for while one runs: the configuration may have changed
     /// after that read started, so it reads once more when it ends.
@@ -76,11 +77,13 @@ final class PackagesStore: ObservableObject {
     init(
         read: @escaping @Sendable () async throws -> PackagesSnapshot = PackagesReader.liveRead,
         edit: @escaping @Sendable ([String]) async throws -> Void = PackagesReader.liveEdit,
-        jobs: @escaping @MainActor () -> MachineJobCenter? = { AppModel.shared?.jobs }
+        jobs: @escaping @MainActor () -> MachineJobCenter? = { AppModel.shared?.jobs },
+        isDemo: @escaping @MainActor () -> Bool = { DemoMode.isActive }
     ) {
         self.read = read
         self.edit = edit
         self.jobs = jobs
+        self.isDemo = isDemo
         observer = NotificationCenter.default.addObserver(
             forName: ConfigDirectoryWatcher.changed, object: nil, queue: .main
         ) { [weak self] _ in
@@ -120,12 +123,12 @@ final class PackagesStore: ObservableObject {
     /// Runs each `packages add|rm` in order and stops at the first that
     /// fails; only a selection saved whole asks for a sync.
     func apply(_ changes: PackageChanges, on target: PackageTarget) async -> Bool {
-        guard !applying, let request = changes.syncRequest(target: target) else { return false }
-        guard !DemoMode.isActive else {
+        guard !isDemo() else {
             applyError = DMErrorState(
                 title: "Packages were not changed", message: "Demo mode never changes a configuration.")
             return false
         }
+        guard !applying, let request = changes.syncRequest(target: target) else { return false }
         applying = true
         defer { applying = false }
         let commands = changes.commands(target: target)

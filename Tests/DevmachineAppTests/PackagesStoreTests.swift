@@ -72,6 +72,40 @@ final class PackagesStoreTests: XCTestCase {
         XCTAssertEqual(center.jobs.first?.request?.full, true)
     }
 
+    func testApplyInDemoModeRefusesWithoutEditing() async {
+        let edits = Recorder()
+        let center = MachineJobCenter(runner: NoRunner())
+        let store = PackagesStore(read: { [snap = snapshot()] in snap }, edit: { edits.add($0) },
+                                  jobs: { center }, isDemo: { true })
+        let ok = await store.apply(PackageChanges(adds: [], removes: []), on: main)
+        XCTAssertFalse(ok)
+        XCTAssertEqual(store.applyError?.details, "Demo mode never changes a configuration.")
+        XCTAssertTrue(edits.all.isEmpty)
+        XCTAssertTrue(center.jobs.isEmpty)
+    }
+
+    func testEveryJobFinishReadsAgain() async throws {
+        let reads = Recorder()
+        let snap = snapshot()
+        let center = MachineJobCenter(runner: FailsOnceRunner(), successSeconds: 0)
+        let store = PackagesStore(read: { reads.add([]); return snap }, edit: { _ in }, jobs: { center })
+        _ = await store.apply(PackageChanges(adds: ["docker"], removes: []), on: main)
+        XCTAssertEqual(reads.all.count, 1)
+        let id = try XCTUnwrap(center.jobs.first?.id)
+        center.start(id, full: false)
+        try await eventually { reads.all.count == 2 }
+        guard case .failed = center.job(id)?.phase else { return XCTFail("expected the first run to fail") }
+        center.retry(id)
+        try await eventually { reads.all.count == 3 }
+        XCTAssertEqual(store.phase, .loaded)
+    }
+
+    private func eventually(_ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(2)
+        while !condition() && Date() < deadline { try await Task.sleep(nanoseconds: 5_000_000) }
+        XCTAssertTrue(condition())
+    }
+
     func testReadFailureIsAnErrorState() async {
         let store = PackagesStore(read: { throw DevmachineCLIError.commandFailed("boom") }, edit: { _ in }, jobs: { nil })
         await store.load()
@@ -137,6 +171,17 @@ private final class Recorder: @unchecked Sendable {
 
 private struct NoRunner: MachineJobRunning {
     func run(arguments: [String], output: @escaping @Sendable (String) -> Void) async throws -> Int32 { 0 }
+}
+
+private final class FailsOnceRunner: MachineJobRunning, @unchecked Sendable {
+    private let lock = NSLock()
+    private var runs = 0
+    func run(arguments: [String], output: @escaping @Sendable (String) -> Void) async throws -> Int32 {
+        lock.withLock {
+            runs += 1
+            return runs == 1 ? 1 : 0
+        }
+    }
 }
 
 private struct PackagesCLIRunner: CommandRunner {
