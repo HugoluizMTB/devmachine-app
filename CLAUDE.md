@@ -913,6 +913,13 @@ once may fail there.
   `[macos]` package is never offered. Essentials is always installed
   (locked, its `needs` listed as included and not offered again on their
   own); docker is suggested and checked (`MachinePackageCatalog.suggested`).
+- **The column beside the form is never empty.** Before the run it holds
+  `AddMachineSummaryView`: the answers so far (`MachineWizard.summary`,
+  read from the same plan that runs) and the commands they would run
+  (`previewCommands`, none until the machine has a name; on the review
+  the commands are the page, so only the summary). The kind step has
+  nothing to summarise, so its two cards take that room. The run puts its
+  log and steps in the same 340-point column (`AddMachineContent.sideWidth`).
 - **CLI 0.7.27+ adds with no terminal at all**
   (`MachineUnattendedAdd.minimumCLIVersion`, read from `version` into the
   `MachinesSnapshot`). Every answer is a flag: `machines add --address

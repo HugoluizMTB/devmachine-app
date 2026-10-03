@@ -61,12 +61,20 @@ struct AddMachineWizardView: View {
             if wizard.stage == .run {
                 AddMachineRunView(state: state, runner: runner, onClose: onClose)
             } else {
-                ScrollView {
-                    stageBody
-                        .frame(maxWidth: m.pt(760), alignment: .leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(alignment: .top, spacing: m.space.xl) {
+                    VStack(alignment: .leading, spacing: m.space.xl) {
+                        ScrollView {
+                            stageBody
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        footer
+                    }
+                    .frame(maxWidth: formWidth, alignment: .leading)
+                    if wizard.stage != .kind {
+                        AddMachineSummaryView(wizard: wizard)
+                            .frame(width: m.pt(AddMachineContent.sideWidth))
+                    }
                 }
-                footer
             }
         }
         .confirmationDialog(
@@ -77,6 +85,13 @@ struct AddMachineWizardView: View {
         } message: {
             Text(verbatim: AddMachineContent.confirmMessage(draft))
         }
+    }
+
+    /// The two kind cards take the summary's room too: nothing is chosen yet
+    /// to summarise.
+    private var formWidth: CGFloat {
+        let form = m.pt(760)
+        return wizard.stage == .kind ? form + m.space.xl + m.pt(AddMachineContent.sideWidth) : form
     }
 
     private var header: some View {
@@ -133,7 +148,49 @@ struct AddMachineWizardView: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .frame(maxWidth: m.pt(760))
+    }
+}
+
+/// Beside the form, before the run: what the answers so far make, and the
+/// commands they would run, updated as the person types. The run screen puts
+/// its log and step list in the same place.
+struct AddMachineSummaryView: View {
+    @Environment(\.dmMetrics) private var m
+    let wizard: MachineWizard
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: m.space.lg) {
+                AddMachineFieldLabel(text: wizard.firstRun ? "Your setup" : "Your machine")
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: m.space.lg, verticalSpacing: m.space.sm) {
+                    ForEach(wizard.summary, id: \.label) { row in
+                        GridRow {
+                            Text(verbatim: row.label)
+                                .font(.dm(11))
+                                .foregroundStyle(Color.dmMuted)
+                            Text(verbatim: row.value)
+                                .font(.dm(11.5, weight: .medium))
+                                .foregroundStyle(Color.dmRowText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(m.space.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .dmSurface(Color.dmBand, radius: DMRadius.panel)
+                if wizard.stage != .review {
+                    AddMachineFieldLabel(text: "What will run")
+                    let commands = wizard.previewCommands
+                    if commands.isEmpty {
+                        Text(verbatim: "The commands show here as you answer.")
+                            .font(.dm(11))
+                            .foregroundStyle(Color.dmMuted)
+                    } else {
+                        DMCommandBlock(commands, wraps: true)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -668,7 +725,7 @@ struct MachineRunLayout<Outcome: View>: View {
                     }
                 }
             }
-            .frame(width: m.pt(340))
+            .frame(width: m.pt(AddMachineContent.sideWidth))
         }
     }
 
@@ -754,6 +811,9 @@ private struct AddMachineNote: View {
 }
 
 enum AddMachineContent {
+    /// The column beside a run's log, and beside the wizard's form before it.
+    static let sideWidth: CGFloat = 340
+
     /// The ed25519 key is what the CLI prefers, and what ssh offers first.
     static let verifyCommand = "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"
 
