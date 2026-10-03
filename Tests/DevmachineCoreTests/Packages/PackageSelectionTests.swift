@@ -49,4 +49,9 @@ final class PackageSelectionTests: XCTestCase {
         XCTAssertTrue(PackagePending.syncRequest(statuses: ["x": .pendingRemove], target: main)!.full)
         XCTAssertNil(PackagePending.syncRequest(statuses: ["node": .applied], target: main))
     }
+
+    func testPendingRemoveOfUnlistedPackageAsksFullSync() {
+        let statuses: [String: PackageStatus] = ["docker": .applied, "gone": .pendingRemove]
+        XCTAssertTrue(PackagePending.syncRequest(statuses: statuses, target: main)!.full)
+    }
 }

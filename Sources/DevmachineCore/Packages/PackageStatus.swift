@@ -64,6 +64,10 @@ public enum PackageStatusCheck {
             default: out[name] = .available
             }
         }
+        if let lock {
+            let known = Set(entries.map(\.name))
+            for name in lock.names(for: target) where !known.contains(name) { out[name] = .pendingRemove }
+        }
         return out
     }
 }

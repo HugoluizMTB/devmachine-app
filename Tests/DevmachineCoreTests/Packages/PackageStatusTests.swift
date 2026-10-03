@@ -67,4 +67,11 @@ final class PackageStatusTests: XCTestCase {
         let s = PackageStatusCheck.evaluate(entries: entries, target: main, lock: lock, workspacesOnMachine: ["acme"])
         XCTAssertEqual(s["docker"], .appliedAsDependency(of: "compose-dev"))
     }
+
+    func testLockedNameWithNoEntryIsPendingRemove() {
+        let lock = PackagesLock(machines: ["main": [.init(name: "docker"), .init(name: "gone")]])
+        let s = PackageStatusCheck.evaluate(entries: [entry("docker", on: ["machine main"])], target: main, lock: lock)
+        XCTAssertEqual(s["gone"], .pendingRemove)
+        XCTAssertEqual(s["docker"], .applied)
+    }
 }
