@@ -668,10 +668,14 @@ Rules:
   run that ends 0 but leaves the Mac as it was is `unresolved`, with Check
   again, never a loop. Demo mode refuses every run (`OnboardingDemoTests`).
 - **The skills always install** when a harness is chosen: one
-  `skills add --agent <h>… --yes` after the sync (`SkillAgent`: claude,
-  codex, pi, opencode; `--agent` works for a harness not installed yet).
-  Preselected: Settings → Harnesses plus the harness folders this Mac has
-  (`AddMachineModel.harnessesInUse`). A failed skills step is a warning
+  `skills add --agent <h>… --yes` after the sync (`--agent` works for a
+  harness not installed yet). The choices are the harness registry's
+  harnesses that the CLI accepts (`SkillAgent.options`, which maps a
+  `HarnessID` to its `--agent` name): claude, codex, pi and opencode on any
+  CLI, antigravity, kimi and cline on 0.7.28+ (an older CLI refuses the
+  whole command on an unknown agent). A new harness is offered once it is
+  in `SkillAgent.cliAgents`. Preselected: Settings → Harnesses plus the
+  harness folders this Mac has (`AddMachineModel.harnessesInUse`). A failed skills step is a warning
   with Retry (`MachinePlanStep.blocksSetup`), never a blocker for "Start
   using Devmachine".
 - **A machine on this Mac installs Lima when it is missing**

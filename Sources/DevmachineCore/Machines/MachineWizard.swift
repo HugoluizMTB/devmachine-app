@@ -32,11 +32,15 @@ public struct MachineWizard: Equatable, Sendable {
     /// What this Mac can give a Lima machine, on a CLI that takes the size
     /// (`LocalMachineSizing`); nil keeps the CLI's default size.
     public let sizeLimits: LocalMachineSizeLimits?
+    /// The harnesses the first run can teach devmachine: the app's harnesses
+    /// that this CLI's `skills add --agent` accepts (`SkillAgent.options`).
+    public let skillAgentOptions: [SkillAgent]
 
     public init(
         existingMachines: [String], existingWorkspaces: [String] = [], limaFound: Bool, unattended: Bool = false,
-        firstRun: Bool = false, sizeLimits: LocalMachineSizeLimits? = nil
+        firstRun: Bool = false, sizeLimits: LocalMachineSizeLimits? = nil, skillAgentOptions: [SkillAgent] = []
     ) {
+        self.skillAgentOptions = skillAgentOptions
         self.sizeLimits = unattended ? sizeLimits : nil
         self.existingMachines = existingMachines
         self.existingWorkspaces = existingWorkspaces
@@ -156,42 +160,11 @@ public struct MachineWizard: Equatable, Sendable {
     }
 
     public mutating func toggleSkillAgent(_ agent: String) {
-        if let index = draft.skillAgents.firstIndex(of: agent) {
+        if let index = draft.skillAgents.firstIndex(where: { $0.id == agent }) {
             draft.skillAgents.remove(at: index)
-        } else {
-            draft.skillAgents = SkillAgent.ordered(draft.skillAgents + [agent])
+        } else if let chosen = skillAgentOptions.first(where: { $0.id == agent }) {
+            draft.skillAgents = skillAgentOptions.filter { draft.skillAgents.contains($0) || $0 == chosen }
         }
-    }
-}
-
-/// The coding harnesses `devmachine skills add --agent` links the skills
-/// for. The skills land in `~/.agents/skills` whatever is chosen, so a
-/// harness installed later finds them; `--agent` works for one not
-/// installed yet.
-public struct SkillAgent: Equatable, Sendable, Identifiable {
-    public let id: String
-    public let name: String
-
-    public static let all = [
-        SkillAgent(id: "claude", name: "Claude Code"),
-        SkillAgent(id: "codex", name: "Codex"),
-        SkillAgent(id: "pi", name: "Pi"),
-        SkillAgent(id: "opencode", name: "OpenCode"),
-    ]
-
-    /// Known ids only, in the CLI's order, each once.
-    public static func ordered(_ ids: [String]) -> [String] {
-        all.map(\.id).filter { ids.contains($0) }
-    }
-
-    public static func names(_ ids: [String]) -> [String] {
-        all.filter { ids.contains($0.id) }.map(\.name)
-    }
-
-    /// What `skills add` finds by itself: each harness's own folder in the home folder.
-    public static func detected(home: String, isDirectory: (String) -> Bool) -> [String] {
-        let folders = ["claude": ".claude", "codex": ".codex", "pi": ".pi", "opencode": ".config/opencode"]
-        return all.map(\.id).filter { isDirectory(home + "/" + (folders[$0] ?? $0)) }
     }
 }
 

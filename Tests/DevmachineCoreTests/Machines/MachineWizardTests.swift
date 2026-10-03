@@ -3,6 +3,7 @@ import XCTest
 
 final class MachineWizardTests: XCTestCase {
     private let fingerprint = "SHA256:" + String(repeating: "C", count: 43)
+    private let newerCLI = SemanticVersion(major: 0, minor: 7, patch: 28)
 
     private func filledServer() -> MachineWizard {
         var wizard = MachineWizard(existingMachines: [], limaFound: true)
@@ -204,7 +205,8 @@ final class MachineWizardTests: XCTestCase {
         var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true, firstRun: true)
         wizard.choose(.localVM)
         wizard.draft.name = "lab"
-        wizard.draft.skillAgents = ["claude", "opencode"]
+        wizard.draft.skillAgents = SkillAgent.options(
+            harnesses: [(.claude, "Claude Code"), (.opencode, "opencode")], cliVersion: nil)
         XCTAssertEqual(Array(wizard.plan.suffix(2).map(\.arguments)), [
             ["sync", "--machine", "lab", "--yes"],
             ["skills", "add", "--agent", "claude", "--agent", "opencode", "--yes"],
@@ -224,22 +226,21 @@ final class MachineWizardTests: XCTestCase {
         var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true)
         wizard.choose(.localVM)
         wizard.draft.name = "lab"
-        wizard.draft.skillAgents = ["claude"]
+        wizard.draft.skillAgents = SkillAgent.options(harnesses: [(.claude, "Claude Code")], cliVersion: nil)
         XCTAssertFalse(wizard.plan.contains { $0.kind == .skills })
     }
 
     func testAHarnessIsChosenOrLeftOutByToggling() {
-        var wizard = MachineWizard(existingMachines: [], limaFound: true, unattended: true, firstRun: true)
+        let options = SkillAgent.options(
+            harnesses: [(.claude, "Claude Code"), (.codex, "Codex"), (.kimi, "Kimi Code")], cliVersion: newerCLI)
+        var wizard = MachineWizard(
+            existingMachines: [], limaFound: true, unattended: true, firstRun: true, skillAgentOptions: options)
+        wizard.toggleSkillAgent("kimi")
         wizard.toggleSkillAgent("claude")
         wizard.toggleSkillAgent("codex")
         wizard.toggleSkillAgent("claude")
-        XCTAssertEqual(wizard.draft.skillAgents, ["codex"])
-    }
-
-    func testTheSkillHarnessesAreTheCLIsFourInItsOrder() {
-        XCTAssertEqual(SkillAgent.all.map(\.id), ["claude", "codex", "pi", "opencode"])
-        XCTAssertEqual(SkillAgent.all.map(\.name), ["Claude Code", "Codex", "Pi", "OpenCode"])
-        XCTAssertEqual(SkillAgent.ordered(["opencode", "claude", "unknown"]), ["claude", "opencode"])
+        wizard.toggleSkillAgent("unknown")
+        XCTAssertEqual(wizard.draft.skillAgents.map(\.id), ["codex", "kimi"])
     }
 
     func testAFirstRunWizardIsRebuiltAtItsKindLikeAnyOther() {

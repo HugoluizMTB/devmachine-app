@@ -77,7 +77,7 @@ public struct MachineDraft: Equatable, Sendable {
     public var packages: [String] = []
     public var sync = true
     /// The harnesses `skills add --agent` links the skills for (first run).
-    public var skillAgents: [String] = []
+    public var skillAgents: [SkillAgent] = []
     /// False before the CLI's `config.yml` exists: only `setup` writes the
     /// first machine, and it asks its questions itself.
     public var hasConfiguration = true

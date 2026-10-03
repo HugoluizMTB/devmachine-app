@@ -13,7 +13,7 @@ final class MachineWizardSummaryTests: XCTestCase {
         wizard.draft.localSize = limits.defaultSize
         wizard.draft.packages = ["docker"]
         wizard.draft.workspace = "acme"
-        wizard.draft.skillAgents = ["claude"]
+        wizard.draft.skillAgents = [SkillAgent(harness: .claude, id: "claude", name: "Claude Code")]
 
         XCTAssertEqual(wizard.summary, [
             MachineSummaryRow(label: "Machine", value: "lab, a Lima machine on this Mac"),

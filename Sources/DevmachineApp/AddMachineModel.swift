@@ -33,8 +33,9 @@ final class AddMachineModel: ObservableObject {
     /// The first-run setup: the same wizard, ending with this app's package,
     /// a sync and the skills.
     let firstRun: Bool
-    /// The harnesses the skills are linked for at first: the ones in use on this Mac.
-    private let skillAgents: () -> [String]
+    /// The harnesses the skills are linked for at first, out of the options:
+    /// the ones in use on this Mac.
+    private let skillAgents: ([SkillAgent]) -> [SkillAgent]
     /// What this Mac can give a Lima machine: its cores, memory and free disk.
     private let macLimits: () -> LocalMachineSizeLimits
     private let scanMachine: @Sendable (String, String) async throws -> MachineScan
@@ -52,7 +53,7 @@ final class AddMachineModel: ObservableObject {
         listAgentKeys: @escaping @Sendable () async throws -> [AgentKey] = {
             try await Task.detached { try DevmachineCLI.resolve().agentKeys() }.value
         },
-        skillAgents: @escaping () -> [String] = { AddMachineModel.harnessesInUse() },
+        skillAgents: @escaping ([SkillAgent]) -> [SkillAgent] = { AddMachineModel.harnessesInUse(from: $0) },
         macLimits: @escaping () -> LocalMachineSizeLimits = { AddMachineModel.thisMacLimits() },
         firstRun: Bool = false
     ) {
@@ -84,7 +85,7 @@ final class AddMachineModel: ObservableObject {
             findLima: { nil }, findBrew: { "/opt/homebrew/bin/brew" },
             scanMachine: { address, port in DemoData.addMachineScan(address: address, port: port) },
             listAgentKeys: { DemoData.addMachineAgentKeys },
-            skillAgents: { ["claude", "codex"] },
+            skillAgents: { options in options.filter { [.claude, .codex].contains($0.harness) } },
             macLimits: { DemoData.macLimits },
             firstRun: true)
     }
@@ -107,13 +108,20 @@ final class AddMachineModel: ObservableObject {
 
     /// The harnesses enabled in Settings → Harnesses, and the ones whose
     /// folder this Mac has (what `skills add` itself would find).
-    static func harnessesInUse(home: String = NSHomeDirectory()) -> [String] {
-        let enabled = (AppModel.shared?.settings?.enabledHarnesses ?? []).map(\.rawValue)
-        let found = SkillAgent.detected(home: home) { path in
+    static func harnessesInUse(from options: [SkillAgent], home: String = NSHomeDirectory()) -> [SkillAgent] {
+        let enabled = AppModel.shared?.settings?.enabledHarnesses ?? []
+        return SkillAgent.preselected(from: options, harnesses: enabled, home: home) { path in
             var isDirectory: ObjCBool = false
             return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
         }
-        return SkillAgent.ordered(enabled + found)
+    }
+
+    /// Every harness the app knows that this CLI's `skills add` accepts.
+    static func skillAgentOptions(
+        cliVersion: SemanticVersion?, registry: HarnessRegistry = .builtIn
+    ) -> [SkillAgent] {
+        SkillAgent.options(
+            harnesses: registry.adapters.map { ($0.id, $0.descriptor.title) }, cliVersion: cliVersion)
     }
 
     /// Only the skills step failed: the machine is set up, and a Retry
@@ -231,11 +239,12 @@ final class AddMachineModel: ObservableObject {
             limaFound: findLima() != nil,
             unattended: machines.snapshot?.addsWithoutTerminal ?? false,
             firstRun: firstRun,
-            sizeLimits: LocalMachineSizing.isSupported(cliVersion: machines.snapshot?.cliVersion) ? macLimits() : nil)
+            sizeLimits: LocalMachineSizing.isSupported(cliVersion: machines.snapshot?.cliVersion) ? macLimits() : nil,
+            skillAgentOptions: firstRun ? Self.skillAgentOptions(cliVersion: machines.snapshot?.cliVersion) : [])
         wizard.draft.localSize = wizard.sizeLimits?.defaultSize
         wizard.draft.hasConfiguration = machines.snapshot?.hasConfiguration ?? true
         wizard.draft.packages = MachinePackageCatalog.suggested(from: machines.packageCards)
-        if firstRun { wizard.draft.skillAgents = SkillAgent.ordered(skillAgents()) }
+        if firstRun { wizard.draft.skillAgents = skillAgents(wizard.skillAgentOptions) }
         return wizard
     }
 

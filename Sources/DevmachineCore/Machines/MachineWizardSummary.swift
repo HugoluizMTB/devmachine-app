@@ -26,7 +26,7 @@ extension MachineWizard {
         let workspace = plan.contains { $0.kind == .newWorkspace } ? draft.trimmedWorkspace : "None"
         rows.append(MachineSummaryRow(label: "Workspace", value: workspace))
         if firstRun {
-            let agents = SkillAgent.names(SkillAgent.ordered(draft.skillAgents))
+            let agents = draft.skillAgents.map(\.name)
             rows.append(MachineSummaryRow(
                 label: "Coding agents", value: agents.isEmpty ? "None" : agents.joined(separator: ", ")))
         } else {

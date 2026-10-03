@@ -126,11 +126,11 @@ public enum MachinePlan {
                 kind: .sync, title: "Install everything on \(name)",
                 arguments: ["sync", "--machine", name, "--yes"], asksInTerminal: false))
         }
-        let agents = SkillAgent.ordered(draft.skillAgents)
+        let agents = draft.skillAgents
         if !agents.isEmpty {
             steps.append(MachinePlanStep(
-                kind: .skills, title: "Teach " + SkillAgent.names(agents).joined(separator: ", ") + " devmachine",
-                arguments: ["skills", "add"] + agents.flatMap { ["--agent", $0] } + ["--yes"],
+                kind: .skills, title: "Teach " + agents.map(\.name).joined(separator: ", ") + " devmachine",
+                arguments: ["skills", "add"] + agents.flatMap { ["--agent", $0.id] } + ["--yes"],
                 asksInTerminal: false))
         }
         return steps

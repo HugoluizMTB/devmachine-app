@@ -71,7 +71,7 @@ final class OnboardingRunnerTests: XCTestCase {
             machines: MachinesStore(read: { snapshot }, remove: { _ in }),
             runner: MachineStepRunner(hooks: processes.hooks, pollInterval: 1_000_000),
             findLima: { nil }, findBrew: { nil }, onAdded: {},
-            skillAgents: { ["claude"] }, firstRun: true)
+            skillAgents: { $0.filter { $0.harness == .claude } }, firstRun: true)
         return OnboardingRunner(
             detect: { mac.detection }, wizard: wizard,
             prepare: MachineStepRunner(hooks: processes.hooks, pollInterval: 1_000_000))

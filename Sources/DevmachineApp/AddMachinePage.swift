@@ -562,8 +562,8 @@ private struct AddMachineSkillsChoice: View {
                 .foregroundStyle(Color.dmMuted)
                 .fixedSize(horizontal: false, vertical: true)
             FlowLayout(spacing: m.space.sm) {
-                ForEach(SkillAgent.all) { agent in
-                    DMChip(title: agent.name, selected: state.wizard.draft.skillAgents.contains(agent.id)) {
+                ForEach(state.wizard.skillAgentOptions) { agent in
+                    DMChip(title: agent.name, selected: state.wizard.draft.skillAgents.contains(agent)) {
                         state.wizard.toggleSkillAgent(agent.id)
                     }
                 }
