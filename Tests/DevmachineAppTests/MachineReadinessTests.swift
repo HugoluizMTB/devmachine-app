@@ -112,6 +112,15 @@ private final class FakePrepareRunner: MachineJobRunning, @unchecked Sendable {
     }
 }
 
+private final class SlowFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var on: Bool {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
+    }
+}
+
 private final class SnapshotBox: @unchecked Sendable {
     private let lock = NSLock()
     private var value: ReadinessSnapshot?
@@ -254,13 +263,57 @@ final class MachineReadinessStoreTests: XCTestCase {
         runner.onRun = { _ in box.current = snapshot(stamp: "2") }
         let center = MachineJobCenter(runner: runner, successSeconds: 0)
         let store = makeStore(box, center: center)
+        var prepared: [String] = []
+        store.onPrepared = { prepared.append($0) }
+        await store.check()
+
+        store.prepare("main")
+
+        try await waitFor { store.preparing["main"] == nil && prepared == ["main"] }
+        XCTAssertNil(store.prepareStatus("main"))
+        XCTAssertEqual(store.machinesNeedingAttention, [])
+    }
+
+    func testASlowCheckStillReportsAfterTheCardLeftTheCorner() async throws {
+        let box = SnapshotBox(snapshot(declared: ["main": true], applied: false))
+        let slow = SlowFlag()
+        let runner = FakePrepareRunner()
+        runner.onRun = { _ in
+            box.current = snapshot(stamp: "2")
+            slow.on = true
+        }
+        let center = MachineJobCenter(runner: runner, successSeconds: 0)
+        let store = MachineReadinessStore(
+            read: {
+                if slow.on { try? await Task.sleep(nanoseconds: 200_000_000) }
+                return box.read()
+            },
+            jobs: { center }, listensForReports: false)
+        var prepared: [String] = []
+        store.onPrepared = { prepared.append($0) }
         await store.check()
 
         store.prepare("main")
 
         try await waitFor { store.preparing["main"] == nil }
-        XCTAssertNil(store.prepareStatus("main"))
-        XCTAssertEqual(store.machinesNeedingAttention, [])
+        XCTAssertEqual(prepared, [], "the check is still reading when the card leaves")
+        try await waitFor { prepared == ["main"] }
+        XCTAssertEqual(store.state(for: "main"), .ready)
+    }
+
+    func testAMachineThatBecomesReadyDropsTheStillNotReadyFailure() async throws {
+        let box = SnapshotBox(snapshot(declared: ["main": true], applied: false))
+        let center = MachineJobCenter(runner: FakePrepareRunner(), successSeconds: 60)
+        let store = makeStore(box, center: center)
+        await store.check()
+        store.prepare("main")
+        try await waitFor { store.prepareFailure["main"] != nil }
+
+        box.current = snapshot(stamp: "2")
+        await store.check()
+
+        XCTAssertNil(store.prepareFailure["main"])
+        XCTAssertEqual(store.prepareStatus("main"), .succeeded)
     }
 
     func testPrepareSkipsTheAddWhenAlreadyDeclared() async throws {
@@ -290,7 +343,8 @@ final class MachineReadinessStoreTests: XCTestCase {
         XCTAssertNotNil(first)
         XCTAssertNil(second)
         XCTAssertEqual(center.jobs.count, 1)
-        try await waitFor { center.job(first!)?.phase != .running(step: 0) }
+        let id = try XCTUnwrap(first)
+        try await waitFor { center.job(id)?.phase != .running(step: 0) }
     }
 
     func testAFailedSyncLeavesTheCornerJobFailedAndTheCardShowsItsCauseThenARetrySucceeds() async throws {

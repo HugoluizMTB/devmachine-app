@@ -106,6 +106,9 @@ final class MachineReadinessStore: ObservableObject {
     private var read: @Sendable () async -> ReadinessSnapshot?
     private let jobs: @MainActor () -> MachineJobCenter?
     private var observed: [String: (failure: PackageCallFailure, lockStamp: String?)] = [:]
+    /// The Prepare each machine last started. It outlives the corner card,
+    /// so a check that ends after the card left still reports.
+    private var prepareRun: [String: UUID] = [:]
     private var jobsWatch: AnyCancellable?
     private weak var watchedCenter: MachineJobCenter?
     private var checking = false
@@ -222,6 +225,7 @@ final class MachineReadinessStore: ObservableObject {
         }
         started = id
         preparing[machine] = id
+        prepareRun[machine] = id
         followJobs(center.jobs)
         return id
     }
@@ -245,6 +249,7 @@ final class MachineReadinessStore: ObservableObject {
     func dismissPrepare(_ machine: String) {
         if let id = preparing[machine] { jobs()?.dismiss(id) }
         preparing[machine] = nil
+        prepareRun[machine] = nil
         prepareFailure[machine] = nil
         followJobs(jobs()?.jobs ?? [])
     }
@@ -260,12 +265,12 @@ final class MachineReadinessStore: ObservableObject {
     }
 
     private func prepareFinished(_ machine: String, job: UUID, outcome: MachineJobOutcome) {
-        guard outcome == .succeeded, preparing[machine] == job else { return }
+        guard outcome == .succeeded, prepareRun[machine] == job else { return }
         observed[machine] = nil
         Task { [weak self] in
             guard let self else { return }
             await self.check()
-            guard self.preparing[machine] == job else { return }
+            guard self.prepareRun[machine] == job else { return }
             let state = self.state(for: machine)
             guard state == .ready || state == .unknown else {
                 self.prepareFailure[machine] = DMErrorState(
@@ -321,6 +326,8 @@ final class MachineReadinessStore: ObservableObject {
                 observed: observed[machine]?.failure)
         }
         if states != next { states = next }
+        let stale = prepareFailure.keys.filter { next[$0] == .ready }
+        for machine in stale { prepareFailure[machine] = nil }
     }
 
     /// The CLI's folder is being watched. Before setup writes it there is
@@ -339,12 +346,11 @@ final class MachineReadinessStore: ObservableObject {
     #if DEBUG
     /// Demo walks only: a fixed state, with no real CLI behind it.
     func seedDemo(
-        snapshot: ReadinessSnapshot, observed: [String: PackageCallFailure] = [:],
-        afterPrepare: ReadinessSnapshot? = nil
+        snapshot: ReadinessSnapshot, observed: [String: PackageCallFailure] = [:]
     ) {
-        let next = afterPrepare ?? snapshot
-        read = { next }
+        read = { snapshot }
         preparing = [:]
+        prepareRun = [:]
         prepareFailure = [:]
         preparePhases = [:]
         self.snapshot = snapshot
