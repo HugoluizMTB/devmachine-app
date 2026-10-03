@@ -193,6 +193,10 @@ public enum MoshAddress {
         return found.first(where: { !$0.contains(":") }) ?? found.first
     }
 
+    public static func isLoopback(_ ip: String) -> Bool {
+        ip == "::1" || ip.hasPrefix("127.")
+    }
+
     public static func isIPAddress(_ value: String) -> Bool {
         var v4 = in_addr()
         var v6 = in6_addr()
@@ -228,6 +232,7 @@ public enum MoshFallbackReason: Equatable, Sendable {
     case serverFailed
     case unreachable
     case noAddress
+    case loopback
     case udpBlocked
     case clientExited
 
@@ -235,7 +240,7 @@ public enum MoshFallbackReason: Equatable, Sendable {
     /// connection that failed outright says nothing about mosh.
     public var isRemembered: Bool {
         switch self {
-        case .noServer, .serverFailed, .udpBlocked, .clientExited: return true
+        case .noServer, .serverFailed, .loopback, .udpBlocked, .clientExited: return true
         case .noClient, .unreachable, .noAddress: return false
         }
     }
@@ -264,6 +269,7 @@ public enum MoshFallbackReason: Equatable, Sendable {
         case .serverFailed: return "mosh-server on \(machine) did not start"
         case .unreachable: return "ssh could not reach \(machine) to start mosh"
         case .noAddress: return "no address for \(machine) to send mosh's packets to"
+        case .loopback: return "\(machine) is reached through a local port forward, which carries no UDP"
         case .udpBlocked: return "nothing came back from \(machine) over UDP"
         case .clientExited: return "mosh-client stopped before it heard from \(machine)"
         }
@@ -285,6 +291,8 @@ public enum MoshFallbackReason: Equatable, Sendable {
             return "The machine did not answer over ssh either."
         case .noAddress:
             return "Neither devmachine resolve nor ssh -G gave an address."
+        case .loopback:
+            return "A local VM answers ssh on a forwarded TCP port; mosh's UDP never reaches it, so ssh is used."
         }
     }
 }
@@ -405,6 +413,12 @@ public struct MoshConnector: Sendable {
         case let .ready(moshSession):
             guard let ip = address(alias: alias, machine: machine) else {
                 return .ssh(reason: .noAddress, detail: "no address for \(alias)",
+                            strayServerPID: moshSession.serverPID)
+            }
+            // A local VM is reached through a TCP forward to loopback, and
+            // mosh-server listens on the VM's own interface: no UDP gets there.
+            if MoshAddress.isLoopback(ip) {
+                return .ssh(reason: .loopback, detail: "\(alias) resolves to \(ip)",
                             strayServerPID: moshSession.serverPID)
             }
             return .mosh(ip: ip, session: moshSession)
