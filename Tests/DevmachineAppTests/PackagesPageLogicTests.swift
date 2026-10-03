@@ -25,6 +25,14 @@ final class PackagesPageLogicTests: XCTestCase {
         XCTAssertNil(PackageRow.pill(for: .available))
     }
 
+    func testOnlyAnInstalledRowTickedForRemovalSaysTheSoftwareStays() {
+        XCTAssertEqual(PackageRow.removalNote(status: .applied, isSelected: true), PackageRow.removalHint)
+        XCTAssertNil(PackageRow.removalNote(status: .applied, isSelected: false))
+        XCTAssertNil(PackageRow.removalNote(status: .available, isSelected: true))
+        XCTAssertNil(PackageRow.removalNote(status: .pendingInstall, isSelected: true))
+        XCTAssertNil(PackageRow.removalNote(status: nil, isSelected: true))
+    }
+
     func testTheShortLabelDropsTheKindPrefix() {
         XCTAssertEqual(PackageRow.shortLabel("machine main"), "main")
         XCTAssertEqual(PackageRow.shortLabel("workspace acme"), "acme")

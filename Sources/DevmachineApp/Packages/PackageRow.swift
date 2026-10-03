@@ -30,6 +30,12 @@ struct PackageRow: View {
         return declared != isSelected
     }
 
+    static let removalHint = "Stops being managed; the software stays on the machine."
+
+    static func removalNote(status: PackageStatus?, isSelected: Bool) -> String? {
+        isSelected && status == .applied ? removalHint : nil
+    }
+
     static func isDisabled(target: PackageTarget?, block: PackageBlock?) -> Bool {
         target == nil || block != nil
     }
@@ -64,6 +70,12 @@ struct PackageRow: View {
                     }
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
+                }
+                if let note = Self.removalNote(status: status, isSelected: isSelected) {
+                    Text(verbatim: note)
+                        .font(.dm(11))
+                        .foregroundStyle(Color.orange)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if !entry.needs.isEmpty {
                     Text(verbatim: "Brings \(entry.needs.joined(separator: ", "))")
