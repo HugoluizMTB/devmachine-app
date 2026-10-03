@@ -35,6 +35,13 @@ public struct PackagesLock: Equatable, Sendable {
         entry(package, onMachine: machine) != nil
     }
 
+    public func names(for target: PackageTarget) -> Set<String> {
+        switch target {
+        case let .machine(name, _): return Set((machines[name] ?? []).map(\.name))
+        case let .workspace(name, _): return Set((workspaces[name] ?? []).map(\.name))
+        }
+    }
+
     /// Reads the YAML the CLI writes (`yaml.v3`, any indent). Only the
     /// `machines` and `workspaces` maps are read; nil means the text is not
     /// a lock at all.

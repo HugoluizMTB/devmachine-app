@@ -45,6 +45,26 @@ final class PackagesLockTests: XCTestCase {
         XCTAssertEqual(parsed.machines, ["main": []])
     }
 
+    func testReadsWorkspaces() {
+        let text = """
+        release: v17
+        applied_at: "2026-10-02T10:00:00Z"
+        machines:
+          main:
+            - name: essentials
+              version: "3"
+        workspaces:
+          acme:
+            - name: workspace
+            - name: node
+              version: "2"
+        """
+        let lock = PackagesLock.parse(text)
+        XCTAssertEqual(lock?.machines["main"]?.map(\.name), ["essentials"])
+        XCTAssertEqual(lock?.workspaces["acme"]?.map(\.name), ["workspace", "node"])
+        XCTAssertEqual(lock?.names(for: .workspace("acme", machine: "main")), ["workspace", "node"])
+    }
+
     func testTextThatIsNotALockIsNil() {
         XCTAssertNil(PackagesLock.parse(""))
         XCTAssertNil(PackagesLock.parse("just words"))
