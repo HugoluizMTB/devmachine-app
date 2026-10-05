@@ -253,17 +253,20 @@ struct ProcessHomebrewUpgrader: HomebrewUpgrading {
     }
 }
 
-/// Runs `devmachine update --cli-only` in the background, never in a
-/// terminal session, and hands every line of its output back as it comes.
+/// Runs one `devmachine update` form in the background, never in a terminal
+/// session, and hands every line of its log back as it comes. A form that
+/// prints JSON keeps stdout apart and returns it.
 struct ProcessCLIUpdater: CLIUpdating {
     var executable: @Sendable () throws -> String = { try DevmachineCLI.resolve().executable }
     var environment: [String: String] = ProcessInfo.processInfo.environment
 
-    func updateCLI(output: @escaping @Sendable (String) -> Void) async throws {
-        let status = try await StreamingProcess.run(
-            executable: try executable(), arguments: CLISelfUpdate.arguments,
-            environment: CLISelfUpdate.environment(base: environment), output: output)
-        guard status == 0 else { throw CLIUpdateError.exited(status) }
+    func run(_ command: CLIUpdateCommand, output: @escaping @Sendable (String) -> Void) async throws -> Data {
+        let result = try await StreamingProcess.run(
+            executable: try executable(), arguments: command.arguments,
+            environment: CLISelfUpdate.environment(base: environment), separatesStdout: command.printsJSON,
+            output: output)
+        guard result.status == 0 else { throw CLIUpdateError.exited(result.status) }
+        return result.stdout
     }
 }
 
@@ -276,6 +279,18 @@ enum StreamingProcess {
         executable: String, arguments: [String], environment: [String: String], input: Data? = nil,
         output: @escaping @Sendable (String) -> Void
     ) async throws -> Int32 {
+        try await run(
+            executable: executable, arguments: arguments, environment: environment, input: input,
+            separatesStdout: false, output: output
+        ).status
+    }
+
+    /// With `separatesStdout`, only stderr reaches `output` and stdout comes
+    /// back whole, for a command that prints JSON there.
+    static func run(
+        executable: String, arguments: [String], environment: [String: String], input: Data? = nil,
+        separatesStdout: Bool, output: @escaping @Sendable (String) -> Void
+    ) async throws -> (status: Int32, stdout: Data) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
@@ -286,8 +301,20 @@ enum StreamingProcess {
             process.standardInput = FileHandle.nullDevice
         }
         let pipe = Pipe()
-        process.standardOutput = pipe
+        let stdoutPipe = separatesStdout ? Pipe() : pipe
+        let stdout = DataCollector()
+        process.standardOutput = stdoutPipe
         process.standardError = pipe
+        if separatesStdout {
+            stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    handle.readabilityHandler = nil
+                } else {
+                    stdout.append(data)
+                }
+            }
+        }
         let lines = LineSplitter(emit: output)
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
@@ -316,8 +343,12 @@ enum StreamingProcess {
         pipe.fileHandleForReading.readabilityHandler = nil
         lines.append(pipe.fileHandleForReading.readDataToEndOfFile())
         lines.flush()
+        if separatesStdout {
+            stdoutPipe.fileHandleForReading.readabilityHandler = nil
+            stdout.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
+        }
         try Task.checkCancellation()
-        return status
+        return (status, stdout.data)
     }
 
     /// Written before the process starts, while this side still holds the
@@ -335,6 +366,14 @@ enum StreamingProcess {
 
     /// Below the 16 KB a macOS pipe buffers, so the write never blocks.
     static let maxInput = 8 * 1024
+}
+
+private final class DataCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = Data()
+
+    func append(_ data: Data) { lock.withLock { stored.append(data) } }
+    var data: Data { lock.withLock { stored } }
 }
 
 private final class LineSplitter: @unchecked Sendable {
@@ -428,6 +467,7 @@ extension UpdateController {
                 currentApp: appURL, bundleID: bundle.bundleIdentifier ?? "app.devmachine.mac", runningTeamID: team),
             homebrew: ProcessHomebrewUpgrader(),
             cliUpdater: ProcessCLIUpdater(),
+            packagesOutdated: { try DevmachineCLI.resolve().packagesOutdated() },
             currentAppURL: appURL,
             relaunch: { try AppRelauncher().relaunch($0) }))
     }

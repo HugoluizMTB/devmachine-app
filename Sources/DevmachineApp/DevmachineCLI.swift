@@ -627,6 +627,16 @@ struct DevmachineCLI: Sendable {
         return result.stdout
     }
 
+    /// `packages outdated` (CLI 0.7.31+): the pinned packages release against
+    /// the newest one. It reads and caches a release feed and never changes
+    /// anything.
+    func packagesOutdated() throws -> Data {
+        let result = try runner.runCapturing(
+            executable: executable, args: ["packages", "outdated", "--format", "json"], environment: environment())
+        try requireSuccess(result)
+        return Data(result.stdout.utf8)
+    }
+
     /// `packages add|rm`: changes the configuration only; a sync applies it.
     func runPackageEdit(_ arguments: [String]) throws {
         let result = try runner.runCapturing(executable: executable, args: arguments, environment: environment())

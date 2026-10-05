@@ -48,4 +48,32 @@ final class UpdateDialogContentTests: XCTestCase {
         XCTAssertEqual(CLIUpdateContent.terminalLead(manual: true), "Run this once in a terminal:")
         XCTAssertTrue(CLIUpdateContent.needsManualUpdate(installed: SemanticVersion("0.7.22")!).contains("0.7.22"))
     }
+
+    func testTheCLICardSaysItAlsoPinsPackagesFromNoMachinesOn() {
+        XCTAssertEqual(CLIUpdateContent.toastNote(installed: SemanticVersion("0.7.30")!), CLIUpdateContent.toastNote)
+        XCTAssertTrue(CLIUpdateContent.toastNote(installed: SemanticVersion("0.7.31")!).contains("only when you sync"))
+        XCTAssertEqual(CLIUpdateContent.scopeNote(installed: SemanticVersion("0.7.23")!), CLIUpdateContent.scopeNote)
+        XCTAssertTrue(CLIUpdateContent.scopeNote(installed: SemanticVersion("0.7.31")!).contains("packages release"))
+    }
+
+    func testTheCLIResultListsThePinAndSkills() {
+        let report = CLIUpdateReport.parse(Data(
+            #"{"cli":{"from":"0.7.31","to":"0.8.0","updated":true},"packages":{"from":"v32","to":"v33","pinned":true},"skills":{"updated":true}}"#.utf8))
+        XCTAssertEqual(
+            CLIUpdateContent.updated(SemanticVersion("0.8.0")!, report: report),
+            "CLI updated to 0.8.0 · packages pinned v33 · skills updated")
+        XCTAssertEqual(CLIUpdateContent.updated(SemanticVersion("0.8.0")!, report: nil), "CLI updated to 0.8.0")
+        XCTAssertEqual(CLIUpdateContent.updatedNote(report: report), "Your machines change only when you sync.")
+    }
+
+    func testThePackagesCardWording() {
+        XCTAssertEqual(PackagesUpdateContent.available("v33"), "Packages v33 is available")
+        XCTAssertEqual(
+            PackagesUpdateContent.note,
+            "New packages and skills for your machines. Your machines change only when you sync.")
+        XCTAssertEqual(PackagesUpdateContent.syncSuggestion, "Sync your machines from Settings → Machines")
+        let report = CLIUpdateReport.parse(Data(#"{"packages":{"from":"v32","to":"v33","pinned":true},"skills":{"updated":true}}"#.utf8))
+        XCTAssertEqual(PackagesUpdateContent.done(report), "Packages pinned v33 · skills updated")
+        XCTAssertEqual(PackagesUpdateContent.done(nil), "Packages and skills updated")
+    }
 }
