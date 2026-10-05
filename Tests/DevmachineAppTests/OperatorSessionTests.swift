@@ -52,10 +52,10 @@ final class OperatorSessionTests: XCTestCase {
         HarnessSettingsFacade(registry: .builtIn, locator: DemoExecutableLocator(installed: installed))
     }
 
-    private func settings(operatorProgram: SessionLaunchChoice? = nil) -> AppSettings {
+    private func settings(operatorProgram: SessionLaunchChoice? = nil, enabled: Bool = true) -> AppSettings {
         AppSettings(
             opsRepoPath: operatorPath, hostAlias: "devmachine", publicIP: "203.0.113.10",
-            baseDomain: "example.com", operatorProgram: operatorProgram)
+            baseDomain: "example.com", operatorProgram: operatorProgram, operatorSessionEnabled: enabled)
     }
 
     private func settingsStore(_ value: AppSettings) -> SettingsStore {
@@ -194,9 +194,65 @@ final class OperatorSessionTests: XCTestCase {
         XCTAssertTrue(sender.sent.isEmpty)
     }
 
-    func testTheOperatorWalkCapturesTheChooserAndItsSetting() {
+    func testTheOperatorWalkCapturesTheChooserAndBothSettings() {
         XCTAssertEqual(
             DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "operator"]).map(\.fileName),
-            ["200-operator-chooser.png", "203-operator-harnesses.png"])
+            ["200-operator-chooser.png", "201-operator-general.png", "202-operator-general-off.png",
+             "203-operator-harnesses.png"])
+    }
+
+    // MARK: Enable switch
+
+    func testTurningTheOperatorOffHidesItFromTheSidebarAndThePalette() {
+        let model = model(installed: [])
+        model.settings = settings(enabled: false)
+        XCTAssertFalse(model.localSessions.contains { $0.handle == Workspace.operatorSession })
+        XCTAssertFalse(model.paletteItems().contains { $0.id == "local/\(Workspace.operatorSession)" })
+
+        var context = PaletteContext()
+        context.localSessions = model.localSessions
+        XCTAssertNil(CommandRegistry.commands(in: context).first { $0.id == "go.operator" })
+    }
+
+    func testAHiddenOperatorStaysHiddenWhileItsShellRuns() {
+        let model = model(installed: [])
+        model.settings = settings(enabled: false)
+        model.acceptLocalScanForTesting(
+            sessions: [ZmxSession(name: Workspace.operatorSession, pid: 100, clients: 1, directory: operatorPath)],
+            harnesses: [:])
+        XCTAssertFalse(model.localSessions.contains { $0.handle == Workspace.operatorSession })
+    }
+
+    func testTurningItOnAgainBringsItBack() {
+        let model = model(installed: [])
+        model.settings = settings(enabled: false)
+        model.settings?.operatorSessionEnabled = true
+        XCTAssertEqual(model.localSessions.first?.handle, Workspace.operatorSession)
+
+        var context = PaletteContext()
+        context.localSessions = model.localSessions
+        XCTAssertNotNil(CommandRegistry.commands(in: context).first { $0.id == "go.operator" })
+    }
+
+    func testSavingItOffLeavesAnOpenOperatorForHome() {
+        let model = model(installed: [])
+        model.settings = settings()
+        model.selection = operatorItem
+        model.settings?.operatorSessionEnabled = false
+
+        model.applyOperatorVisibility()
+
+        XCTAssertNil(model.selection)
+    }
+
+    func testAHiddenOperatorCannotBeOpened() async throws {
+        let model = model(installed: ["claude"])
+        model.settings = settings(enabled: false)
+
+        model.clickLocalSession(operatorItem)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertNil(model.selection)
+        XCTAssertNil(model.activePage)
     }
 }

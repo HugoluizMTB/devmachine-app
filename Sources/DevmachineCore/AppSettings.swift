@@ -141,6 +141,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// is what makes it the first. Not limited to the harnesses turned on: the
     /// chooser offers every harness whose CLI is on this Mac.
     public var operatorProgram: SessionLaunchChoice?
+    /// The Operator session in the sidebar and ⌘K. Off hides it; a shell it
+    /// already runs keeps running.
+    public var operatorSessionEnabled: Bool
 
     public var newSessionProgram: NewSessionProgram {
         get {
@@ -180,6 +183,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         workspaceSessionPrograms: [String: SessionLaunchChoice] = [:],
         linkOpening: LinkOpening = .defaultBrowser,
         operatorProgram: SessionLaunchChoice? = nil,
+        operatorSessionEnabled: Bool = true,
         newSessionProgram: NewSessionProgram? = nil
     ) {
         self.opsRepoPath = opsRepoPath
@@ -205,6 +209,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.workspaceSessionPrograms = workspaceSessionPrograms
         self.linkOpening = linkOpening
         self.operatorProgram = operatorProgram
+        self.operatorSessionEnabled = operatorSessionEnabled
 
         if let newSessionProgram {
             let choice: SessionLaunchChoice = newSessionProgram == .claude ? .harness(.claude) : .terminal
@@ -222,7 +227,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case copyOnSelect, showsHarnessIcons, harnessIconStyle
         case hiddenWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram, linkOpening
-        case operatorProgram
+        case operatorProgram, operatorSessionEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -255,6 +260,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         harnessIconStyle = (try? values.decodeIfPresent(HarnessIconStyle.self, forKey: .harnessIconStyle)) ?? .color
         linkOpening = (try? values.decodeIfPresent(LinkOpening.self, forKey: .linkOpening)) ?? .defaultBrowser
         operatorProgram = try? values.decodeIfPresent(SessionLaunchChoice.self, forKey: .operatorProgram)
+        operatorSessionEnabled = (try? values.decodeIfPresent(Bool.self, forKey: .operatorSessionEnabled)) ?? true
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
         // Settings written before this existed decode to "nothing detected yet".
@@ -318,6 +324,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(workspaceSessionPrograms, forKey: .workspaceSessionPrograms)
         try values.encode(linkOpening, forKey: .linkOpening)
         try values.encodeIfPresent(operatorProgram, forKey: .operatorProgram)
+        try values.encode(operatorSessionEnabled, forKey: .operatorSessionEnabled)
     }
 
     private func normalized(_ choice: SessionLaunchChoice) -> SessionLaunchChoice {

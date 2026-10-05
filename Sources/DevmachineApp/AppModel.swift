@@ -97,15 +97,22 @@ final class AppModel: ObservableObject {
         // Demo sessions never go through `addedLocalSessions`: that property
         // persists to `UserDefaults` on every change, and a demo session has
         // no business surviving into the next real launch.
-        if DemoMode.isActive { return DemoData.localSessions }
+        if DemoMode.isActive { return withoutHiddenOperator(DemoData.localSessions) }
         let remembered = [LocalSession(name: Workspace.operatorSession, path: operatorPath)]
             + addedLocalSessions
         let all = LocalSessionScan.merge(
             stored: remembered, live: liveLocalSessions, fallbackPath: NSHomeDirectory())
-        return all.map { session in
+        return withoutHiddenOperator(all).map { session in
             guard let shown = localSessionNames[session.handle] else { return session }
             return LocalSession(handle: session.handle, name: shown, path: session.path)
         }
+    }
+
+    /// Filtered after the merge: a live Operator shell would otherwise come
+    /// back as a session started outside the app.
+    private func withoutHiddenOperator(_ sessions: [LocalSession]) -> [LocalSession] {
+        guard settings?.operatorSessionEnabled == false else { return sessions }
+        return sessions.filter { $0.handle != Workspace.operatorSession }
     }
 
     private var operatorLaunchInFlight = false
@@ -178,6 +185,14 @@ final class AppModel: ObservableObject {
     private func startOperator(_ item: SidebarItem, startup: SessionStartup) {
         guard !DemoMode.isActive, case let .localSession(name, path) = item else { return }
         startProgram(in: .local(session: name, path: path), startup: startup)
+    }
+
+    /// Turning the Operator off hides it, never ends it: the multiplexer keeps
+    /// its shell, and turning it on again shows the same session.
+    func applyOperatorVisibility() {
+        guard settings?.operatorSessionEnabled == false else { return }
+        if case let .localSession(name, _) = selection, name == Workspace.operatorSession { selection = nil }
+        if case .operatorChooser = activePage { activePage = nil }
     }
 
     /// The context users behind the workspaces still on: what Stats and the

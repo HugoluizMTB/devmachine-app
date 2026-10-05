@@ -183,10 +183,13 @@ enum DemoSnapshots {
     ]
 
     /// The Operator walk (`DEVMACHINE_DEMO_WALK=operator`): the first open's
-    /// chooser over the demo Mac's harness CLIs and the Operator's program in
-    /// Settings → Harnesses.
+    /// chooser over the demo Mac's harness CLIs, Settings → General with the
+    /// Operator switch on and off (the sidebar without it), and the
+    /// Operator's program in Settings → Harnesses.
     static let operatorScreens: [Screen] = [
         Screen(id: "operator-chooser", fileName: "200-operator-chooser.png", settleNanoseconds: 700_000_000),
+        Screen(id: "operator-general", fileName: "201-operator-general.png", settleNanoseconds: 500_000_000),
+        Screen(id: "operator-general-off", fileName: "202-operator-general-off.png", settleNanoseconds: 500_000_000),
         Screen(id: "operator-harnesses", fileName: "203-operator-harnesses.png", settleNanoseconds: 500_000_000),
     ]
 
@@ -588,7 +591,7 @@ enum DemoSnapshots {
         case "operator":
             model.clickLocalSession(operatorSelection)
             model.contextTab = .context
-        case "operator-chooser", "operator-harnesses":
+        case "operator-chooser", "operator-general", "operator-general-off", "operator-harnesses":
             prepareOperator(screen.id, model: model, settingsStore: environment.settingsStore)
         case "subdomains-sites":
             subdomainsInitialTab = .sites
@@ -673,13 +676,17 @@ enum DemoSnapshots {
     private static func prepareOperator(_ id: String, model: AppModel, settingsStore: SettingsStore) {
         guard var settings = settingsStore.settings else { return }
         settings.operatorProgram = id == "operator-harnesses" ? .harness(.codex) : nil
+        settings.operatorSessionEnabled = id != "operator-general-off"
         settingsStore.settings = settings
         model.settings = settings
         switch id {
         case "operator-chooser":
             model.clickLocalSession(operatorSelection)
-        default:
+        case "operator-harnesses":
             setupInitialSection = .harnesses
+            model.showPage(.setup)
+        default:
+            setupInitialSection = .general
             model.showPage(.setup)
         }
     }

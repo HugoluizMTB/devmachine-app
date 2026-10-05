@@ -29,20 +29,24 @@ final class OperatorLaunchTests: XCTestCase {
 final class AppSettingsOperatorTests: XCTestCase {
     private let legacy = #"{"opsRepoPath":"/Users/alice/.config/devmachine","hostAlias":"","publicIP":"203.0.113.10","baseDomain":"example.com"}"#
 
-    func testSettingsWrittenBeforeTheOperatorChoiceDecodeAsNotChosen() throws {
+    func testSettingsWrittenBeforeTheOperatorChoiceDecodeAsNotChosenAndEnabled() throws {
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(legacy.utf8))
         XCTAssertNil(settings.operatorProgram)
+        XCTAssertTrue(settings.operatorSessionEnabled)
     }
 
-    func testANewSettingsValueHasTheOperatorNotChosen() {
+    func testANewSettingsValueHasTheOperatorOnAndNotChosen() {
         XCTAssertNil(AppSettings.empty.operatorProgram)
+        XCTAssertTrue(AppSettings.empty.operatorSessionEnabled)
     }
 
-    func testTheOperatorChoiceSurvivesARoundTrip() throws {
+    func testTheOperatorChoiceAndSwitchSurviveARoundTrip() throws {
         var settings = AppSettings.empty
         settings.operatorProgram = .harness(.codex)
+        settings.operatorSessionEnabled = false
         let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
         XCTAssertEqual(decoded.operatorProgram, .harness(.codex))
+        XCTAssertFalse(decoded.operatorSessionEnabled)
     }
 
     func testTerminalOnlyIsAChoiceToo() throws {

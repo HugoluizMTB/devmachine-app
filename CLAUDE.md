@@ -651,8 +651,15 @@ Rules:
 - **No harness installed: the terminal opens and nothing is saved**, so the
   chooser shows once one is installed. Settings written before this decode
   as not chosen, so an existing Mac sees the chooser once too.
+- **Settings → General → Enable Operator session** (`operatorSessionEnabled`,
+  on by default and for older settings). Off filters it out of
+  `AppModel.localSessions` after the multiplexer merge, which empties the
+  sidebar row, ⌘K's `go.operator` and the per-session palette item; Save
+  leaves it for Home if it was open (`applyOperatorVisibility`). Its shell is
+  never killed: turning it on again shows the same session.
 - Demo walk `DEVMACHINE_DEMO_WALK=operator`: `200` the chooser over the demo
-  Mac's CLIs, `203` the Operator's program in Settings → Harnesses.
+  Mac's CLIs, `201`/`202` General with the switch on and off (the sidebar
+  without the row), `203` the Operator's program in Settings → Harnesses.
   The default walk's demo settings have Claude chosen, so `18-operator` still
   opens the terminal.
 

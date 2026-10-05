@@ -119,6 +119,7 @@ struct SetupPage: View {
     @State private var remoteSessionProgram = SessionLaunchChoice.terminal
     @State private var workspaceSessionPrograms: [String: SessionLaunchChoice] = [:]
     @State private var operatorProgram: SessionLaunchChoice?
+    @State private var operatorSessionEnabled = true
     @State private var harnessErrors: [HarnessID: String] = [:]
     /// Bumped once the CLIs on this Mac were looked up again, to redraw
     /// what depends on them.
@@ -150,7 +151,8 @@ struct SetupPage: View {
             remoteSessionProgram: remoteSessionProgram,
             workspaceSessionPrograms: workspaceSessionPrograms,
             linkOpening: linkOpening,
-            operatorProgram: operatorProgram
+            operatorProgram: operatorProgram,
+            operatorSessionEnabled: operatorSessionEnabled
         )
     }
 
@@ -407,6 +409,7 @@ struct SetupPage: View {
     private var generalBlock: some View {
         VStack(alignment: .leading, spacing: m.pt(28)) {
             connectionBlock
+            subsection("Operator session") { operatorSessionToggle }
             subsection("Previews") { previewsBlock }
             subsection("Logging") { debugLoggingBlock }
         }
@@ -637,16 +640,18 @@ struct SetupPage: View {
                     place: .thisMac,
                     selection: $localSessionProgram
                 )
-                launchChoicePicker(
-                    title: "Operator session",
-                    detail: operatorProgram == nil
-                        ? "Not chosen yet: its first open asks" : "Your configuration folder",
-                    savedFor: Workspace.operatorSession,
-                    options: operatorLaunchOptions,
-                    selection: Binding(
-                        get: { operatorProgram ?? .terminal },
-                        set: { operatorProgram = $0 })
-                )
+                if operatorSessionEnabled {
+                    launchChoicePicker(
+                        title: "Operator session",
+                        detail: operatorProgram == nil
+                            ? "Not chosen yet: its first open asks" : "Your configuration folder",
+                        savedFor: Workspace.operatorSession,
+                        options: operatorLaunchOptions,
+                        selection: Binding(
+                            get: { operatorProgram ?? .terminal },
+                            set: { operatorProgram = $0 })
+                    )
+                }
                 launchChoicePicker(
                     title: "Remote fallback",
                     detail: "New workspaces inherit this choice",
@@ -899,6 +904,23 @@ struct SetupPage: View {
                 .fixedSize()
             }
             .disabled(!showsHarnessIcons)
+        }
+    }
+
+    static let operatorSessionNote = "Your workshop for devmachine itself: a session in your configuration "
+        + "folder where you, or your coding agent, add machines, write packages and change the setup. "
+        + "Turning it off hides it from the sidebar and \u{2318}K; a session already running keeps running."
+
+    private var operatorSessionToggle: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            Toggle(isOn: $operatorSessionEnabled) {
+                Text(verbatim: "Enable Operator session")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            note(Self.operatorSessionNote)
         }
     }
 
@@ -1239,6 +1261,7 @@ struct SetupPage: View {
             linkOpening = current.linkOpening
             hiddenWorkspaces = current.hiddenWorkspaces
             operatorProgram = current.operatorProgram
+            operatorSessionEnabled = current.operatorSessionEnabled
             applyHarnessSettings(current)
         } else {
             let configPath = NSHomeDirectory() + "/.ssh/config"
@@ -1309,6 +1332,7 @@ struct SetupPage: View {
         // Before reloading: the panes of a workspace you just hid have to go
         // now, and the reload must not bring their poll back.
         model.applyHiddenWorkspaces()
+        model.applyOperatorVisibility()
         model.loadWorkspaces()
     }
 }
