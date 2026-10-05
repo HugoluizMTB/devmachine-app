@@ -80,10 +80,13 @@ private struct InteractiveNetworkMap: View {
 }
 
 /// Where a decorative map goes in its container: centred in all of it, in
-/// one part of it (Home's free area), or nowhere, leaving the ground alone.
+/// one part of it (Home's free area), filling a rect with no margins of its
+/// own (the large wallpaper, `NetworkMapBackdrop.Fit.large`), or nowhere,
+/// leaving the ground alone.
 enum NetworkMapPlacement: Equatable {
     case whole
     case area(CGRect)
+    case filling(CGRect)
     case none
 }
 
@@ -126,12 +129,15 @@ private struct DecorativeLayer: View, Equatable {
 
     var body: some View {
         Canvas { context, size in
-            let area: CGRect?
+            let backdrop: NetworkMapBackdrop
             switch placement {
-            case .whole, .none: area = nil
-            case let .area(rect): area = rect
+            case .whole, .none:
+                backdrop = NetworkMapBackdrop(map: map, size: size, minimumMargin: minimumMargin)
+            case let .area(rect):
+                backdrop = NetworkMapBackdrop(map: map, size: size, area: rect, minimumMargin: minimumMargin)
+            case let .filling(rect):
+                backdrop = NetworkMapBackdrop(map: map, size: size, area: rect, fit: .large)
             }
-            let backdrop = NetworkMapBackdrop(map: map, size: size, area: area, minimumMargin: minimumMargin)
             if layer == .ink, !backdrop.showsMap { return }
             context.translateBy(x: backdrop.origin.x, y: backdrop.origin.y)
             context.scaleBy(x: backdrop.zoom, y: backdrop.zoom)

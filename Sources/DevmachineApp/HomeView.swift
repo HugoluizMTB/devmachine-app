@@ -131,9 +131,23 @@ struct HomeView: View {
 
     private static let space = "home"
 
-    /// Home's free area for the network map wallpaper, from the plan and
+    /// The large map is centred in all of Home and clears the stats pill;
+    /// the compact one keeps to Home's free area.
+    private func mapPlacement(_ size: NetworkMapSize) -> NetworkMapPlacement {
+        switch size {
+        case .large:
+            guard frames.size.width > 0 else { return .none }
+            return .filling(HomeMapArea.large(
+                size: frames.size, padding: m.pt(HomeLayout.padding), gap: m.pt(HomeLayout.gap),
+                pillMinY: frames.pill.map { Double($0.minY) }))
+        case .compact:
+            return compactMapPlacement
+        }
+    }
+
+    /// Home's free area for the compact network map, from the plan and
     /// where the clock, the stacked content and the pill were laid out.
-    private var mapPlacement: NetworkMapPlacement {
+    private var compactMapPlacement: NetworkMapPlacement {
         guard let pill = frames.pill, frames.size.width > 0 else { return .none }
         let plan = HomeLayout.plan(width: frames.size.width, harnessCount: usage.states.count, metrics: m)
         let padding = m.pt(HomeLayout.padding), gap = m.pt(HomeLayout.gap)

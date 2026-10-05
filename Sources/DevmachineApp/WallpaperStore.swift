@@ -71,7 +71,7 @@ final class WallpaperStore: ObservableObject {
     }
 
     private func fileName(_ photo: WallpaperPhoto, thumbnail: Bool) -> String {
-        (thumbnail ? photo.id + "-thumb" : photo.id) + ".jpg"
+        (thumbnail ? photo.id + "-thumb\(WallpaperLibrary.thumbnailWidth)" : photo.id) + ".jpg"
     }
 
     private func apply(_ value: WallpaperChoice) {

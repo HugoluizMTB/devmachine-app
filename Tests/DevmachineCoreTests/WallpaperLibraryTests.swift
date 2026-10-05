@@ -96,7 +96,7 @@ final class WallpaperLibraryTests: XCTestCase {
         let photo = try XCTUnwrap(library.photo(id: "bbb222"))
         XCTAssertEqual(
             library.thumbnailURL(photo)?.absoluteString,
-            "https://images.unsplash.com/photo-2?w=320&q=60&fm=jpg&fit=max"
+            "https://images.unsplash.com/photo-2?w=640&q=60&fm=jpg&fit=max"
         )
     }
 
@@ -144,7 +144,9 @@ final class WallpaperChoiceTests: XCTestCase {
     }
 
     func testEveryCaseSurvivesARoundTrip() throws {
-        for choice: WallpaperChoice in [.bundled, .unsplash(id: "aaa111"), .gradient(name: "midnight"), .networkMap] {
+        for choice: WallpaperChoice in [
+            .bundled, .unsplash(id: "aaa111"), .gradient(name: "midnight"), .networkMap(.compact), .networkMap(.large),
+        ] {
             XCTAssertEqual(try roundTrip(choice), choice)
         }
     }
@@ -167,13 +169,25 @@ final class WallpaperChoiceTests: XCTestCase {
         )
     }
 
-    func testTheNetworkMapIsAKindWithNoOtherField() throws {
-        let data = try JSONEncoder().encode(WallpaperChoice.networkMap)
-        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: String])
-        XCTAssertEqual(json, ["kind": "networkMap"])
+    func testTheNetworkMapSavesItsSize() throws {
+        for (size, raw) in [(NetworkMapSize.compact, "compact"), (.large, "large")] {
+            let data = try JSONEncoder().encode(WallpaperChoice.networkMap(size))
+            let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: String])
+            XCTAssertEqual(json, ["kind": "networkMap", "size": raw])
+        }
+    }
+
+    func testAMapSavedBeforeItHadASizeIsTheCompactOne() throws {
         XCTAssertEqual(
             try JSONDecoder().decode(WallpaperChoice.self, from: Data(#"{"kind":"networkMap"}"#.utf8)),
-            .networkMap
+            .networkMap(.compact)
+        )
+    }
+
+    func testAMapSizeFromANewerBuildFallsBackToCompact() throws {
+        XCTAssertEqual(
+            try JSONDecoder().decode(WallpaperChoice.self, from: Data(#"{"kind":"networkMap","size":"huge"}"#.utf8)),
+            .networkMap(.compact)
         )
     }
 
@@ -193,5 +207,57 @@ final class WallpaperChoiceTests: XCTestCase {
     func testUnknownKindFallsBackToBundled() throws {
         let data = Data(#"{"kind":"video","url":"x"}"#.utf8)
         XCTAssertEqual(try JSONDecoder().decode(WallpaperChoice.self, from: data), .bundled)
+    }
+}
+
+final class WallpaperKindTests: XCTestCase {
+    func testEveryChoiceHasItsKind() {
+        XCTAssertEqual(WallpaperKind(.bundled), .photo)
+        XCTAssertEqual(WallpaperKind(.unsplash(id: "aaa111")), .photo)
+        XCTAssertEqual(WallpaperKind(.gradient(name: "ember")), .gradient)
+        XCTAssertEqual(WallpaperKind(.networkMap(.large)), .networkMapLarge)
+        XCTAssertEqual(WallpaperKind(.networkMap(.compact)), .networkMapCompact)
+    }
+
+    func testThePickerListsPhotoGradientThenBothMaps() {
+        XCTAssertEqual(WallpaperKind.allCases, [.photo, .gradient, .networkMapLarge, .networkMapCompact])
+    }
+
+    func testPickingTheKindAlreadyChosenKeepsTheChoice() {
+        let current = WallpaperChoice.unsplash(id: "aaa111")
+        XCTAssertEqual(WallpaperKind.photo.choice(current: current, lastPhoto: .bundled, lastGradient: nil), current)
+    }
+
+    func testPhotoAndGradientComeBackToTheLastOnePicked() {
+        let map = WallpaperChoice.networkMap(.large)
+        XCTAssertEqual(
+            WallpaperKind.photo.choice(current: map, lastPhoto: .unsplash(id: "bbb222"), lastGradient: nil),
+            .unsplash(id: "bbb222"))
+        XCTAssertEqual(
+            WallpaperKind.gradient.choice(current: map, lastPhoto: nil, lastGradient: .gradient(name: "peaks")),
+            .gradient(name: "peaks"))
+    }
+
+    func testWithNothingPickedBeforePhotoIsTheBundledOneAndGradientTheFirst() {
+        let map = WallpaperChoice.networkMap(.compact)
+        XCTAssertEqual(WallpaperKind.photo.choice(current: map, lastPhoto: nil, lastGradient: nil), .bundled)
+        XCTAssertEqual(
+            WallpaperKind.gradient.choice(current: map, lastPhoto: nil, lastGradient: nil),
+            .gradient(name: WallpaperKind.firstGradient))
+    }
+
+    func testARememberedChoiceOfTheWrongKindIsIgnored() {
+        XCTAssertEqual(
+            WallpaperKind.photo.choice(current: .gradient(name: "ember"), lastPhoto: .networkMap(.large), lastGradient: nil),
+            .bundled)
+    }
+
+    func testEachMapKindPicksItsSize() {
+        let photo = WallpaperChoice.bundled
+        XCTAssertEqual(
+            WallpaperKind.networkMapLarge.choice(current: photo, lastPhoto: nil, lastGradient: nil), .networkMap(.large))
+        XCTAssertEqual(
+            WallpaperKind.networkMapCompact.choice(current: .networkMap(.large), lastPhoto: nil, lastGradient: nil),
+            .networkMap(.compact))
     }
 }

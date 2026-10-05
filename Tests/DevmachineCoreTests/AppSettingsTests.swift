@@ -188,9 +188,9 @@ final class AppSettingsTests: XCTestCase {
 
     func testTheNetworkMapWallpaperSurvivesARoundTrip() throws {
         var settings = goodSettings
-        settings.wallpaper = .networkMap
+        settings.wallpaper = .networkMap(.large)
         let data = try JSONEncoder().encode(settings)
-        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: data).wallpaper, .networkMap)
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: data).wallpaper, .networkMap(.large))
     }
 
     func testSettingsSavedBeforeWallpapersStillDecode() throws {

@@ -3,10 +3,12 @@ import SwiftUI
 import DevmachineCore
 
 /// Debug builds only. The network map as Home's wallpaper, for
-/// `DEVMACHINE_DEMO_WALK=map-wallpaper`: Home over the demo configuration
-/// (read through the same stores as outside the walk), over a five-machine
-/// fleet, with no machine (the ground alone), and Settings → Appearance with
-/// the chip open. `DEVMACHINE_DEMO_WINDOW` checks other window sizes. Nothing runs.
+/// `DEVMACHINE_DEMO_WALK=map-wallpaper`: Home with the compact map over the
+/// demo configuration (read through the same stores as outside the walk),
+/// over a five-machine fleet, with no machine (the ground alone), then the
+/// large map over both, and Settings → Appearance's Background picker on
+/// the large map, a photo theme and the gradients.
+/// `DEVMACHINE_DEMO_WINDOW` checks other window sizes. Nothing runs.
 @MainActor
 enum DemoMapWallpaper {
     static let screens: [DemoSnapshots.Screen] = [
@@ -15,27 +17,45 @@ enum DemoMapWallpaper {
         .init(id: "map-wallpaper-empty", fileName: "182-home-network-map-empty.png", settleNanoseconds: 700_000_000),
         .init(id: "map-wallpaper-appearance", fileName: "183-appearance-network-map.png",
               settleNanoseconds: 1_200_000_000),
+        .init(id: "map-wallpaper-large", fileName: "184-home-network-map-large.png", settleNanoseconds: 1_500_000_000),
+        .init(id: "map-wallpaper-large-fleet", fileName: "185-home-network-map-large-fleet.png",
+              settleNanoseconds: 1_500_000_000),
+        .init(id: "map-wallpaper-appearance-photo", fileName: "186-appearance-photo.png",
+              settleNanoseconds: 2_500_000_000),
+        .init(id: "map-wallpaper-appearance-gradient", fileName: "187-appearance-gradient.png",
+              settleNanoseconds: 1_200_000_000),
     ]
+
+    static func choice(for id: String) -> WallpaperChoice {
+        switch id {
+        case "map-wallpaper-large", "map-wallpaper-large-fleet", "map-wallpaper-appearance": return .networkMap(.large)
+        case "map-wallpaper-appearance-photo": return .bundled
+        case "map-wallpaper-appearance-gradient": return .gradient(name: "peaks")
+        default: return .networkMap(.compact)
+        }
+    }
 
     static func handles(_ id: String) -> Bool { screens.contains { $0.id == id } }
 
     static func prepare(_ id: String, model: AppModel, settings: SettingsStore, caddy: CaddyStore) async {
         var value = settings.settings ?? DemoData.settings
-        value.wallpaper = .networkMap
+        value.wallpaper = choice(for: id)
         settings.settings = value
         model.settings = value
 
-        if id == "map-wallpaper-appearance" {
+        if id.hasPrefix("map-wallpaper-appearance") {
             DemoSnapshots.setupInitialSection = .appearance
             model.showPage(.setup)
+        } else {
+            model.goHome()
         }
         try? await Task.sleep(nanoseconds: 300_000_000)
         switch id {
-        case "map-wallpaper-fleet":
+        case "map-wallpaper-fleet", "map-wallpaper-large-fleet":
             seed(DemoMachinesMap.fleet, sites: DemoMachinesMap.sites(for: "map-fleet"), caddy: caddy)
         case "map-wallpaper-empty":
             seed(DemoData.noMachinesSnapshot, sites: [:], caddy: caddy)
-        case "map-wallpaper-appearance":
+        case "map-wallpaper-appearance", "map-wallpaper-appearance-photo", "map-wallpaper-appearance-gradient":
             seed(DemoData.machinesSnapshot, sites: DemoData.subdomainStates, caddy: caddy)
         default:
             break

@@ -195,10 +195,15 @@ final class DemoSnapshotsTests: XCTestCase {
         ])
     }
 
-    func testTheMapWallpaperWalkShowsHomeWithAndWithoutMachinesAndTheAppearanceChip() {
+    func testTheMapWallpaperWalkShowsHomeWithBothMapSizesAndTheAppearanceBackgroundPicker() {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "map-wallpaper"]).map(\.id), [
             "map-wallpaper-home", "map-wallpaper-fleet", "map-wallpaper-empty", "map-wallpaper-appearance",
+            "map-wallpaper-large", "map-wallpaper-large-fleet", "map-wallpaper-appearance-photo",
+            "map-wallpaper-appearance-gradient",
         ])
+        XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-home"), .networkMap(.compact))
+        XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-large"), .networkMap(.large))
+        XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-appearance"), .networkMap(.large))
     }
 
     func testTheHostKeyWalkIsItsOwnSetOfPanelsPickedByTheEnvironment() {

@@ -93,6 +93,13 @@ private struct DMComponentsGallery: View {
                     title: "docker", detail: "Docker Engine and Compose.", badge: "RECOMMENDED",
                     selected: false, multiple: true) {}
             }
+            HStack(alignment: .top, spacing: 8) {
+                DMPictureChoice(title: "Gradient", detail: "A built-in colour wash.", selected: true, action: {}) {
+                    LinearGradient(colors: [.blue, .black], startPoint: .top, endPoint: .bottom)
+                }
+                DMPictureChoice(title: "Photo", selected: false, action: {}) { Color.teal }
+            }
+            .frame(width: 440)
             DMTabStrip(
                 tabs: ["Sites", "cloudflare"], selection: $tab, title: { $0 },
                 fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)

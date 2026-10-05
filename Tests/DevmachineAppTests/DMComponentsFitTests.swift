@@ -70,6 +70,14 @@ final class DMComponentsFitTests: XCTestCase {
                 title: "essentials", detail: "Base tools.", badge: "ALWAYS INSTALLED", note: "Includes base, git.",
                 selected: true, multiple: true, locked: true) {}
         }
+        DMFitCheck.assertFits("picture choice", width: DMCardWidth.banner) {
+            DMPictureChoice(
+                title: "Network map — large", detail: "Your machines, big, behind everything on Home.",
+                selected: true, action: {}) { Color.blue }
+        }
+        DMFitCheck.assertFits("bare picture choice", width: DMCardWidth.banner) {
+            DMPictureChoice(selected: false, action: {}) { Color.blue }
+        }
         DMFitCheck.assertFits("log", width: DMCardWidth.sheet) {
             DMLogView(lines: ["$ devmachine sync --machine lab --yes", "TASK [base : apt] ok"])
         }

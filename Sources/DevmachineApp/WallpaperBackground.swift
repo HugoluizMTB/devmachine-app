@@ -24,8 +24,8 @@ struct WallpaperBackground: View {
     var style: WallpaperStyle = .photo
     /// Overrides the saved choice, so Setup can preview its draft live.
     var choice: WallpaperChoice?
-    /// Where Home has room for the network map; the map wallpaper only.
-    var mapPlacement = NetworkMapPlacement.whole
+    /// Where Home puts the network map of each size; the map wallpaper only.
+    var mapPlacement: (NetworkMapSize) -> NetworkMapPlacement = { _ in .whole }
 
     @EnvironmentObject private var wallpapers: WallpaperStore
 
@@ -67,9 +67,9 @@ struct WallpaperBackground: View {
 
     @ViewBuilder
     private var wallpaper: some View {
-        if active == .networkMap {
+        if case let .networkMap(size) = active {
             switch style {
-            case .photo: NetworkMapWallpaper(placement: mapPlacement, minimumMargin: Self.mapMinimumMargin)
+            case .photo: NetworkMapWallpaper(placement: mapPlacement(size), minimumMargin: Self.mapMinimumMargin)
             case .ambient: NetworkMapGround()
             }
         } else if let image = baked {

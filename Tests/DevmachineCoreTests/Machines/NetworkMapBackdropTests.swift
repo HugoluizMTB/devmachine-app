@@ -214,4 +214,66 @@ final class HomeMapAreaTests: XCTestCase {
         XCTAssertNil(HomeMapArea.rect(
             size: size, padding: 24, gap: 24, pillMinY: 700, layout: .sideBySide(cardsMaxX: 444, clockMaxY: 640)))
     }
+
+    func testTheLargeAreaIsCentredInHomeAndAtLeast60PercentOfItsWidth() {
+        let homes = [CGSize(width: 1040, height: 772), CGSize(width: 1280, height: 772),
+                     CGSize(width: 1488, height: 1052), CGSize(width: 1728, height: 1052), CGSize(width: 700, height: 420)]
+        for home in homes {
+            let pillMinY = home.height - 24 - 36
+            let area = HomeMapArea.large(size: home, padding: 24, gap: 24, pillMinY: pillMinY)
+            XCTAssertGreaterThanOrEqual(area.width, home.width * 0.6, "\(home)")
+            XCTAssertEqual(area.midX, home.width / 2, accuracy: 0.01, "\(home)")
+            XCTAssertEqual(area.midY, home.height / 2, accuracy: 0.01, "\(home)")
+            XCTAssertGreaterThanOrEqual(area.minX, 24, "\(home)")
+            XCTAssertGreaterThanOrEqual(area.minY, 24, "\(home)")
+            XCTAssertLessThanOrEqual(area.maxY, pillMinY - 24 + 0.01, "\(home): clears the pill")
+        }
+    }
+
+    func testTheLargeAreaKeepsAtLeastThePaddingWithoutAPill() {
+        let area = HomeMapArea.large(size: CGSize(width: 1280, height: 800), padding: 24, gap: 24, pillMinY: nil)
+        XCTAssertEqual(area.minY, 24, accuracy: 0.01)
+        XCTAssertEqual(area.maxY, 776, accuracy: 0.01)
+    }
+}
+
+final class NetworkMapLargeFitTests: XCTestCase {
+    private var fleet: NetworkMap {
+        NetworkMap.build(NetworkMapInput(machines: [
+            .init(name: "laptop", location: "local", hosts: [], isSelf: true, isLocalVM: false, hasCaddy: false,
+                  workspaces: []),
+            .init(name: "main", location: "hostinger", hosts: ["100.64.0.10"], isSelf: false, isLocalVM: false,
+                  hasCaddy: true, workspaces: ["acme"]),
+            .init(name: "homebox", location: "home", hosts: ["100.64.0.11"], isSelf: false, isLocalVM: false,
+                  hasCaddy: false, workspaces: []),
+        ], sites: [.init(host: "app.example.com", servingMachine: "main", workspace: "acme")]))
+    }
+
+    func testTheLargeMapFillsTheAreasWidthWhenTheHeightAllows() {
+        let home = CGSize(width: 1728, height: 1400)
+        let area = HomeMapArea.large(size: home, padding: 24, gap: 24, pillMinY: home.height - 60)
+        let backdrop = NetworkMapBackdrop(map: fleet, size: home, area: area, fit: .large)
+        XCTAssertGreaterThanOrEqual(backdrop.mapFrame.width, home.width * 0.6 - 0.5)
+        XCTAssertEqual(backdrop.mapFrame.midX, home.width / 2, accuracy: 1)
+        XCTAssertEqual(backdrop.mapFrame.midY, area.midY, accuracy: 1)
+        XCTAssertTrue(backdrop.showsMap)
+    }
+
+    func testTheLargeMapFitsTheHeightInsteadOfRunningPastIt() {
+        for home in [CGSize(width: 1280, height: 772), CGSize(width: 1728, height: 1052), CGSize(width: 2400, height: 600)] {
+            let area = HomeMapArea.large(size: home, padding: 24, gap: 24, pillMinY: home.height - 60)
+            let backdrop = NetworkMapBackdrop(map: fleet, size: home, area: area, fit: .large)
+            XCTAssertTrue(area.insetBy(dx: -0.5, dy: -0.5).contains(backdrop.mapFrame), "\(home): \(backdrop.mapFrame)")
+            XCTAssertEqual(backdrop.mapFrame.midX, home.width / 2, accuracy: 1, "\(home)")
+        }
+    }
+
+    func testTheLargeMapDrawsBiggerThanTheCompactDefault() {
+        let home = CGSize(width: 1728, height: 1052)
+        let area = HomeMapArea.large(size: home, padding: 24, gap: 24, pillMinY: home.height - 60)
+        let large = NetworkMapBackdrop(map: fleet, size: home, area: area, fit: .large)
+        let compact = NetworkMapBackdrop(map: fleet, size: home, area: area)
+        XCTAssertGreaterThan(large.mapFrame.width, compact.mapFrame.width)
+        XCTAssertEqual(large.margins, .zero)
+    }
 }

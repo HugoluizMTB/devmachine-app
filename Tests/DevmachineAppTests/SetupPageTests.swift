@@ -131,16 +131,10 @@ final class SetupPageWallpaperTests: XCTestCase {
         XCTAssertEqual(SetupPage.choice(for: remote), .unsplash(id: "ccc333"))
     }
 
-    func testAGradientChoiceOpensTheGradientChip() {
-        XCTAssertEqual(
-            SetupPage.openThemeID(for: .gradient(name: "ember"), in: library),
-            SetupPage.gradientTheme
-        )
-    }
-
-    func testTheNetworkMapChoiceOpensItsOwnChip() {
-        XCTAssertEqual(SetupPage.openThemeID(for: .networkMap, in: library), SetupPage.networkMapTheme)
-        XCTAssertNotEqual(SetupPage.networkMapTheme, SetupPage.gradientTheme)
+    func testAChoiceThatIsNoPhotoOpensTheFirstPhotoTheme() {
+        for choice: WallpaperChoice in [.gradient(name: "ember"), .networkMap(.large), .networkMap(.compact)] {
+            XCTAssertEqual(SetupPage.openThemeID(for: choice, in: library), "ocean", "\(choice)")
+        }
     }
 
     func testTheBundledChoiceOpensTheThemeOfTheShippedPhoto() {
@@ -155,18 +149,17 @@ final class SetupPageWallpaperTests: XCTestCase {
         XCTAssertEqual(SetupPage.openThemeID(for: .unsplash(id: "zzz999"), in: library), "ocean")
     }
 
-    func testWithoutAnyThemeTheGradientChipOpens() {
-        XCTAssertEqual(
-            SetupPage.openThemeID(for: .bundled, in: .empty),
-            SetupPage.gradientTheme
-        )
+    func testWithoutAnyThemeNoPhotoThemeOpens() {
+        XCTAssertNil(SetupPage.openThemeID(for: .bundled, in: .empty))
     }
 
-    @MainActor
-    func testTheGradientChipIDIsNotAThemeOfTheShippedLibrary() {
-        let library = WallpaperStore.shippedLibrary()
-        XCTAssertFalse(library.themes.map(\.id).contains(SetupPage.gradientTheme))
-        XCTAssertFalse(library.themes.map(\.id).contains(SetupPage.networkMapTheme))
+    func testEveryKindOfBackgroundHasACardWithATitleAndADetail() {
+        for kind in WallpaperKind.allCases {
+            XCTAssertFalse(SetupPage.title(of: kind).isEmpty)
+            XCTAssertFalse(SetupPage.detail(of: kind).isEmpty)
+        }
+        XCTAssertEqual(SetupPage.title(of: .networkMapLarge), "Network map — large")
+        XCTAssertEqual(SetupPage.title(of: .networkMapCompact), "Network map — compact")
     }
 
     func testTheDomainHintSaysItIsOptionalAndWhenNoMachineCanUseItYet() {

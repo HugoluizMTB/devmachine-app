@@ -45,6 +45,27 @@ public struct NetworkMapBackdrop: Sendable {
     /// The background draws no host beside a site, so its lanes sit close.
     public static let siteRow = 6.0
 
+    /// How the map sits in its area: the margins kept around it and how big it may grow.
+    public struct Fit: Equatable, Sendable {
+        public let marginFraction: Double
+        public let minimumMargin: Double
+        public let maximumScale: Double
+
+        public init(marginFraction: Double, minimumMargin: Double, maximumScale: Double) {
+            self.marginFraction = marginFraction
+            self.minimumMargin = minimumMargin
+            self.maximumScale = maximumScale
+        }
+
+        public static let compact = Fit(
+            marginFraction: NetworkMapBackdrop.marginFraction, minimumMargin: NetworkMapBackdrop.minimumMargin,
+            maximumScale: NetworkMapBackdrop.maximumScale)
+        /// Fills its area, which already keeps clear of Home's edges: the
+        /// only limits are the area itself and a scale where a tile still
+        /// looks like one.
+        public static let large = Fit(marginFraction: 0, minimumMargin: 0, maximumScale: 5)
+    }
+
     public let map: NetworkMap
     /// Laid out for the width inside the margins, in the map's own points.
     public let geometry: NetworkMapGeometry
@@ -62,16 +83,22 @@ public struct NetworkMapBackdrop: Sendable {
         map: NetworkMap, size: CGSize, area: CGRect? = nil,
         minimumMargin: Double = NetworkMapBackdrop.minimumMargin
     ) {
+        self.init(
+            map: map, size: size, area: area,
+            fit: Fit(marginFraction: Self.marginFraction, minimumMargin: minimumMargin, maximumScale: Self.maximumScale))
+    }
+
+    public init(map: NetworkMap, size: CGSize, area: CGRect? = nil, fit: Fit) {
         self.map = map
         let area = area ?? CGRect(origin: .zero, size: size)
         let margins = CGSize(
-            width: max(minimumMargin, area.width * Self.marginFraction),
-            height: max(minimumMargin, area.height * Self.marginFraction))
+            width: max(fit.minimumMargin, area.width * fit.marginFraction),
+            height: max(fit.minimumMargin, area.height * fit.marginFraction))
         self.margins = margins
         let available = CGSize(
             width: max(1, area.width - 2 * margins.width), height: max(1, area.height - 2 * margins.height))
         let geometry = NetworkMapGeometry(
-            map: map, width: available.width, maximumScale: Self.maximumScale, siteRow: Self.siteRow)
+            map: map, width: available.width, maximumScale: fit.maximumScale, siteRow: Self.siteRow)
         self.geometry = geometry
 
         let zoom = map.nodes.isEmpty
@@ -125,5 +152,22 @@ public enum HomeMapArea {
         // Checked before building the rect: CGRect reports a negative size as positive.
         guard right - left >= minimumSide, bottom - top >= minimumSide else { return nil }
         return CGRect(x: left, y: top, width: right - left, height: bottom - top)
+    }
+}
+
+extension HomeMapArea {
+    /// The large map's share of Home's width.
+    public static let largeWidthFraction = 0.7
+
+    /// Where the large map goes: centred in all of Home, `largeWidthFraction`
+    /// of its width, as tall as Home allows while clearing the stats pill
+    /// by `gap` at the bottom and keeping the same room at the top, so the
+    /// map stays centred.
+    public static func large(size: CGSize, padding: Double, gap: Double, pillMinY: Double?) -> CGRect {
+        let width = size.width * largeWidthFraction
+        let bottomRoom = pillMinY.map { size.height - $0 + gap } ?? padding
+        let inset = max(padding, bottomRoom)
+        return CGRect(
+            x: (size.width - width) / 2, y: inset, width: width, height: max(0, size.height - 2 * inset))
     }
 }
