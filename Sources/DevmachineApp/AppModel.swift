@@ -673,9 +673,21 @@ final class AppModel: ObservableObject {
 
     /// Sessions this app still shows for a workspace that the workspace itself
     /// no longer has: killed from another client, or ended with `exit`.
+    /// New names from renames made through the app, and when. A poll that
+    /// lands before tmux has renamed lists neither name; without this it would
+    /// forget the place the rename just moved over.
+    private var renamesInFlight: [SessionRef: Date] = [:]
+    private static let renameGrace: TimeInterval = 30
+
     private func dropMissingSessions(alias: String, present: [TmuxSession]) {
         let names = Set(present.map(\.name))
-        updateSidebarOrder { $0.keepSessions(names, in: alias) }
+        let now = Date()
+        renamesInFlight = renamesInFlight.filter { ref, started in
+            !(ref.alias == alias && names.contains(ref.name))
+                && now.timeIntervalSince(started) < Self.renameGrace
+        }
+        let renaming = renamesInFlight.keys.filter { $0.alias == alias }.map(\.name)
+        updateSidebarOrder { $0.keepSessions(names.union(renaming), in: alias) }
         var refs: [SessionRef] = []
         if case let .stack(stacked) = activePage {
             refs += stacked.filter { $0.alias == alias && !names.contains($0.name) }
@@ -1349,9 +1361,8 @@ final class AppModel: ObservableObject {
             return
         }
         pendingRename = nil
-        // Before the tmux rename: a poll landing in between would otherwise
-        // forget the old name's place.
         updateSidebarOrder { $0.renameSession(old, to: clean, in: alias) }
+        renamesInFlight[SessionRef(alias: alias, name: clean)] = Date()
         let taskId = beginTask(label: "Renaming \(old)", total: 1)
         Task.detached { [store] in
             _ = try? store.run(alias: alias, command: RemoteCommands.rename(session: old, to: clean))

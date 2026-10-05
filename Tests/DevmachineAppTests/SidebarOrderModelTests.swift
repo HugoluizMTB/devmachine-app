@@ -225,4 +225,17 @@ final class SidebarOrderModelTests: XCTestCase {
         XCTAssertEqual(model.flattenedSessions().map(\.name), ["dash", "api"])
         XCTAssertEqual(model.paletteItems().prefix(3).map(\.title), ["Operator", "dash", "api"])
     }
+
+    func testAPollBeforeTmuxRenamesKeepsTheNewNamesPlace() async throws {
+        let source = ListedSessionSource([acme.alias: ["api", "dash", "web"]])
+        let model = makeModel(sessions: source)
+        try await poll(model, acme.alias, until: ["api", "dash", "web"])
+        model.moveInSidebar(.session("web", in: acme.alias), over: .session("api", in: acme.alias))
+
+        model.renameSession(alias: acme.alias, old: "web", new: "site")
+        source.set(["api", "dash"], for: acme.alias)
+        try await poll(model, acme.alias, until: ["api", "dash"])
+
+        XCTAssertEqual(model.sidebarOrder.savedSessions[acme.alias], ["site", "api", "dash"])
+    }
 }

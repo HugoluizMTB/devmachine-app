@@ -409,7 +409,8 @@ Rules:
   sessions'. A workspace or session is forgotten only when a list was really
   read without it: a failed CLI read or ssh poll never prunes, or an outage
   would wipe the order. A rename through the app moves the place to the new
-  name before tmux renames, so a poll in between cannot drop it. Navigation,
+  name at once, and polls keep that name for 30 s or until they list it, so
+  one landing before tmux renames cannot drop it. Navigation,
   the palette and workspace stacks read the same order as the sidebar.
 - **The Local workspace lists what `zmx ls` reports**, merged with what the app
   remembers (`LocalSessionScan.merge`): a session started outside the app shows
