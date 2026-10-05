@@ -255,8 +255,9 @@ struct UpdateBannerActions: View {
 }
 
 /// The corner toast for a newer devmachine CLI, below the app's own. Update
-/// runs only `update --cli-only`, and only on a CLI that has it; any other
-/// CLI gets the terminal command to copy, which the app never runs or types.
+/// runs `update --no-machines` (0.7.31+) or `update --cli-only`, and only on
+/// a CLI that has one; any other CLI gets the terminal command to copy, which
+/// the app never runs or types.
 struct CLIUpdateBanner: View {
     @EnvironmentObject private var updates: UpdateController
     @EnvironmentObject private var model: AppModel
