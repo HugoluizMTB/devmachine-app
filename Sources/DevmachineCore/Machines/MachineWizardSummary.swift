@@ -16,6 +16,9 @@ extension MachineWizard {
     /// plan that runs, so the summary never says what the commands do not.
     public var summary: [MachineSummaryRow] {
         var rows = [MachineSummaryRow(label: "Machine", value: machineLine)]
+        if !draft.trimmedName.isEmpty {
+            rows.append(MachineSummaryRow(label: "Location", value: locationLine))
+        }
         if draft.kind == .server, !draft.trimmedName.isEmpty {
             rows.append(MachineSummaryRow(label: "Login", value: loginLine))
         }
@@ -56,6 +59,11 @@ extension MachineWizard {
             let port = draft.trimmedPort == MachineDraft.defaultPort ? "" : ":\(draft.trimmedPort)"
             return "\(name) at \(address)\(port)"
         }
+    }
+
+    private var locationLine: String {
+        let value = MachineLocation.normalized(draft.location)
+        return takesLocation ? value : "\(value), kept once the CLI is updated"
     }
 
     private var loginLine: String {

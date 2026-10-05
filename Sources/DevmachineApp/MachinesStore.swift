@@ -10,8 +10,16 @@ struct ConfiguredMachine: Equatable, Identifiable, Sendable {
     let workspaces: [String]
     let packages: [String]
     let isSelf: Bool
+    /// What the CLI reported (0.7.30+); nil from an older one.
+    var reportedLocation: String?
 
     var id: String { name }
+
+    var isLocalVM: Bool { MachineLocation.isLocalVM(hosts: hosts, isSelf: isSelf) }
+
+    var location: String {
+        MachineLocation.effective(reported: reportedLocation, isSelf: isSelf, isLocalVM: isLocalVM)
+    }
 }
 
 /// What one read of the configuration found. `hasConfiguration` is false
@@ -38,6 +46,8 @@ struct MachinesSnapshot: Equatable, Sendable {
     static let none = MachinesSnapshot(hasConfiguration: false, machines: [], packages: [])
 
     var addsWithoutTerminal: Bool { MachineUnattendedAdd.isSupported(cliVersion: cliVersion) }
+
+    var takesLocation: Bool { MachineLocation.isSupported(cliVersion: cliVersion) }
 }
 
 enum MachinesReader {
@@ -63,7 +73,7 @@ enum MachinesReader {
                 workspaces: machine.workspaces,
                 packages: machine.packages
                     ?? packages.filter { $0.isInstalled(onMachine: machine.name) }.map(\.name),
-                isSelf: machine.isSelf)
+                isSelf: machine.isSelf, reportedLocation: machine.location)
         }
         return MachinesSnapshot(hasConfiguration: true, machines: machines, packages: packages, cliVersion: version)
     }

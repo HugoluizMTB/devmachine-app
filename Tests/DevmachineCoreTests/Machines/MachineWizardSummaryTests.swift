@@ -17,6 +17,7 @@ final class MachineWizardSummaryTests: XCTestCase {
 
         XCTAssertEqual(wizard.summary, [
             MachineSummaryRow(label: "Machine", value: "lab, a Lima machine on this Mac"),
+            MachineSummaryRow(label: "Location", value: "local, kept once the CLI is updated"),
             MachineSummaryRow(label: "Size", value: "4 CPUs, 8 GiB of memory, a 40 GiB disk"),
             MachineSummaryRow(label: "Packages", value: "essentials, docker, devmachine-app"),
             MachineSummaryRow(label: "Workspace", value: "acme"),
@@ -38,6 +39,7 @@ final class MachineWizardSummaryTests: XCTestCase {
 
         XCTAssertEqual(wizard.summary, [
             MachineSummaryRow(label: "Machine", value: "backup at 203.0.113.20:2222"),
+            MachineSummaryRow(label: "Location", value: "external, kept once the CLI is updated"),
             MachineSummaryRow(label: "Login", value: "root with a password, used once to install a key"),
             MachineSummaryRow(label: "Packages", value: "essentials"),
             MachineSummaryRow(label: "Workspace", value: "None"),
@@ -46,10 +48,10 @@ final class MachineWizardSummaryTests: XCTestCase {
 
         wizard.draft.login = .key
         wizard.draft.keySource = .agent
-        XCTAssertEqual(wizard.summary[1].value, "root with a key in the SSH agent")
+        XCTAssertEqual(wizard.summary[2].value, "root with a key in the SSH agent")
         wizard.draft.keySource = .file
         wizard.draft.keyFile = "~/.ssh/id_ed25519"
-        XCTAssertEqual(wizard.summary[1].value, "root with ~/.ssh/id_ed25519")
+        XCTAssertEqual(wizard.summary[2].value, "root with ~/.ssh/id_ed25519")
     }
 
     func testNothingIsPreviewedBeforeTheMachineHasAName() {

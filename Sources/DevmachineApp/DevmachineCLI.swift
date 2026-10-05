@@ -56,9 +56,11 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
     /// The machine's own packages from `config.yml` (CLI 0.7.27+); nil from
     /// an older CLI, which leaves the field out.
     var packages: [String]?
+    /// Where the machine is (CLI 0.7.30+); nil from an older CLI.
+    var location: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, hosts, workspaces, port, packages
+        case name, hosts, workspaces, port, packages, location
         case adminUser = "admin_user"
         case isSelf = "self"
     }
@@ -72,6 +74,7 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
         workspaces = try c.decodeIfPresent([String].self, forKey: .workspaces) ?? []
         isSelf = try c.decodeIfPresent(Bool.self, forKey: .isSelf) ?? false
         packages = try c.decodeIfPresent([String].self, forKey: .packages)
+        location = try c.decodeIfPresent(String.self, forKey: .location)
     }
 }
 
@@ -541,6 +544,14 @@ struct DevmachineCLI: Sendable {
     func removeMachine(_ name: String) throws {
         let result = try runner.runCapturing(
             executable: executable, args: ["machines", "rm", name, "--yes"], environment: environment())
+        try requireSuccess(result)
+    }
+
+    /// `machines edit <m> --location` (CLI 0.7.30+): the configuration only.
+    func editLocation(machine: String, location: String) throws {
+        let result = try runner.runCapturing(
+            executable: executable, args: MachineLocation.editArguments(machine: machine, location: location),
+            environment: environment())
         try requireSuccess(result)
     }
 

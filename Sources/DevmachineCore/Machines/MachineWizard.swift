@@ -35,11 +35,16 @@ public struct MachineWizard: Equatable, Sendable {
     /// The harnesses the first run can teach devmachine: the app's harnesses
     /// that this CLI's `skills add --agent` accepts (`SkillAgent.options`).
     public let skillAgentOptions: [SkillAgent]
+    /// The CLI takes `--location` (`MachineLocation`); an older one is
+    /// still asked, and keeps nothing until it is updated.
+    public let takesLocation: Bool
 
     public init(
         existingMachines: [String], existingWorkspaces: [String] = [], limaFound: Bool, unattended: Bool = false,
-        firstRun: Bool = false, sizeLimits: LocalMachineSizeLimits? = nil, skillAgentOptions: [SkillAgent] = []
+        firstRun: Bool = false, sizeLimits: LocalMachineSizeLimits? = nil, skillAgentOptions: [SkillAgent] = [],
+        takesLocation: Bool = false
     ) {
+        self.takesLocation = takesLocation
         self.skillAgentOptions = skillAgentOptions
         self.sizeLimits = unattended ? sizeLimits : nil
         self.existingMachines = existingMachines
@@ -73,6 +78,9 @@ public struct MachineWizard: Equatable, Sendable {
 
     public mutating func choose(_ kind: MachineKind) {
         guard canChoose(kind) else { return }
+        if MachineKind.allCases.contains(where: { MachineLocation.defaultLocation(for: $0) == draft.location }) {
+            draft.location = MachineLocation.defaultLocation(for: kind)
+        }
         draft.kind = kind
         stage = .details
     }
@@ -137,7 +145,8 @@ public struct MachineWizard: Equatable, Sendable {
         } else {
             draft.skillAgents = []
         }
-        return MachinePlan.steps(for: draft, unattended: unattended, installsLima: !limaFound)
+        return MachinePlan.steps(
+            for: draft, unattended: unattended, installsLima: !limaFound, takesLocation: takesLocation)
     }
 
     public var terminalAnswers: [MachinePlan.Answer] {

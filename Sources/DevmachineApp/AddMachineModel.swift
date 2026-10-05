@@ -75,6 +75,13 @@ final class AddMachineModel: ObservableObject {
 
     var packageCards: [MachinePackageCard] { machines.packageCards }
 
+    /// Where the configured machines already are, so a second machine at
+    /// home is one click.
+    var knownLocations: [String] {
+        var seen = Set<String>()
+        return machines.machines.map(\.location).filter { seen.insert($0).inserted }
+    }
+
     /// The first-run setup's wizard. Demo mode scans no server and reads no agent.
     static func forOnboarding() -> AddMachineModel {
         guard DemoMode.isActive else { return AddMachineModel(firstRun: true) }
@@ -240,7 +247,8 @@ final class AddMachineModel: ObservableObject {
             unattended: machines.snapshot?.addsWithoutTerminal ?? false,
             firstRun: firstRun,
             sizeLimits: LocalMachineSizing.isSupported(cliVersion: machines.snapshot?.cliVersion) ? macLimits() : nil,
-            skillAgentOptions: firstRun ? Self.skillAgentOptions(cliVersion: machines.snapshot?.cliVersion) : [])
+            skillAgentOptions: firstRun ? Self.skillAgentOptions(cliVersion: machines.snapshot?.cliVersion) : [],
+            takesLocation: machines.snapshot?.takesLocation ?? false)
         wizard.draft.localSize = wizard.sizeLimits?.defaultSize
         wizard.draft.hasConfiguration = machines.snapshot?.hasConfiguration ?? true
         wizard.draft.packages = MachinePackageCatalog.suggested(from: machines.packageCards)
