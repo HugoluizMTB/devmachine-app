@@ -129,7 +129,8 @@ struct MachineJobToast: View {
     }
 
     private var lastLine: String? {
-        job.log.lines.last.map { LogText.plain($0).trimmingCharacters(in: CharacterSet(charactersIn: "* ")) }
+        let isSync = job.plan.steps.contains { $0.first == "sync" }
+        return JobProgressLine.current(lines: job.log.lines, isSync: isSync, machine: job.plan.machine)
     }
 
     private func muted(_ text: String) -> some View {
