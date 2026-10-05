@@ -1,9 +1,9 @@
 import Foundation
 
-/// `devmachine update --cli-only`: the one CLI command the app runs to update
-/// the CLI. It replaces the binary and nothing else, never the packages pin,
-/// skills, doctor or sync. Plain `devmachine update` would touch those, so the
-/// app never falls back to it.
+/// `devmachine update --cli-only`: the CLI form for 0.7.23–0.7.30. It
+/// replaces the binary and nothing else, never the packages pin, skills,
+/// doctor or sync. Plain `devmachine update` would also reach machines, so the
+/// app never falls back to it; 0.7.31+ runs `CLIUpdateCommand.noMachines`.
 public enum CLISelfUpdate {
     public static let arguments = ["update", "--cli-only"]
 

@@ -881,22 +881,50 @@ once may fail there.
 - Branch prefix `da-` when not committing straight to `main` locally.
 
 ## Updates
-- The updater replaces this app. For the CLI it runs only
-  `update --cli-only`, which replaces the CLI binary and nothing else; it never
-  runs plain `update`, and never changes the configuration, packages,
-  machines or `sync`. A CLI too old for `--cli-only` gets the command
-  (`CLIUpdateAdvice`) in a `DMCommandBlock`: never run it, never type it
-  into a session.
+- The updater replaces this app. For the CLI it runs one of the
+  `CLIUpdateCommand` forms and nothing else: `update --cli-only` (CLI
+  0.7.23–0.7.30, the binary only), `update --no-machines --format json`
+  (CLI 0.7.31+: the binary, then the new binary pins the newest packages
+  release and updates the skills on this Mac) or `update --no-machines
+  --skip-cli --format json` (the packages card). The packages pin and the
+  skills are the only things beyond the binary it may change, on purpose:
+  a CLI updated from the app or brew kept an old pin and old skills, and
+  nothing said so. **It never changes machines**: never plain `update`,
+  never `sync`, never `--yes` or `--machine` (`--no-machines` refuses
+  both), never the configuration. A CLI too old for `--cli-only` gets the
+  command (`CLIUpdateAdvice`) in a `DMCommandBlock`: never run it, never
+  type it into a session.
+- The JSON forms print the report on stdout and the log on stderr, so
+  `ProcessCLIUpdater` keeps stdout apart (`StreamingProcess.run(separatesStdout:)`)
+  and `CLIUpdateReport` reads it. The CLI prints the JSON even when a step
+  failed, then exits non-zero; the app shows the stderr `error:` line.
 - **A newer CLI gets its own corner toast** (`CLIUpdateBanner`, under the
-  app's; both stack). Update runs only `update --cli-only` and only when
-  `canUpdateCLIInApp`; any other CLI gets the `CLIUpdateAdvice` command in a
-  `DMCommandBlock`. Later is saved per CLI version
+  app's; both stack). Update runs `CLIUpdateCommand.forCLI(installed:)` and
+  only when `canUpdateCLIInApp`; any other CLI gets the `CLIUpdateAdvice`
+  command in a `DMCommandBlock`. On 0.7.31+ the done card reads "CLI updated
+  to X · packages pinned vN · skills updated" (the version from `devmachine
+  version`, the rest from the report), and a pin it reached clears the
+  packages card. Later is saved per CLI version
   (`UpdatePreferences.cliLaterVersion`) and hides that version and older
   ones (`CLIUpdateToast.shows`); a running or finished update shows
   whatever Later said, the finished one until Close. Details opens
-  Settings → About. Demo shots `65`–`69` in the `cli-update` walk.
+  Settings → About. Demo shots `65`–`69` and `57` (a 0.7.31 CLI) in the
+  `cli-update` walk.
+- **A newer packages release gets its own corner card**
+  (`PackagesUpdateBanner`, under the CLI's; all three stack). On CLI 0.7.31+
+  `check` also runs `packages outdated --format json` (the CLI caches it a
+  day and falls back to its last answer offline). It fails only when it never
+  had an answer: that is "unknown", so no card and only a log line
+  (`Logger` category `updates`), never an error on screen. `pinned` "" with
+  `newer` false means nothing is pinned: no card. Update runs `--skip-cli`;
+  a report whose pin did not reach the release is a failure. Done says what
+  moved and points at Settings → Machines ("Open Machines"); it never syncs.
+  Later is saved per release (`UpdatePreferences.packagesLaterVersion`) and
+  hides it and older ones (`PackagesUpdateToast`, compared by
+  `PackagesVersion`); Details opens `notes_url`. Demo shots `53`–`56`.
 - Pure logic lives in `DevmachineCore/Updates` (versions, release JSON, ETag
-  feed, schedule, install method, digest, bundle checks, swap); the app's
+  feed, schedule, install method, digest, bundle checks, swap, the update
+  commands, their JSON and the packages card rules); the app's
   `Updates/` folder holds `UpdateController` and the real system calls. Tests
   inject fakes; nothing in `swift test` reaches the network, except the
   opt-in `DEVMACHINE_UPDATE_E2E=1` test, which installs into a temp folder.

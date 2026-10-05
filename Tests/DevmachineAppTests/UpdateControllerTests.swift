@@ -64,16 +64,36 @@ private final class FakeCLIUpdater: CLIUpdating, @unchecked Sendable {
     var lines = ["==> CLI", "  0.7.23 → v0.8.0", "  upgrading through Homebrew", "  updated: 0.7.23 → 0.8.0"]
     var failure: Error?
     var installs: String? = "0.8.0"
+    var stdout = Data()
     let version: VersionBox
-    private(set) var runs = 0
+    private(set) var commands: [CLIUpdateCommand] = []
+    var runs: Int { commands.count }
 
     init(version: VersionBox) { self.version = version }
 
-    func updateCLI(output: @escaping @Sendable (String) -> Void) async throws {
-        runs += 1
+    func run(_ command: CLIUpdateCommand, output: @escaping @Sendable (String) -> Void) async throws -> Data {
+        commands.append(command)
         lines.forEach(output)
         if let failure { throw failure }
-        version.value = installs
+        if command != .packagesOnly { version.value = installs }
+        return stdout
+    }
+}
+
+private final class FakeOutdated: @unchecked Sendable {
+    private let lock = NSLock()
+    private var answer: Result<String, Error> = .failure(Boom())
+    private(set) var reads = 0
+
+    func answer(_ json: String) { lock.withLock { answer = .success(json) } }
+    func fail() { lock.withLock { answer = .failure(Boom()) } }
+
+    func read() throws -> Data {
+        let answer = lock.withLock {
+            reads += 1
+            return self.answer
+        }
+        return Data(try answer.get().utf8)
     }
 }
 
@@ -96,6 +116,7 @@ final class UpdateControllerTests: XCTestCase {
     private var built: UpdateController?
     private var cliVersion = VersionBox("0.7.1")
     private var cliUpdater: FakeCLIUpdater!
+    private var outdated: FakeOutdated!
     private var cliOutput: String? {
         get { cliVersion.value }
         set { cliVersion.value = newValue }
@@ -112,6 +133,7 @@ final class UpdateControllerTests: XCTestCase {
         relaunchFails = false
         cliVersion = VersionBox("0.7.1")
         cliUpdater = FakeCLIUpdater(version: cliVersion)
+        outdated = FakeOutdated()
     }
 
     override func tearDown() async throws {
@@ -123,6 +145,7 @@ final class UpdateControllerTests: XCTestCase {
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { _ in throw CancellationError() }
     ) -> UpdateController {
         let cliVersion = cliVersion
+        let outdated = outdated!
         let updates = UpdateController(dependencies: UpdateDependencies(
             currentVersion: current.flatMap { SemanticVersion($0) },
             appFeed: ReleaseFeed(url: ReleaseFeed.appReleases, fetcher: http, userAgent: "Devmachine"),
@@ -136,6 +159,7 @@ final class UpdateControllerTests: XCTestCase {
             installer: installer,
             homebrew: homebrew,
             cliUpdater: cliUpdater,
+            packagesOutdated: { try outdated.read() },
             currentAppURL: URL(fileURLWithPath: "/Applications/Devmachine.app"),
             relaunch: { [weak self] url in
                 guard let self else { return }
@@ -530,6 +554,181 @@ final class UpdateControllerTests: XCTestCase {
         await updates.check(userInitiated: true)
         XCTAssertTrue(http.requested.isEmpty)
         XCTAssertNil(updates.availability)
+    }
+
+    private static let newerPackages =
+        #"{"pinned":"v32","latest":"v33","newer":true,"notes_url":"https://example.com/packages/v33"}"#
+    private static let pinnedReport = Data(#"""
+        {"cli":{"from":"0.7.31","to":"0.7.31","updated":false},
+         "packages":{"from":"v32","to":"v33","pinned":true},"skills":{"updated":true}}
+        """#.utf8)
+
+    private func packagesNoticeFor(installed: String = "0.7.31", answer: String = newerPackages) async
+        -> UpdateController {
+        outdated.answer(answer)
+        cliOutput = installed
+        serve(app: "v0.1.2", cli: "v\(installed)")
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        return updates
+    }
+
+    func testACLIWithNoMachinesUpdatesThePinAndSkillsToo() async {
+        cliUpdater.stdout = Data(#"""
+            {"cli":{"from":"0.7.31","to":"0.8.0","updated":true},
+             "packages":{"from":"v32","to":"v33","pinned":true},"skills":{"updated":true}}
+            """#.utf8)
+        let updates = await cliNoticeFor(installed: "0.7.31")
+
+        await updates.updateCLI()
+
+        XCTAssertEqual(cliUpdater.commands, [.noMachines])
+        XCTAssertEqual(updates.cliPhase, .updated(SemanticVersion("0.8.0")!))
+        XCTAssertEqual(updates.cliReport?.packagesTo, "v33")
+        XCTAssertTrue(updates.cliReport?.skillsUpdated ?? false)
+    }
+
+    func testACLIBeforeNoMachinesStillRunsCLIOnly() async {
+        let updates = await cliNoticeFor(installed: "0.7.30")
+
+        await updates.updateCLI()
+
+        XCTAssertEqual(cliUpdater.commands, [.cliOnly])
+        XCTAssertNil(updates.cliReport)
+        XCTAssertEqual(outdated.reads, 0)
+    }
+
+    func testANewerPackagesReleaseShowsTheCard() async {
+        let updates = await packagesNoticeFor()
+
+        XCTAssertEqual(updates.packagesNotice?.latest, "v33")
+        XCTAssertEqual(updates.packagesNotice?.notesURL, URL(string: "https://example.com/packages/v33"))
+        XCTAssertTrue(updates.showsPackagesBanner)
+        XCTAssertEqual(outdated.reads, 1)
+        XCTAssertEqual(cliUpdater.runs, 0)
+    }
+
+    func testAPinThatIsCurrentShowsNoCard() async {
+        let updates = await packagesNoticeFor(answer: #"{"pinned":"v33","latest":"v33","newer":false}"#)
+        XCTAssertNil(updates.packagesNotice)
+        XCTAssertFalse(updates.showsPackagesBanner)
+    }
+
+    func testAnOlderCLIIsNeverAskedAboutPackages() async {
+        let updates = await packagesNoticeFor(installed: "0.7.30")
+        XCTAssertEqual(outdated.reads, 0)
+        XCTAssertFalse(updates.showsPackagesBanner)
+    }
+
+    func testAFailedPackagesReadIsUnknownAndSilent() async {
+        let updates = await packagesNoticeFor()
+        outdated.fail()
+        serve(app: "v0.1.2", cli: "v0.7.31")
+
+        await updates.check(userInitiated: true)
+
+        XCTAssertFalse(updates.showsPackagesBanner)
+        XCTAssertNil(updates.checkError)
+
+        let broken = await packagesNoticeFor(answer: "not json")
+        XCTAssertFalse(broken.showsPackagesBanner)
+        XCTAssertNil(broken.checkError)
+    }
+
+    func testNothingPinnedShowsNoCard() async {
+        let updates = await packagesNoticeFor(answer: #"{"pinned":"","latest":"v32","newer":false}"#)
+        XCTAssertFalse(updates.showsPackagesBanner)
+    }
+
+    func testUpdatingPackagesRunsOnlyThePinAndSkills() async {
+        cliUpdater.lines = ["==> Packages", "  v32 → v33", "==> Skills", "  updated"]
+        cliUpdater.stdout = Self.pinnedReport
+        let updates = await packagesNoticeFor()
+
+        await updates.updatePackages()
+
+        XCTAssertEqual(cliUpdater.commands, [.packagesOnly])
+        XCTAssertEqual(updates.packagesOutput, cliUpdater.lines)
+        guard case .done(let report) = updates.packagesPhase else { return XCTFail("\(updates.packagesPhase)") }
+        XCTAssertEqual(report?.packagesTo, "v33")
+        XCTAssertNil(updates.packagesNotice)
+        XCTAssertTrue(updates.showsPackagesBanner)
+        XCTAssertEqual(cliVersion.value, "0.7.31")
+
+        updates.closePackagesUpdated()
+        XCTAssertFalse(updates.showsPackagesBanner)
+    }
+
+    func testAFailedPackagesUpdateShowsTheCauseAndRetries() async {
+        cliUpdater.lines = ["==> Packages", "error: pinning the packages: no route to host"]
+        cliUpdater.failure = CLIUpdateError.exited(1)
+        let updates = await packagesNoticeFor()
+
+        await updates.updatePackages()
+
+        guard case .failed(let state) = updates.packagesPhase else { return XCTFail("\(updates.packagesPhase)") }
+        XCTAssertEqual(state.cause, "pinning the packages: no route to host")
+        XCTAssertTrue(state.details.contains("==> Packages"))
+        XCTAssertTrue(updates.showsPackagesBanner)
+        XCTAssertNotNil(updates.packagesNotice)
+
+        cliUpdater.failure = nil
+        cliUpdater.stdout = Self.pinnedReport
+        await updates.updatePackages()
+        XCTAssertEqual(cliUpdater.commands, [.packagesOnly, .packagesOnly])
+        guard case .done = updates.packagesPhase else { return XCTFail("\(updates.packagesPhase)") }
+    }
+
+    func testAPinThatDidNotMoveIsAFailure() async {
+        cliUpdater.stdout = Data(#"{"packages":{"from":"v32","to":"v32","pinned":false},"skills":{"updated":true}}"#.utf8)
+        let updates = await packagesNoticeFor()
+
+        await updates.updatePackages()
+
+        guard case .failed(let state) = updates.packagesPhase else { return XCTFail("\(updates.packagesPhase)") }
+        XCTAssertTrue(state.cause?.contains("v32") ?? false, state.cause ?? "")
+    }
+
+    func testPackagesLaterIsSavedAndHidesTheCardUntilANewerRelease() async {
+        let updates = await packagesNoticeFor()
+        updates.packagesLater()
+
+        XCTAssertFalse(updates.showsPackagesBanner)
+        XCTAssertEqual(preferences.packagesLaterVersion, "v33")
+        XCTAssertNil(preferences.cliLaterVersion)
+
+        let relaunched = await packagesNoticeFor()
+        XCTAssertFalse(relaunched.showsPackagesBanner)
+
+        let newer = await packagesNoticeFor(
+            answer: #"{"pinned":"v32","latest":"v34","newer":true,"notes_url":"https://example.com/packages/v34"}"#)
+        XCTAssertTrue(newer.showsPackagesBanner)
+    }
+
+    func testTheCLICardsUpdateClearsThePackagesItPinned() async {
+        outdated.answer(Self.newerPackages)
+        cliUpdater.stdout = Data(#"""
+            {"cli":{"from":"0.7.31","to":"0.8.0","updated":true},
+             "packages":{"from":"v32","to":"v33","pinned":true},"skills":{"updated":true}}
+            """#.utf8)
+        let updates = await cliNoticeFor(installed: "0.7.31")
+        XCTAssertTrue(updates.showsPackagesBanner)
+
+        await updates.updateCLI()
+
+        XCTAssertNil(updates.packagesNotice)
+        XCTAssertFalse(updates.showsPackagesBanner)
+    }
+
+    func testAllThreeCardsStack() async {
+        outdated.answer(Self.newerPackages)
+        serve(app: "v0.1.3", cli: "v0.8.0")
+        cliOutput = "0.7.31"
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        XCTAssertTrue(updates.showsBanner)
+        XCTAssertTrue(updates.showsCLIBanner)
+        XCTAssertTrue(updates.showsPackagesBanner)
     }
 
     func testTurningAutomaticChecksOffIsSaved() {

@@ -33,7 +33,9 @@ final class UpdateViewsRenderTests: XCTestCase {
 
     private struct HelperDidNotStart: Error {}
 
-    private func controller(method: AppInstallMethod, relaunches: Bool = true) async -> UpdateController {
+    private func controller(
+        method: AppInstallMethod, relaunches: Bool = true, cli: String = "0.7.1"
+    ) async -> UpdateController {
         suite = "app.devmachine.mac.tests.\(UUID().uuidString)"
         let updates = UpdateController(dependencies: UpdateDependencies(
             currentVersion: SemanticVersion("0.1.2"),
@@ -42,8 +44,11 @@ final class UpdateViewsRenderTests: XCTestCase {
             preferences: UpdatePreferences(defaults: UserDefaults(suiteName: suite)!),
             detectInstallMethod: { method },
             runningTeamID: "TEAM123456",
-            cliVersion: { CLIVersionReading(output: "0.7.1", method: .homebrew) },
+            cliVersion: { CLIVersionReading(output: cli, method: .homebrew) },
             installer: NoInstall(), homebrew: NoInstall(),
+            packagesOutdated: {
+                Data(#"{"pinned":"v32","latest":"v33","newer":true,"notes_url":"https://example.com/p/v33"}"#.utf8)
+            },
             currentAppURL: URL(fileURLWithPath: "/Applications/Devmachine.app"),
             relaunch: { _ in if !relaunches { throw HelperDidNotStart() } }))
         await updates.check(userInitiated: true)
@@ -141,6 +146,15 @@ final class UpdateViewsRenderTests: XCTestCase {
         updates.showCLICommand()
         DMFitCheck.assertFits("CLI update toast with the command") {
             CLIUpdateBanner().environmentObject(updates).environmentObject(model)
+        }
+    }
+
+    func testThePackagesCardFitsAtEveryTextSize() async {
+        let updates = await controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"), cli: "0.7.31")
+        XCTAssertTrue(updates.showsPackagesBanner)
+        let model = AppModel(store: SessionStore(runner: SilentRunner()))
+        DMFitCheck.assertFits("packages update card") {
+            PackagesUpdateBanner().environmentObject(updates).environmentObject(model)
         }
     }
 

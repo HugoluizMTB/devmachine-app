@@ -1,6 +1,7 @@
 import AppKit
 import DevmachineCore
 import Foundation
+import os
 
 enum UpdateProgress: Equatable, Sendable {
     case downloading(Double)
@@ -24,7 +25,9 @@ protocol HomebrewUpgrading: Sendable {
 }
 
 protocol CLIUpdating: Sendable {
-    func updateCLI(output: @escaping @Sendable (String) -> Void) async throws
+    /// Streams the log to `output` and returns stdout, which holds the JSON
+    /// report for a command that prints one.
+    func run(_ command: CLIUpdateCommand, output: @escaping @Sendable (String) -> Void) async throws -> Data
 }
 
 enum CLIUpdateError: LocalizedError, Equatable {
@@ -33,14 +36,14 @@ enum CLIUpdateError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .exited(let status): return "devmachine update --cli-only exited with status \(status)."
+        case .exited(let status): return "devmachine update exited with status \(status)."
         case .unavailable: return "The devmachine CLI cannot be run from here."
         }
     }
 }
 
 struct UnavailableCLIUpdater: CLIUpdating {
-    func updateCLI(output: @escaping @Sendable (String) -> Void) async throws {
+    func run(_ command: CLIUpdateCommand, output: @escaping @Sendable (String) -> Void) async throws -> Data {
         throw CLIUpdateError.unavailable
     }
 }
@@ -51,6 +54,13 @@ enum CLIUpdatePhase: Equatable {
     case updated(SemanticVersion)
     case failed(DMErrorState)
     case needsManualUpdate
+}
+
+enum PackagesUpdatePhase: Equatable {
+    case idle
+    case running
+    case done(CLIUpdateReport?)
+    case failed(DMErrorState)
 }
 
 struct CLIVersionReading: Equatable, Sendable {
@@ -91,14 +101,16 @@ struct UpdateDependencies {
     var installer: any AppUpdateInstalling
     var homebrew: any HomebrewUpgrading
     var cliUpdater: any CLIUpdating = UnavailableCLIUpdater()
+    var packagesOutdated: @Sendable () async throws -> Data = { throw CLIUpdateError.unavailable }
     var currentAppURL: URL
     var relaunchTimeout: TimeInterval = 10
     var relaunch: @MainActor (URL) throws -> Void
 }
 
-/// Looks for a newer Devmachine.app and a newer devmachine CLI, and replaces
-/// either when the person asks. For the CLI it runs only `update --cli-only`,
-/// which replaces the binary and never its configuration, packages or machines.
+/// Looks for a newer Devmachine.app, devmachine CLI and packages release, and
+/// updates each when the person asks. For the CLI it runs `update
+/// --no-machines` (CLI 0.7.31+) or `update --cli-only`: the binary, the
+/// packages pin and the skills on this Mac, never a machine or a sync.
 @MainActor
 final class UpdateController: ObservableObject {
     @Published private(set) var availability: UpdateAvailability?
@@ -114,6 +126,12 @@ final class UpdateController: ObservableObject {
     @Published private var dismissedVersion: SemanticVersion?
     @Published private var cliLaterVersion: String?
     @Published private var cliUpdateClosed = false
+    @Published private(set) var cliReport: CLIUpdateReport?
+    @Published private(set) var packagesNotice: PackagesOutdated?
+    @Published private(set) var packagesPhase: PackagesUpdatePhase = .idle
+    @Published private(set) var packagesOutput: [String] = []
+    @Published private var packagesLaterVersion: String?
+    @Published private var packagesUpdateClosed = false
     @Published var showsDialog = false
 
     private let dependencies: UpdateDependencies
@@ -127,7 +145,10 @@ final class UpdateController: ObservableObject {
         self.dependencies = dependencies
         launchedAt = dependencies.now()
         cliLaterVersion = dependencies.preferences.cliLaterVersion
+        packagesLaterVersion = dependencies.preferences.packagesLaterVersion
     }
+
+    private static let log = Logger(subsystem: "app.devmachine.mac", category: "updates")
 
     var currentVersion: SemanticVersion? { dependencies.currentVersion }
 
@@ -200,7 +221,7 @@ final class UpdateController: ObservableObject {
             isChecking = false
             lastCheckedAt = dependencies.now()
         }
-        async let cli = readCLINotice()
+        async let cli = readCLIState()
         if installMethod == nil {
             let detect = dependencies.detectInstallMethod
             installMethod = await Task.detached { detect() }.value
@@ -216,8 +237,12 @@ final class UpdateController: ObservableObject {
                 checkError = DMErrorState(title: "Could not check for updates", message: error.localizedDescription)
             }
         }
-        cliNotice = await cli
+        let state = await cli
+        cliNotice = state.notice
         if case .updated = cliPhase, cliNotice != nil { cliPhase = .idle }
+        if packagesPhase != .running {
+            packagesNotice = state.packages
+        }
     }
 
     /// A CLI older than `--cli-only` would need plain `update`, which moves
@@ -266,14 +291,16 @@ final class UpdateController: ObservableObject {
             cliPhase = .needsManualUpdate
             return
         }
+        let command = CLIUpdateCommand.forCLI(installed: notice.installed)
         cliUpdateClosed = false
         cliOutput = []
+        cliReport = nil
         cliPhase = .running
         let sink = ProcessOutputSink { [weak self] lines in
             if (self?.cliOutput.count ?? 0) < lines.count { self?.cliOutput = lines }
         }
         do {
-            try await dependencies.cliUpdater.updateCLI(output: sink.receive)
+            let stdout = try await dependencies.cliUpdater.run(command, output: sink.receive)
             cliOutput = sink.snapshot
             let reading = await dependencies.cliVersion()
             guard let version = reading.flatMap({
@@ -287,10 +314,15 @@ final class UpdateController: ObservableObject {
                 return
             }
             cliNotice = nil
+            if command.printsJSON { cliReport = CLIUpdateReport.parse(stdout) }
+            if let report = cliReport, let latest = packagesNotice?.latest,
+               PackagesUpdateToast.isCovered(latest: latest, by: report), packagesPhase != .running {
+                packagesNotice = nil
+            }
             cliPhase = .updated(version)
         } catch {
             cliOutput = sink.snapshot
-            if CLISelfUpdate.isUnknownFlag(cliOutput) {
+            if command.isUnknownFlag(cliOutput) {
                 cliPhase = .needsManualUpdate
                 return
             }
@@ -299,6 +331,71 @@ final class UpdateController: ObservableObject {
                 cause: CLISelfUpdate.failureCause(cliOutput) ?? error.localizedDescription,
                 details: cliDetails(fallback: error.localizedDescription)))
         }
+    }
+
+    var showsPackagesBanner: Bool {
+        PackagesUpdateToast.shows(
+            stage: packagesToastStage, notice: packagesNotice, laterVersion: packagesLaterVersion)
+    }
+
+    private var packagesToastStage: PackagesUpdateToast.Stage {
+        switch packagesPhase {
+        case .idle: return .idle
+        case .running: return .running
+        case .done: return .done(closed: packagesUpdateClosed)
+        case .failed: return .failed
+        }
+    }
+
+    /// Hides the card for this packages release, across relaunches, until a
+    /// newer one comes out.
+    func packagesLater() {
+        guard let latest = packagesNotice?.latest else { return }
+        dependencies.preferences.packagesLaterVersion = latest
+        packagesLaterVersion = latest
+    }
+
+    func closePackagesUpdated() {
+        packagesUpdateClosed = true
+        packagesPhase = .idle
+    }
+
+    /// Pins the newest packages release and updates the skills on this Mac:
+    /// `update --no-machines --skip-cli`. Machines change only at a sync,
+    /// which this never runs.
+    func updatePackages() async {
+        guard let notice = packagesNotice, packagesPhase != .running else { return }
+        packagesUpdateClosed = false
+        packagesOutput = []
+        packagesPhase = .running
+        let sink = ProcessOutputSink { [weak self] lines in
+            if (self?.packagesOutput.count ?? 0) < lines.count { self?.packagesOutput = lines }
+        }
+        do {
+            let stdout = try await dependencies.cliUpdater.run(.packagesOnly, output: sink.receive)
+            packagesOutput = sink.snapshot
+            let report = CLIUpdateReport.parse(stdout)
+            if let report, !PackagesUpdateToast.isCovered(latest: notice.latest, by: report) {
+                packagesPhase = .failed(DMErrorState(
+                    title: "The packages pin did not move",
+                    cause: "The CLI pinned \(report.packagesTo ?? "nothing"), not \(notice.latest).",
+                    details: details(packagesOutput, fallback: String(decoding: stdout, as: UTF8.self))))
+                return
+            }
+            packagesNotice = nil
+            packagesPhase = .done(report)
+        } catch {
+            packagesOutput = sink.snapshot
+            packagesPhase = .failed(DMErrorState(
+                title: "Packages were not updated",
+                cause: CLISelfUpdate.failureCause(packagesOutput) ?? error.localizedDescription,
+                details: details(packagesOutput, fallback: error.localizedDescription)))
+        }
+    }
+
+    private func details(_ lines: [String], fallback: String) -> String {
+        let output = lines.suffix(40).joined(separator: "\n")
+        return output.isEmpty ? fallback : output
     }
 
     private func cliDetails(fallback: String) -> String {
@@ -434,11 +531,26 @@ final class UpdateController: ObservableObject {
         return result.release
     }
 
-    private func readCLINotice() async -> CLIUpdateNotice? {
-        guard let reading = await dependencies.cliVersion(),
-              let latest = try? await latest(from: dependencies.cliFeed)
-        else { return nil }
-        return CLIUpdateAdvice.notice(versionOutput: reading.output, latest: latest, method: reading.method)
+    /// The installed CLI is read once for both cards. `packages outdated`
+    /// falls back to its last stored answer offline and fails only when it
+    /// never had one, so a failure means "unknown": no card, only a log line.
+    private func readCLIState() async -> (notice: CLIUpdateNotice?, packages: PackagesOutdated?) {
+        guard let reading = await dependencies.cliVersion() else { return (nil, nil) }
+        async let packages = readPackages(installed: SemanticVersion.first(in: reading.output))
+        let notice = (try? await latest(from: dependencies.cliFeed)).flatMap {
+            CLIUpdateAdvice.notice(versionOutput: reading.output, latest: $0, method: reading.method)
+        }
+        return (notice, await packages)
+    }
+
+    private func readPackages(installed: SemanticVersion?) async -> PackagesOutdated? {
+        guard let installed, PackagesUpdateToast.isSupported(installed: installed) else { return nil }
+        do {
+            return PackagesUpdateToast.offered(try PackagesOutdated.parse(try await dependencies.packagesOutdated()))
+        } catch {
+            Self.log.error("packages outdated failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 }
 

@@ -10,7 +10,22 @@ enum CLIUpdateContent {
     static let scopeNote = "Updating the CLI replaces only the devmachine program. It does not change your "
         + "configuration, packages or machines, and it never types into a session."
 
+    static let scopeNoteWithPackages = "Updating the CLI replaces the devmachine program, pins the newest "
+        + "packages release and updates the skills on this Mac. Your machines change only when you sync, and "
+        + "it never types into a session."
+
+    static func scopeNote(installed: SemanticVersion) -> String {
+        CLIUpdateCommand.forCLI(installed: installed) == .noMachines ? scopeNoteWithPackages : scopeNote
+    }
+
     static func updated(_ version: SemanticVersion) -> String { "CLI updated to \(version)" }
+
+    /// "CLI updated to 0.8.0 · packages pinned v33 · skills updated". The
+    /// version comes from `devmachine version`, read after the update.
+    static func updated(_ version: SemanticVersion, report: CLIUpdateReport?) -> String {
+        guard let report else { return updated(version) }
+        return ([updated(version)] + report.packagesAndSkills).joined(separator: " · ")
+    }
 
     static func terminalLead(manual: Bool) -> String {
         manual ? "Run this once in a terminal:" : "Or run this in a terminal:"
@@ -19,12 +34,40 @@ enum CLIUpdateContent {
     static func available(_ version: SemanticVersion) -> String { "devmachine CLI \(version) is available" }
     static let toastNote = "Updates only the CLI. Your machines and configuration stay as they are."
     static let updatedNote = "Your machines and configuration stay as they are."
+    static let toastNoteWithPackages = "Also pins the newest packages and updates skills. Your machines change "
+        + "only when you sync."
+    static let syncNote = "Your machines change only when you sync."
+
+    static func toastNote(installed: SemanticVersion) -> String {
+        CLIUpdateCommand.forCLI(installed: installed) == .noMachines ? toastNoteWithPackages : toastNote
+    }
+
+    static func updatedNote(report: CLIUpdateReport?) -> String {
+        report == nil ? updatedNote : syncNote
+    }
     static let toastButtonTitle = "Update"
     static let detailsTitle = "Details"
 
     static func needsManualUpdate(installed: SemanticVersion) -> String {
         "The app can update the CLI from \(CLISelfUpdate.minimumVersion) on. Your \(installed) needs one "
             + "update in a terminal first; after that, the button here does it."
+    }
+}
+
+/// The packages card's wording, kept apart from the view so it is tested.
+enum PackagesUpdateContent {
+    static func available(_ version: String) -> String { "Packages \(version) is available" }
+    static let note = "New packages and skills for your machines. Your machines change only when you sync."
+    static let running = "Pinning the packages and updating skills…"
+    static let updateTitle = "Update"
+    static let detailsTitle = "Details"
+    static let syncSuggestion = "Sync your machines from Settings → Machines"
+    static let openMachinesTitle = "Open Machines"
+
+    static func done(_ report: CLIUpdateReport?) -> String {
+        guard let report else { return "Packages and skills updated" }
+        let summary = report.packagesAndSkills.joined(separator: " · ")
+        return summary.prefix(1).uppercased() + summary.dropFirst()
     }
 }
 
@@ -212,8 +255,9 @@ struct UpdateBannerActions: View {
 }
 
 /// The corner toast for a newer devmachine CLI, below the app's own. Update
-/// runs only `update --cli-only`, and only on a CLI that has it; any other
-/// CLI gets the terminal command to copy, which the app never runs or types.
+/// runs `update --no-machines` (0.7.31+) or `update --cli-only`, and only on
+/// a CLI that has one; any other CLI gets the terminal command to copy, which
+/// the app never runs or types.
 struct CLIUpdateBanner: View {
     @EnvironmentObject private var updates: UpdateController
     @EnvironmentObject private var model: AppModel
@@ -223,15 +267,16 @@ struct CLIUpdateBanner: View {
         VStack(alignment: .leading, spacing: m.row.horizontal) {
             if case .updated(let version) = updates.cliPhase {
                 header(
-                    icon: "checkmark.circle.fill", tint: .green, title: CLIUpdateContent.updated(version),
-                    note: CLIUpdateContent.updatedNote)
+                    icon: "checkmark.circle.fill", tint: .green,
+                    title: CLIUpdateContent.updated(version, report: updates.cliReport),
+                    note: CLIUpdateContent.updatedNote(report: updates.cliReport))
                 UpdateBannerActions(
                     notesTitle: CLIUpdateContent.detailsTitle, laterTitle: "Close",
                     showNotes: { model.openSettings(.about) }, later: { updates.closeCLIUpdated() }, update: nil)
             } else if let notice = updates.cliNotice {
                 header(
                     icon: "terminal.fill", tint: .accentColor, title: CLIUpdateContent.available(notice.latest),
-                    note: CLIUpdateContent.toastNote)
+                    note: CLIUpdateContent.toastNote(installed: notice.installed))
                 state(notice)
             }
         }
@@ -240,21 +285,7 @@ struct CLIUpdateBanner: View {
     }
 
     private func header(icon: String, tint: Color, title: String, note: String) -> some View {
-        HStack(alignment: .top, spacing: m.row.horizontal) {
-            Image(systemName: icon)
-                .font(.dm(16))
-                .foregroundStyle(tint)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: m.space.xxs) {
-                Text(verbatim: title)
-                    .font(.dm(12, weight: .semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(verbatim: note)
-                    .font(.dm(11))
-                    .foregroundStyle(Color.dmMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        UpdateToastHeader(icon: icon, tint: tint, title: title, note: note)
     }
 
     @ViewBuilder
@@ -289,6 +320,93 @@ struct CLIUpdateBanner: View {
             Task { await updates.updateCLI() }
         } else {
             updates.showCLICommand()
+        }
+    }
+}
+
+struct UpdateToastHeader: View {
+    let icon: String
+    let tint: Color
+    let title: String
+    let note: String
+    @Environment(\.dmMetrics) private var m
+
+    var body: some View {
+        HStack(alignment: .top, spacing: m.row.horizontal) {
+            Image(systemName: icon)
+                .font(.dm(16))
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: m.space.xxs) {
+                Text(verbatim: title)
+                    .font(.dm(12, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(verbatim: note)
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// The corner card for a newer packages release, under the CLI's. Update
+/// pins it and updates the skills on this Mac (`update --no-machines
+/// --skip-cli`); it never syncs, so the done card only points at Settings →
+/// Machines.
+struct PackagesUpdateBanner: View {
+    @EnvironmentObject private var updates: UpdateController
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dmMetrics) private var m
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.row.horizontal) {
+            switch updates.packagesPhase {
+            case .done(let report):
+                UpdateToastHeader(
+                    icon: "checkmark.circle.fill", tint: .green, title: PackagesUpdateContent.done(report),
+                    note: PackagesUpdateContent.syncSuggestion)
+                UpdateBannerActions(
+                    notesTitle: PackagesUpdateContent.openMachinesTitle, laterTitle: "Close",
+                    showNotes: { model.openSettings(.machines) }, later: { updates.closePackagesUpdated() },
+                    update: nil)
+            case .idle, .running, .failed:
+                if let notice = updates.packagesNotice {
+                    UpdateToastHeader(
+                        icon: "shippingbox.fill", tint: .accentColor,
+                        title: PackagesUpdateContent.available(notice.latest), note: PackagesUpdateContent.note)
+                    state(notice)
+                }
+            }
+        }
+        .frame(width: m.card.banner, alignment: .leading)
+        .dmToastChrome()
+    }
+
+    @ViewBuilder
+    private func state(_ notice: PackagesOutdated) -> some View {
+        switch updates.packagesPhase {
+        case .running:
+            UpdateProgressView(label: PackagesUpdateContent.running)
+        case .failed(let error):
+            DMErrorStateView(state: error, retry: { Task { await updates.updatePackages() } })
+            actions(notice, update: nil)
+        case .idle, .done:
+            actions(notice, update: { Task { await updates.updatePackages() } })
+        }
+    }
+
+    private func actions(_ notice: PackagesOutdated, update: (() -> Void)?) -> some View {
+        UpdateBannerActions(
+            notesTitle: PackagesUpdateContent.detailsTitle, updateTitle: PackagesUpdateContent.updateTitle,
+            showNotes: { showDetails(notice) }, later: { updates.packagesLater() }, update: update)
+    }
+
+    private func showDetails(_ notice: PackagesOutdated) {
+        if let url = notice.notesURL {
+            NSWorkspace.shared.open(url)
+        } else {
+            model.openSettings(.packages)
         }
     }
 }
@@ -515,12 +633,12 @@ struct UpdatesSettingsView: View {
                     .font(.dm(11))
                     .foregroundStyle(.white.opacity(0.55))
                 DMCommandBlock(notice.command)
-                note(CLIUpdateContent.scopeNote)
+                note(CLIUpdateContent.scopeNote(installed: notice.installed))
             }
         } else if case .updated(let version) = updates.cliPhase {
             VStack(alignment: .leading, spacing: m.space.md) {
                 Label {
-                    Text(verbatim: CLIUpdateContent.updated(version))
+                    Text(verbatim: CLIUpdateContent.updated(version, report: updates.cliReport))
                         .font(.dm(12.5, weight: .semibold))
                         .foregroundStyle(.white)
                 } icon: {

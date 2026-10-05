@@ -286,12 +286,25 @@ final class DemoSnapshotsTests: XCTestCase {
         let toasts = DemoSnapshots.cliUpdateScreens.filter { $0.id.hasPrefix("cli-update-toast") }
         XCTAssertEqual(toasts.map(\.fileName), [
             "65-cli-update-toast.png", "66-cli-update-toast-running.png", "67-cli-update-toast-updated.png",
-            "68-cli-update-toast-failed.png", "69-cli-update-toast-manual.png",
+            "68-cli-update-toast-failed.png", "69-cli-update-toast-manual.png", "57-cli-update-toast-pinned.png",
         ])
         for screen in toasts {
             XCTAssertEqual(DemoSnapshots.chrome(for: screen.id), .panel)
         }
         XCTAssertEqual(DemoSnapshots.chrome(for: "cli-update-available"), .window)
+    }
+
+    func testTheCLIUpdateWalkHasThePackagesCardInEachState() {
+        let cards = DemoSnapshots.cliUpdateScreens.filter { $0.id.hasPrefix("packages-update-toast") }
+        XCTAssertEqual(cards.map(\.fileName), [
+            "53-packages-update-toast.png", "54-packages-update-toast-running.png",
+            "55-packages-update-toast-done.png", "56-packages-update-toast-failed.png",
+        ])
+        for screen in cards {
+            XCTAssertEqual(DemoSnapshots.chrome(for: screen.id), .panel)
+        }
+        let names = DemoSnapshots.cliUpdateScreens.map(\.fileName)
+        XCTAssertEqual(Set(names).count, names.count)
     }
 
     func testTheMachineReadyWalkIsItsOwnSet() {
