@@ -1,25 +1,34 @@
 import SwiftUI
 import DevmachineCore
 
-/// Every workspace by machine, with what the last sync applied, and the
-/// flows that add, change, forget and destroy one. A central page: the
-/// sidebar's +, ⌘K and Settings → Workspaces open it. Every change is a
-/// `devmachine` command shown before it runs.
-struct WorkspacesPage: View {
+/// Settings → Workspaces: every workspace under its machine, each with its
+/// on/off switch, and the flows that add, change, forget and destroy one.
+/// A flow opens in place, under a breadcrumb back to the list, and is
+/// dropped when the section is left (`WorkspacesStore.leave`). Every change
+/// is a `devmachine` command shown before it runs.
+struct WorkspacesSettingsView: View {
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var model: AppModel
     @ObservedObject var store: WorkspacesStore
     @ObservedObject private var runner: MachineStepRunner
     @ObservedObject private var machines: MachinesStore
+    /// Settings' draft of the sidebar's hidden list, by ssh alias.
+    let hiddenWorkspaces: [String]
+    let setActive: (_ alias: String, _ active: Bool) -> Void
 
-    init(store: WorkspacesStore = .shared) {
+    init(
+        store: WorkspacesStore = .shared, hiddenWorkspaces: [String],
+        setActive: @escaping (_ alias: String, _ active: Bool) -> Void
+    ) {
         self.store = store
+        self.hiddenWorkspaces = hiddenWorkspaces
+        self.setActive = setActive
         _runner = ObservedObject(wrappedValue: store.runner)
         _machines = ObservedObject(wrappedValue: store.machines)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: m.space.xl) {
+        VStack(alignment: .leading, spacing: m.pt(18)) {
             header
             if let flow = store.flow {
                 WorkspaceFlowView(store: store, runner: runner, flow: flow)
@@ -27,15 +36,14 @@ struct WorkspacesPage: View {
                 ScrollView { list.frame(maxWidth: .infinity, alignment: .leading) }
             }
         }
-        .padding(m.space.xxl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.dmContentBg)
         .task {
             store.openPage()
             takeNewWorkspaceRequest()
             await store.load()
         }
         .onChange(of: model.pendingNewWorkspace) { _, _ in takeNewWorkspaceRequest() }
+        .onDisappear { store.leave() }
     }
 
     private func takeNewWorkspaceRequest() {
@@ -47,22 +55,43 @@ struct WorkspacesPage: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: m.space.md) {
             VStack(alignment: .leading, spacing: m.space.xs) {
-                Text(verbatim: WorkspacesContent.title(store.flow))
-                    .font(.dm(17, weight: .semibold))
-                    .foregroundStyle(Color.dmRowText)
+                breadcrumb
                 Text(verbatim: WorkspacesContent.subtitle(store.flow))
-                    .font(.dm(11.5))
-                    .foregroundStyle(Color.dmMuted)
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             if store.flow == nil {
                 DMButton(icon: "arrow.clockwise", label: "Refresh", size: .small) { Task { await store.load() } }
-                DMButton("Sidebar visibility", variant: .ghost, size: .small) { model.openSettings(.workspaces) }
                 DMButton("New workspace", systemImage: "plus", size: .small) { Task { await store.startNew() } }
                     .disabled(store.machineChoices.isEmpty)
             }
         }
+    }
+
+    /// "Workspaces" alone on the list; "Workspaces › Edit acme" in a flow,
+    /// where "Workspaces" goes back (not while a run is going: Stop first).
+    @ViewBuilder
+    private var breadcrumb: some View {
+        let crumbs = WorkspacesContent.breadcrumb(store.flow)
+        HStack(alignment: .firstTextBaseline, spacing: m.space.sm) {
+            if crumbs.count > 1 {
+                DMButton(crumbs[0], variant: .link, size: .large) { store.close() }
+                    .disabled(!WorkspacesContent.canLeaveFlow(isRunning: store.isRunning))
+                    .help(store.isRunning ? "Stop the run first." : "Back to every workspace")
+                Image(systemName: "chevron.right")
+                    .font(.dm(11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            Text(verbatim: crumbs[crumbs.count - 1])
+                .font(.dm(15, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+    }
+
+    private var sections: [WorkspaceSettingsList.Section] {
+        store.sections(sidebar: model.workspaces, hidden: hiddenWorkspaces)
     }
 
     @ViewBuilder
@@ -71,22 +100,34 @@ struct WorkspacesPage: View {
         case .loading where store.snapshot == nil:
             ProgressView().controlSize(.small)
         case let .failed(error) where store.snapshot == nil:
-            DMErrorStateView(state: error, retry: { Task { await store.load() } })
+            VStack(alignment: .leading, spacing: m.space.xl) {
+                DMErrorStateView(state: error, retry: { Task { await store.load() } })
+                sectionList
+            }
         default:
-            if store.machineChoices.isEmpty, machines.snapshot != nil {
+            if store.machineChoices.isEmpty, machines.snapshot != nil, sections.isEmpty {
                 emptyState(
                     "A workspace lives on a machine, and there is none yet besides this Mac.",
                     button: "Add a machine") { model.showPage(.addMachine) }
-            } else if store.groups.isEmpty {
+            } else if sections.isEmpty {
                 emptyState(WorkspacesContent.explanation, button: "New workspace") {
                     Task { await store.startNew() }
                 }
             } else {
-                VStack(alignment: .leading, spacing: m.space.xl) {
-                    ForEach(store.groups) { group in
-                        machineGroup(group)
-                    }
-                }
+                sectionList
+            }
+        }
+    }
+
+    private var sectionList: some View {
+        VStack(alignment: .leading, spacing: m.space.xxl) {
+            ForEach(sections) { section in
+                machineSection(section)
+            }
+            if !sections.isEmpty {
+                AddMachineNote(text: "A workspace turned off leaves the sidebar, and the app stops reaching it: "
+                    + "no ssh, no mosh, no poll. Its sessions keep running on the machine and come back the moment "
+                    + "you turn it on again. This Mac cannot be turned off.")
             }
         }
     }
@@ -104,38 +145,94 @@ struct WorkspacesPage: View {
         .dmSurface(Color.dmBand, radius: DMRadius.panel)
     }
 
-    private func machineGroup(_ group: WorkspacesStore.MachineGroup) -> some View {
+    private func machineSection(_ section: WorkspaceSettingsList.Section) -> some View {
         VStack(alignment: .leading, spacing: m.space.sm) {
-            DMSectionLabel(text: group.machine.uppercased())
+            machineTitle(section)
             VStack(spacing: 0) {
-                ForEach(Array(group.workspaces.enumerated()), id: \.element.id) { index, workspace in
-                    DMTableRow(index: index) { row(workspace) }
+                ForEach(Array(section.rows.enumerated()), id: \.element.id) { index, row in
+                    DMTableRow(index: index) { self.row(row) }
                 }
             }
         }
     }
 
-    private func row(_ workspace: WorkspaceSummary) -> some View {
-        HStack(alignment: .center, spacing: m.space.lg) {
-            VStack(alignment: .leading, spacing: m.space.xxs) {
-                Text(verbatim: workspace.name)
+    private func machineTitle(_ section: WorkspaceSettingsList.Section) -> some View {
+        let known = section.machine != WorkspaceSettingsList.unknownMachine
+        return HStack(alignment: .firstTextBaseline, spacing: m.space.md) {
+            Label {
+                Text(verbatim: known ? section.machine : "Other workspaces")
                     .font(.dm(13, weight: .semibold))
-                    .foregroundStyle(Color.dmRowText)
-                Text(verbatim: "Linux account \(workspace.user)")
+                    .foregroundStyle(.white)
+            } icon: {
+                Image(systemName: known ? "server.rack" : "questionmark.square.dashed")
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            if let location = section.location {
+                Label(location, systemImage: "mappin.and.ellipse")
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            if !known {
+                Text(verbatim: "The sidebar knows these; the CLI's list does not say where they live.")
+                    .font(.dm(11))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            Spacer()
+            Text(verbatim: section.rows.count == 1 ? "1 workspace" : "\(section.rows.count) workspaces")
+                .font(.dm(11))
+                .foregroundStyle(.white.opacity(0.4))
+        }
+        .padding(.horizontal, m.space.sm)
+    }
+
+    private func row(_ row: WorkspaceSettingsList.Row) -> some View {
+        HStack(alignment: .center, spacing: m.space.lg) {
+            activeSwitch(row)
+            VStack(alignment: .leading, spacing: m.space.xxs) {
+                Text(verbatim: row.name)
+                    .font(.dm(13, weight: .semibold))
+                    .foregroundStyle(Color.dmRowText.opacity(row.isActive ? 1 : 0.55))
+                Text(verbatim: row.summary.map { "Linux account \($0.user)" } ?? (row.alias ?? ""))
                     .font(.dm(10.5, design: .monospaced))
                     .foregroundStyle(Color.dmMuted)
             }
             .frame(width: m.pt(180), alignment: .leading)
-            packages(workspace.packages)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            syncPill(store.syncState(workspace))
-            DMButton("Edit", systemImage: "slider.horizontal.3", variant: .ghost, size: .small) {
-                store.startEdit(workspace.name)
+            if let summary = row.summary {
+                packages(summary.packages)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                syncPill(store.syncState(summary))
+                DMButton("Edit", systemImage: "slider.horizontal.3", variant: .ghost, size: .small) {
+                    store.startEdit(summary.name)
+                }
+                DMButton("Forget…", variant: .ghost, size: .small) { store.startForget(summary.name) }
+                DMButton("Destroy…", variant: .ghostDanger, size: .small) { store.startDestroy(summary.name) }
+            } else {
+                Spacer()
             }
-            DMButton("Forget…", variant: .ghost, size: .small) { store.startForget(workspace.name) }
-            DMButton("Destroy…", variant: .ghostDanger, size: .small) { store.startDestroy(workspace.name) }
         }
         .padding(.vertical, m.space.xs)
+    }
+
+    @ViewBuilder
+    private func activeSwitch(_ row: WorkspaceSettingsList.Row) -> some View {
+        let toggle = Toggle(isOn: Binding(
+            get: { row.isActive },
+            set: { on in if let alias = row.alias { setActive(alias, on) } }
+        )) {
+            Text(verbatim: row.isActive ? "On" : "Off")
+        }
+        .labelsHidden()
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        if row.alias == nil {
+            toggle.disabled(true)
+                .help("The sidebar does not list \(row.name) yet, so there is nothing to turn off.")
+        } else {
+            toggle.help(row.isActive
+                ? "On: in the sidebar, and the app reaches it. Turn off to stop every ssh, mosh and poll."
+                : "Off: not in the sidebar, and the app never reaches it.")
+        }
     }
 
     @ViewBuilder
@@ -145,7 +242,7 @@ struct WorkspacesPage: View {
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
         } else {
-            FlowLayout(spacing: m.space.xs, rowSpacing: m.space.xs) {
+            FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
                 ForEach(names, id: \.self) { DMKindLabel(text: $0) }
             }
         }
@@ -159,7 +256,7 @@ struct WorkspacesPage: View {
                 .help("The last sync installed every package it asks for.")
         case let .pending(missing):
             DMPill(text: "Waiting for sync", color: .orange)
-                .help("Not on the machine yet: \(missing.joined(separator: ", ")). Edit it and apply, "
+                .help("Not on the machine yet: \(missing.joined(separator: ", ")). Sync its machine, "
                     + "or run devmachine sync.")
         case .neverSynced:
             DMPill(text: "Not created yet", color: .orange)
@@ -170,7 +267,9 @@ struct WorkspacesPage: View {
     }
 }
 
-/// A flow on screen: its form, the review of the exact commands, or the run.
+/// A flow on screen, the whole width and down to the bottom: its form, the
+/// review of the exact commands, or the run. Forget and Destroy have no
+/// review, so their form shows the one command it runs.
 private struct WorkspaceFlowView: View {
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var model: AppModel
@@ -182,19 +281,16 @@ private struct WorkspaceFlowView: View {
     var body: some View {
         if flow.stage == .run {
             MachineRunLayout(steps: flow.plan, runner: runner) { WorkspaceRunOutcome(store: store, runner: runner, flow: flow) }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
-            HStack(alignment: .top, spacing: m.space.xl) {
-                VStack(alignment: .leading, spacing: m.space.xl) {
-                    ScrollView {
-                        stageBody.frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    footer
+            VStack(alignment: .leading, spacing: m.space.xl) {
+                ScrollView {
+                    stageBody.frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: m.pt(760), alignment: .leading)
-                if flow.stage == .form {
-                    side.frame(width: m.pt(AddMachineContent.sideWidth))
-                }
+                .frame(maxHeight: .infinity)
+                footer
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .confirmationDialog(WorkspacesContent.confirmTitle(flow), isPresented: $confirming) {
                 Button(WorkspacesContent.runTitle(flow), role: flow.action == .new ? nil : .destructive) {
                     Task { await store.run() }
@@ -226,27 +322,13 @@ private struct WorkspaceFlowView: View {
                     note: WorkspacesContent.preselectionNote(defaults: store.knowsDefaults ? store.defaults : nil))
             case .edit:
                 WorkspaceEditForm(
-                    flow: flowBinding, cards: store.packageCards, agents: agents, variables: store.variables,
-                    logins: store.reportsSharing ? store.logins : nil)
-            case .forget: WorkspaceForgetForm(flow: flow) { store.startDestroy(flow.name) }
-            case .destroy: WorkspaceDestroyForm(flow: flowBinding)
-            }
-        }
-    }
-
-    private var side: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: m.space.lg) {
-                AddMachineFieldLabel(text: "What will run")
-                if flow.canAdvance || flow.isForget {
-                    DMCommandBlock(flow.plan.map(\.displayLine), wraps: true)
-                } else {
-                    Text(verbatim: WorkspacesContent.waitingForAnswers(flow))
-                        .font(.dm(11))
-                        .foregroundStyle(Color.dmMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                AddMachineNote(text: WorkspacesContent.sideNote(flow))
+                    flow: flowBinding, variables: store.variables,
+                    logins: store.reportsSharing ? store.logins : nil
+                ) { model.openPackages(workspace: flow.name) }
+            case .forget:
+                WorkspaceForgetForm(flow: flow) { store.startDestroy(flow.name) }
+            case .destroy:
+                WorkspaceDestroyForm(flow: flowBinding)
             }
         }
     }
@@ -275,6 +357,27 @@ private struct WorkspaceFlowView: View {
                     .disabled(!store.canContinue)
                     .keyboardShortcut(.defaultAction)
             }
+        }
+    }
+}
+
+/// The one command Forget or Destroy runs, on its own screen.
+private struct WorkspaceCommandPreview: View {
+    @Environment(\.dmMetrics) private var m
+    let flow: WorkspaceFlow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            AddMachineFieldLabel(text: "What will run")
+            if flow.canAdvance || flow.isForget {
+                DMCommandBlock(flow.plan.map(\.displayLine), wraps: true)
+            } else {
+                Text(verbatim: WorkspacesContent.waitingForAnswers(flow))
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            AddMachineNote(text: WorkspacesContent.sideNote(flow))
         }
     }
 }
@@ -328,15 +431,16 @@ private struct WorkspaceNewForm: View {
     }
 }
 
+/// Edit changes the workspace's own settings and logins. Its packages are
+/// Settings → Packages' job: the link opens it on this workspace.
 private struct WorkspaceEditForm: View {
     @Environment(\.dmMetrics) private var m
     @Binding var flow: WorkspaceFlow
-    let cards: [MachinePackageCard]
-    let agents: WorkspaceAgentsNote
     /// What each package declares (CLI 0.7.29+); empty, settings are free text.
     let variables: [(package: String, variables: [PackageVariable])]
     /// Nil on a CLI that does not report login answers.
     let logins: [WorkspaceLogin]?
+    let openPackages: () -> Void
 
     private var declaredKeys: Set<String> {
         Set(variables.flatMap { package, declared in declared.map { "\(package).\($0.name)" } })
@@ -344,11 +448,7 @@ private struct WorkspaceEditForm: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
-            WorkspacePackageCards(
-                flow: $flow, cards: cards,
-                note: "Ticked: what \(flow.name) asks for now. A package taken off stays installed on the machine; "
-                    + "the sync only stops managing it.",
-                agents: agents)
+            packages
             if !variables.isEmpty {
                 ForEach(variables, id: \.package) { package, declared in
                     WorkspaceVariableFields(flow: $flow, package: package, variables: declared)
@@ -364,6 +464,29 @@ private struct WorkspaceEditForm: View {
                     + "use devmachine workspaces edit --user or --share in a terminal."
                 : "The machine and the Linux account are not changed here: use devmachine workspaces edit "
                     + "--machine or --user in a terminal.")
+        }
+    }
+
+    private var packages: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            AddMachineFieldLabel(text: "Packages")
+            HStack(alignment: .center, spacing: m.space.md) {
+                if flow.packages.isEmpty {
+                    Text(verbatim: "Only the account, no packages")
+                        .font(.dm(11))
+                        .foregroundStyle(Color.dmMuted)
+                } else {
+                    FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
+                        ForEach(flow.packages, id: \.self) { DMKindLabel(text: $0) }
+                    }
+                }
+                Spacer(minLength: m.space.md)
+                DMButton(WorkspacesContent.packagesLink, variant: .link, size: .small, action: openPackages)
+            }
+            Text(verbatim: "Packages are added and removed in Settings → Packages. Here: their settings and logins.")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -669,6 +792,7 @@ private struct WorkspaceForgetForm: View {
                     .foregroundStyle(Color.dmMuted)
                 DMButton("Destroy instead…", variant: .link, size: .small, action: destroyInstead)
             }
+            WorkspaceCommandPreview(flow: flow)
         }
     }
 
@@ -723,6 +847,7 @@ private struct WorkspaceDestroyForm: View {
             }
             AddMachineNote(text: "It needs \(flow.machine) to answer, and any machine that publishes its sites. "
                 + "If the CLI refuses, its reason shows here and nothing is deleted.")
+            WorkspaceCommandPreview(flow: flow)
         }
     }
 
@@ -834,6 +959,16 @@ enum WorkspacesContent {
             : "Ticked: defaults.workspace in your configuration (\(defaults.joined(separator: ", ")))."
     }
 
+    static let packagesLink = "Packages for this workspace →"
+
+    /// The header's trail: the list's name, then the flow's.
+    static func breadcrumb(_ flow: WorkspaceFlow?) -> [String] {
+        flow == nil ? [title(nil)] : [title(nil), title(flow)]
+    }
+
+    /// A running flow is not left: its log would go with it. Stop ends it.
+    static func canLeaveFlow(isRunning: Bool) -> Bool { !isRunning }
+
     static func title(_ flow: WorkspaceFlow?) -> String {
         switch flow?.action {
         case nil: return "Workspaces"
@@ -848,7 +983,7 @@ enum WorkspacesContent {
         switch flow?.action {
         case nil: return explanation
         case .new: return "A Linux account on a machine, with the packages you choose."
-        case .edit: return "On \(flow?.machine ?? ""). Its packages and settings, then a sync applies them."
+        case .edit: return "On \(flow?.machine ?? ""). Its settings and logins, then a sync applies them."
         case .forget: return "The account stays on \(flow?.machine ?? ""); only this configuration forgets it."
         case .destroy: return "Deletes the account, its home and its sites on \(flow?.machine ?? "")."
         }
@@ -931,7 +1066,7 @@ enum WorkspacesContent {
         case .forget:
             return "The account \(flow.current?.user ?? flow.name) and its home are still on \(flow.machine)."
         case .destroy:
-            return "The log on the left lists what was removed, and any DNS record to remove by hand."
+            return "The log lists what was removed, and any DNS record to remove by hand."
         }
     }
 }

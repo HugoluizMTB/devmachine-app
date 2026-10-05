@@ -21,6 +21,12 @@ private struct SetupPageLocator: ExecutableLocating {
 }
 
 final class SetupPageTests: XCTestCase {
+    func testThePackagesAndWorkspacesSectionsHaveNoSaveFooter() {
+        XCTAssertFalse(SetupPage.showsFooter(for: .packages))
+        XCTAssertFalse(SetupPage.showsFooter(for: .workspaces), "its switches save at once, its flows have buttons")
+        XCTAssertTrue(SetupPage.showsFooter(for: .general))
+    }
+
     private let facade = HarnessSettingsFacade(
         registry: .builtIn,
         locator: SetupPageLocator(available: [])
@@ -125,11 +131,10 @@ final class SetupPageWallpaperTests: XCTestCase {
         XCTAssertEqual(SetupPage.choice(for: remote), .unsplash(id: "ccc333"))
     }
 
-    func testAGradientChoiceOpensTheGradientChip() {
-        XCTAssertEqual(
-            SetupPage.openThemeID(for: .gradient(name: "ember"), in: library),
-            SetupPage.gradientTheme
-        )
+    func testAChoiceThatIsNoPhotoOpensTheFirstPhotoTheme() {
+        for choice: WallpaperChoice in [.gradient(name: "ember"), .networkMap(.large), .networkMap(.compact)] {
+            XCTAssertEqual(SetupPage.openThemeID(for: choice, in: library), "ocean", "\(choice)")
+        }
     }
 
     func testTheBundledChoiceOpensTheThemeOfTheShippedPhoto() {
@@ -144,16 +149,28 @@ final class SetupPageWallpaperTests: XCTestCase {
         XCTAssertEqual(SetupPage.openThemeID(for: .unsplash(id: "zzz999"), in: library), "ocean")
     }
 
-    func testWithoutAnyThemeTheGradientChipOpens() {
-        XCTAssertEqual(
-            SetupPage.openThemeID(for: .bundled, in: .empty),
-            SetupPage.gradientTheme
-        )
+    func testWithoutAnyThemeNoPhotoThemeOpens() {
+        XCTAssertNil(SetupPage.openThemeID(for: .bundled, in: .empty))
     }
 
-    @MainActor
-    func testTheGradientChipIDIsNotAThemeOfTheShippedLibrary() {
-        let library = WallpaperStore.shippedLibrary()
-        XCTAssertFalse(library.themes.map(\.id).contains(SetupPage.gradientTheme))
+    func testEveryKindOfBackgroundHasACardWithATitleAndADetail() {
+        for kind in WallpaperKind.allCases {
+            XCTAssertFalse(SetupPage.title(of: kind).isEmpty)
+            XCTAssertFalse(SetupPage.detail(of: kind).isEmpty)
+        }
+        XCTAssertEqual(SetupPage.title(of: .networkMapLarge), "Network map — large")
+        XCTAssertEqual(SetupPage.title(of: .networkMapCompact), "Network map — compact")
+    }
+
+    func testTheDomainHintSaysItIsOptionalAndWhenNoMachineCanUseItYet() {
+        XCTAssertTrue(SetupPage.domainHint(hasCaddyMachine: true).hasPrefix("Optional."))
+        XCTAssertFalse(SetupPage.domainHint(hasCaddyMachine: true).contains("No machine has Caddy"))
+        XCTAssertTrue(SetupPage.domainHint(hasCaddyMachine: false).contains("No machine has Caddy yet"))
+    }
+
+    func testSettingsHasGeneralAppearanceAndHealthCheckButNoTerminalPreviewsOrAdvanced() {
+        XCTAssertEqual(
+            SettingsSection.allCases.map(\.title),
+            ["General", "Machines", "Workspaces", "Packages", "Harnesses", "Appearance", "Health check", "About"])
     }
 }

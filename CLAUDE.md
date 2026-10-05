@@ -200,7 +200,9 @@ Rules:
   Never `Text("\(intValue)")` — SwiftUI localizes it (pt-BR renders `5.182`,
   `740,31M`). This bug already shipped once; don't repeat it.
 - A central page must fill the center (`.frame(maxWidth:.infinity, maxHeight:.infinity)`),
-  never float at intrinsic size.
+  never float at intrinsic size. Its content uses the whole width too: no
+  `maxWidth` cap on a page body (Settings had one, and the owner asked twice
+  for it to reach the edge).
 - **A running job is a `BGTask` card, never a strip inside a layout.** Whatever
   the app is doing — the workspace sweep, deleting sessions, sending an image,
   adding a subdomain — registers through `AppModel.beginTask/bumpTask/setTask/
@@ -211,7 +213,8 @@ Rules:
   `showsCount = false` (the bar alone), and one that ends at once uses
   `dropTask` so it does not blink a finished card. The small
   `ProgressView().controlSize(.small)` inside a panel stays what it is: that
-  panel loading its own content, not a job.
+  panel loading its own content, not a job. A `devmachine` run against a
+  machine is a machine job instead (see Machine jobs).
 - **`.clipped()` / `.clipShape` do NOT clip hit-testing.** A `scaledToFill` image
   overflows its container and its invisible overflow still swallows clicks over
   neighboring views (this once killed the sidebar's right edge for a whole day).
@@ -333,7 +336,7 @@ Rules:
   off for that call), a plain single click is replayed afterwards for a
   program that reads the mouse, and the wheel keeps SwiftTerm's rule, so tmux
   still scrolls its history. A drag shorter than `TerminalPointer.dragThreshold`
-  is a click. Copy on select (Settings → Terminal, on by default) copies a drag,
+  is a click. Copy on select (Settings → Appearance → Terminal, on by default) copies a drag,
   a word or a line on release; ⌘C with nothing selected leaves the clipboard
   alone. No key is intercepted for selection: SwiftTerm clears it on any key,
   and Esc, ⌃C and the rest reach the program unchanged.
@@ -524,6 +527,20 @@ Rules:
   have the keyboard). Esc is never taken; it closes the find bar only from
   inside its field. WebKit's "Open Link in New Window" reads "New Tab".
 
+## Home layout
+- **`HomeLayout.plan` decides from Home's width alone**; showing or hiding
+  the sidebar only changes that width. The clock sits in the middle of all of
+  Home when, there, it still clears the cards column by the gap
+  (`HomeClockPlacement`, Core, with the clock's width estimated at 2.8 times
+  its scaled point size); otherwise in the middle of the column beside the
+  cards. Its height never changes: it is laid across the same row.
+- **The button that reopens a collapsed sidebar floats over the centre**, so
+  Home moves its cards (stacked: everything) down until they start below it
+  plus a gap (`FloatingButtonClearance`, Core). ContentView measures the
+  button in its `window` coordinate space and hands it down as
+  `\.collapsedSidebarButtonFrame` (nil while the sidebar shows); HomeView
+  measures itself in the same space. It once covered the first card's name.
+
 ## Coding harnesses
 - **Detection never depends on the toggle.** Every harness in
   `HarnessRegistry.builtIn` is detected, badged, gets its icon, upload folder
@@ -538,12 +555,11 @@ Rules:
   opencode, kimi-code, cline) is in the pinned release's
   `packages list` (`CodingAgentPackages.activatable`; before the list is
   read, the declared name is trusted). Any other harness shows its row with
-  no switch, and its saved on/off is left as it was. The Workspaces page's
+  no switch, and its saved on/off is left as it was. New workspace's
   Coding agents group offers only the packages of harnesses turned on
   (`CodingAgentPackages.choose`), hides the others and what needs them
-  (claude-plugins needs claude-code), keeps one a workspace already has so
-  Edit can take it off, and with none on says so and links to Settings →
-  Harnesses. The first run's skills picker is unrelated: it offers what
+  (claude-plugins needs claude-code), and with none on says so and links to
+  Settings → Harnesses. The first run's skills picker is unrelated: it offers what
   `skills add --agent` accepts (`SkillAgent`). Views never name a package.
 - **A harness on without its CLI on this Mac starts on remote workspaces
   only** (`LaunchPlace`): it is offered in the remote fallback, the
@@ -617,7 +633,8 @@ Rules:
 - Poll only while a view is visible (`onAppear`/`onDisappear` begin/end, refcount),
   one in-flight run per target, publish a `@Published` only when the value changed.
 - Never decode an image or run a blur inside `body`; bake once (`WallpaperBackground`)
-  and cache with a cap. Hidden `.opacity(0)` views still cost a full-window drawable —
+  and cache with a cap. The network map wallpaper is drawn, not baked: its
+  canvases are `Equatable` views, repainted only when the map or the size changes. Hidden `.opacity(0)` views still cost a full-window drawable —
   render only what is shown. No `.shadow` on full-window cards.
 - Session polling is a sequential sweep that stops at the first ssh-level failure and
   pauses (5 min on `Permission denied`, 1 min unreachable): parallel auths against a
@@ -716,10 +733,10 @@ Rules:
 - Demo walk `DEVMACHINE_DEMO_WALK=setup-flow` (`DemoSetupFlow`): `80`–`91`
   are the setup (start, CLI install and its failure, choice, server and
   local details, packages, review, running, failed, ready, old CLI),
-  `92`–`95` Settings → Connection.
+  `92`–`95` Settings → General.
 - **It ends on "Start using Devmachine"**: `completeOnboarding` reads the CLI
-  again, fills the empty Connection fields, saves them and opens Home, with
-  no restart. Settings → Connection shows what the CLI reports read-only
+  again, fills the empty General fields, saves them and opens Home, with
+  no restart. Settings → General shows what the CLI reports read-only
   ("Change…", "Edit"), re-reads it each time it opens, and an issue the setup
   fixes (no CLI; a folder other than the CLI's own with no `config.yml`)
   carries a button back into onboarding.
@@ -761,13 +778,18 @@ Rules:
   sessions opens the review. The 5s selection poll skips the alias; the 60s
   sweep still tries it. Only ssh's abort line ("Host key verification
   failed") counts: the CHANGED banner alone can precede a real login.
-- **Review → `AppPage.hostKey(machine)`.** `HostKeyStore` runs `devmachine
+- **Review → `AppModel.showHostKey(machine)`, a sheet (`HostKeySheet`)** over
+  whatever screen asked for it (sidebar card, a refused session's click,
+  Settings → Machines' Host key, ⌘K), never a page: the screen under it stays
+  as it was, and Close (Esc) or Done goes back to it. It cannot close while
+  the trust is writing. `HostKeyStore` runs `devmachine
   machines trust <m> --check --format json` (CLI 0.7.24+; an older CLI
   refuses a changed key without JSON and gets the update advice) on every
   visit, never from a remembered answer: a Lima VM writes a new key on every
-  restart. The page
+  restart. The sheet
   shows both fingerprints and the CLI's `verify` command for the machine's
-  own console, never over SSH.
+  own console, never over SSH. Demo walk: `DEVMACHINE_DEMO_WALK=host-key`
+  (`DemoHostKey`, `150`–`153`).
 - **The trust button stays off until the pasted console output holds the
   exact presented fingerprint** (`HostKeyTrust.confirms`), and the write
   passes `--expect <fingerprint>`, so the CLI refuses if a second scan meets
@@ -825,10 +847,20 @@ once may fail there.
 - Branch prefix `da-` when not committing straight to `main` locally.
 
 ## Updates
-- The updater replaces this app only. It never runs, changes or upgrades the
-  CLI, its configuration, packages, machines or `sync`. For the CLI it shows
-  the command (`CLIUpdateAdvice`) in a `DMCommandBlock` and stops there: never
-  run it, never type it into a session.
+- The updater replaces this app. For the CLI it runs only
+  `update --cli-only`, which replaces the CLI binary and nothing else; it never
+  runs plain `update`, and never changes the configuration, packages,
+  machines or `sync`. A CLI too old for `--cli-only` gets the command
+  (`CLIUpdateAdvice`) in a `DMCommandBlock`: never run it, never type it
+  into a session.
+- **A newer CLI gets its own corner toast** (`CLIUpdateBanner`, under the
+  app's; both stack). Update runs only `update --cli-only` and only when
+  `canUpdateCLIInApp`; any other CLI gets the `CLIUpdateAdvice` command in a
+  `DMCommandBlock`. Later is saved per CLI version
+  (`UpdatePreferences.cliLaterVersion`) and hides that version and older
+  ones (`CLIUpdateToast.shows`); a running or finished update shows
+  whatever Later said, the finished one until Close. Details opens
+  Settings → About. Demo shots `65`–`69` in the `cli-update` walk.
 - Pure logic lives in `DevmachineCore/Updates` (versions, release JSON, ETag
   feed, schedule, install method, digest, bundle checks, swap); the app's
   `Updates/` folder holds `UpdateController` and the real system calls. Tests
@@ -885,16 +917,19 @@ once may fail there.
   then `secrets set <secret> --stdin`: all local to this Mac, behind one
   confirm. The token goes on stdin only, never argv, logs or the job
   output. Run sync = `sync --machine <m> --tags <p> --yes` then
-  `credentials push --machine <m> --yes`, behind a confirm, streamed in
-  the card and a `BGTask`; a CLI older than 0.7.24 gets the commands.
+  `credentials push --machine <m> --yes`, behind a confirm, as a machine
+  job in the corner (`MachineJobCenter`), which holds the log; the card
+  only says where it stands. A failed job retried or dismissed in the
+  corner moves the card with it. A CLI older than 0.7.24 gets the commands.
 - Hostinger's `hostinger.zones` is set with `machines edit <m> --set
   hostinger.zones=[…] --yes` behind a confirm on CLI 0.7.27+, after the
   package is added (the CLI refuses a setting for a package not there).
   Zones are plain names only (`DNSProviderCatalog.zones`). An older CLI
   gets a `config.yml` snippet; the app never edits `config.yml`. Demo
   mode refuses every write.
-- `DEVMACHINE_DEMO_WALK=dns-setup` captures every state; its sync is
-  `DemoDNSSyncRunner`, which starts no process.
+- `DEVMACHINE_DEMO_WALK=dns-setup` captures every state; its sync runs on
+  a demo center whose runner is `DemoDNSSyncRunner`, which starts no
+  process. Outside the walk, demo mode's sync fails in the corner.
 
 ## Machines and the Add machine wizard
 - **Settings → Machines lists the CLI's configuration** (`MachinesStore`:
@@ -927,7 +962,7 @@ once may fail there.
   `sync`. A workspace name is its Linux account's: the CLI's
   `linuxUserName` rule, at most 32 characters, not a system account or
   the admin login, not a workspace the configuration has
-  (`WorkspaceName.problem`, shared with the Workspaces page). Package cards are machine packages whose `platforms` hold `linux`
+  (`WorkspaceName.problem`, shared with Settings → Workspaces). Package cards are machine packages whose `platforms` hold `linux`
   or are empty (any): a server and a Lima machine are both Linux, so a
   `[macos]` package is never offered. Essentials is always installed
   (locked, its `needs` listed as included and not offered again on their
@@ -1010,22 +1045,191 @@ once may fail there.
   CLI's terminal flow, and `cli-socket-` shots (Home and Stats on a CLI
   whose socket path is too long). Demo mode scans no server and reads no agent
   (`DemoData.addMachineScan`, `addMachineAgentKeys`) and refuses every run:
-  `MachineStepRunner.run`, `MachinesStore.removeMachine` and
-  `ProcessPrepareRunner` (Prepare, DNS sync) each refuse before reaching a
-  terminal or the CLI (`DemoRefusalTests`).
+  `MachineStepRunner.run`, `MachinesStore.removeMachine`,
+  `PackagesStore.apply` and `ProcessJobRunner` (every machine job: Prepare,
+  DNS sync, Packages sync) each refuse before reaching a terminal or the CLI
+  (`DemoRefusalTests`).
 
-## Workspaces page
-- **`AppPage.workspaces` lists every workspace by machine** (`WorkspacesStore`:
-  `workspaces list --format json` with its `settings`, and `packages.lock`).
-  "Applied", "Waiting for sync" or "Not created yet" come from the lock's
-  `workspaces` map (`WorkspaceSync`): every declared package in it is applied.
-  A package taken off is not caught: the lock also lists what the declared
-  ones pull in. No `config.yml` yet means no workspace, without a list call.
+## Machine location and the network map
+- **A machine's location is the CLI's** (`machines[].location`, CLI
+  0.7.30+, `MachineLocation` in Core): trimmed, lower-cased,
+  `[a-z0-9][a-z0-9 ._-]{0,39}`. A CLI that leaves the field out reads as
+  `local` for this Mac and a Lima machine (only host `127.0.0.1`), else
+  `external`; an empty value is `external`. The wizard always asks
+  (`MachineLocationField`: free text plus chips; default `external` for a
+  server, `local` for Lima) and passes `--location` to `machines add` /
+  `create-local --add` only on 0.7.30+; older, it says the location is kept
+  once the CLI is updated. "Edit location" runs `machines edit <m>
+  --location <v> --yes` on Save (config only); an older CLI gets "Update the
+  CLI" instead.
+- **Settings → Machines opens on a network map** (`NetworkMap`,
+  `NetworkMapGeometry` in Core; `NetworkMapView` draws it in a `Canvas`
+  after the website hero's hairline plates, creases and coins). One row of
+  tiles, zones by location (this Mac's first, then zones with a door, then
+  by name), columns fixed by sorting, so the same configuration always
+  draws the same map; the scale fits the width (0.9–3 pt per unit).
+  Links are only what the configuration proves: internet → every non-self,
+  non-Lima machine with caddy/essentials (`https`); each site from Caddy's
+  listing (`CaddyStore.sitesByMachine`) from its door to the machine whose
+  `workspaces` holds it (`expose --via` shows as a lane to another
+  machine); this Mac → every machine (`ssh`, drawn even without a self
+  machine, then not selectable); a dashed chain between machines with a
+  tailnet host (`100.64.0.0/10` or `tailscale:`). This Mac is never put on
+  the tailnet: nothing says it is. Lines rise straight up from a tile and
+  run along a lane above the row, so nothing crosses on the ground; at most
+  6 sites are drawn, the rest counted. A click on a tile selects its card.
+- **The map is one view with two presentations** (`NetworkMapView`,
+  `NetworkMapPresentation` in Core). `.interactive` is the page above.
+  `.decorative` is Home's wallpaper in two sizes (`WallpaperChoice.networkMap(
+  NetworkMapSize)`, saved as `{"kind":"networkMap","size":"large"|"compact"}`;
+  a value saved before there were two sizes, or a size a newer build wrote,
+  reads as compact; a build older than the map reads it as the bundled
+  photo): no hit testing, no selection or hover, ink at 45%, no site hosts
+  (they ran under the clock's digits) and no "+N more", and its site lanes
+  sit closer (`NetworkMapBackdrop.siteRow`). The grid covers all of Home.
+  - **Compact** goes only in Home's free area (`HomeMapArea.rect`, Core):
+    right of the cards column and under the clock and date when they sit
+    side by side, under everything when Home is stacked, always above the
+    stats pill. HomeView measures the clock, the stacked content and the pill
+    in its `home` coordinate space and the plan gives the cards column.
+    The map is centred on the clock's middle, not the free column's
+    (`NetworkMapBackdrop.compact`): the area is narrowed the same on both
+    sides of the clock's x (`HomeMapArea.centred`), so it still keeps clear of
+    the cards; only when that leaves the map below scale 0.5 does it centre
+    in the free column. The clock centres in all of Home when it can, and a
+    map centred in the column then sat off to its right. Inside its area
+    `NetworkMapBackdrop` keeps 12% margins (16 pt at least there), at most
+    scale 2, shrunk whole to fit; no area, or a map that would draw below
+    scale 0.5, leaves the grid alone.
+  - **Large** sits behind everything, cards and clock drawn over it
+    (`HomeMapArea.large`, `NetworkMapPlacement.filling`,
+    `NetworkMapBackdrop.Fit.large`): a rect centred in all of Home, 70% of its
+    width, with the same room top and bottom so it clears the pill by the gap
+    and stays centred. It is spread around the clock's measured frame (time,
+    date and Mac name) so that band stays empty
+    (`NetworkMapGeometry.spread`, `keepClear`): the internet tile at the top,
+    the machines in a row at the bottom, placed on the two sides of the band
+    with a wider pitch, and the lanes above the band (or between it and the
+    machines, with the internet tile moved beside the band). The search goes
+    from scale 3.5 down and takes the first layout that keeps machines off
+    the band and no line through it; only when none fits may a thin vertical
+    cross it; with no room at all it falls back to the map centred in the
+    rect. Owner feedback: the clock sat on the map's middle, digits over the
+    internet tile and the server. The Machines page never spreads (its
+    snapshots are byte-identical to before).
+- **Settings → Appearance opens on a Background picker** (`WallpaperKind`,
+  Core): four `DMPictureChoice` cards, Photo, Gradient, Network map — large,
+  Network map — compact, the chosen one ringed and checked. The map cards draw
+  a miniature Home (`HomeSketch`: a 760-point-tall Home scaled down, so the
+  map lands where Home puts it, spread around the sketch's clock, and is not
+  dropped as too small). Picking Photo or
+  Gradient comes back to the last photo or gradient picked (else the bundled
+  photo, `midnight`), then shows that kind's own picks under the cards: the
+  theme chips and photos, or the gradients. Every picture there is 150 pt tall
+  and cropped, in a grid that wraps (200–300 pt columns), so it never turns
+  into a strip; thumbnails are fetched at 640 px (`-thumb640.jpg`, so an old
+  320 px file is not reused).
+- **The wallpaper reads no data of its own** (`NetworkMapWallpaper`): on
+  appear it loads `MachinesStore` only if nobody has, and asks
+  `CaddyStore.appearForMap` for the sites (cache first, read again only past
+  their TTL, never DNS). Before any data, and with no machine, only the
+  ground shows; the machines fade in (no fade with Reduce Motion). Both
+  canvases are `Equatable`, so a stats tick or usage refresh on Home does
+  not repaint them, and there is no motion to keep them busy. Only the
+  bottom is dimmed (`WallpaperBackground.dimming`); behind terminals the
+  ambient backdrop is the ground without the grid. The Appearance cards draw
+  the same view inside their miniature Home.
+- `DEVMACHINE_DEMO_WALK=map-wallpaper` (`DemoMapWallpaper`) captures
+  `180`–`190`: Home with the compact map over the demo configuration, over
+  the five-machine fleet, with no machine; Appearance on the large map; Home
+  with the large map over both; Appearance on a photo theme and on the
+  gradients; and Home with the sidebar collapsed, with the compact map and
+  with the large one over both configurations. Run it with
+  `DEVMACHINE_DEMO_WINDOW=1280x800` and `1728x1080` to check laptop sizes.
+- **Per machine**: Check (`doctor --machine`, `machine doctor` for this
+  Mac), Addresses (`resolve`), Credentials (`credentials list`) open inline
+  and are read only when opened (two of them log in); Sync asks
+  `PackagesStore.syncPending` (disabled with nothing waiting), Full sync a
+  full `SyncRequest`; a Lima machine gets Start / Stop and Delete the VM
+  (`delete-local --yes` behind a confirm that it destroys the VM, apart
+  from Remove which only forgets). All runs are machine jobs; their PATH
+  has `~/.local/bin` first for an app-installed Lima. "Packages on this
+  machine" opens Settings → Packages through `AppModel.openPackages`.
+- `DEVMACHINE_DEMO_WALK=machines-map` (`DemoMachinesMap`) captures
+  `160`–`170`: the fleet, a selection, each panel, a Lima start in the
+  corner, one and eight machines, the location editor, and the wizard's
+  field on a current and an older CLI. Nothing runs.
+
+## Machine jobs
+- **Every `devmachine` run against a machine is a machine job** (`MachineJobCenter`,
+  `MachineJobToast` in the corner stack): Prepare, the DNS provider sync and the
+  Packages page's sync. A screen never streams a sync into its own layout.
+- **A sync is asked for, not started** (`requestSync`): the card asks "Sync
+  <machine>?" and runs only on its button, which is the confirm the VPS-writes
+  rule needs. Two asks for one machine merge into one card (tags join, full
+  wins). One job runs per machine; the next waits as queued.
+- **A tagged sync never records a removal** (the CLI's lock only updates tagged
+  entries), so a request with a removal, or a CLI before 0.7.24, starts full.
+- The log keeps the newest 5000 lines (`JobLog`) and arrives in batches
+  (`JobOutputBuffer`): a hop per line carrying the whole log froze the window.
+- `DMLogView` anchors its scroll at the bottom: `scrollTo` alone, on a lazy
+  stack of wrapped lines, stopped a line or two short of the error.
+
+## Packages page
+- Settings → Packages reads `packages list`, `config show` and `packages.lock`.
+  Declared is `installed_on`; applied is the lock (machines and workspaces).
+  A package the lock has because another one `needs` it is "via <parent>",
+  never "pending removal"; a workspace always has `workspace` (the CLI adds it).
+- "Pending" is derived from config and lock, so a sync put off with Later is
+  still offered ("Sync now") after a relaunch.
+- Apply runs `packages add|rm … --yes` one by one; the first failure stops it and
+  asks for no sync. Removing never uninstalls: the row and the confirm say so.
+- `DEVMACHINE_DEMO_WALK=packages` (`DemoPackages`) seeds the store and the
+  corner at each moment (every machine, `main` with two ticks, the confirm,
+  the sync pending, running, done, failed); nothing runs.
+
+## Settings → Workspaces
+- **Settings → Workspaces lists every workspace under its machine**
+  (`WorkspacesSettingsView`, `WorkspacesStore`: `workspaces list --format
+  json` with its `settings`, and `packages.lock`; grouping in
+  `WorkspaceSettingsList`, Core). Each machine has a title with its
+  location; machines in the configuration's order. A sidebar workspace the
+  CLI's list does not hold goes under "Other workspaces", so its switch is
+  never lost. "Applied", "Waiting for sync" or "Not created yet" come from
+  the lock's `workspaces` map (`WorkspaceSync`): every declared package in
+  it is applied. A package taken off is not caught: the lock also lists
+  what the declared ones pull in. No `config.yml` yet means no workspace,
+  without a list call. There is no separate page (`AppPage` has no
+  workspaces case) and no "Manage workspaces…" button: the list is the
+  section, at the full width and height.
+- **Each row's switch is the sidebar's on/off** (`AppSettings.hiddenWorkspaces`
+  by ssh alias, `WorkspaceVisibility.setting`). It saves at once, with no
+  Save (`AppModel.setHiddenWorkspaces` writes only the hidden list), and a
+  workspace off is not reached: no ssh, mosh or poll, its panes closed.
+  The section has no Save footer, like Packages.
 - **Reached from** the sidebar's + beside WORKSPACES ("New workspace…", under
-  the new-session items), ⌘K "Workspaces…" and "New workspace…"
-  (`requestNewWorkspace`, taken by the page through `pendingNewWorkspace`),
-  and Settings → Workspaces "Manage workspaces…". Settings keeps only the
-  sidebar visibility toggles; the page owns everything else.
+  the new-session items), ⌘K "Workspaces…" (`openSettings(.workspaces)`) and
+  "New workspace…" (`requestNewWorkspace`: Settings → Workspaces plus
+  `pendingNewWorkspace`, taken by the view).
+- **A flow opens inside the section, under a breadcrumb** ("Workspaces ›
+  Edit acme", "Workspaces › New workspace"), with the Settings rail beside
+  it and its buttons at the bottom. "Workspaces" goes back to the list,
+  except while a run is going (Stop first). Leaving the section or closing
+  Settings drops any flow that is not running (`WorkspacesStore.leave`, from
+  the view's `onDisappear`): the store lives for the app, and a flow kept
+  there once left Settings stuck on the last workspace clicked. There is no
+  side column: New and Edit show their commands on the review step, Forget
+  and Destroy on their own screen.
+- **Edit never changes packages**: they live in Settings → Packages.
+  `WorkspaceFlow.togglePackage` does nothing for Edit, so its plan has no
+  `--add`/`--rm`. Edit shows the packages as labels and "Packages for this
+  workspace →" (`AppModel.openPackages(workspace:)`, which opens Packages
+  with its Workspace dropdown set, `PackagesPageState.requested`), then
+  the declared variables, other settings and logins. New keeps its package
+  picker: a workspace has to start from some list (`defaults.workspace`
+  and the harnesses turned on). Onboarding and Add machine make the first
+  workspace through `MachinePlan` (`workspaces new … --yes`) and never use
+  this section.
 - **Every flow is a `WorkspaceFlow` (Core) and runs through
   `MachineStepRunner` in the background**, with `MachineRunLayout`,
   `DMLogView` and `SetupFailurePanel` (Retry, Report a bug), like the wizard.
@@ -1035,15 +1239,15 @@ once may fail there.
   <w> --add/--rm/--set/--unset … --yes` then the same sync, never `--machine`
   (there it moves the workspace). "Apply it now" off skips the sync.
 - The name uses the wizard's rule (`WorkspaceName`); the machine picker lists
-  non-self machines only. Package cards are workspace packages for Linux,
-  grouped by `category`, the account package `workspace` locked on.
+  non-self machines only. New's package cards are workspace packages for
+  Linux, grouped by `category`, the account package `workspace` locked on.
 - **CLI 0.7.29 reports what the page used to guess** (`WorkspaceJSON`, read
   from `version`; an older CLI keeps the fallbacks). `config show` gives
   `defaults.workspace`, which is the preselection and the DEFAULT badge
   (fallback: the setup's own `dev`, `zsh`, `mise`, and the form says it
   cannot read yours), and the top-level login answers. `packages list` gives
   each package's `variables`: Edit shows one typed field per declared
-  variable of the packages kept (boolean as Default/On/Off, list and map as
+  variable of the workspace's packages (boolean as Default/On/Off, list and map as
   YAML text, a number checked before Continue), empty meaning the default;
   anything else stays in the free-text "Other settings". `workspaces list`
   gives each workspace's own `credentials`: Edit lists the logins its
@@ -1071,11 +1275,13 @@ once may fail there.
   workspace list.
 - Demo mode reads `DemoData.workspacesSnapshot` and refuses every run ("Demo
   mode never changes a workspace."). `DEVMACHINE_DEMO_WALK=workspaces`
-  captures `130`–`144`: list, new, a taken name, review, running, failed,
-  done, edit, edit review, forget, a refused forget, destroy, Settings →
-  Workspaces, a new workspace with no harness on, and Settings → Harnesses
-  (every harness with a package has a switch). It turns on Claude, Codex
-  and Pi, and Edit shows glab's login, which cannot be shared.
+  captures `130`–`144`, all inside Settings: the list by machine (umbrella
+  switched off), new, a taken name, review, running, failed, done, edit,
+  edit review, forget, a refused forget, destroy, the list again after an
+  edit was left (`142-workspaces-reopened`), a new workspace with no
+  harness on, and Settings → Harnesses (every harness with a package has a
+  switch). It turns on Claude, Codex and Pi, and Edit shows glab's login,
+  which cannot be shared.
 
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action

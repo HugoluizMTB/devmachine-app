@@ -3,11 +3,6 @@ enum AppPage: Hashable {
     case stats
     case subdomains
     case stack([SessionRef])
-    /// One machine's SSH host key, after ssh refused it.
-    case hostKey(String)
     /// The Add machine wizard.
     case addMachine
-    /// Every workspace by machine, and the flows that add, change, forget
-    /// and destroy one.
-    case workspaces
 }

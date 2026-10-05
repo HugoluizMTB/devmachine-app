@@ -24,6 +24,8 @@ struct WallpaperBackground: View {
     var style: WallpaperStyle = .photo
     /// Overrides the saved choice, so Setup can preview its draft live.
     var choice: WallpaperChoice?
+    /// Where Home puts the network map of each size; the map wallpaper only.
+    var mapPlacement: (NetworkMapSize) -> NetworkMapPlacement = { _ in .whole }
 
     @EnvironmentObject private var wallpapers: WallpaperStore
 
@@ -37,9 +39,7 @@ struct WallpaperBackground: View {
             .overlay { wallpaper }
             .overlay(
                 LinearGradient(
-                    colors: style == .photo
-                        ? [.black.opacity(0.25), .black.opacity(0.55)]
-                        : [.black.opacity(0.5), .black.opacity(0.8)],
+                    colors: Self.dimming(style: style, choice: active).map { .black.opacity($0) },
                     startPoint: .top, endPoint: .bottom
                 )
             )
@@ -50,9 +50,29 @@ struct WallpaperBackground: View {
             .allowsHitTesting(false)
     }
 
+    /// The black laid over the wallpaper, top and bottom, so Home's text
+    /// reads on any photo. The map is already dark and quiet; it needs only
+    /// the bottom darkened, under the stats pill.
+    /// Home's free area is already clear of the cards, the clock and the
+    /// pill by a gap; 48 more points each side would leave a smudge.
+    static let mapMinimumMargin = 16.0
+
+    static func dimming(style: WallpaperStyle, choice: WallpaperChoice) -> [Double] {
+        switch (style, choice) {
+        case (.photo, .networkMap): return [0, 0.35]
+        case (.photo, _): return [0.25, 0.55]
+        case (.ambient, _): return [0.5, 0.8]
+        }
+    }
+
     @ViewBuilder
     private var wallpaper: some View {
-        if let image = baked {
+        if case let .networkMap(size) = active {
+            switch style {
+            case .photo: NetworkMapWallpaper(placement: mapPlacement(size), minimumMargin: Self.mapMinimumMargin)
+            case .ambient: NetworkMapGround()
+            }
+        } else if let image = baked {
             let filled = Image(nsImage: image).resizable().scaledToFill()
             switch style {
             case .photo:
@@ -80,6 +100,8 @@ struct WallpaperBackground: View {
             return WallpaperBaker.image(key: "gradient:" + gradient.name, style: style) {
                 gradient.isLandscape ? gradient.bitmap(width: 1920, height: 1200) : gradient.bitmap()
             }
+        case .networkMap:
+            return nil
         }
     }
 

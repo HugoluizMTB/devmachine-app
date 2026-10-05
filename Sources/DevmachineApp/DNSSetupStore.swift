@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import DevmachineCore
 
@@ -14,7 +15,8 @@ final class DNSSetupStore: ObservableObject {
     @Published private(set) var declared: [String]?
     @Published private(set) var answers: [DNSProviderAnswer]?
     @Published private(set) var jobs: [String: DNSSetupJob] = [:]
-    @Published private(set) var output: [String: [String]] = [:]
+    /// The corner job each machine's sync runs as, which holds its log.
+    @Published private(set) var syncing: [String: UUID] = [:]
     /// The provider whose token was saved last, for a short confirmation.
     @Published private(set) var savedToken: String?
     /// The provider whose zones were saved last.
@@ -34,21 +36,23 @@ final class DNSSetupStore: ObservableObject {
     var canEditMachineSettings: () -> Bool
 
     private let service: CaddyService
-    private var runner: any PrepareRunning
+    private var center: @MainActor () -> MachineJobCenter?
     private var runs: [String: UUID] = [:]
+    private var jobsWatch: AnyCancellable?
+    private weak var watchedCenter: MachineJobCenter?
     /// Packages this store added that `packages list` has not shown yet.
     private var added: [String: Set<String>] = [:]
 
     init(
         service: CaddyService,
-        runner: any PrepareRunning = ProcessPrepareRunner(),
+        center: @escaping @MainActor () -> MachineJobCenter? = { AppModel.shared?.jobs },
         canRunSync: @escaping () -> Bool = { MachineReadinessStore.shared.canPrepareInApp },
         canEditMachineSettings: @escaping () -> Bool = {
             DNSProviderSetup.canEditMachineSettings(cliVersion: MachineReadinessStore.shared.snapshot?.cliVersion)
         }
     ) {
         self.service = service
-        self.runner = runner
+        self.center = center
         self.canRunSync = canRunSync
         self.canEditMachineSettings = canEditMachineSettings
     }
@@ -56,10 +60,6 @@ final class DNSSetupStore: ObservableObject {
     var state: DNSSetupState {
         guard let machine else { return .unknown }
         return DNSProviderSetup.evaluate(declared: declared, answers: answers, job: jobs[machine])
-    }
-
-    var lines: [String] {
-        machine.flatMap { output[$0] } ?? []
     }
 
     /// The provider the card is about once one is in the configuration, or
@@ -171,50 +171,91 @@ final class DNSSetupStore: ObservableObject {
         savedToken = package
     }
 
-    /// Applies only `package` on the machine, then delivers its token, with
-    /// the log streaming into the card and a job card in the corner.
-    func sync(_ package: String) async {
-        guard let machine, canRunSync(), !isRunning(machine) else { return }
-        let steps = DNSProviderSetup.syncSteps(package: package, machine: machine)
+    /// Applies only `package` on the machine, then delivers its token, as a
+    /// job in the corner, which holds the log; the card says where it stands.
+    @discardableResult
+    func sync(_ package: String) -> UUID? {
+        guard let machine, canRunSync(), !isRunning(machine), let center = center() else { return nil }
+        if let previous = syncing[machine] { center.dismiss(previous) }
         let run = begin(machine, .sync)
-        let task = AppModel.shared?.beginTask(label: "Syncing \(package) on \(machine)…", total: steps.count)
-        let sink = ProcessOutputSink { [weak self] lines in
-            guard let self, self.runs[machine] == run, (self.output[machine]?.count ?? 0) < lines.count else { return }
-            self.output[machine] = lines
+        let plan = MachineJobPlan(
+            machine: machine, title: "Sync \(package) on \(machine)",
+            steps: DNSProviderSetup.syncSteps(package: package, machine: machine))
+        watch(center)
+        var started: UUID?
+        let id = center.run(plan) { [weak self] outcome in
+            guard let started else { return }
+            self?.syncFinished(machine, run: run, job: started, outcome: outcome)
         }
-        var failure: (cause: String, details: String)?
-        for (index, arguments) in steps.enumerated() {
-            sink.receive("$ devmachine " + arguments.joined(separator: " "))
-            do {
-                let status = try await runner.run(arguments: arguments, output: sink.receive)
-                if status != 0 {
-                    failure = Self.failure(sink.snapshot, fallback: "devmachine exited with status \(status).")
-                    break
-                }
-            } catch {
-                failure = Self.failure(sink.snapshot, fallback: error.localizedDescription)
-                break
-            }
-            if let task { AppModel.shared?.setTask(task, completed: index + 1) }
-        }
-        if let task {
-            if failure == nil { AppModel.shared?.finishTask(task) } else { AppModel.shared?.dropTask(task) }
-        }
+        started = id
+        syncing[machine] = id
+        return id
+    }
+
+    /// A failed sync runs again in place, in the same corner job; false
+    /// when that job is gone.
+    @discardableResult
+    func retrySync() -> Bool {
+        guard let machine, let id = syncing[machine], let center = center(),
+              case .failed = center.job(id)?.phase else { return false }
+        center.retry(id)
+        return true
+    }
+
+    /// Back to the card the failure replaced; a failed sync leaves the
+    /// corner with it.
+    func dismissFailure() {
+        guard let machine else { return }
+        if let id = syncing[machine] { center()?.dismiss(id) }
+        syncing[machine] = nil
+        jobs[machine] = nil
+        runs[machine] = nil
+    }
+
+    private func syncFinished(_ machine: String, run: UUID, job: UUID, outcome: MachineJobOutcome) {
         guard runs[machine] == run else { return }
-        output[machine] = sink.snapshot
-        if let failure {
-            jobs[machine] = .failed(.sync, cause: failure.cause, details: failure.details)
-        } else {
+        switch outcome {
+        case .succeeded:
             jobs[machine] = .finished
+        case .failed:
+            let lines = center()?.job(job)?.log.lines ?? []
+            var cause = "devmachine stopped."
+            if case let .failed(reason) = center()?.job(job)?.phase { cause = reason }
+            jobs[machine] = .failed(.sync, cause: cause, details: lines.isEmpty ? cause : lines.joined(separator: "\n"))
+        case .cancelled:
+            jobs[machine] = nil
+            syncing[machine] = nil
         }
         onSyncEnded(machine)
     }
 
-    /// Back to the card the failure replaced.
-    func dismissFailure() {
-        guard let machine else { return }
-        jobs[machine] = nil
-        runs[machine] = nil
+    private func watch(_ center: MachineJobCenter) {
+        guard watchedCenter !== center else { return }
+        watchedCenter = center
+        jobsWatch = center.$jobs.sink { [weak self] jobs in
+            MainActor.assumeIsolated { self?.followJobs(jobs) }
+        }
+    }
+
+    /// A failed sync retried in the corner is running again; one dismissed
+    /// there takes the card's failure with it.
+    private func followJobs(_ centerJobs: [MachineJob]) {
+        for (machine, id) in syncing {
+            guard let job = centerJobs.first(where: { $0.id == id }) else {
+                syncing[machine] = nil
+                if case .failed(.sync, _, _) = jobs[machine] {
+                    jobs[machine] = nil
+                    runs[machine] = nil
+                }
+                continue
+            }
+            switch job.phase {
+            case .pending, .queued, .running:
+                if case .failed(.sync, _, _) = jobs[machine] { jobs[machine] = .running(.sync) }
+            case .succeeded, .failed, .cancelled:
+                break
+            }
+        }
     }
 
     private static let demoRefusal = DevmachineCLIError.commandFailed(
@@ -236,7 +277,6 @@ final class DNSSetupStore: ObservableObject {
         let run = UUID()
         runs[machine] = run
         jobs[machine] = .running(step)
-        output[machine] = []
         savedToken = nil
         savedZones = nil
         return run
@@ -260,28 +300,25 @@ final class DNSSetupStore: ObservableObject {
         jobs[machine] = .failed(step, cause: cause, details: message)
     }
 
-    private static func failure(_ lines: [String], fallback: String) -> (cause: String, details: String) {
-        let cause = MachinePrepare.failureCause(lines) ?? FailureCause(message: fallback)?.summary ?? fallback
-        return (cause, lines.isEmpty ? fallback : lines.joined(separator: "\n"))
-    }
-
     #if DEBUG
-    /// Demo walks only: a fixed state and a runner that never reaches a CLI.
+    /// Demo walks only: a fixed state, with no real CLI behind it.
     func seedDemo(
-        machine: String, packages: [CLIPackage], answers: [DNSProviderAnswer]?,
-        job: DNSSetupJob? = nil, lines: [String] = [], runner: (any PrepareRunning)? = nil
+        machine: String, packages: [CLIPackage], answers: [DNSProviderAnswer]?, job: DNSSetupJob? = nil
     ) {
-        if let runner { self.runner = runner }
         canRunSync = { true }
         canEditMachineSettings = { true }
         update(machine: machine, packages: packages, answers: answers)
         jobs[machine] = job
-        output[machine] = lines
+    }
+
+    /// Demo walks only: syncs run on `center`, whose runner never reaches a CLI.
+    func seedDemoCenter(_ center: MachineJobCenter) {
+        self.center = { center }
     }
 
     func clearDemoJobs() {
         jobs = [:]
-        output = [:]
+        syncing = [:]
         runs = [:]
         added = [:]
         savedToken = nil

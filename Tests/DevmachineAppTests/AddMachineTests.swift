@@ -337,6 +337,24 @@ final class AddMachineModelTests: XCTestCase {
         XCTAssertTrue(empty.wizard.limaFound)
     }
 
+    func testTheLocationFlagFollowsTheCLIVersionAndKnownLocationsAreOffered() async {
+        func model(_ version: SemanticVersion) async -> AddMachineModel {
+            AddMachineModel(
+                machines: await store(MachinesSnapshot(
+                    hasConfiguration: true,
+                    machines: [ConfiguredMachine(
+                        name: "main", hosts: ["203.0.113.10"], adminUser: "root", port: 22, workspaces: [],
+                        packages: [], isSelf: false, reportedLocation: "hostinger")],
+                    packages: [], cliVersion: version)),
+                runner: MachineStepRunner(hooks: FakeTerminal().hooks), findLima: { nil }, onAdded: {})
+        }
+        let current = await model(MachineLocation.minimumCLIVersion)
+        XCTAssertTrue(current.wizard.takesLocation)
+        XCTAssertEqual(current.knownLocations, ["hostinger"])
+        let older = await model(SemanticVersion(major: 0, minor: 7, patch: 29))
+        XCTAssertFalse(older.wizard.takesLocation)
+    }
+
     func testALimaMachineIsSizedFromThisMacOnlyOnACLIThatTakesTheSize() async {
         let limits = LocalMachineSizeLimits(cores: 8, memoryBytes: 16 << 30, freeDiskBytes: 200 << 30)
         func model(_ version: SemanticVersion) async -> AddMachineModel {

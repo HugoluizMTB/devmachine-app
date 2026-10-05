@@ -1,9 +1,10 @@
+#if DEBUG
 import Foundation
 import DevmachineCore
 
-/// Demo mode's sync for the DNS setup card: it prints an invented log and
+/// Demo mode's sync for the DNS setup walk: it prints an invented log and
 /// never starts a process, so no demo click can reach a CLI or a machine.
-struct DemoDNSSyncRunner: PrepareRunning {
+struct DemoDNSSyncRunner: MachineJobRunning {
     enum Outcome: Sendable {
         case succeeds, fails, holds
     }
@@ -38,14 +39,15 @@ struct DemoDNSSyncRunner: PrepareRunning {
     }
 }
 
-#if DEBUG
 /// The DNS setup walk (`DEVMACHINE_DEMO_WALK=dns-setup`): the Subdomains
 /// page on a server with no provider, one not synced, one that sees no
-/// zone, a sync running, failed and done. The sync is `DemoDNSSyncRunner`.
+/// zone, a sync running, failed and done. The sync runs on a demo center
+/// whose runner is `DemoDNSSyncRunner`; the corner shows a copy of its jobs.
 @MainActor
 enum DemoDNSWalk {
     static func prepare(_ id: String, store: CaddyStore, model: AppModel) async {
         store.dnsSetup.clearDemoJobs()
+        model.jobs.seedDemo([])
         DemoDNSSyncRunner.outcome = .succeeds
         switch id {
         case "dns-none": DemoData.dnsScenario = .noneInstalled
@@ -58,13 +60,13 @@ enum DemoDNSWalk {
         switch id {
         case "dns-syncing":
             DemoDNSSyncRunner.outcome = .holds
-            Task { await store.dnsSetup.sync("hostinger") }
+            await sync(store, model: model, untilDone: false)
         case "dns-failed":
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             DemoDNSSyncRunner.outcome = .fails
-            await store.dnsSetup.sync("hostinger")
+            await sync(store, model: model, untilDone: true)
         case "dns-ready":
-            await store.dnsSetup.sync("hostinger")
+            await sync(store, model: model, untilDone: true)
         default:
             break
         }
@@ -74,6 +76,26 @@ enum DemoDNSWalk {
     static func reset() {
         DemoData.dnsScenario = .ready
         DemoDNSSyncRunner.outcome = .succeeds
+        AppModel.shared?.jobs.seedDemo([])
+    }
+
+    private static func sync(_ store: CaddyStore, model: AppModel, untilDone: Bool) async {
+        let center = MachineJobCenter(runner: DemoDNSSyncRunner(), successSeconds: 60)
+        store.dnsSetup.seedDemoCenter(center)
+        guard let id = store.dnsSetup.sync("hostinger") else { return }
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard let job = center.job(id) else { break }
+            if case .running = job.phase, !untilDone, !job.log.lines.isEmpty { break }
+            if case .succeeded = job.phase { break }
+            if case .failed = job.phase { break }
+        }
+        model.jobs.seedDemo(center.jobs.map { job in
+            var shown = job
+            shown.expanded = true
+            return shown
+        })
     }
 }
 #endif

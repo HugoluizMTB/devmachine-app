@@ -50,6 +50,20 @@ enum HostKeyContent {
         "devmachine machines trust \(machine) --check --replace"
     }
     static let updateCLITitle = "Update the CLI first"
+
+    static func sheetTitle(machine: String) -> String { "Host key · \(machine)" }
+
+    /// The sheet's way out: "Done" once the key is trusted, "Close" otherwise.
+    static func closeTitle(phase: HostKeyPhase?) -> String {
+        phase == .trusted ? "Done" : "Close"
+    }
+
+    /// While the key is being written the sheet stays open: closing it then
+    /// would hide whether the write landed.
+    static func canClose(phase: HostKeyPhase?) -> Bool {
+        if case .trusting = phase { return false }
+        return true
+    }
 }
 
 /// One line in the sidebar under a machine whose host key ssh refused, with
@@ -69,7 +83,7 @@ struct HostKeySidebarCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             DMButton(HostKeyContent.reviewTitle, variant: .outline, size: .small) {
-                model.showPage(.hostKey(machine))
+                model.showHostKey(machine)
             }
         }
         .padding(m.space.md)
@@ -77,10 +91,11 @@ struct HostKeySidebarCard: View {
     }
 }
 
-/// The central page that reviews one machine's host key: both fingerprints,
-/// the console command that proves the new one, and a trust button that
-/// stays off until the pasted output holds the exact presented fingerprint.
-struct HostKeyPage: View {
+/// The sheet that reviews one machine's host key over the screen that asked
+/// for it: both fingerprints, the console command that proves the new one,
+/// and a trust button that stays off until the pasted output holds the exact
+/// presented fingerprint.
+struct HostKeySheet: View {
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var model: AppModel
     @ObservedObject var store: HostKeyStore
@@ -94,24 +109,35 @@ struct HostKeyPage: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: m.space.lg) {
-                content
+        VStack(alignment: .leading, spacing: m.space.lg) {
+            Text(verbatim: HostKeyContent.sheetTitle(machine: machine))
+                .font(.headline)
+            content
+            HStack {
+                Spacer()
+                DMButton(
+                    HostKeyContent.closeTitle(phase: phase),
+                    variant: phase == .trusted ? .primary : .outline
+                ) { close() }
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(!canClose)
             }
-            .padding(m.space.xxl)
-            .frame(maxWidth: m.pt(720), alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color.dmContentBg)
+        .padding(m.pt(20))
+        .frame(width: m.card.sheetWide, alignment: .leading)
         .task(id: machine) { await store.check(machine) }
         .onChange(of: machine) { _, _ in pasted = "" }
+        .onExitCommand { if canClose { close() } }
+        .interactiveDismissDisabled(!canClose)
         .onDisappear { store.dismiss(machine) }
     }
 
+    private var phase: HostKeyPhase? { store.phase(for: machine) }
+    private var canClose: Bool { HostKeyContent.canClose(phase: phase) }
+
     @ViewBuilder
     private var content: some View {
-        switch store.phase(for: machine) {
+        switch phase {
         case .checking, nil:
             header(HostKeyContent.title(machine: machine, status: nil))
             DMStatusView(kind: .loading("Reading the key \(machine) presents…"), fillsHeight: false)
@@ -122,7 +148,6 @@ struct HostKeyPage: View {
         case .trusted:
             header(HostKeyContent.trustedTitle(machine: machine), systemImage: "checkmark.circle.fill", tint: .green)
             paragraph(HostKeyContent.trustedBody)
-            DMButton("Done", size: .small) { close() }
         case .matching:
             header(HostKeyContent.matchingTitle(machine: machine), systemImage: "checkmark.circle", tint: .green)
             paragraph(HostKeyContent.matchingBody)
@@ -138,7 +163,10 @@ struct HostKeyPage: View {
             paragraph(HostKeyContent.explanation)
             paragraph(HostKeyContent.olderCLIBody)
             DMCommandBlock([HostKeyContent.olderCLICommand(machine: machine)], wraps: true)
-            DMButton(HostKeyContent.updateCLITitle, variant: .link, size: .small) { model.openSettings(.about) }
+            DMButton(HostKeyContent.updateCLITitle, variant: .link, size: .small) {
+                close()
+                model.openSettings(.about)
+            }
         case let .failed(error):
             DMErrorStateView(state: error, retry: { Task { await store.check(machine) } })
                 .frame(maxWidth: .infinity)
@@ -181,8 +209,6 @@ struct HostKeyPage: View {
                 Task { await store.check(machine) }
             }
             .disabled(isTrusting)
-            DMButton("Cancel", variant: .ghost, size: .small) { close() }
-                .disabled(isTrusting)
         }
     }
 
@@ -237,6 +263,6 @@ struct HostKeyPage: View {
 
     private func close() {
         store.dismiss(machine)
-        if model.activePage == .hostKey(machine) { model.activePage = nil }
+        model.closeHostKey()
     }
 }

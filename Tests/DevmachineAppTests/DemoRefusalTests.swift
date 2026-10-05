@@ -58,7 +58,7 @@ final class DemoRefusalTests: XCTestCase {
     }
 
     func testAPrepareOrDNSSyncNeverResolvesTheCLI() async {
-        let runner = ProcessPrepareRunner(cli: {
+        let runner = ProcessJobRunner(cli: {
             XCTFail("demo mode resolved the CLI for a sync")
             throw DevmachineCLIError.commandFailed("no")
         })
@@ -69,5 +69,53 @@ final class DemoRefusalTests: XCTestCase {
         } catch {
             XCTAssertEqual(error.localizedDescription, "Demo mode never runs a devmachine command.")
         }
+    }
+
+    func testPrepareFailsInTheCornerWithoutResolvingTheCLI() async throws {
+        let center = MachineJobCenter(runner: ProcessJobRunner(cli: {
+            XCTFail("demo mode resolved the CLI for Prepare")
+            throw DevmachineCLIError.commandFailed("no")
+        }))
+        var snapshot = ReadinessSnapshot()
+        snapshot.machines = ["main"]
+        snapshot.declared = ["main": true]
+        snapshot.lock = PackagesLock(machines: ["main": []])
+        snapshot.cliVersion = SemanticVersion("0.7.24")
+        let ready = snapshot
+        let store = MachineReadinessStore(read: { ready }, jobs: { center }, listensForReports: false)
+        await store.check()
+
+        let id = try XCTUnwrap(store.prepare("main"))
+
+        let deadline = Date().addingTimeInterval(5)
+        while center.job(id)?.phase != .failed(cause: "Demo mode never runs a devmachine command."), Date() < deadline {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(center.job(id)?.phase, .failed(cause: "Demo mode never runs a devmachine command."))
+    }
+
+    func testADNSSyncFailsInTheCornerWithoutResolvingTheCLI() async throws {
+        let center = MachineJobCenter(runner: ProcessJobRunner(cli: {
+            XCTFail("demo mode resolved the CLI for a DNS sync")
+            throw DevmachineCLIError.commandFailed("no")
+        }))
+        let setup = DNSSetupStore(
+            service: CaddyService(cli: DevmachineCLI(executable: "/fake", runner: DemoMode.runner)),
+            center: { center }, canRunSync: { true })
+        setup.update(
+            machine: "main",
+            packages: [CLIPackage(name: "hostinger", scope: "machine", installedOn: ["machine main"],
+                                  summary: "DNS zones on Hostinger.")],
+            answers: [])
+
+        let id = try XCTUnwrap(setup.sync("hostinger"))
+
+        let deadline = Date().addingTimeInterval(5)
+        while setup.state == .working(.sync), Date() < deadline {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(center.job(id)?.phase, .failed(cause: "Demo mode never runs a devmachine command."))
+        XCTAssertEqual(setup.state, .failed(.sync, cause: "Demo mode never runs a devmachine command.",
+                                            details: "$ devmachine sync --machine main --tags hostinger --yes"))
     }
 }

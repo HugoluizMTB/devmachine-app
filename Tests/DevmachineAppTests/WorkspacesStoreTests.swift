@@ -93,8 +93,9 @@ final class WorkspacesStoreTests: XCTestCase {
         let store = makeStore(cli: FakeCLI())
         await store.load()
 
-        XCTAssertEqual(store.groups.map(\.machine), ["main", "staging"])
-        XCTAssertEqual(store.groups.map { $0.workspaces.map(\.name) }, [["acme"], ["gamma"]])
+        let sections = store.sections(sidebar: [], hidden: [])
+        XCTAssertEqual(sections.map(\.machine), ["main", "staging"])
+        XCTAssertEqual(sections.map { $0.rows.map(\.name) }, [["acme"], ["gamma"]])
         XCTAssertEqual(store.syncState(acme), .applied)
         XCTAssertEqual(store.syncState(gamma), .neverSynced)
     }
@@ -129,12 +130,61 @@ final class WorkspacesStoreTests: XCTestCase {
         XCTAssertTrue(store.noCodingAgentOn)
     }
 
-    func testEditKeepsAnAgentTheWorkspaceHasEvenWithItsHarnessOff() async {
+    func testEditShowsTheSettingsOfThePackagesTheWorkspaceHasAndNeverChangesThem() async {
         let store = makeStore(cli: FakeCLI(), harnessesOn: [])
         await store.load()
         store.startEdit("gamma")
-        XCTAssertTrue(store.packageCards.contains { $0.name == "pi" }, "so it can be taken off")
-        XCTAssertFalse(store.packageCards.contains { $0.name == "claude-code" })
+        store.flow?.togglePackage("pi")
+        XCTAssertEqual(store.flow?.packages, ["pi"])
+        XCTAssertEqual(store.variables.map(\.package), ["pi"], "pi stays even with its harness off")
+    }
+
+    func testLeavingTheSectionDropsTheEditSoTheNextVisitOpensOnTheList() async {
+        let store = makeStore(cli: FakeCLI())
+        await store.load()
+        store.startEdit("acme")
+        store.flow?.setSetting("zsh.theme", "agnoster")
+        store.leave()
+        XCTAssertNil(store.flow)
+        await store.startNew()
+        store.leave()
+        XCTAssertNil(store.flow, "a new workspace half typed is dropped too")
+    }
+
+    func testLeavingDuringARunKeepsItsLog() async {
+        let cli = FakeCLI()
+        let store = makeStore(cli: cli)
+        await store.load()
+        store.startForget("acme")
+        store.flow?.next()
+        store.runner.seedDemo(statuses: [:], phase: .running, lines: ["working"])
+        store.leave()
+        XCTAssertNotNil(store.flow)
+        XCTAssertFalse(WorkspacesContent.canLeaveFlow(isRunning: store.isRunning))
+    }
+
+    func testTheBreadcrumbNamesTheFlowAndWorkspacesGoesBackToTheList() async {
+        let store = makeStore(cli: FakeCLI())
+        await store.load()
+        XCTAssertEqual(WorkspacesContent.breadcrumb(store.flow), ["Workspaces"])
+        store.startEdit("acme")
+        XCTAssertEqual(WorkspacesContent.breadcrumb(store.flow), ["Workspaces", "Edit acme"])
+        XCTAssertTrue(WorkspacesContent.canLeaveFlow(isRunning: store.isRunning))
+        store.close()
+        XCTAssertNil(store.flow)
+        await store.startNew()
+        XCTAssertEqual(WorkspacesContent.breadcrumb(store.flow), ["Workspaces", "New workspace"])
+    }
+
+    func testTheSectionsGroupEveryWorkspaceByMachineWithItsSwitch() async {
+        let store = makeStore(cli: FakeCLI())
+        await store.load()
+        let sections = store.sections(
+            sidebar: [Workspace(name: "acme", alias: "acme-devmachine"), Workspace(name: "gamma", alias: "gamma-devmachine")],
+            hidden: ["gamma-devmachine"])
+        XCTAssertEqual(sections.map(\.machine), ["main", "staging"])
+        XCTAssertEqual(sections.map(\.location), ["external", "external"])
+        XCTAssertEqual(sections.flatMap(\.rows).map(\.isActive), [true, false])
     }
 
     func testTheConfiguredDefaultsArePreselectedOnCLI0729() async {
@@ -241,13 +291,12 @@ final class WorkspacesStoreTests: XCTestCase {
         let store = makeStore(cli: cli)
         await store.load()
         store.startEdit("acme")
-        store.flow?.togglePackage("pi")
         store.flow?.settings[0].value = "agnoster"
         store.next()
         await store.run()
 
         XCTAssertEqual(cli.commands, [
-            ["workspaces", "edit", "acme", "--add", "pi", "--set", "zsh.theme=agnoster", "--yes"],
+            ["workspaces", "edit", "acme", "--set", "zsh.theme=agnoster", "--yes"],
             ["sync", "--machine", "main", "--yes"],
         ])
     }

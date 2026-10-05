@@ -412,19 +412,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 remedy: .runSetup))
         }
 
-        // No longer needed for an admin login — every admin command now runs
-        // through the devmachine CLI. Left blank, it only means the app
-        // cannot match `<workspace>-<alias>` entries in ~/.ssh/config yet.
-        if !settings.hostAlias.isEmpty, !matches(settings.hostAlias, aliasPattern) {
-            issues.append(SettingsIssue(field: .hostAlias, message: "Only letters, digits, dot, dash and underscore."))
-        }
-
-        // Both are for publishing sites; a person without a server leaves them
-        // empty, and the CLI fills them in once a machine has a domain.
-        if !settings.publicIP.isEmpty, !matches(settings.publicIP, ipv4Pattern) {
-            issues.append(SettingsIssue(field: .publicIP, message: "Type the public IPv4 of the host."))
-        }
-
+        // The host alias and the public IP are no longer shown in Settings, so a
+        // stale value there must never block saving.
         if !settings.baseDomain.isEmpty, !matches(settings.baseDomain, domainPattern) {
             issues.append(SettingsIssue(field: .baseDomain, message: "Type a lowercase domain, like example.com."))
         }

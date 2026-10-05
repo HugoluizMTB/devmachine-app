@@ -23,7 +23,7 @@ public enum ServerKeySource: String, CaseIterable, Equatable, Sendable {
 }
 
 public enum MachineDraftField: Equatable, Sendable {
-    case name, address, user, port, keyFile, agentKey, password, fingerprint, domain, workspace, size
+    case name, address, user, port, keyFile, agentKey, password, fingerprint, domain, workspace, size, location
 }
 
 public struct MachineDraftProblem: Equatable, Sendable {
@@ -81,6 +81,8 @@ public struct MachineDraft: Equatable, Sendable {
     /// False before the CLI's `config.yml` exists: only `setup` writes the
     /// first machine, and it asks its questions itself.
     public var hasConfiguration = true
+    /// Where the machine is (`MachineLocation`), prefilled for its kind.
+    public var location = MachineLocation.external
 
     public init() {}
 
@@ -157,6 +159,9 @@ public struct MachineDraft: Equatable, Sendable {
         }
         if let message = workspaceProblem(existingWorkspaces: existingWorkspaces) {
             problems.append(.init(field: .workspace, message: message))
+        }
+        if let message = MachineLocation.problem(location) {
+            problems.append(.init(field: .location, message: message))
         }
         return problems
     }

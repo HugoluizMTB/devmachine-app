@@ -5,53 +5,50 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case connection, machines, workspaces, harnesses, appearance, terminal, previews, advanced, about
+    case general, machines, workspaces, packages, harnesses, appearance, healthCheck, about
 
     var title: String {
         switch self {
-        case .connection: return "Connection"
+        case .general: return "General"
         case .machines: return "Machines"
         case .workspaces: return "Workspaces"
+        case .packages: return "Packages"
         case .harnesses: return "Harnesses"
         case .appearance: return "Appearance"
-        case .terminal: return "Terminal"
-        case .previews: return "Previews"
-        case .advanced: return "Advanced"
+        case .healthCheck: return "Health check"
         case .about: return "About"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .connection: return "The host this app talks to, and the devmachine configuration it reads."
+        case .general: return "The devmachine configuration this app reads, your domain, ssh, previews and logging."
         case .machines: return "The servers and local machines in the devmachine configuration."
-        case .workspaces: return "Which workspaces the sidebar shows and the app reaches."
+        case .workspaces: return "Every workspace by machine: which ones the app reaches, and new, edit, forget or destroy."
+        case .packages: return "Browse the catalog, and add or remove packages on a machine or workspace."
         case .harnesses: return "Choose what new sessions start with."
-        case .appearance: return "The wallpaper behind the panes, and the size of the interface."
-        case .terminal: return "How a terminal looks, and how many stay connected."
-        case .previews: return "Where a dev server, a published site or a link opens."
-        case .advanced: return "Things to turn on only while chasing a problem."
+        case .appearance: return "The size of the interface, the wallpaper, and how a terminal looks."
+        case .healthCheck: return "Checks that this Mac, the devmachine CLI and your machines work together."
         case .about: return "This app's version and updates, and the devmachine CLI's."
         }
     }
 
     var systemImage: String {
         switch self {
-        case .connection: return "network"
+        case .general: return "gearshape"
         case .machines: return "server.rack"
         case .workspaces: return "square.grid.2x2"
+        case .packages: return "shippingbox"
         case .harnesses: return "sparkles"
         case .appearance: return "photo"
-        case .terminal: return "terminal"
-        case .previews: return "safari"
-        case .advanced: return "wrench.and.screwdriver"
+        case .healthCheck: return "stethoscope"
         case .about: return "info.circle"
         }
     }
 
-    /// Every field that can fail validation lives in Connection, so that is the
+    /// Every field that can fail validation lives in General, so that is the
     /// pane the rail marks when something is wrong.
-    var showsValidation: Bool { self == .connection }
+    var showsValidation: Bool { self == .general }
 }
 
 private enum LaunchChoiceTag: Hashable {
@@ -95,16 +92,17 @@ struct SetupPage: View {
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @ObservedObject private var machinesStore = MachinesStore.shared
 
-    /// Not a theme id in the library — the chip that shows the built-in gradients.
-    static let gradientTheme = "gradient"
-
     @State private var opsRepoPath = ""
     @State private var hostAlias = ""
     @State private var publicIP = ""
     @State private var baseDomain = ""
     @State private var sshAgentSocket = ""
     @State private var wallpaper = WallpaperChoice.bundled
-    @State private var themeID = SetupPage.gradientTheme
+    @State private var themeID: String?
+    /// The last photo and gradient picked, so going to the map and back
+    /// returns to them instead of a default.
+    @State private var lastPhoto: WallpaperChoice?
+    @State private var lastGradient: WallpaperChoice?
     @State private var terminalOpacity = Appearance.defaultTerminalOpacity
     @State private var terminalFontSize = Appearance.defaultTerminalFontSize
     @State private var uiFontScale = Appearance.defaultUIFontScale
@@ -189,10 +187,12 @@ struct SetupPage: View {
     private var isFirstRun: Bool { !settingsStore.isConfigured }
 
     @State private var section: SettingsSection
+    /// Set by "Packages on this machine" in Settings → Machines.
+    @State private var packagesPage: PackagesPageState?
 
-    /// `initialSection` only ever differs from `.connection` for the
+    /// `initialSection` only ever differs from `.general` for the
     /// website's demo screenshots, which need to open straight onto Health.
-    init(initialSection: SettingsSection = .connection) {
+    init(initialSection: SettingsSection = .general) {
         _section = State(initialValue: initialSection)
     }
 
@@ -217,9 +217,17 @@ struct SetupPage: View {
                 cliAvailabilityRead += 1
             }
             .onChange(of: model.requestedSettingsSection) { _, _ in openRequestedSection() }
+            .onChange(of: section) { _, next in if next != .packages { packagesPage = nil } }
     }
 
     private func openRequestedSection() {
+        if let page = PackagesPageState.requested(
+            machine: model.requestedPackagesMachine, workspace: model.requestedPackagesWorkspace
+        ) {
+            packagesPage = page
+            model.requestedPackagesMachine = nil
+            model.requestedPackagesWorkspace = nil
+        }
         guard let requested = model.requestedSettingsSection else { return }
         section = requested
         model.requestedSettingsSection = nil
@@ -231,10 +239,9 @@ struct SetupPage: View {
                 .background(Color.dmBand)
             VStack(spacing: 0) {
                 sectionBody
-                footer
+                if Self.showsFooter(for: section) { footer }
             }
-            .frame(maxWidth: m.pt(880), maxHeight: .infinity)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
         .environment(\.colorScheme, .dark)
     }
@@ -293,36 +300,58 @@ struct SetupPage: View {
         .onTapGesture { section = item }
     }
 
+    /// Packages scrolls its own rows so its Apply bar stays in view, and
+    /// Workspaces so a flow's buttons stay at the bottom; every other
+    /// section scrolls whole.
+    @ViewBuilder
     private var sectionBody: some View {
-        ScrollView(.vertical) {
+        if section == .packages {
             VStack(alignment: .leading, spacing: m.pt(18)) {
-                VStack(alignment: .leading, spacing: m.space.xs) {
-                    Text(section.title)
-                        .font(.dm(15, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text(section.subtitle)
-                        .font(.dm(11))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                switch section {
-                case .connection: connectionBlock
-                case .machines: MachinesSettingsView()
-                case .workspaces: workspacesBlock
-                case .harnesses: harnessesBlock.task { await machinesStore.load() }
-                case .appearance: wallpaperBlock
-                case .terminal: terminalBlock
-                case .previews: previewsBlock
-                case .advanced: advancedBlock
-                case .about: UpdatesSettingsView()
-                }
+                sectionTitle
+                PackagesSettingsView(page: packagesPage ?? DemoSnapshots.packagesInitialPage)
             }
             .padding(m.space.xxl)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else if section == .workspaces {
+            WorkspacesSettingsView(hiddenWorkspaces: hiddenWorkspaces, setActive: setWorkspaceActive)
+                .padding(m.space.xxl)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: m.pt(18)) {
+                    sectionTitle
+                    switch section {
+                    case .general: generalBlock
+                    case .machines: MachinesSettingsView()
+                    case .workspaces: EmptyView()
+                    case .packages: EmptyView()
+                    case .harnesses: harnessesBlock.task { await machinesStore.load() }
+                    case .appearance: appearanceBlock
+                    case .healthCheck: HealthCheckView()
+                    case .about: UpdatesSettingsView()
+                    }
+                }
+                .padding(m.space.xxl)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.automatic)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .scrollIndicators(.automatic)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
+
+    private var sectionTitle: some View {
+        VStack(alignment: .leading, spacing: m.space.xs) {
+            Text(section.title)
+                .font(.dm(15, weight: .semibold))
+                .foregroundStyle(.white)
+            Text(section.subtitle)
+                .font(.dm(11))
+                .foregroundStyle(.white.opacity(0.5))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    static func showsFooter(for section: SettingsSection) -> Bool { section != .packages && section != .workspaces }
 
     private var footer: some View {
         HStack(spacing: m.pt(10)) {
@@ -362,6 +391,41 @@ struct SetupPage: View {
         .padding(.vertical, m.pt(14))
     }
 
+    static func domainHint(hasCaddyMachine: Bool) -> String {
+        let base = "Optional. The base domain for your whole network: a machine with Caddy publishes "
+            + "ports and apps under it, as app.example.com. One domain serves every machine."
+        return hasCaddyMachine
+            ? base
+            : base + " No machine has Caddy yet, so nothing uses it until you add the caddy package to one."
+    }
+
+    static let sshAgentHint = "Optional. Empty uses the ssh agent this Mac already runs. "
+        + "If the 1Password ssh agent is set up, it is used instead. Type a socket path to use another agent."
+
+    private var generalBlock: some View {
+        VStack(alignment: .leading, spacing: m.pt(28)) {
+            connectionBlock
+            subsection("Previews") { previewsBlock }
+            subsection("Logging") { debugLoggingBlock }
+        }
+    }
+
+    private var appearanceBlock: some View {
+        VStack(alignment: .leading, spacing: m.pt(28)) {
+            wallpaperBlock
+            subsection("Terminal") { terminalBlock }
+        }
+    }
+
+    private func subsection(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: m.space.lg) {
+            Text(verbatim: title)
+                .font(.dm(13, weight: .semibold))
+                .foregroundStyle(.white)
+            content()
+        }
+    }
+
     private var connectionBlock: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
             field(
@@ -378,22 +442,9 @@ struct SetupPage: View {
             }
 
             editableField(
-                title: "Public IP",
-                hint: "The A record new subdomains point at. Leave it empty without a server.",
-                field: .publicIP, text: $publicIP, placeholder: "203.0.113.10")
-
-            editableField(
                 title: "Base domain",
-                hint: "New subdomains are created under it. Leave it empty without a server.",
+                hint: Self.domainHint(hasCaddyMachine: model.hasCaddyMachine),
                 field: .baseDomain, text: $baseDomain, placeholder: "example.com")
-
-            editableField(
-                title: "Host ssh alias",
-                hint: "Optional. Empty means \"devmachine\", the name `devmachine aliases --write` gives "
-                    + "every workspace's ssh alias (the aliases ending in -\(hostAlias.isEmpty ? "devmachine" : hostAlias)). "
-                    + "Admin commands (stats, Caddy) run through the devmachine CLI and do not need it.",
-                field: .hostAlias, text: $hostAlias, placeholder: "devmachine",
-                emptyValue: "devmachine (default)")
 
             VStack(alignment: .leading, spacing: m.pt(5)) {
                 Text(verbatim: "SSH agent socket")
@@ -401,8 +452,7 @@ struct SetupPage: View {
                     .foregroundStyle(.white.opacity(0.7))
                 TextField("Leave empty to detect it automatically", text: $sshAgentSocket)
                     .dmField()
-                note("Only needed if 1Password's agent is not what this Mac should use. "
-                    + "Empty tries the 1Password socket, then the ssh agent already running.")
+                note(Self.sshAgentHint)
             }
         }
     }
@@ -495,6 +545,12 @@ struct SetupPage: View {
                     .font(.dm(11))
                     .foregroundStyle(.blue)
                     .fixedSize(horizontal: false, vertical: true)
+                if field == .baseDomain {
+                    Text(hint)
+                        .font(.dm(11))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
                 Text(hint)
                     .font(.dm(11))
@@ -505,61 +561,11 @@ struct SetupPage: View {
     }
 
     /// A list of what to hide, never of what to show: a workspace that appears
-    /// in `~/.ssh/config` later is visible without anyone opening Settings.
-    private var workspacesBlock: some View {
-        VStack(alignment: .leading, spacing: m.space.lg) {
-            HStack(spacing: m.space.md) {
-                Text(verbatim: "Add, change, forget or destroy a workspace on the Workspaces page. "
-                    + "Here you only choose which ones the sidebar shows.")
-                    .font(.dm(11))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-                DMButton("Manage workspaces…", systemImage: "square.grid.2x2", variant: .outline, size: .small) {
-                    model.showPage(.workspaces)
-                }
-            }
-            workspaceVisibility
-        }
-    }
-
-    @ViewBuilder
-    private var workspaceVisibility: some View {
-        if model.workspaces.isEmpty {
-            note("No workspace yet. They are the ssh aliases ending in "
-                + "-\(hostAlias.isEmpty ? "devmachine" : hostAlias); the app reads them from "
-                + "~/.ssh/config once the host above is set.")
-        } else {
-            VStack(alignment: .leading, spacing: m.pt(10)) {
-                ForEach(model.workspaces, id: \.alias) { workspace in
-                    Toggle(isOn: Binding(
-                        get: {
-                            !WorkspaceVisibility.isHidden(
-                                workspace.alias, hidden: hiddenWorkspaces)
-                        },
-                        set: { _ in
-                            hiddenWorkspaces = WorkspaceVisibility.toggling(
-                                workspace.alias, in: hiddenWorkspaces)
-                        }
-                    )) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(workspace.name)
-                                .font(.dm(12.5))
-                                .foregroundStyle(.white.opacity(0.9))
-                            Text(workspace.alias)
-                                .font(.dm(10, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.4))
-                        }
-                    }
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                }
-                note("A workspace turned off leaves the sidebar, and the app stops "
-                    + "reaching its host: no ssh, no mosh, no poll. Its sessions keep "
-                    + "running on the host and come back the moment you turn it on "
-                    + "again. This Mac cannot be turned off.")
-            }
-        }
+    /// in the configuration later is on without anyone opening Settings. The
+    /// switch saves at once; the draft follows so a later Save keeps it.
+    private func setWorkspaceActive(_ alias: String, _ active: Bool) {
+        hiddenWorkspaces = WorkspaceVisibility.setting(alias, active: active, in: hiddenWorkspaces)
+        model.setHiddenWorkspaces(hiddenWorkspaces)
     }
 
     private func harnessLabel(_ descriptor: HarnessDescriptor, detail: String) -> some View {
@@ -943,7 +949,7 @@ struct SetupPage: View {
         }
     }
 
-    private var advancedBlock: some View {
+    private var debugLoggingBlock: some View {
         VStack(alignment: .leading, spacing: m.pt(10)) {
             Toggle(isOn: $debugLogging) {
                 Text(verbatim: "Debug logging")
@@ -957,9 +963,6 @@ struct SetupPage: View {
                 + "— to ~/.devmachine-app/terminal.log. Turn it on only while "
                 + "chasing something; off, nothing is written. The file keeps "
                 + "itself under a megabyte.")
-
-            HealthCheckView()
-                .padding(.top, m.pt(20))
         }
     }
 
@@ -997,23 +1000,22 @@ struct SetupPage: View {
                 step: 0.05,
                 reading: "\(Int((uiFontScale * 100).rounded()))%"
             )
-            Text(verbatim: "Wallpaper")
+            Text(verbatim: "Background")
                 .font(.dm(11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
-
-            FlowLayout(spacing: 6, rowSpacing: 6) {
-                chip(id: Self.gradientTheme, title: "Gradient")
-                ForEach(wallpapers.themes) { theme in
-                    chip(id: theme.id, title: theme.title)
-                }
+            LazyVGrid(columns: Self.kindColumns(m), alignment: .leading, spacing: m.space.md) {
+                ForEach(WallpaperKind.allCases, id: \.self) { kindCard($0) }
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                if themeID == Self.gradientTheme {
-                    ForEach(WallpaperGradient.all) { gradientCell($0) }
-                } else if let theme = wallpapers.library.theme(id: themeID) {
-                    ForEach(theme.photos) { photoCell($0) }
-                }
+            switch WallpaperKind(wallpaper) {
+            case .photo:
+                subheading("Photo")
+                photoOptions
+            case .gradient:
+                subheading("Gradient")
+                pictureGrid { ForEach(WallpaperGradient.all) { gradientCell($0) } }
+            case .networkMapLarge, .networkMapCompact:
+                EmptyView()
             }
 
             credit
@@ -1022,33 +1024,113 @@ struct SetupPage: View {
         }
     }
 
-    private func chip(id: String, title: String) -> some View {
-        DMChip(title: title, selected: themeID == id) { themeID = id }
+    /// Wide enough that a 150-point picture keeps a landscape shape, never
+    /// a strip: at most twice as wide as it is tall.
+    static func cardColumns(_ m: DMMetrics) -> [GridItem] {
+        [GridItem(.adaptive(minimum: m.pt(200), maximum: m.pt(300)), spacing: m.space.md, alignment: .top)]
+    }
+
+    /// The four kinds fit one row in a normal Settings width.
+    static func kindColumns(_ m: DMMetrics) -> [GridItem] {
+        [GridItem(.adaptive(minimum: m.pt(170), maximum: m.pt(300)), spacing: m.space.md, alignment: .top)]
+    }
+
+    private func subheading(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(.dm(11, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.7))
+            .padding(.top, m.space.sm)
+    }
+
+    static func title(of kind: WallpaperKind) -> String {
+        switch kind {
+        case .photo: return "Photo"
+        case .gradient: return "Gradient"
+        case .networkMapLarge: return "Network map — large"
+        case .networkMapCompact: return "Network map — compact"
+        }
+    }
+
+    static func detail(of kind: WallpaperKind) -> String {
+        switch kind {
+        case .photo: return "A photo from Unsplash, by theme."
+        case .gradient: return "A built-in colour wash."
+        case .networkMapLarge: return "Your machines, big, behind everything on Home."
+        case .networkMapCompact: return "Your machines in the free space beside the cards."
+        }
+    }
+
+    private func kindCard(_ kind: WallpaperKind) -> some View {
+        DMPictureChoice(
+            title: Self.title(of: kind), detail: Self.detail(of: kind), selected: WallpaperKind(wallpaper) == kind,
+            pictureHeight: 120,
+            action: { pick(kind) }
+        ) {
+            kindPicture(kind)
+        }
+    }
+
+    @ViewBuilder
+    private func kindPicture(_ kind: WallpaperKind) -> some View {
+        switch kind {
+        case .photo:
+            WallpaperBackground(choice: kind.choice(current: wallpaper, lastPhoto: lastPhoto, lastGradient: lastGradient))
+        case .gradient:
+            WallpaperBackground(choice: kind.choice(current: wallpaper, lastPhoto: lastPhoto, lastGradient: lastGradient))
+        case .networkMapLarge:
+            HomeSketch(map: .large)
+        case .networkMapCompact:
+            HomeSketch(map: .compact)
+        }
+    }
+
+    private func pick(_ kind: WallpaperKind) {
+        let choice = kind.choice(current: wallpaper, lastPhoto: lastPhoto, lastGradient: lastGradient)
+        setWallpaper(choice)
+        if kind == .photo { themeID = Self.openThemeID(for: choice, in: wallpapers.library) }
+    }
+
+    private func setWallpaper(_ choice: WallpaperChoice) {
+        wallpaper = choice
+        switch WallpaperKind(choice) {
+        case .photo: lastPhoto = choice
+        case .gradient: lastGradient = choice
+        case .networkMapLarge, .networkMapCompact: break
+        }
+    }
+
+    private var photoOptions: some View {
+        VStack(alignment: .leading, spacing: m.pt(14)) {
+            FlowLayout(spacing: 6, rowSpacing: 6) {
+                ForEach(wallpapers.themes) { theme in
+                    DMChip(title: theme.title, selected: themeID == theme.id) { themeID = theme.id }
+                }
+            }
+            if let themeID, let theme = wallpapers.library.theme(id: themeID) {
+                pictureGrid { ForEach(theme.photos) { photoCell($0) } }
+            }
+        }
+    }
+
+    private func pictureGrid(@ViewBuilder _ cells: () -> some View) -> some View {
+        LazyVGrid(columns: Self.cardColumns(m), alignment: .leading, spacing: m.space.md, content: cells)
     }
 
     private func photoCell(_ photo: WallpaperPhoto) -> some View {
-        ZStack {
-            Color.white.opacity(0.06)
-            if let image = wallpapers.thumbnails[photo.id] {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    // A scaledToFill thumbnail overflows its cell and its overflow
-                    // would swallow the taps of the neighbouring cells.
-                    .allowsHitTesting(false)
+        DMPictureChoice(selected: wallpaper == Self.choice(for: photo), action: { select(photo) }) {
+            ZStack {
+                Color.white.opacity(0.06)
+                if let image = wallpapers.thumbnails[photo.id] {
+                    Image(nsImage: image).resizable().scaledToFill()
+                }
             }
         }
-        .frame(height: m.pt(62))
-        .clipShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
-        .overlay(ring(selected: wallpaper == Self.choice(for: photo)))
-        .contentShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
-        .onTapGesture { select(photo) }
         .onAppear { wallpapers.ensureThumbnail(photo) }
     }
 
     @ViewBuilder
     private func gradientSwatch(_ gradient: WallpaperGradient) -> some View {
-        if gradient.isLandscape, let image = gradient.bitmap(width: 240, height: 150) {
+        if gradient.isLandscape, let image = gradient.bitmap(width: 480, height: 300) {
             Image(nsImage: image).resizable().scaledToFill()
         } else {
             gradient.swatch
@@ -1056,26 +1138,12 @@ struct SetupPage: View {
     }
 
     private func gradientCell(_ gradient: WallpaperGradient) -> some View {
-        gradientSwatch(gradient)
-            .frame(height: m.pt(62))
-            .clipShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
-            .overlay(alignment: .bottomLeading) {
-                Text(verbatim: gradient.title)
-                    .font(.dm(10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
-                    .padding(m.space.sm)
-            }
-            .overlay(ring(selected: wallpaper == .gradient(name: gradient.name)))
-            .contentShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
-            .onTapGesture { wallpaper = .gradient(name: gradient.name) }
-    }
-
-    private func ring(selected: Bool) -> some View {
-        RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous)
-            .stroke(
-                selected ? Color.accentColor : Color.dmStroke,
-                lineWidth: selected ? 2 : 0.5
-            )
+        DMPictureChoice(
+            title: gradient.title, selected: wallpaper == .gradient(name: gradient.name),
+            action: { setWallpaper(.gradient(name: gradient.name)) }
+        ) {
+            gradientSwatch(gradient)
+        }
     }
 
     @ViewBuilder
@@ -1086,6 +1154,8 @@ struct SetupPage: View {
             } else {
                 Text(photo.credit)
             }
+        } else if case .networkMap = wallpaper {
+            Text(verbatim: "Drawn from your machines and their sites; it changes when they do.")
         } else {
             Text(verbatim: "Built-in gradient")
         }
@@ -1093,7 +1163,7 @@ struct SetupPage: View {
 
     private var creditPhoto: WallpaperPhoto? {
         switch wallpaper {
-        case .gradient:
+        case .gradient, .networkMap:
             return nil
         case .bundled:
             return wallpapers.library.bundledPhoto
@@ -1108,30 +1178,28 @@ struct SetupPage: View {
         photo.bundled ? .bundled : .unsplash(id: photo.id)
     }
 
-    /// The chip that opens with a choice already made: its theme, or the first one.
-    static func openThemeID(for choice: WallpaperChoice, in library: WallpaperLibrary) -> String {
-        if case .gradient = choice { return gradientTheme }
-
+    /// The photo theme that opens with a choice already made: its own, or the first one.
+    static func openThemeID(for choice: WallpaperChoice, in library: WallpaperLibrary) -> String? {
         let photoID: String?
         switch choice {
         case .bundled: photoID = library.bundledPhoto?.id
         case .unsplash(let id): photoID = id
-        case .gradient: photoID = nil
+        case .gradient, .networkMap: photoID = nil
         }
 
         let theme = photoID.flatMap { library.theme(ofPhoto: $0) } ?? library.themes.first
-        return theme?.id ?? gradientTheme
+        return theme?.id
     }
 
     private func select(_ photo: WallpaperPhoto) {
-        wallpaper = Self.choice(for: photo)
+        setWallpaper(Self.choice(for: photo))
         if !photo.bundled {
             wallpapers.ensure(photo, force: true)
         }
     }
 
     private func load() {
-        wallpaper = settingsStore.settings?.wallpaper ?? .bundled
+        setWallpaper(settingsStore.settings?.wallpaper ?? .bundled)
         themeID = Self.openThemeID(for: wallpaper, in: wallpapers.library)
 
         if let current = settingsStore.settings {
@@ -1222,5 +1290,75 @@ struct SetupPage: View {
         // now, and the reload must not bring their poll back.
         model.applyHiddenWorkspaces()
         model.loadWorkspaces()
+    }
+}
+
+/// Home in miniature with the network map of one size: drawn at a Home's
+/// own size and scaled down, so the map lands where Home would put it and
+/// is not dropped as too small to read. The cards and the clock are blocks.
+private struct HomeSketch: View {
+    let map: NetworkMapSize
+
+    /// A laptop Home's height; the width follows the card's shape.
+    private static let height = 760.0
+    private static let padding = 24.0
+    private static let gap = 24.0
+    private static let cardsWidth = 300.0
+    private static let pillMinY = height - 60
+    private static let clockSize = CGSize(width: 290, height: 110)
+
+    /// The "12:00" drawn at 100 points, centred across the sketch, a little above the middle.
+    private static func clock(width: Double) -> CGRect {
+        CGRect(
+            x: width / 2 - clockSize.width / 2, y: height / 2 - clockSize.height, width: clockSize.width,
+            height: clockSize.height)
+    }
+
+    private func placement(width: Double) -> NetworkMapPlacement {
+        let home = CGSize(width: width, height: Self.height)
+        let clock = Self.clock(width: width)
+        switch map {
+        case .large:
+            return .filling(HomeMapArea.large(
+                size: home, padding: Self.padding, gap: Self.gap, pillMinY: Self.pillMinY), keepClear: clock)
+        case .compact:
+            let area = HomeMapArea.rect(
+                size: home, padding: Self.padding, gap: Self.gap, pillMinY: Self.pillMinY,
+                layout: .sideBySide(cardsMaxX: Self.padding + Self.cardsWidth, clockMaxY: clock.maxY))
+            return area.map { .area($0, centreX: clock.midX) } ?? .none
+        }
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let scale = proxy.size.height / Self.height
+            let width = proxy.size.width / max(scale, 0.01)
+            ZStack(alignment: .topLeading) {
+                NetworkMapWallpaper(
+                    placement: placement(width: width), minimumMargin: WallpaperBackground.mapMinimumMargin)
+                blocks(width: width)
+            }
+            .frame(width: width, height: Self.height, alignment: .topLeading)
+            .scaleEffect(scale, anchor: .topLeading)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func blocks(width: Double) -> some View {
+        let card = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        let clock = Self.clock(width: width)
+        return ZStack(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 16) {
+                card.fill(.white.opacity(0.13)).frame(width: Self.cardsWidth, height: 150)
+                card.fill(.white.opacity(0.13)).frame(width: Self.cardsWidth, height: 300)
+            }
+            .offset(x: Self.padding, y: Self.padding + 20)
+            Text(verbatim: "12:00")
+                .font(.system(size: 100, weight: .thin, design: .rounded))
+                .foregroundStyle(.white.opacity(0.85))
+                .fixedSize()
+                .position(x: clock.midX, y: clock.midY)
+        }
+        .frame(width: width, height: Self.height, alignment: .topLeading)
     }
 }

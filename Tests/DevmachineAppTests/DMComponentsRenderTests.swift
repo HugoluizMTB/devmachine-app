@@ -50,6 +50,8 @@ private struct DMComponentsGallery: View {
                 DMIconButton(systemImage: "star.fill", tint: .yellow) {}
                 DMIconButton(systemImage: "xmark", size: 10) {}.disabled(true)
                 Button("Commit") {}.buttonStyle(.dmChip).font(.dm(11))
+                Button("Tools") {}.buttonStyle(.dmChip(selected: true)).font(.dm(11))
+                Button("Other") {}.buttonStyle(.dmChip(selected: false)).font(.dm(11))
             }
             DMButtonGallery()
             DMSearchField(prompt: "Find a file", text: $query) {
@@ -62,6 +64,8 @@ private struct DMComponentsGallery: View {
                 DMChip(title: "Nature", selected: true) {}
                 DMChip(title: "Cities", selected: false) {}
                 DMPill(text: "CI passing", color: .green)
+                DMDropdown(
+                    label: "Machine", options: [.init(value: "main", title: "main")], selection: .constant("main"))
             }
             DMRow(systemImage: "circle.fill", title: "acme / dash", selected: true)
             HStack(spacing: 10) {
@@ -89,6 +93,13 @@ private struct DMComponentsGallery: View {
                     title: "docker", detail: "Docker Engine and Compose.", badge: "RECOMMENDED",
                     selected: false, multiple: true) {}
             }
+            HStack(alignment: .top, spacing: 8) {
+                DMPictureChoice(title: "Gradient", detail: "A built-in colour wash.", selected: true, action: {}) {
+                    LinearGradient(colors: [.blue, .black], startPoint: .top, endPoint: .bottom)
+                }
+                DMPictureChoice(title: "Photo", selected: false, action: {}) { Color.teal }
+            }
+            .frame(width: 440)
             DMTabStrip(
                 tabs: ["Sites", "cloudflare"], selection: $tab, title: { $0 },
                 fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
@@ -116,6 +127,7 @@ private struct DMComponentsGallery: View {
                 ])
                 DMAgeLabel(since: Date().addingTimeInterval(-300))
             }
+            MachineJobToastGallery()
             DMBanner(message: "Couldn't refresh: ssh: connect to host timed out", lineLimit: 2) {
                 DMIconButton(systemImage: "arrow.clockwise", tint: nil) {}
             }
@@ -175,6 +187,28 @@ private struct DMButtonGallery: View {
                          isLoading: true) {}
                 DMButton("Save", isLoading: true) {}
                 DMButton(icon: "arrow.clockwise", label: "Refresh", isLoading: true) {}
+            }
+        }
+    }
+}
+
+private struct MachineJobToastGallery: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                MachineJobToast(
+                    job: MachineJobFixtures.job(.pending), startsFull: false, actions: MachineJobFixtures.actions)
+                MachineJobToast(
+                    job: MachineJobFixtures.job(.pending), startsFull: true, actions: MachineJobFixtures.actions)
+                MachineJobToast(
+                    job: MachineJobFixtures.job(.queued), startsFull: false, actions: MachineJobFixtures.actions)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                MachineJobToast(
+                    job: MachineJobFixtures.job(.running(step: 0)), startsFull: false,
+                    actions: MachineJobFixtures.actions)
+                MachineJobToast(job: MachineJobFixtures.succeeded, startsFull: false, actions: MachineJobFixtures.actions)
+                MachineJobToast(job: MachineJobFixtures.failed, startsFull: false, actions: MachineJobFixtures.actions)
             }
         }
     }

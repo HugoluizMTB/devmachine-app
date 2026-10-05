@@ -516,6 +516,27 @@ final class DevmachineCLIAutoDetectEndpointsTests: XCTestCase {
         XCTAssertEqual(runner.calls.last?.args, ["--format", "json", "machines", "list"])
     }
 
+    func testAMachinesLocationIsReadWhenTheCLIReportsIt() throws {
+        let body = #"""
+        [
+          {"name": "acme", "hosts": ["203.0.113.10"], "admin_user": "root", "port": 22, "workspaces": [], "location": "hostinger"},
+          {"name": "lab", "hosts": ["127.0.0.1"], "admin_user": "root", "port": 60022, "workspaces": []}
+        ]
+        """#
+        let machines = try DevmachineCLI(executable: "/x", runner: CLIRecordingRunner(result: (body, "", 0)))
+            .listConfigMachines()
+
+        XCTAssertEqual(machines.map(\.location), ["hostinger", nil])
+    }
+
+    func testALocationIsEditedThroughMachinesEdit() throws {
+        let runner = CLIRecordingRunner(result: ("", "", 0))
+
+        try DevmachineCLI(executable: "/x", runner: runner).editLocation(machine: "box", location: " Home ")
+
+        XCTAssertEqual(runner.calls.first?.args, ["machines", "edit", "box", "--location", "home", "--yes"])
+    }
+
     func testNonSelfMachinesDropsTheSelfEntry() throws {
         let body = #"""
         [

@@ -94,8 +94,9 @@ public enum MachinePlan {
     /// (`MachineUnattendedAdd`): nothing then asks in a terminal.
     /// `installsLima` puts Lima's own install first, for a local machine
     /// on a Mac without it; only a run in the background can do that.
+    /// `takesLocation` is a CLI with `--location` (`MachineLocation`).
     public static func steps(
-        for draft: MachineDraft, unattended: Bool = false, installsLima: Bool = false
+        for draft: MachineDraft, unattended: Bool = false, installsLima: Bool = false, takesLocation: Bool = false
     ) -> [MachinePlanStep] {
         let name = draft.trimmedName
         var steps: [MachinePlanStep] = []
@@ -104,7 +105,10 @@ public enum MachinePlan {
                 kind: .installLima, title: "Install Lima", arguments: [], asksInTerminal: false))
         }
         if unattended {
-            steps.append(draft.kind == .localVM ? createLocalAndAddStep(for: draft) : unattendedAddStep(for: draft))
+            let location = takesLocation ? locationFlag(draft) : []
+            steps.append(draft.kind == .localVM
+                ? createLocalAndAddStep(for: draft, location: location)
+                : unattendedAddStep(for: draft, location: location))
         } else {
             if draft.kind == .localVM {
                 steps.append(MachinePlanStep(
@@ -151,18 +155,23 @@ public enum MachinePlan {
 
     /// `create-local --add` makes the VM and adds it with its public
     /// password, trusting the key it presents on this Mac's loopback.
-    private static func createLocalAndAddStep(for draft: MachineDraft) -> MachinePlanStep {
+    private static func createLocalAndAddStep(for draft: MachineDraft, location: [String]) -> MachinePlanStep {
         let essentials = draft.essentials ? [] : ["--no-essentials"]
         return MachinePlanStep(
             kind: .createLocal, title: "Create \(draft.trimmedName) on this Mac and connect it",
             arguments: ["machines", "create-local", draft.trimmedName, "--add"] + (draft.localSize?.arguments ?? [])
-                + essentials,
+                + essentials + location,
             asksInTerminal: false)
     }
 
     /// Every answer as a flag. The password is read from stdin; the domain
     /// only goes with the first machine, the one that writes `config.yml`.
-    private static func unattendedAddStep(for draft: MachineDraft) -> MachinePlanStep {
+    private static func locationFlag(_ draft: MachineDraft) -> [String] {
+        let value = MachineLocation.normalized(draft.location)
+        return value.isEmpty ? [] : ["--location", value]
+    }
+
+    private static func unattendedAddStep(for draft: MachineDraft, location: [String]) -> MachinePlanStep {
         var arguments = ["machines", "add", "--name", draft.trimmedName, "--address", draft.trimmedAddress,
                          "--fingerprint", draft.fingerprintToTrust ?? ""]
         if draft.trimmedUser != MachineDraft.defaultUser { arguments += ["--user", draft.trimmedUser] }
@@ -180,7 +189,7 @@ public enum MachinePlan {
         if !draft.hasConfiguration, !draft.trimmedDomain.isEmpty { arguments += ["--domain", draft.trimmedDomain] }
         if !draft.essentials { arguments.append("--no-essentials") }
         return MachinePlanStep(
-            kind: .addMachine, title: "Connect \(draft.trimmedName)", arguments: arguments + ["--yes"],
+            kind: .addMachine, title: "Connect \(draft.trimmedName)", arguments: arguments + location + ["--yes"],
             asksInTerminal: false, input: input)
     }
 

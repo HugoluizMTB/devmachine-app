@@ -21,7 +21,7 @@ enum DemoSnapshots {
 
     /// Read by `ContentView` so Settings opens straight onto Health for one
     /// screen. Same rule as `subdomainsInitialTab`.
-    static var setupInitialSection: SettingsSection = .connection
+    static var setupInitialSection: SettingsSection = .general
 
     /// Read by `CommandPaletteView` so the palette opens already typed into
     /// for one screen. Same rule as `subdomainsInitialTab`.
@@ -30,7 +30,13 @@ enum DemoSnapshots {
     /// Read by `SetupPage.issues` so Connection shows the issue a remedy
     /// answers (no CLI, or setup never ran) for one screen.
     static var settingsIssueRemedy: SettingsIssue.Remedy?
+    /// Read by `SetupPage` so Packages opens on a target with rows ticked
+    /// for one screen. Same rule as `subdomainsInitialTab`.
+    static var packagesInitialPage = PackagesPageState()
     static var settingsNoMachine = false
+    /// Read by Settings → Machines so a machine opens selected for one
+    /// screen. Same rule as `subdomainsInitialTab`.
+    static var machinesSelected: String?
 
     private static let acmeAlias = "acme-devmachine"
     /// A big-display window, the proportions a Mac screenshot has on the
@@ -70,7 +76,11 @@ enum DemoSnapshots {
         case "pull-requests", "publish-port", "publish-port-via", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
              "worktree-remove", "worktrees-merged", "worktree-foreign",
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
-             "file-viewer":
+             "file-viewer", "packages-confirm", "map-location-editor",
+             "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
+             "cli-update-toast-manual":
+            return .panel
+        case _ where DemoHostKey.handles(screenID):
             return .panel
         default:
             return .window
@@ -195,13 +205,19 @@ enum DemoSnapshots {
 
     /// The CLI update walk (`DEVMACHINE_DEMO_WALK=cli-update`): the Updates
     /// pane's CLI block before, during and after `update --cli-only`, run on
-    /// a fake CLI script.
+    /// a fake CLI script, then the corner toast in the same states (`65` has
+    /// an app update too, so both cards stack).
     static let cliUpdateScreens: [Screen] = [
         Screen(id: "cli-update-available", fileName: "60-cli-update-available.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-running", fileName: "61-cli-update-running.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-updated", fileName: "62-cli-update-updated.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-failed", fileName: "63-cli-update-failed.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-old", fileName: "64-cli-update-old.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast", fileName: "65-cli-update-toast.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast-running", fileName: "66-cli-update-toast-running.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast-updated", fileName: "67-cli-update-toast-updated.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast-failed", fileName: "68-cli-update-toast-failed.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast-manual", fileName: "69-cli-update-toast-manual.png", settleNanoseconds: 200_000_000),
     ]
 
     /// The setup flow walk (`DEVMACHINE_DEMO_WALK=setup-flow`): the first-run
@@ -257,6 +273,17 @@ enum DemoSnapshots {
         Screen(id: "dns-syncing", fileName: "83-dns-syncing.png", settleNanoseconds: 700_000_000),
         Screen(id: "dns-failed", fileName: "84-dns-failed.png", settleNanoseconds: 500_000_000),
         Screen(id: "dns-ready", fileName: "85-dns-ready.png", settleNanoseconds: 700_000_000),
+    ]
+
+    /// The Packages walk (`DEVMACHINE_DEMO_WALK=packages`): see `DemoPackages`.
+    static let packagesScreens: [Screen] = [
+        Screen(id: "packages-all", fileName: "100-packages-all.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-selected", fileName: "101-packages-selected.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-confirm", fileName: "102-packages-confirm.png", settleNanoseconds: 300_000_000),
+        Screen(id: "packages-pending", fileName: "103-packages-pending.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-running", fileName: "104-packages-running.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-succeeded", fileName: "105-packages-succeeded.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-failed", fileName: "106-packages-failed.png", settleNanoseconds: 500_000_000),
     ]
 
     /// The file viewer walk (`DEVMACHINE_DEMO_WALK=file-viewer`): a Swift file
@@ -339,8 +366,12 @@ enum DemoSnapshots {
         case "publish-via": return publishViaScreens
         case "setup-flow": return setupFlowScreens
         case "dns-setup": return dnsSetupScreens
+        case "packages": return packagesScreens
+        case "host-key": return DemoHostKey.screens
         #if DEBUG
         case "machines": return DemoAddMachine.screens
+        case "machines-map": return DemoMachinesMap.screens
+        case "map-wallpaper": return DemoMapWallpaper.screens
         case "workspaces": return DemoWorkspaces.screens
         #endif
         default: return screens
@@ -440,6 +471,8 @@ enum DemoSnapshots {
                 view = standaloneView(mergedWorktreesSheet, fittingSize: NSSize(width: 420, height: 360))
             case "worktree-foreign":
                 view = standaloneView(foreignWorktreeSheet, fittingSize: NSSize(width: 460, height: 560))
+            case _ where DemoHostKey.handles(screen.id):
+                view = await hostKeySheetView(screen.id, model: environment.model)
             case "file-viewer":
                 view = await fileViewerView(model: environment.model)
             case "file-transfer-tree":
@@ -452,6 +485,13 @@ enum DemoSnapshots {
             case "cli-update-available", "cli-update-running", "cli-update-updated", "cli-update-failed",
                  "cli-update-old":
                 view = await cliUpdateView(screen.id)
+            case "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
+                 "cli-update-toast-manual":
+                view = await cliUpdateToastView(screen.id, model: environment.model)
+            case "packages-confirm":
+                view = DemoPackages.confirmView()
+            case "map-location-editor":
+                view = DemoMachinesMap.locationEditorView()
             case "ready-old-cli", "ready-outdated":
                 view = readinessCardView(screen.id, model: environment.model)
             case "install-cli", "install-cli-running", "install-cli-failed":
@@ -470,6 +510,8 @@ enum DemoSnapshots {
         PreviewStore.shared.closeAll()
         #if DEBUG
         DemoDNSWalk.reset()
+        DemoPackages.reset()
+        DemoMachinesMap.reset()
         #endif
         environment.model.goHome()
     }
@@ -500,8 +542,21 @@ enum DemoSnapshots {
             await DemoAddMachine.prepare(screen.id, model: model, stats: environment.statsStore)
             return
         }
+        if DemoMachinesMap.handles(screen.id) {
+            await DemoMachinesMap.prepare(screen.id, model: model, caddy: environment.caddyStore)
+            return
+        }
+        if DemoMapWallpaper.handles(screen.id) {
+            await DemoMapWallpaper.prepare(
+                screen.id, model: model, settings: environment.settingsStore, caddy: environment.caddyStore)
+            return
+        }
         if DemoWorkspaces.handles(screen.id) {
             await DemoWorkspaces.prepare(screen.id, model: model)
+            return
+        }
+        if DemoPackages.handles(screen.id) {
+            DemoPackages.prepare(screen.id, model: model)
             return
         }
         #endif
@@ -533,7 +588,7 @@ enum DemoSnapshots {
         case "stats":
             model.showPage(.stats)
         case "settings-health":
-            setupInitialSection = .advanced
+            setupInitialSection = .healthCheck
             model.showPage(.setup)
         case "session-defaults":
             setupInitialSection = .harnesses
@@ -546,7 +601,7 @@ enum DemoSnapshots {
             model.seedDemoDetected(CLIDetectedSettings(
                 opsRepoPath: DemoData.operatorPath, adminMachine: "main",
                 publicIP: DemoData.machineAddress, baseDomain: "example.com"))
-            setupInitialSection = .connection
+            setupInitialSection = .general
             model.showPage(.setup)
         #endif
         case "git-worktrees":
@@ -568,14 +623,15 @@ enum DemoSnapshots {
         case "ready-home":
             DemoMachineReady.seed(MachineReadinessStore.shared, model: model)
         case "ready-running":
-            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, script: .prepareSlow)
-            Task { await MachineReadinessStore.shared.prepare(DemoMachineReady.machine) }
+            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, prepare: .running(step: 1))
         case "ready-failed":
-            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, script: .prepareFails)
-            await MachineReadinessStore.shared.prepare(DemoMachineReady.machine)
+            DemoMachineReady.seed(
+                MachineReadinessStore.shared, model: model,
+                prepare: .failed(cause: "1 task(s) failed on staging: exit status 2"))
         case "ready-done":
-            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, script: .prepareSucceeds)
-            await MachineReadinessStore.shared.prepare(DemoMachineReady.machine)
+            DemoMachineReady.seed(
+                MachineReadinessStore.shared, model: model,
+                prepare: .succeeded(SyncSummary(ok: 3, changed: 1, failed: 0)))
         case "preview-browser":
             if let directory = targetDirectory {
                 await DemoPreviewBrowserCheck.run(
@@ -771,6 +827,19 @@ enum DemoSnapshots {
         }
         return standaloneView(await DemoCLIUpdate.pane(state), fittingSize: NSSize(width: 688, height: 700))
     }
+
+    private static func cliUpdateToastView(_ id: String, model: AppModel) async -> NSView {
+        let state: DemoCLIUpdate.ToastState
+        switch id {
+        case "cli-update-toast-running": state = .running
+        case "cli-update-toast-updated": state = .updated
+        case "cli-update-toast-failed": state = .failed
+        case "cli-update-toast-manual": state = .manual
+        default: state = .withAppUpdate
+        }
+        return standaloneView(
+            await DemoCLIUpdate.toastStack(state, model: model), fittingSize: NSSize(width: 400, height: 520))
+    }
     #endif
 
     // MARK: - AppKit plumbing
@@ -792,6 +861,23 @@ enum DemoSnapshots {
     /// width but ignores its *height* fit: a scrollable, unbounded-height
     /// list reports a `fittingSize` far taller than the panel's own fixed
     /// `.frame(height:)`.
+    /// The sheet checks again when it appears; the capture waits for that
+    /// check and measures the sheet afterwards.
+    private static func hostKeySheetView(_ id: String, model: AppModel) async -> NSView {
+        let hosting = standaloneView(DemoHostKey.sheet(id, model: model), fittingSize: NSSize(width: 520, height: 400))
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        // A multi-line field settles its height one pass after the first fit.
+        for _ in 0..<2 {
+            let size = hosting.fittingSize
+            hosting.setFrameSize(size)
+            hosting.window?.setContentSize(size)
+            hosting.layoutSubtreeIfNeeded()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        hosting.window?.displayIfNeeded()
+        return hosting
+    }
+
     private static func standaloneView<V: View>(
         _ view: V, fittingSize: NSSize, autosize: Bool = true, fixedHeight: CGFloat? = nil
     ) -> NSView {

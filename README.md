@@ -51,7 +51,7 @@ color under it goes to the clipboard as sRGB hex (`#1A334D`). Esc cancels.
 ## Remote terminals
 
 A remote pane uses mosh when it gets through and ssh when it does not.
-Settings → Terminal → Remote terminals: Automatic (default), Always ssh, or
+Settings → Appearance → Terminal → Remote terminals: Automatic (default), Always ssh, or
 Always mosh. A pane shows which one it runs: `mosh` or `ssh` in the stack
 header and the context panel.
 

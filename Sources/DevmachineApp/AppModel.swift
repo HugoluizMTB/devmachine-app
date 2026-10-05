@@ -44,6 +44,9 @@ final class AppModel: ObservableObject {
     /// terminal key monitor — can report progress without being handed it.
     private(set) static weak var shared: AppModel?
 
+    /// The background `devmachine` jobs the app runs against machines.
+    let jobs = MachineJobCenter(cliVersion: { MachineReadinessStore.shared.snapshot?.cliVersion })
+
     /// Every workspace in `~/.ssh/config`, hidden ones included: Settings needs
     /// the whole list to offer the choice.
     @Published var workspaces: [Workspace] = []
@@ -414,10 +417,17 @@ final class AppModel: ObservableObject {
     @Published var pendingPublishWorkspace: String?
     /// Asks the Subdomains page to open its Add subdomain sheet once shown.
     @Published var pendingAddSubdomain = false
-    /// The Workspaces page should open its New workspace form.
+    /// Settings → Workspaces should open its New workspace form.
     @Published var pendingNewWorkspace = false
     /// The Settings pane to open on, read once by the Settings page.
     @Published var requestedSettingsSection: SettingsSection?
+    /// Settings → Packages should open with its Machine dropdown on this one.
+    @Published var requestedPackagesMachine: String?
+    /// Settings → Packages should open with its Workspace dropdown on this one.
+    @Published var requestedPackagesWorkspace: String?
+    /// The machine whose host key review is open, as a sheet over whatever
+    /// screen asked for it.
+    @Published var hostKeyMachine: String?
     var selectionAnchor: SessionRef? = nil
 
     @Published var sidebarCollapsed: Bool = (UserDefaults.standard.object(forKey: "sidebarCollapsed") as? Bool) ?? true {
@@ -655,6 +665,16 @@ final class AppModel: ObservableObject {
         }
         let handle = LocalSessionNaming.name(for: path, existing: localSessions.map(\.handle))
         addedLocalSessions.append(LocalSession(name: handle, path: path))
+        selection = .localSession(name: handle, path: path)
+        startProgram(in: .local(session: handle, path: path), startup: startup)
+    }
+
+    /// A new local session in `path`, shown at once in place of the page
+    /// open now, running what `startup` says.
+    func openLocalSession(at path: String, startup: SessionStartup) {
+        let handle = LocalSessionNaming.name(for: path, existing: localSessions.map(\.handle))
+        addedLocalSessions.append(LocalSession(name: handle, path: path))
+        activePage = nil
         selection = .localSession(name: handle, path: path)
         startProgram(in: .local(session: handle, path: path), startup: startup)
     }
@@ -1009,7 +1029,7 @@ final class AppModel: ObservableObject {
         if sessionProblems[ref.alias]?.isHostKeyRejected == true,
            let workspace = visibleWorkspaces.first(where: { $0.alias == ref.alias }),
            let machine = MachineReadinessStore.shared.machine(forWorkspace: workspace.name) {
-            showPage(.hostKey(machine))
+            showHostKey(machine)
             return
         }
         // re-clicking the open session (no multi-select) goes back home
@@ -1083,6 +1103,31 @@ final class AppModel: ObservableObject {
         activePage = .setup
     }
 
+    /// "Packages on this machine": Settings → Packages, filtered to it.
+    func openPackages(machine: String) {
+        requestedPackagesMachine = machine
+        openSettings(.packages)
+    }
+
+    /// "Packages for this workspace": Settings → Packages, filtered to it.
+    func openPackages(workspace: String) {
+        requestedPackagesWorkspace = workspace
+        openSettings(.packages)
+    }
+
+    /// A switch in Settings → Workspaces takes effect at once, with no Save:
+    /// only the hidden list is written, so nothing else typed in Settings is.
+    func setHiddenWorkspaces(_ hidden: [String], in store: SettingsStore = .shared) {
+        guard var current = store.settings, current.hiddenWorkspaces != hidden else { return }
+        current.hiddenWorkspaces = hidden
+        store.settings = current
+        settings?.hiddenWorkspaces = hidden
+        // Before reloading: the panes of a workspace just turned off have to
+        // go now, and the reload must not bring their poll back.
+        applyHiddenWorkspaces()
+        loadWorkspaces()
+    }
+
     /// The wizard opened from Settings → Machines goes back there, so Settings
     /// and the wizard read as one place; from anywhere else it just closes.
     private var addMachineOpenedFromSettings = false
@@ -1100,16 +1145,25 @@ final class AppModel: ObservableObject {
         pendingPublishWorkspace = workspace
     }
 
-    /// The Workspaces page opens on its New workspace form
-    /// (`WorkspacesPage` takes the request).
+    /// Settings → Workspaces opens on its New workspace form
+    /// (`WorkspacesSettingsView` takes the request).
     func requestNewWorkspace() {
-        activePage = .workspaces
         pendingNewWorkspace = true
+        openSettings(.workspaces)
     }
 
     func requestAddSubdomain() {
         activePage = .subdomains
         pendingAddSubdomain = true
+    }
+
+    /// Opens the host key review over the current screen, which stays as it is.
+    func showHostKey(_ machine: String) {
+        hostKeyMachine = machine
+    }
+
+    func closeHostKey() {
+        hostKeyMachine = nil
     }
 
     /// The terminal a command such as "Send file" acts on: the selected

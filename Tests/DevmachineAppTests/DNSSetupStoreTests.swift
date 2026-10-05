@@ -97,7 +97,7 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
-private final class FakeSyncRunner: PrepareRunning, @unchecked Sendable {
+private final class FakeSyncRunner: MachineJobRunning, @unchecked Sendable {
     private let lock = NSLock()
     private var storedCalls: [[String]] = []
     var status: Int32 = 0
@@ -132,11 +132,13 @@ final class DNSSetupStoreTests: XCTestCase {
 
     private func loadedStore(
         _ cli: DNSSetupCLIRunner, sync: FakeSyncRunner = FakeSyncRunner(), canRunSync: Bool = true,
-        canEditSettings: Bool = true
+        canEditSettings: Bool = true, center: MachineJobCenter? = nil
     ) async throws -> CaddyStore {
         let service = CaddyService(cli: DevmachineCLI(executable: "/fake/devmachine", runner: cli))
+        let center = center ?? MachineJobCenter(runner: sync, successSeconds: 60)
         let setup = DNSSetupStore(
-            service: service, runner: sync, canRunSync: { canRunSync }, canEditMachineSettings: { canEditSettings })
+            service: service, center: { center }, canRunSync: { canRunSync },
+            canEditMachineSettings: { canEditSettings })
         let store = CaddyStore(
             service: service, selection: SitesMachineSelection(defaults: defaults), dnsSetup: setup)
         store.refresh()
@@ -183,7 +185,7 @@ final class DNSSetupStoreTests: XCTestCase {
         XCTAssertTrue(details.contains("keychain is locked"))
     }
 
-    func testSyncRunsTheProviderAloneThenThePushAndIsReadyOnceZonesAnswer() async throws {
+    func testSyncRunsTheProviderAloneThenThePushAsACornerJobAndIsReadyOnceZonesAnswer() async throws {
         let cli = DNSSetupCLIRunner()
         cli.declared = ["hostinger"]
         let sync = FakeSyncRunner()
@@ -192,17 +194,36 @@ final class DNSSetupStoreTests: XCTestCase {
                 cli.set { $0.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"# }
             }
         }
-        let store = try await loadedStore(cli, sync: sync)
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
         XCTAssertEqual(store.dnsSetup.state, .notSynced(provider: "hostinger", problem: .notApplied))
 
-        await store.dnsSetup.sync("hostinger")
+        let id = try XCTUnwrap(store.dnsSetup.sync("hostinger"))
 
+        XCTAssertEqual(store.dnsSetup.state, .working(.sync))
+        XCTAssertEqual(center.job(id)?.plan.title, "Sync hostinger on box")
+        XCTAssertEqual(center.job(id)?.plan.machine, "box")
+        try await eventually { store.dnsSetup.state == .ready }
         XCTAssertEqual(sync.calls, [
             ["sync", "--machine", "box", "--tags", "hostinger", "--yes"],
             ["credentials", "push", "--machine", "box", "--yes"],
         ])
-        try await eventually { store.dnsSetup.state == .ready }
+        XCTAssertEqual(center.job(id)?.log.lines.first, "$ devmachine sync --machine box --tags hostinger --yes")
         XCTAssertEqual(store.dnsProviders, ["hostinger"])
+    }
+
+    func testTheTokenNeverReachesTheSyncJob() async throws {
+        let cli = DNSSetupCLIRunner()
+        let sync = FakeSyncRunner()
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
+        await store.dnsSetup.install("hostinger", token: "tok-secret-123")
+
+        let id = try XCTUnwrap(store.dnsSetup.sync("hostinger"))
+
+        try await eventually { sync.calls.count == 2 }
+        let job = try XCTUnwrap(center.job(id))
+        XCTAssertFalse((job.plan.steps.flatMap { $0 } + job.log.lines).contains { $0.contains("tok-secret-123") })
     }
 
     func testASyncThatLeavesNoZoneKeepsAskingForIt() async throws {
@@ -212,7 +233,7 @@ final class DNSSetupStoreTests: XCTestCase {
         sync.onRun = { _ in cli.set { $0.providers = #"{"providers":[{"name":"hostinger","zones":null}]}"# } }
         let store = try await loadedStore(cli, sync: sync)
 
-        await store.dnsSetup.sync("hostinger")
+        store.dnsSetup.sync("hostinger")
 
         try await eventually { store.dnsSetup.state == .notSynced(provider: "hostinger", problem: .noZones) }
     }
@@ -222,29 +243,109 @@ final class DNSSetupStoreTests: XCTestCase {
         cli.declared = ["hostinger"]
         let sync = FakeSyncRunner()
         sync.status = 2
-        let store = try await loadedStore(cli, sync: sync)
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
 
-        await store.dnsSetup.sync("hostinger")
+        let id = try XCTUnwrap(store.dnsSetup.sync("hostinger"))
 
+        try await eventually { if case .failed = store.dnsSetup.state { return true } else { return false } }
         XCTAssertEqual(sync.calls.count, 1, "the push never runs after a failed sync")
-        guard case let .failed(step, cause, _) = store.dnsSetup.state else {
+        guard case let .failed(step, cause, details) = store.dnsSetup.state else {
             return XCTFail("expected a failure, got \(store.dnsSetup.state)")
         }
         XCTAssertEqual(step, .sync)
         XCTAssertEqual(cause, "1 task(s) failed on box: exit status 2")
+        XCTAssertEqual(details, center.job(id)?.log.lines.joined(separator: "\n"))
+        XCTAssertTrue(details.contains("$ devmachine sync --machine box --tags hostinger --yes"))
 
         store.dnsSetup.dismissFailure()
         XCTAssertEqual(store.dnsSetup.state, .notSynced(provider: "hostinger", problem: .notApplied))
+        XCTAssertNil(center.job(id), "the failed job leaves the corner with the card's failure")
+    }
+
+    func testAFailedSyncRetriedInTheCornerEndsTheCardWhenItSucceeds() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        let sync = FakeSyncRunner()
+        sync.status = 2
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
+        var ended: [String] = []
+        let refresh = store.dnsSetup.onSyncEnded
+        store.dnsSetup.onSyncEnded = { machine in
+            ended.append(machine)
+            refresh(machine)
+        }
+        let id = try XCTUnwrap(store.dnsSetup.sync("hostinger"))
+        try await eventually { if case .failed = store.dnsSetup.state { return true } else { return false } }
+
+        sync.status = 0
+        sync.onRun = { arguments in
+            if arguments.first == "credentials" {
+                cli.set { $0.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"# }
+            }
+        }
+        center.retry(id)
+
+        XCTAssertEqual(store.dnsSetup.state, .working(.sync))
+        try await eventually { store.dnsSetup.state == .ready }
+        XCTAssertEqual(ended, ["box", "box"])
+    }
+
+    func testRunSyncAgainOnTheCardRetriesTheFailedJobInPlace() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        let sync = FakeSyncRunner()
+        sync.status = 2
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
+        let id = try XCTUnwrap(store.dnsSetup.sync("hostinger"))
+        try await eventually { if case .failed = store.dnsSetup.state { return true } else { return false } }
+
+        sync.status = 0
+        store.dnsSetup.retrySync()
+
+        try await eventually { sync.calls.count == 3 }
+        XCTAssertEqual(center.jobs.map(\.id), [id])
+    }
+
+    func testAFailedJobDismissedInTheCornerTakesTheCardsFailureWithIt() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        let sync = FakeSyncRunner()
+        sync.status = 2
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
+        let id = try XCTUnwrap(store.dnsSetup.sync("hostinger"))
+        try await eventually { if case .failed = store.dnsSetup.state { return true } else { return false } }
+
+        center.dismiss(id)
+
+        XCTAssertEqual(store.dnsSetup.state, .notSynced(provider: "hostinger", problem: .notApplied))
+    }
+
+    func testASecondSyncWhileOneRunsStartsNothing() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        let center = MachineJobCenter(runner: FakeSyncRunner(), successSeconds: 60)
+        let store = try await loadedStore(cli, center: center)
+
+        XCTAssertNotNil(store.dnsSetup.sync("hostinger"))
+        XCTAssertNil(store.dnsSetup.sync("hostinger"))
+
+        XCTAssertEqual(center.jobs.count, 1)
     }
 
     func testAnOldCLINeverSyncsFromTheApp() async throws {
         let cli = DNSSetupCLIRunner()
         cli.declared = ["hostinger"]
         let sync = FakeSyncRunner()
-        let store = try await loadedStore(cli, sync: sync, canRunSync: false)
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, canRunSync: false, center: center)
 
-        await store.dnsSetup.sync("hostinger")
+        XCTAssertNil(store.dnsSetup.sync("hostinger"))
 
+        XCTAssertEqual(center.jobs, [])
         XCTAssertEqual(sync.calls, [])
     }
 

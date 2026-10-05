@@ -9,11 +9,11 @@ struct FlowLayout: Layout {
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
-        return place(in: width, subviews: subviews).size
+        return arrange(sizes(of: subviews), in: width, metrics: .current).size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = place(in: bounds.width, subviews: subviews)
+        let result = arrange(sizes(of: subviews), in: bounds.width, metrics: .current)
         for (index, origin) in result.origins.enumerated() {
             subviews[index].place(
                 at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
@@ -22,8 +22,11 @@ struct FlowLayout: Layout {
         }
     }
 
-    private func place(in width: CGFloat, subviews: Subviews) -> (size: CGSize, origins: [CGPoint]) {
-        let m = DMMetrics.current
+    private func sizes(of subviews: Subviews) -> [CGSize] {
+        subviews.map { $0.sizeThatFits(.unspecified) }
+    }
+
+    func arrange(_ sizes: [CGSize], in width: CGFloat, metrics m: DMMetrics) -> (size: CGSize, origins: [CGPoint]) {
         let spacing = m.pt(spacing)
         let rowSpacing = m.pt(rowSpacing)
         var origins: [CGPoint] = []
@@ -32,8 +35,7 @@ struct FlowLayout: Layout {
         var rowHeight: CGFloat = 0
         var maxX: CGFloat = 0
 
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+        for size in sizes {
             if x > 0, x + size.width > width {
                 x = 0
                 y += rowHeight + rowSpacing

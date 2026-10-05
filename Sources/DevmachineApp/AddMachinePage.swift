@@ -247,6 +247,7 @@ struct AddMachineDetailsView: View {
             field("Name", .name, hint: "How every command names it, like main or lab.") {
                 TextField("main", text: draft.name).dmField()
             }
+            locationField
             if state.wizard.draft.kind == .server {
                 serverFields
             } else {
@@ -267,6 +268,16 @@ struct AddMachineDetailsView: View {
                     : "This is your first machine, so devmachine setup adds it. "
                         + "It asks its questions in the terminal on the last step; the answers to give are shown there.")
             }
+        }
+    }
+
+    private var locationField: some View {
+        field("Where is it?", .location, hint: state.wizard.takesLocation
+            ? "Machines in one place share a zone on the network map."
+            : "Your CLI does not keep a location yet; it is kept once the CLI is updated.") {
+            MachineLocationField(
+                location: draft.location, known: state.knownLocations,
+                defaultLocation: MachineLocation.defaultLocation(for: state.wizard.draft.kind))
         }
     }
 
@@ -561,7 +572,7 @@ private struct AddMachineSkillsChoice: View {
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            FlowLayout(spacing: m.space.sm) {
+            FlowLayout(spacing: DMSpace.sm) {
                 ForEach(state.wizard.skillAgentOptions) { agent in
                     DMChip(title: agent.name, selected: state.wizard.draft.skillAgents.contains(agent)) {
                         state.wizard.toggleSkillAgent(agent.id)

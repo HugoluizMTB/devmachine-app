@@ -9,7 +9,7 @@ final class DemoSnapshotsTests: XCTestCase {
         unsetenv("DEVMACHINE_DEMO_SNAPSHOTS")
         unsetenv("DEVMACHINE_DEMO_LOADING")
         DemoSnapshots.subdomainsInitialTab = .sites
-        DemoSnapshots.setupInitialSection = .connection
+        DemoSnapshots.setupInitialSection = .general
         DemoSnapshots.paletteInitialQuery = ""
         DemoData.typedAtPrompt = [:]
         try await super.tearDown()
@@ -138,7 +138,7 @@ final class DemoSnapshotsTests: XCTestCase {
     }
 
     func testSetupInitialSectionDefaultsToConnection() {
-        XCTAssertEqual(DemoSnapshots.setupInitialSection, .connection)
+        XCTAssertEqual(DemoSnapshots.setupInitialSection, .general)
     }
     func testTheLoadingWalkFollowsTheMainWalksNumbering() {
         let names = DemoSnapshots.skeletonScreens.map(\.fileName)
@@ -190,9 +190,45 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "workspaces"]).map(\.id), [
             "workspaces-list", "workspaces-new", "workspaces-new-taken", "workspaces-review", "workspaces-running",
             "workspaces-failed", "workspaces-done", "workspaces-edit", "workspaces-edit-review", "workspaces-forget",
-            "workspaces-forget-refused", "workspaces-destroy", "workspaces-settings", "workspaces-new-no-agents",
+            "workspaces-forget-refused", "workspaces-destroy", "workspaces-reopened", "workspaces-new-no-agents",
             "workspaces-harnesses",
         ])
+    }
+
+    func testTheMapWallpaperWalkShowsHomeWithBothMapSizesAndTheAppearanceBackgroundPicker() {
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "map-wallpaper"]).map(\.id), [
+            "map-wallpaper-home", "map-wallpaper-fleet", "map-wallpaper-empty", "map-wallpaper-appearance",
+            "map-wallpaper-large", "map-wallpaper-large-fleet", "map-wallpaper-appearance-photo",
+            "map-wallpaper-appearance-gradient", "map-wallpaper-sidebar-collapsed",
+            "map-wallpaper-large-collapsed", "map-wallpaper-large-fleet-collapsed",
+        ])
+        XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-large-fleet-collapsed"), .networkMap(.large))
+        XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-home"), .networkMap(.compact))
+        XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-large"), .networkMap(.large))
+        XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-appearance"), .networkMap(.large))
+    }
+
+    func testTheHostKeyWalkIsItsOwnSetOfPanelsPickedByTheEnvironment() {
+        let screens = DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "host-key"])
+        XCTAssertEqual(screens.map(\.id), ["hostkey-review", "hostkey-matching", "hostkey-older-cli", "hostkey-failed"])
+        XCTAssertTrue(Set(screens.map(\.fileName)).isDisjoint(with: DemoSnapshots.screens.map(\.fileName)))
+        for screen in screens {
+            XCTAssertEqual(DemoSnapshots.chrome(for: screen.id), .panel, screen.id)
+        }
+    }
+
+    func testEveryHostKeyDemoScreenEndsInTheStateItIsNamedFor() async {
+        let expected: [String: (HostKeyPhase?) -> Bool] = [
+            "hostkey-review": { if case .review = $0 { return true } else { return false } },
+            "hostkey-matching": { $0 == .matching },
+            "hostkey-older-cli": { $0 == .needsNewerCLI },
+            "hostkey-failed": { if case .failed = $0 { return true } else { return false } },
+        ]
+        for screen in DemoHostKey.screens {
+            let output = DemoHostKey.output(for: screen.id)
+            let phase = HostKeyStore.phase(afterCheck: output, machine: DemoHostKey.machine)
+            XCTAssertEqual(expected[screen.id]?(phase), true, screen.id)
+        }
     }
 
     func testTheWorktreeWalkIsItsOwnSetAndPickedByTheEnvironment() {
@@ -246,12 +282,69 @@ final class DemoSnapshotsTests: XCTestCase {
         }
     }
 
+    func testTheCLIUpdateWalkEndsWithTheCornerToastAsPanels() {
+        let toasts = DemoSnapshots.cliUpdateScreens.filter { $0.id.hasPrefix("cli-update-toast") }
+        XCTAssertEqual(toasts.map(\.fileName), [
+            "65-cli-update-toast.png", "66-cli-update-toast-running.png", "67-cli-update-toast-updated.png",
+            "68-cli-update-toast-failed.png", "69-cli-update-toast-manual.png",
+        ])
+        for screen in toasts {
+            XCTAssertEqual(DemoSnapshots.chrome(for: screen.id), .panel)
+        }
+        XCTAssertEqual(DemoSnapshots.chrome(for: "cli-update-available"), .window)
+    }
+
     func testTheMachineReadyWalkIsItsOwnSet() {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "machine-ready"]).map(\.id), [
             "ready-home", "ready-running", "ready-failed", "ready-done", "ready-old-cli", "ready-outdated",
             "install-cli", "install-cli-running", "install-cli-failed",
         ])
         XCTAssertEqual(Set(DemoSnapshots.machineReadyScreens.map(\.fileName)).count, 9)
+    }
+
+    func testThePackagesWalkIsItsOwnSet() {
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "packages"]).map(\.id), [
+            "packages-all", "packages-selected", "packages-confirm", "packages-pending", "packages-running",
+            "packages-succeeded", "packages-failed",
+        ])
+        XCTAssertEqual(Set(DemoSnapshots.packagesScreens.map(\.fileName)).count, 7)
+    }
+
+    func testThePackagesWalkOpensPostgresAndSendsTwoPackagesToAMachineAndAWorkspace() {
+        let page = DemoPackages.page(for: "packages-selected")
+        XCTAssertEqual(page.expanded, "postgres")
+        XCTAssertEqual(page.selection, ["postgres", "nodejs"])
+        let batch = PackagesSettingsView.plan(
+            page.selection.sorted(), on: [DemoPackages.target, .workspace("acme", machine: "main")], .install,
+            snapshot: DemoPackages.snapshot(after: .none))
+        XCTAssertEqual(batch.edits.map(\.changes), [
+            PackageChanges(adds: ["postgres"], removes: []),
+        ])
+        XCTAssertNil(DemoPackages.page(for: "packages-all").expanded)
+        XCTAssertTrue(DemoPackages.page(for: "packages-pending").selection.isEmpty)
+    }
+
+    func testThePackagesWalkShowsEveryPillOnMain() {
+        let statuses = DemoPackages.snapshot(after: .none).statuses(for: DemoPackages.target)
+        XCTAssertEqual(statuses["redis"], .applied)
+        XCTAssertEqual(statuses["git"], .appliedAsDependency(of: "essentials"))
+        XCTAssertEqual(statuses["tailscale"], .pendingInstall)
+        XCTAssertEqual(statuses["postgres"], .available)
+        let saved = DemoPackages.snapshot(after: .saved).statuses(for: DemoPackages.target)
+        XCTAssertEqual(saved["postgres"], .pendingInstall)
+        XCTAssertEqual(saved["redis"], .pendingRemove)
+        let synced = DemoPackages.snapshot(after: .synced).statuses(for: DemoPackages.target)
+        XCTAssertEqual(synced["postgres"], .applied)
+        XCTAssertEqual(synced["redis"], .available)
+    }
+
+    func testThePackagesWalksJobIsTheSyncTheSelectionAsksFor() {
+        let pending = DemoPackages.job(.pending)
+        XCTAssertEqual(
+            pending.request, SyncRequest(machine: "main", tags: ["postgres"], full: true, reasons: ["Packages"]))
+        XCTAssertEqual(pending.plan.title, "Sync main")
+        XCTAssertEqual(DemoPackages.job(.running(step: 0)).plan.steps, [["sync", "--machine", "main", "--yes"]])
+        XCTAssertTrue(DemoPackages.job(.running(step: 0)).expanded)
     }
 
     func testTheFileViewerWalkIsItsOwnSet() {

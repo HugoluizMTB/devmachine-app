@@ -12,11 +12,13 @@ struct ContentView: View {
     @EnvironmentObject private var stats: StatsStore
     @EnvironmentObject private var caddy: CaddyStore
     @EnvironmentObject private var updates: UpdateController
+    @EnvironmentObject private var jobs: MachineJobCenter
     @State private var dragStartWidth: CGFloat? = nil
     @State private var contextDragStartWidth: CGFloat?
     @StateObject private var quickPublish = QuickPublishState()
     @ObservedObject private var previews = PreviewStore.shared
     @ObservedObject private var split = DocumentSplitState.shared
+    @State private var sidebarButtonFrame: CGRect?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -31,9 +33,16 @@ struct ContentView: View {
             } else {
                 mainRow
                     .onAppear { stats.start() }
-                if model.sidebarCollapsed { collapsedSidebarButton }
+                    .environment(\.collapsedSidebarButtonFrame, model.sidebarCollapsed ? sidebarButtonFrame : nil)
+                if model.sidebarCollapsed {
+                    collapsedSidebarButton
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.windowSpace)) } action: {
+                            sidebarButtonFrame = $0
+                        }
+                }
             }
         }
+        .coordinateSpace(.named(Self.windowSpace))
         .background(Color.dmSidebarBg)
         .overlay {
             if model.showFileSearch, let target = model.commandTarget(for: model.selection) {
@@ -65,6 +74,11 @@ struct ContentView: View {
                     UpdateBanner()
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+                if updates.showsCLIBanner {
+                    CLIUpdateBanner()
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+                MachineJobStack()
                 ForEach(caddy.jobs) { job in
                     PublishJobCard(
                         job: job,
@@ -82,6 +96,9 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.2), value: model.activeTasks)
             .animation(.easeInOut(duration: 0.2), value: caddy.jobs)
             .animation(.easeInOut(duration: 0.2), value: updates.showsBanner)
+            .animation(.easeInOut(duration: 0.2), value: updates.showsCLIBanner)
+            .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.id))
+            .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.phase))
         }
         .onAppear {
             model.settings = settingsStore.settings
@@ -96,6 +113,15 @@ struct ContentView: View {
         .quickPublishSheet(quickPublish, settings: settingsStore.settings, workspaces: model.visibleWorkspaces)
         .sheet(isPresented: $updates.showsDialog) {
             UpdateDialog().environmentObject(updates)
+        }
+        .sheet(isPresented: Binding(
+            get: { model.hostKeyMachine != nil },
+            set: { if !$0 { model.closeHostKey() } }
+        )) {
+            if let machine = model.hostKeyMachine {
+                HostKeySheet(store: HostKeyStore.shared, machine: machine)
+                    .environmentObject(model)
+            }
         }
         .sheet(isPresented: $model.showShortcuts) {
             ShortcutsSheet().environmentObject(model)
@@ -278,6 +304,8 @@ struct ContentView: View {
         }
     }
 
+    static let windowSpace = "window"
+
     private var collapsedSidebarButton: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = false }
@@ -301,16 +329,14 @@ private struct PageHost: View {
     var body: some View {
         switch page {
         // `DemoSnapshots.setupInitialSection` only ever differs from
-        // `.connection` while the website's screenshot walk owns the window.
+        // `.general` while the website's screenshot walk owns the window.
         case .setup: SetupPage(initialSection: DemoSnapshots.setupInitialSection)
         case .stats: StatsView()
         // `DemoSnapshots.subdomainsInitialTab` only ever differs from `.sites`
         // while the website's screenshot walk owns the window.
         case .subdomains: SubdomainsView(initialTab: DemoSnapshots.subdomainsInitialTab)
         case .stack(let refs): StackGridView(refs: refs).ignoresSafeArea(edges: .top)
-        case .hostKey(let machine): HostKeyPage(store: HostKeyStore.shared, machine: machine)
         case .addMachine: AddMachinePage()
-        case .workspaces: WorkspacesPage()
         }
     }
 }

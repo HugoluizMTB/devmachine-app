@@ -76,6 +76,8 @@ enum DNSSetupContent {
 
     static let noCatalog = "The packages release offers no DNS provider package. Check what it has with:"
 
+    static let syncingBody = "The card in the corner shows its log."
+
     static let oldCLIBody = "Your devmachine CLI can't sync one package from here (it needs "
         + "\(MachinePrepare.minimumCLIVersion) or newer). Update it, or run this in a terminal:"
 
@@ -166,7 +168,7 @@ struct DNSProviderSetupCard: View {
                 titleVisibility: .visible
             ) {
                 Button("Run sync") {
-                    if let package = confirmSync { Task { await setup.sync(package) } }
+                    if let package = confirmSync { setup.sync(package) }
                     confirmSync = nil
                 }
                 Button("Cancel", role: .cancel) { confirmSync = nil }
@@ -217,7 +219,7 @@ struct DNSProviderSetupCard: View {
         case let .notSynced(provider, problem):
             notSynced(provider, problem: problem, machine: machine)
         case .working(.sync):
-            DMLogView(lines: setup.lines)
+            paragraph(DNSSetupContent.syncingBody)
         case .working:
             EmptyView()
         case let .failed(step, cause, details):
@@ -231,7 +233,7 @@ struct DNSProviderSetupCard: View {
             DMReportBugButton {
                 BugReportEnvironment.report(
                     title: "DNS setup failed: \(step)", stepID: "dns-\(step)", command: "devmachine (DNS setup, \(step))",
-                    exitCode: nil, lines: setup.lines + [details])
+                    exitCode: nil, lines: details.components(separatedBy: "\n"))
             }
             .frame(maxWidth: .infinity)
         case .unknown, .ready:
@@ -242,6 +244,7 @@ struct DNSProviderSetupCard: View {
     private func retry(_ step: DNSSetupStep) -> () -> Void {
         guard step == .sync, let provider else { return { setup.dismissFailure() } }
         return {
+            guard !setup.retrySync() else { return }
             setup.dismissFailure()
             confirmSync = provider
         }

@@ -278,24 +278,37 @@ final class WorkspaceFlowTests: XCTestCase {
         XCTAssertEqual(flow.packages, ["dev", "zsh"])
         XCTAssertEqual(flow.settings, [WorkspaceSetting(key: "zsh.theme", value: "clean")])
         XCTAssertFalse(flow.canAdvance)
-        flow.togglePackage("pi")
+        flow.setSetting("zsh.theme", "agnoster")
         XCTAssertTrue(flow.canAdvance)
         flow.next()
         XCTAssertEqual(flow.plan.map(\.arguments), [
-            ["workspaces", "edit", "acme", "--add", "pi", "--yes"],
+            ["workspaces", "edit", "acme", "--set", "zsh.theme=agnoster", "--yes"],
             ["sync", "--machine", "main", "--yes"],
         ])
     }
 
-    func testEditRefusesASettingForAPackageItTakesOff() {
+    func testEditNeverChangesPackagesWhichLiveInSettingsPackages() {
         var flow = WorkspaceFlow.edit(acme)
+        flow.togglePackage("pi")
         flow.togglePackage("zsh")
-        XCTAssertEqual(flow.settingProblems.first, "zsh is not one of this workspace's packages, so the CLI refuses its setting.")
+        XCTAssertEqual(flow.packages, ["dev", "zsh"])
         XCTAssertFalse(flow.canAdvance)
+        flow.setSetting("zsh.theme", "agnoster")
+        XCTAssertEqual(flow.changes.add, [])
+        XCTAssertEqual(flow.changes.remove, [])
+        XCTAssertFalse(flow.plan[0].arguments.contains("--add"))
+        XCTAssertFalse(flow.plan[0].arguments.contains("--rm"))
+    }
+
+    func testEditRefusesASettingForAPackageTheWorkspaceDoesNotHave() {
+        var flow = WorkspaceFlow.edit(acme)
+        flow.setSetting("pi.model", "fast")
+        XCTAssertEqual(flow.settingProblems.first, "pi is not one of this workspace's packages, so the CLI refuses its setting.")
+        XCTAssertFalse(flow.canAdvance)
+        flow.setSetting("pi.model", "")
         flow.removeSetting(at: 0)
         XCTAssertTrue(flow.canAdvance)
         XCTAssertEqual(flow.changes.unset, ["zsh.theme"])
-        XCTAssertEqual(flow.changes.remove, ["zsh"])
     }
 
     func testEditAddsASetting() {

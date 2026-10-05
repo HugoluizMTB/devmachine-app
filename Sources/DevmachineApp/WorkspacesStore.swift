@@ -45,8 +45,9 @@ enum WorkspacesReader {
     }
 }
 
-/// The Workspaces page's state, kept for the app's life so leaving the page
-/// mid-run and coming back finds the run where it was. Every change is a
+/// Settings → Workspaces' state, kept for the app's life so leaving it
+/// mid-run and coming back finds the run where it was; any other flow is
+/// dropped on leaving (`leave`). Every change is a
 /// `devmachine` command shown first and run in the background
 /// (`MachineStepRunner`), only after the person confirms it.
 @MainActor
@@ -60,12 +61,6 @@ final class WorkspacesStore: ObservableObject {
         case loading
         case loaded
         case failed(DMErrorState)
-    }
-
-    struct MachineGroup: Equatable, Identifiable {
-        let machine: String
-        let workspaces: [WorkspaceSummary]
-        var id: String { machine }
     }
 
     static let demoRefusal = "Demo mode never changes a workspace."
@@ -104,17 +99,13 @@ final class WorkspacesStore: ObservableObject {
 
     var workspaces: [WorkspaceSummary] { snapshot?.workspaces ?? [] }
 
-    /// Every machine that holds a workspace, in the configuration's order,
-    /// then any machine the list names that the configuration does not.
-    var groups: [MachineGroup] {
-        var order = machines.machines.map(\.name)
-        for workspace in workspaces where !order.contains(workspace.machine) {
-            order.append(workspace.machine)
-        }
-        return order.compactMap { machine in
-            let held = workspaces.filter { $0.machine == machine }
-            return held.isEmpty ? nil : MachineGroup(machine: machine, workspaces: held)
-        }
+    /// Every workspace under the machine that holds it, each with its
+    /// on/off switch from the sidebar's `hidden` list.
+    func sections(sidebar: [Workspace], hidden: [String]) -> [WorkspaceSettingsList.Section] {
+        WorkspaceSettingsList.sections(
+            summaries: workspaces,
+            machines: machines.machines.map { .init(name: $0.name, location: $0.location) },
+            sidebar: sidebar, hidden: hidden)
     }
 
     /// The machines a workspace can go on: never this Mac's `self` machine.
@@ -233,7 +224,14 @@ final class WorkspacesStore: ObservableObject {
         flow = next
     }
 
-    /// Cancel, Close and Done: back to the list, unless a run is going.
+    /// Settings → Workspaces was left or Settings closed: the next visit
+    /// opens on the list, never on the last workspace clicked. A run going
+    /// on is kept, so its log is still there to come back to.
+    func leave() {
+        close()
+    }
+
+    /// Cancel, Close, Done and the breadcrumb: back to the list, unless a run is going.
     func close() {
         guard !isRunning else { return }
         runner.reset()

@@ -80,7 +80,7 @@ struct PaletteDispatcher {
         case let .openSettings(section): model.openSettings(section)
         case .runHealthCheck:
             health.run()
-            model.openSettings(.advanced)
+            model.openSettings(.healthCheck)
         case let .openSession(item): model.jump(to: item)
         case let .newSession(alias, choice): model.openSession(in: alias, startup: .program(choice))
         case let .runSavedCommand(alias, command):
@@ -97,7 +97,7 @@ struct PaletteDispatcher {
             stats.select(machine)
             model.showPage(.stats)
         case let .hostKey(machine):
-            model.showPage(.hostKey(machine))
+            model.showHostKey(machine)
         case let .subdomains(machine):
             sites.prefer(machine: machine)
             model.showPage(.subdomains)
@@ -132,7 +132,6 @@ struct PaletteDispatcher {
         switch model.activePage {
         case .stats: stats.refresh()
         case .subdomains: sites.refresh()
-        case let .hostKey(machine): Task { await HostKeyStore.shared.check(machine) }
         default: model.refreshAll()
         }
     }

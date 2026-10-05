@@ -58,7 +58,7 @@ public struct WorkspaceDraft: Equatable, Sendable {
     public init() {}
 }
 
-/// The Workspaces page's flows. New and Edit go form, review of the exact
+/// Settings → Workspaces' flows. New and Edit go form, review of the exact
 /// commands, run; Forget and Destroy show their one command on their own
 /// screen and run from there (Destroy only once the name is typed again).
 /// A run has no way back except to its answers.
@@ -70,8 +70,9 @@ public struct WorkspaceFlow: Equatable, Sendable {
     /// The workspace Edit, Forget and Destroy act on.
     public let current: WorkspaceSummary?
     public var draft = WorkspaceDraft()
-    /// Edit: the packages chosen, and the settings as they will be.
-    public var packages: [String] = []
+    /// Edit: the workspace's packages, which it does not change, and the
+    /// settings as they will be.
+    public private(set) var packages: [String] = []
     public var settings: [WorkspaceSetting] = []
     /// Edit: the workspace's own login answers as they will be.
     public var sharing: [String: String] = [:]
@@ -193,16 +194,15 @@ public struct WorkspaceFlow: Equatable, Sendable {
         package == WorkspacePackageCatalog.account || chosen.contains(package)
     }
 
-    /// The account package is always there; it is never toggled.
+    /// New only: Edit never adds or removes a package, which Settings →
+    /// Packages does. The account package is always there; it is never toggled.
     public mutating func togglePackage(_ package: String) {
-        guard package != WorkspacePackageCatalog.account else { return }
-        var list = chosen
-        if let index = list.firstIndex(of: package) {
-            list.remove(at: index)
+        guard action == .new, package != WorkspacePackageCatalog.account else { return }
+        if let index = draft.packages.firstIndex(of: package) {
+            draft.packages.remove(at: index)
         } else {
-            list.append(package)
+            draft.packages.append(package)
         }
-        if action == .new { draft.packages = list } else { packages = list }
     }
 
     /// A declared variable's value as set, empty when it is left at its default.

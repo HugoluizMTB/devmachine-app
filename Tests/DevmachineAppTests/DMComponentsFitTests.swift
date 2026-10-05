@@ -42,6 +42,12 @@ final class DMComponentsFitTests: XCTestCase {
         DMFitCheck.assertFits("chip button") {
             Button("Commit") {}.buttonStyle(.dmChip).font(.dm(11))
         }
+        DMFitCheck.assertFits("selected chip button") {
+            Button("Tools") {}.buttonStyle(.dmChip(selected: true)).font(.dm(11))
+        }
+        DMFitCheck.assertFits("resting chip button") {
+            Button("Other") {}.buttonStyle(.dmChip(selected: false)).font(.dm(11))
+        }
         DMFitCheck.assertFits("chip") { DMChip(title: "Nature", selected: true) {} }
         DMFitCheck.assertFits("key cap") { DMKeyCap(key: "⌘") }
     }
@@ -49,6 +55,9 @@ final class DMComponentsFitTests: XCTestCase {
     func testLabelsFitAtEveryTextSize() {
         DMFitCheck.assertFits("pill") { DMPill(text: "CI passing", color: .green) }
         DMFitCheck.assertFits("kind label") { DMKindLabel(text: "CNAME") }
+        DMFitCheck.assertFits("dropdown") {
+            DMDropdown(label: "Machine", options: [.init(value: "main", title: "main")], selection: .constant("main"))
+        }
         DMFitCheck.assertFits("PR state") { DMPRStateIcon(state: .merged) }
         DMFitCheck.assertFits("section label") { DMSectionLabel(text: "WORKSPACES") }
         DMFitCheck.assertFits("choice card", width: DMCardWidth.banner) {
@@ -60,6 +69,14 @@ final class DMComponentsFitTests: XCTestCase {
             DMChoiceCard(
                 title: "essentials", detail: "Base tools.", badge: "ALWAYS INSTALLED", note: "Includes base, git.",
                 selected: true, multiple: true, locked: true) {}
+        }
+        DMFitCheck.assertFits("picture choice", width: DMCardWidth.banner) {
+            DMPictureChoice(
+                title: "Network map — large", detail: "Your machines, big, behind everything on Home.",
+                selected: true, action: {}) { Color.blue }
+        }
+        DMFitCheck.assertFits("bare picture choice", width: DMCardWidth.banner) {
+            DMPictureChoice(selected: false, action: {}) { Color.blue }
         }
         DMFitCheck.assertFits("log", width: DMCardWidth.sheet) {
             DMLogView(lines: ["$ devmachine sync --machine lab --yes", "TASK [base : apt] ok"])
@@ -148,6 +165,20 @@ final class DMComponentsFitTests: XCTestCase {
                 DMJobStep(id: "dns", title: "Create the DNS record by hand", state: .attention, detail: "app A 203.0.113.10"),
                 DMJobStep(id: "caddy", title: "Caddy route pending", state: .attention, detail: "box could not be reached"),
             ])
+        }
+        let phases: [(String, MachineJob, Bool)] = [
+            ("pending", MachineJobFixtures.job(.pending), false),
+            ("pending full", MachineJobFixtures.job(.pending), true),
+            ("queued", MachineJobFixtures.job(.queued), false),
+            ("running", MachineJobFixtures.job(.running(step: 0)), false),
+            ("running expanded", MachineJobFixtures.job(.running(step: 0), expanded: true), false),
+            ("succeeded", MachineJobFixtures.succeeded, false),
+            ("failed", MachineJobFixtures.failed, false),
+        ]
+        for (name, job, startsFull) in phases {
+            DMFitCheck.assertFits("machine job \(name)") {
+                MachineJobToast(job: job, startsFull: startsFull, actions: MachineJobFixtures.actions)
+            }
         }
         DMFitCheck.assertFits("age label") {
             DMAgeLabel(since: Date().addingTimeInterval(-600))

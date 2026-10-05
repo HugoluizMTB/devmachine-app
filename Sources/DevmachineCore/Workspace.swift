@@ -48,4 +48,9 @@ public enum WorkspaceVisibility {
         }
         return hidden + [alias]
     }
+
+    /// A switch set to the value it already has changes nothing.
+    public static func setting(_ alias: String, active: Bool, in hidden: [String]) -> [String] {
+        isHidden(alias, hidden: hidden) == active ? toggling(alias, in: hidden) : hidden
+    }
 }

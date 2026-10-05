@@ -53,6 +53,7 @@ struct DevmachineApp: App {
         Window("Devmachine", id: "main") {
             ContentView()
                 .environmentObject(model)
+                .environmentObject(model.jobs)
                 .environmentObject(filesStore)
                 .environmentObject(skillsStore)
                 .environmentObject(recentCommandStore)

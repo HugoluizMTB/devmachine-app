@@ -59,7 +59,7 @@ public struct WallpaperLibrary: Codable, Equatable, Sendable {
 
     public static let host = "images.unsplash.com"
     public static let fullWidth = 1920
-    public static let thumbnailWidth = 320
+    public static let thumbnailWidth = 640
 
     public var photos: [WallpaperPhoto] { themes.flatMap(\.photos) }
 
@@ -94,17 +94,27 @@ public struct WallpaperLibrary: Codable, Equatable, Sendable {
     }
 }
 
+/// How much of Home the network map wallpaper takes.
+public enum NetworkMapSize: String, Codable, CaseIterable, Sendable {
+    /// Only Home's free area, beside the cards and under the clock.
+    case compact
+    /// Behind everything, centred in all of Home.
+    case large
+}
+
 public enum WallpaperChoice: Codable, Equatable, Hashable, Sendable {
     case bundled
     case unsplash(id: String)
     case gradient(name: String)
+    /// The machines' network map, drawn from the CLI's configuration.
+    case networkMap(NetworkMapSize)
 
     private enum CodingKeys: String, CodingKey {
-        case kind, id, name
+        case kind, id, name, size
     }
 
     private enum Kind: String {
-        case bundled, unsplash, gradient
+        case bundled, unsplash, gradient, networkMap
     }
 
     public init(from decoder: Decoder) throws {
@@ -116,6 +126,10 @@ public enum WallpaperChoice: Codable, Equatable, Hashable, Sendable {
             self = .unsplash(id: try values.decode(String.self, forKey: .id))
         case Kind.gradient.rawValue:
             self = .gradient(name: try values.decode(String.self, forKey: .name))
+        case Kind.networkMap.rawValue:
+            // The map was saved without a size before there were two; that one was compact.
+            let size = try values.decodeIfPresent(String.self, forKey: .size).flatMap(NetworkMapSize.init(rawValue:))
+            self = .networkMap(size ?? .compact)
         default:
             self = .bundled
         }
@@ -132,6 +146,47 @@ public enum WallpaperChoice: Codable, Equatable, Hashable, Sendable {
         case .gradient(let name):
             try values.encode(Kind.gradient.rawValue, forKey: .kind)
             try values.encode(name, forKey: .name)
+        case .networkMap(let size):
+            try values.encode(Kind.networkMap.rawValue, forKey: .kind)
+            try values.encode(size.rawValue, forKey: .size)
+        }
+    }
+}
+
+/// The kinds of background Settings → Appearance offers first, as big cards;
+/// photos and gradients then have their own picks under them.
+public enum WallpaperKind: CaseIterable, Equatable, Sendable {
+    case photo, gradient, networkMapLarge, networkMapCompact
+
+    /// The first of the app's built-in gradients.
+    public static let firstGradient = "midnight"
+
+    public init(_ choice: WallpaperChoice) {
+        switch choice {
+        case .bundled, .unsplash: self = .photo
+        case .gradient: self = .gradient
+        case .networkMap(.large): self = .networkMapLarge
+        case .networkMap(.compact): self = .networkMapCompact
+        }
+    }
+
+    /// The choice a click on this kind makes: the current one when it is
+    /// already of this kind, else the last photo or gradient picked, else the
+    /// bundled photo or the first gradient.
+    public func choice(
+        current: WallpaperChoice, lastPhoto: WallpaperChoice?, lastGradient: WallpaperChoice?
+    ) -> WallpaperChoice {
+        if WallpaperKind(current) == self { return current }
+        switch self {
+        case .photo:
+            return lastPhoto.flatMap { WallpaperKind($0) == .photo ? $0 : nil } ?? .bundled
+        case .gradient:
+            return lastGradient.flatMap { WallpaperKind($0) == .gradient ? $0 : nil }
+                ?? .gradient(name: Self.firstGradient)
+        case .networkMapLarge:
+            return .networkMap(.large)
+        case .networkMapCompact:
+            return .networkMap(.compact)
         }
     }
 }

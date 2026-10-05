@@ -116,7 +116,7 @@ final class WallpaperStoreTests: XCTestCase {
     func testCacheURLNamesTheFileAfterThePhoto() {
         let store = makeStore()
         XCTAssertEqual(store.cacheURL(photo).lastPathComponent, "aaa111.jpg")
-        XCTAssertEqual(store.cacheURL(photo, thumbnail: true).lastPathComponent, "aaa111-thumb.jpg")
+        XCTAssertEqual(store.cacheURL(photo, thumbnail: true).lastPathComponent, "aaa111-thumb640.jpg", "a cell now draws 150 points tall, so the old 320 px file is not reused")
     }
 
     func testDefaultDirectoryLivesUnderApplicationSupport() {
@@ -241,6 +241,28 @@ final class WallpaperStoreTests: XCTestCase {
         XCTAssertEqual(StubURLProtocol.state.callCount, 0)
     }
 
+    func testTheNetworkMapChoiceDownloadsNothing() async throws {
+        let suite = "dev.devmachine.app.wallpaper.map.tests"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let settings = SettingsStore(defaults: defaults)
+        let store = makeStore(settings: settings)
+        settings.settings = AppSettings(
+            opsRepoPath: "/Users/alice/dev/ops",
+            hostAlias: "myhost",
+            publicIP: "203.0.113.10",
+            baseDomain: "example.com",
+            wallpaper: .networkMap(.compact)
+        )
+
+        XCTAssertEqual(store.choice, .networkMap(.compact))
+        XCTAssertNil(store.selectedPhoto)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(StubURLProtocol.state.callCount, 0)
+    }
+
     func testAnUnknownPhotoIDNeverBecomesADownload() async throws {
         let suite = "dev.devmachine.app.wallpaper.unknown.tests"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -359,5 +381,26 @@ final class WallpaperStyleTests: XCTestCase {
 
     func testEveryStyleHasItsOwnCacheKey() {
         XCTAssertNotEqual(WallpaperStyle.photo.bakeKey, WallpaperStyle.ambient.bakeKey)
+    }
+}
+
+final class WallpaperDimmingTests: XCTestCase {
+    func testAPhotoIsDimmedTopAndBottomForHomesText() {
+        XCTAssertEqual(WallpaperBackground.dimming(style: .photo, choice: .bundled), [0.25, 0.55])
+        XCTAssertEqual(WallpaperBackground.dimming(style: .photo, choice: .gradient(name: "peaks")), [0.25, 0.55])
+    }
+
+    func testTheMapIsAlreadyQuietSoOnlyItsBottomIsDarkened() {
+        for size in NetworkMapSize.allCases {
+            let map = WallpaperBackground.dimming(style: .photo, choice: .networkMap(size))
+            XCTAssertLessThan(map[0], 0.25)
+            XCTAssertGreaterThan(map[1], map[0])
+        }
+    }
+
+    func testTheTerminalsBackdropDimsEveryChoiceTheSame() {
+        for choice: WallpaperChoice in [.bundled, .gradient(name: "ember"), .networkMap(.compact), .networkMap(.large)] {
+            XCTAssertEqual(WallpaperBackground.dimming(style: .ambient, choice: choice), [0.5, 0.8])
+        }
     }
 }

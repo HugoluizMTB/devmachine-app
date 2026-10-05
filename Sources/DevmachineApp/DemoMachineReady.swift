@@ -3,15 +3,10 @@ import DevmachineCore
 import SwiftUI
 
 /// Debug builds only. The machine readiness cards and onboarding's Install
-/// CLI card, for the `DEVMACHINE_DEMO_WALK=machine-ready` capture. Prepare and
-/// the install run real processes, but on fake scripts written to a temporary
-/// folder, never the installed devmachine, Homebrew or the installer.
+/// CLI card, for the `DEVMACHINE_DEMO_WALK=machine-ready` capture. Prepare is
+/// a job seeded into the corner at one moment; nothing runs.
 @MainActor
 enum DemoMachineReady {
-    enum Script {
-        case prepareSlow, prepareFails, prepareSucceeds
-    }
-
     static let machine = "staging"
 
     static let workspaceMachines = [
@@ -34,18 +29,15 @@ enum DemoMachineReady {
         return snapshot
     }
 
-    static func seed(_ store: MachineReadinessStore, model: AppModel, script: Script? = nil,
+    static func seed(_ store: MachineReadinessStore, model: AppModel, prepare: MachineJobPhase? = nil,
                      cliVersion: String = "0.7.24", outdated: Bool = false) {
-        let runner = script.map { ProcessPrepareRunner(cli: { [path = write($0)] in
-            DevmachineCLI(executable: path, runner: DemoMode.runner)
-        }) }
+        let done = prepare.map { if case .succeeded = $0 { return true } else { return false } } ?? false
         store.seedDemo(
-            snapshot: snapshot(cliVersion: cliVersion),
+            snapshot: snapshot(cliVersion: cliVersion, applied: done),
             observed: outdated
                 ? ["backup": .outdated(detail: #"error: devmachine-app does not accept "stats". It accepts context"#)]
-                : [:],
-            afterPrepare: snapshot(cliVersion: cliVersion, applied: true),
-            runner: runner)
+                : [:])
+        if let prepare { store.seedDemoPrepare(machine, phase: prepare, log: log(prepare)) }
         model.seedDemoSessionProblem(.aliasMissing(alias: "initech-devmachine"), alias: "initech-devmachine")
     }
 
@@ -59,38 +51,28 @@ enum DemoMachineReady {
             .environment(\.colorScheme, .dark)
     }
 
-    private static func write(_ script: Script) -> String {
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("devmachine-demo-ready-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let path = folder.appendingPathComponent("devmachine").path
-        try? Data(body(script).utf8).write(to: URL(fileURLWithPath: path))
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
-        return path
-    }
-
-    private static func body(_ script: Script) -> String {
-        let plan = """
-            echo "staging: devmachine-app"
-            echo ""
-            echo "PLAY [devmachine] *************************************************"
-            echo ""
-            echo "TASK [Gathering Facts] ********************************************"
-            echo "ok: [devmachine]"
-            echo ""
-            echo "TASK [devmachine-app : Create the config directory] ***************"
-            echo "changed: [devmachine]"
-            """
-        let add = "if [ \"$1\" = packages ]; then echo 'added devmachine-app to machine staging'; exit 0; fi\n"
-        switch script {
-        case .prepareSlow:
-            return "#!/bin/sh\n" + add + "\(plan)\nsleep 8\n"
-        case .prepareFails:
-            return "#!/bin/sh\n" + add + "\(plan)\n"
-                + "echo 'fatal: [devmachine]: FAILED! => {\"msg\": \"Permission denied\"}'\n"
-                + "echo 'error: 1 task(s) failed on staging: exit status 2' 1>&2\nexit 1\n"
-        case .prepareSucceeds:
-            return "#!/bin/sh\n" + add + "\(plan)\necho ''\necho 'staging: ok=3 changed=1 failed=0'\n"
+    private static func log(_ phase: MachineJobPhase) -> [String] {
+        let plan = [
+            "$ devmachine packages add devmachine-app --machine staging --yes",
+            "added devmachine-app to machine staging",
+            "$ devmachine sync --machine staging --tags devmachine-app --yes",
+            "staging: devmachine-app", "",
+            "PLAY [devmachine] *************************************************", "",
+            "TASK [Gathering Facts] ********************************************",
+            "ok: [devmachine]", "",
+            "TASK [devmachine-app : Create the config directory] ***************",
+            "changed: [devmachine]",
+        ]
+        switch phase {
+        case .failed:
+            return plan + [
+                #"fatal: [devmachine]: FAILED! => {"msg": "Permission denied"}"#,
+                "error: 1 task(s) failed on staging: exit status 2",
+            ]
+        case .succeeded:
+            return plan + ["", "staging: ok=3 changed=1 failed=0"]
+        default:
+            return plan
         }
     }
 }

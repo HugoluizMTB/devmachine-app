@@ -131,10 +131,17 @@ final class PaletteDispatcherTests: XCTestCase {
         XCTAssertTrue(model.pendingAddSubdomain)
     }
 
-    func testNewWorkspaceOpensTheWorkspacesPageOnItsForm() {
+    func testNewWorkspaceOpensSettingsWorkspacesOnItsForm() {
         run(.newWorkspace)
-        XCTAssertEqual(model.activePage, .workspaces)
+        XCTAssertEqual(model.activePage, .setup)
+        XCTAssertEqual(model.requestedSettingsSection, .workspaces)
         XCTAssertTrue(model.pendingNewWorkspace)
+    }
+
+    func testWorkspacesOpensSettingsWorkspaces() {
+        run(.openSettings(.workspaces))
+        XCTAssertEqual(model.activePage, .setup)
+        XCTAssertEqual(model.requestedSettingsSection, .workspaces)
     }
 
     func testPublishAPortAsksForTheSheetOfThatWorkspace() {
@@ -148,11 +155,17 @@ final class PaletteDispatcherTests: XCTestCase {
         XCTAssertEqual(model.requestedSettingsSection, .appearance)
     }
 
+    func testThePackagesCommandOpensSettingsOnPackages() {
+        run(.openSettings(.packages))
+        XCTAssertEqual(model.activePage, .setup)
+        XCTAssertEqual(model.requestedSettingsSection, .packages)
+    }
+
     func testTheHealthCheckRunsAndShowsItsPane() {
         run(.runHealthCheck)
         XCTAssertEqual(health.runs, 1)
         XCTAssertEqual(model.activePage, .setup)
-        XCTAssertEqual(model.requestedSettingsSection, .advanced)
+        XCTAssertEqual(model.requestedSettingsSection, .healthCheck)
     }
 
     func testCustomCommandOpensTheSheetForThatWorkspace() {

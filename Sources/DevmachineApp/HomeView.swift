@@ -35,6 +35,9 @@ enum HomeLayout {
         let usageColumns: Int
         let cardsWidth: CGFloat
         let clockSize: CGFloat
+        /// The clock sits in the middle of all of Home, not of the column
+        /// beside the cards, when it still clears the cards by the gap there.
+        var clockCentredInHome = false
         /// The machine cards open the page, top left, with usage under them.
         var cardsEdge: HorizontalEdge { .leading }
     }
@@ -58,12 +61,27 @@ enum HomeLayout {
         if clockWidth < m.pt(minClockWidth) {
             return Plan(stacked: true, usageColumns: oneColumn, cardsWidth: cards, clockSize: clockSize(for: inner))
         }
-        return Plan(stacked: false, usageColumns: columns, cardsWidth: cards, clockSize: clockSize(for: clockWidth))
+        let size = clockSize(for: clockWidth)
+        let centred = HomeClockPlacement.centresInHome(
+            homeWidth: width, cardsMaxX: m.pt(padding) + cards,
+            clockWidth: m.pt(size) * clockWidthPerPoint, gap: m.pt(gap))
+        return Plan(
+            stacked: false, usageColumns: columns, cardsWidth: cards, clockSize: size, clockCentredInHome: centred)
     }
 
     private static func clockSize(for width: CGFloat) -> CGFloat {
         min(maxClockSize, max(minClockSize, (width / clockWidthPerPoint).rounded(.down)))
     }
+}
+
+/// Where Home's parts were laid out, for the network map wallpaper's free area.
+private struct HomeFrames: Equatable {
+    var size: CGSize = .zero
+    /// Home's own frame in the window, to place the sidebar button in Home's coordinates.
+    var inWindow: CGRect = .zero
+    var clock: CGRect?
+    var pill: CGRect?
+    var stackedContent: CGRect?
 }
 
 struct HomeView: View {
@@ -72,7 +90,9 @@ struct HomeView: View {
     @EnvironmentObject var usage: HarnessUsageStore
     @EnvironmentObject var stats: StatsStore
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
+    @Environment(\.collapsedSidebarButtonFrame) private var sidebarButton
     @ObservedObject private var readiness = MachineReadinessStore.shared
+    @State private var frames = HomeFrames()
 
     private var totalSessions: Int {
         model.sessionCount
@@ -99,12 +119,21 @@ struct HomeView: View {
                     Spacer()
                     compactStatCluster
                         .fixedSize()
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
+                            frames.pill = $0
+                        }
                 }
             }
             .padding(m.pt(HomeLayout.padding))
+            .onAppear { frames.size = proxy.size }
+            .onChange(of: proxy.size) { _, size in frames.size = size }
+            .onGeometryChange(for: CGRect.self) { _ in proxy.frame(in: .named(ContentView.windowSpace)) } action: {
+                frames.inWindow = $0
+            }
         }
+        .coordinateSpace(.named(Self.space))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WallpaperBackground())
+        .background(WallpaperBackground(mapPlacement: mapPlacement))
         .clipped()
         .onAppear {
             usage.beginObserving()
@@ -114,6 +143,50 @@ struct HomeView: View {
         .onDisappear { usage.endObserving() }
     }
 
+    private static let space = "home"
+
+    /// Pushes the cards (and, stacked, everything) down so the floating
+    /// button that reopens the sidebar covers none of them.
+    private var sidebarButtonInset: CGFloat {
+        let button = sidebarButton?.offsetBy(dx: -frames.inWindow.minX, dy: -frames.inWindow.minY)
+        let padding = m.pt(HomeLayout.padding)
+        return FloatingButtonClearance.topInset(
+            button: button, contentMinX: padding, contentMinY: padding, gap: m.space.md)
+    }
+
+    /// The large map is centred in all of Home, clears the stats pill and
+    /// spreads around the clock; the compact one keeps to Home's free area,
+    /// centred under the clock.
+    private func mapPlacement(_ size: NetworkMapSize) -> NetworkMapPlacement {
+        switch size {
+        case .large:
+            guard frames.size.width > 0 else { return .none }
+            return .filling(HomeMapArea.large(
+                size: frames.size, padding: m.pt(HomeLayout.padding), gap: m.pt(HomeLayout.gap),
+                pillMinY: frames.pill.map { Double($0.minY) }), keepClear: frames.clock)
+        case .compact:
+            return compactMapPlacement
+        }
+    }
+
+    /// Home's free area for the compact network map, from the plan and
+    /// where the clock, the stacked content and the pill were laid out.
+    private var compactMapPlacement: NetworkMapPlacement {
+        guard let pill = frames.pill, frames.size.width > 0 else { return .none }
+        let plan = HomeLayout.plan(width: frames.size.width, harnessCount: usage.states.count, metrics: m)
+        let padding = m.pt(HomeLayout.padding), gap = m.pt(HomeLayout.gap)
+        let layout: HomeMapArea.Layout
+        if plan.stacked {
+            guard let content = frames.stackedContent else { return .none }
+            layout = .stacked(contentMaxY: content.maxY)
+        } else {
+            guard let clock = frames.clock else { return .none }
+            layout = .sideBySide(cardsMaxX: padding + plan.cardsWidth, clockMaxY: clock.maxY)
+        }
+        let area = HomeMapArea.rect(size: frames.size, padding: padding, gap: gap, pillMinY: pill.minY, layout: layout)
+        return area.map { .area($0, centreX: frames.clock.map { Double($0.midX) }) } ?? .none
+    }
+
     private func sideBySideLayout(_ plan: HomeLayout.Plan) -> some View {
         HStack(alignment: .top, spacing: m.pt(HomeLayout.gap)) {
             ScrollView(.vertical) {
@@ -121,12 +194,26 @@ struct HomeView: View {
                     machinesSection
                     usageGrid(columns: plan.usageColumns)
                 }
+                .padding(.top, sidebarButtonInset)
                 .frame(width: plan.cardsWidth, alignment: .leading)
             }
             .scrollIndicators(.hidden)
             .frame(width: plan.cardsWidth)
-            clock(size: plan.clockSize)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if plan.clockCentredInHome {
+                Spacer(minLength: 0)
+            } else {
+                clock(size: plan.clockSize)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .overlay {
+            // Across the whole row, so its middle is Home's; the row has the
+            // column's height, so the clock stays at the same height.
+            if plan.clockCentredInHome {
+                clock(size: plan.clockSize)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
@@ -138,6 +225,10 @@ struct HomeView: View {
                 clock(size: plan.clockSize)
                     .padding(.vertical, m.space.lg)
                 usageGrid(columns: plan.usageColumns)
+            }
+            .padding(.top, sidebarButtonInset)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
+                frames.stackedContent = $0
             }
         }
         .scrollIndicators(.hidden)
@@ -159,6 +250,9 @@ struct HomeView: View {
                 Text(verbatim: Self.macName())
                     .font(.dm(13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.6))
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
+                frames.clock = $0
             }
         }
     }
@@ -222,7 +316,7 @@ struct HomeView: View {
                     .kerning(0.8)
                     .foregroundStyle(.white.opacity(0.7))
                     .shadow(color: .black.opacity(0.4), radius: 4)
-                FlowLayout(spacing: m.pt(HomeLayout.cardSpacing), rowSpacing: m.pt(HomeLayout.cardSpacing)) {
+                FlowLayout(spacing: HomeLayout.cardSpacing, rowSpacing: HomeLayout.cardSpacing) {
                     ForEach(stats.machines) { machine in
                         MachineStatsCard(
                             machine: machine,

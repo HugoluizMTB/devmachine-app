@@ -121,9 +121,7 @@ final class CaddyStore: ObservableObject {
         self.service = service
         self.selection = selection
         self.cache = cache
-        self.dnsSetup = dnsSetup ?? DNSSetupStore(
-            service: service,
-            runner: DemoMode.isActive ? DemoDNSSyncRunner() as any PrepareRunning : ProcessPrepareRunner())
+        self.dnsSetup = dnsSetup ?? DNSSetupStore(service: service)
         if DemoMode.isActive {
             self.dnsSetup.canRunSync = { true }
             self.dnsSetup.canEditMachineSettings = { true }
@@ -265,7 +263,13 @@ final class CaddyStore: ObservableObject {
         refresh(force: true)
     }
 
-    func refresh(force: Bool) {
+    /// Home's network map wallpaper: the machines and their sites, read
+    /// only past their TTL, and no DNS, which the map never draws.
+    func appearForMap() {
+        refresh(force: false, includeDNS: false)
+    }
+
+    func refresh(force: Bool, includeDNS: Bool = true) {
         if DemoMode.holdsLoading {
             dnsProviders = DemoData.dnsProviders
             isLoadingMachines = true
@@ -276,7 +280,7 @@ final class CaddyStore: ObservableObject {
                  selected: DemoData.subdomainSelectedMachine)
             publishPlaces = DemoData.publishPlaces
             domain = DemoData.domain
-            loadDNSProviders()
+            if includeDNS { loadDNSProviders() }
             return
         }
         let key = MachineDataKeys.sitesContext
@@ -286,7 +290,7 @@ final class CaddyStore: ObservableObject {
             self.isLoadingMachines = false
             self.cache.put(MachineDataKeys.workspaces, update.cached.value.workspaces)
             if update.changed || self.machines.isEmpty {
-                self.apply(update.cached.value, force: force)
+                self.apply(update.cached.value, force: force, includeDNS: includeDNS)
             }
         }, onError: { [weak self] error in
             guard let self else { return }
@@ -296,7 +300,7 @@ final class CaddyStore: ObservableObject {
             }
         })
         if let cached {
-            apply(cached.value, force: force)
+            apply(cached.value, force: force, includeDNS: includeDNS)
         }
         isLoadingMachines = cache.isRefreshing(key)
     }
@@ -307,7 +311,7 @@ final class CaddyStore: ObservableObject {
         loadSites(machine, force: true)
     }
 
-    private func apply(_ snapshot: SitesContextSnapshot, force: Bool) {
+    private func apply(_ snapshot: SitesContextSnapshot, force: Bool, includeDNS: Bool = true) {
         if machines != snapshot.machines { machines = snapshot.machines }
         context = snapshot.context
         updatePublishPlaces(machines, context)
@@ -323,12 +327,12 @@ final class CaddyStore: ObservableObject {
         if chosen != selectedMachine { selectedMachine = chosen }
         if previous != selectedMachine { resetDNS() }
         updateDNSSetup()
-        loadAll(force: force)
+        loadAll(force: force, includeDNS: includeDNS)
     }
 
-    private func loadAll(force: Bool) {
+    private func loadAll(force: Bool, includeDNS: Bool = true) {
         for machine in machines { loadSites(machine, force: force) }
-        loadDNSProviders(force: force)
+        if includeDNS { loadDNSProviders(force: force) }
     }
 
     private func loadSites(_ machine: CLIMachine, force: Bool = false) {

@@ -91,7 +91,7 @@ struct SidebarView: View {
     /// its workspaces the sidebar shows.
     private func readinessCardMachine(for workspace: Workspace) -> String? {
         guard !workspace.isLocal, let machine = readiness.machine(forWorkspace: workspace.name),
-              readiness.state(for: machine).needsAttention || readiness.jobs[machine] != nil
+              readiness.state(for: machine).needsAttention || readiness.prepareStatus(machine) != nil
         else { return nil }
         let first = model.visibleWorkspaces.first { readiness.machine(forWorkspace: $0.name) == machine }
         return first?.alias == workspace.alias ? machine : nil
