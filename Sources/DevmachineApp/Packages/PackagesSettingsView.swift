@@ -349,16 +349,8 @@ struct PackagesSettingsView: View {
 
     static let newPackagePrompt = "I want to create a new devmachine-cli package"
 
-    /// Claude Code and Codex take a first message as an argument; any other
-    /// program starts as it is, and the person types the ask.
     static func newPackageStartup(_ choice: SessionLaunchChoice, command: String?) -> SessionStartup {
-        guard case let .harness(id) = choice, let command else { return .program(choice) }
-        guard id == .claude || id == .codex else { return .program(choice) }
-        return .command("\(command) \(shellQuoted(newPackagePrompt))")
-    }
-
-    static func shellQuoted(_ text: String) -> String {
-        "'" + text.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+        .asking(newPackagePrompt, with: choice, command: command)
     }
 
     static func expandingTilde(_ path: String) -> String {

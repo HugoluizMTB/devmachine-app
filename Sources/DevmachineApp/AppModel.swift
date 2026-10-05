@@ -32,6 +32,17 @@ enum SessionStartup: Equatable {
     case command(String)
 }
 
+extension SessionStartup {
+    /// A harness that takes a first message on its command line starts
+    /// asking `prompt`; any other program starts as it is, and the person
+    /// types the ask.
+    static func asking(_ prompt: String, with choice: SessionLaunchChoice, command: String?) -> SessionStartup {
+        guard case let .harness(id) = choice, let command,
+              let line = HarnessPrompt.command(command, harness: id, prompt: prompt) else { return .program(choice) }
+        return .command(line)
+    }
+}
+
 protocol SessionCommandSending: Sendable {
     func send(_ command: String, into target: CommandTarget) throws
 }
