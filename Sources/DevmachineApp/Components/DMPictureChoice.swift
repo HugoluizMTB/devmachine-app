@@ -2,7 +2,8 @@ import SwiftUI
 
 /// A choice shown as a picture: a wallpaper, a kind of background. The
 /// picture fills its frame and is cropped, never stretched; the title and
-/// detail sit under it. The chosen one gets an accent ring and a check.
+/// detail sit under it, the detail always two lines tall so a row of
+/// choices lines up. The chosen one gets an accent ring and a check.
 struct DMPictureChoice<Picture: View>: View {
     var title: String?
     var detail: String?
@@ -57,12 +58,13 @@ struct DMPictureChoice<Picture: View>: View {
                 Text(verbatim: title)
                     .font(.dm(12, weight: selected ? .semibold : .medium))
                     .foregroundStyle(Color.dmRowText)
+                    .lineLimit(1)
             }
             if let detail {
                 Text(verbatim: detail)
                     .font(.dm(10.5))
                     .foregroundStyle(Color.dmMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2, reservesSpace: true)
             }
         }
         .padding(.horizontal, m.space.md)
