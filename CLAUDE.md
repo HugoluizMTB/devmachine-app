@@ -620,7 +620,8 @@ Rules:
 - Poll only while a view is visible (`onAppear`/`onDisappear` begin/end, refcount),
   one in-flight run per target, publish a `@Published` only when the value changed.
 - Never decode an image or run a blur inside `body`; bake once (`WallpaperBackground`)
-  and cache with a cap. Hidden `.opacity(0)` views still cost a full-window drawable —
+  and cache with a cap. The network map wallpaper is drawn, not baked: its
+  canvases are `Equatable` views, repainted only when the map or the size changes. Hidden `.opacity(0)` views still cost a full-window drawable —
   render only what is shown. No `.shadow` on full-window cards.
 - Session polling is a sequential sweep that stops at the first ssh-level failure and
   pauses (5 min on `Permission denied`, 1 min unreachable): parallel auths against a
@@ -1064,6 +1065,30 @@ once may fail there.
   the tailnet: nothing says it is. Lines rise straight up from a tile and
   run along a lane above the row, so nothing crosses on the ground; at most
   6 sites are drawn, the rest counted. A click on a tile selects its card.
+- **The map is one view with two presentations** (`NetworkMapView`,
+  `NetworkMapPresentation` in Core). `.interactive` is the page above.
+  `.decorative` is Home's wallpaper (Settings → Appearance → Wallpaper →
+  Network map, `WallpaperChoice.networkMap`, saved as `{"kind":"networkMap"}`;
+  an older build reads it as the bundled photo): no hit testing, no
+  selection or hover, ink at 45%, no site hosts (they ran under the clock's
+  digits) and no "+N more". `NetworkMapBackdrop` centres it in the whole
+  Home area inside 12% margins (48 pt at least), at most scale 2, and
+  shrinks it whole when the window is short; the grid covers everything.
+  The usage cards hide whatever falls under them, as with a photo.
+- **The wallpaper reads no data of its own** (`NetworkMapWallpaper`): on
+  appear it loads `MachinesStore` only if nobody has, and asks
+  `CaddyStore.appearForMap` for the sites (cache first, read again only past
+  their TTL, never DNS). Before any data, and with no machine, only the
+  ground shows; the machines fade in (no fade with Reduce Motion). Both
+  canvases are `Equatable`, so a stats tick or usage refresh on Home does
+  not repaint them, and there is no motion to keep them busy. Only the
+  bottom is dimmed (`WallpaperBackground.dimming`); behind terminals the
+  ambient backdrop is the ground without the grid. The Appearance cell is
+  the same view, small.
+- `DEVMACHINE_DEMO_WALK=map-wallpaper` (`DemoMapWallpaper`) captures
+  `180`–`183`: Home over the demo configuration, over the five-machine
+  fleet, with no machine, and Appearance with the chip open. Run it with
+  `DEVMACHINE_DEMO_WINDOW=1280x800` and `1728x1080` to check laptop sizes.
 - **Per machine**: Check (`doctor --machine`, `machine doctor` for this
   Mac), Addresses (`resolve`), Credentials (`credentials list`) open inline
   and are read only when opened (two of them log in); Sync asks
