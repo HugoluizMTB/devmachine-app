@@ -662,6 +662,16 @@ final class AppModel: ObservableObject {
         startProgram(in: .local(session: handle, path: path), startup: startup)
     }
 
+    /// A new local session in `path`, shown at once in place of the page
+    /// open now, running what `startup` says.
+    func openLocalSession(at path: String, startup: SessionStartup) {
+        let handle = LocalSessionNaming.name(for: path, existing: localSessions.map(\.handle))
+        addedLocalSessions.append(LocalSession(name: handle, path: path))
+        activePage = nil
+        selection = .localSession(name: handle, path: path)
+        startProgram(in: .local(session: handle, path: path), startup: startup)
+    }
+
     /// The first line typed into a new session, or nil for a plain shell.
     private func startupLine(_ startup: SessionStartup, for target: CommandTarget) -> String? {
         switch startup {

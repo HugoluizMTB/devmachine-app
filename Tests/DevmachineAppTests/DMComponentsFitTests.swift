@@ -55,6 +55,9 @@ final class DMComponentsFitTests: XCTestCase {
     func testLabelsFitAtEveryTextSize() {
         DMFitCheck.assertFits("pill") { DMPill(text: "CI passing", color: .green) }
         DMFitCheck.assertFits("kind label") { DMKindLabel(text: "CNAME") }
+        DMFitCheck.assertFits("dropdown") {
+            DMDropdown(label: "Machine", options: [.init(value: "main", title: "main")], selection: .constant("main"))
+        }
         DMFitCheck.assertFits("PR state") { DMPRStateIcon(state: .merged) }
         DMFitCheck.assertFits("section label") { DMSectionLabel(text: "WORKSPACES") }
         DMFitCheck.assertFits("choice card", width: DMCardWidth.banner) {

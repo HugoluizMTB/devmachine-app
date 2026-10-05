@@ -32,7 +32,7 @@ final class PackagesStoreTests: XCTestCase {
         let edits = Recorder()
         let center = MachineJobCenter(runner: NoRunner())
         let store = PackagesStore(read: { snap }, edit: { edits.add($0) }, jobs: { center })
-        let ok = await store.apply(PackageChanges(adds: ["docker"], removes: ["node"]), on: main)
+        let ok = await store.apply(PackageBatch(edits: [(main, PackageChanges(adds: ["docker"], removes: ["node"]))]))
         XCTAssertTrue(ok)
         XCTAssertEqual(edits.all, [
             ["packages", "add", "docker", "--machine", "main", "--yes"],
@@ -51,7 +51,7 @@ final class PackagesStoreTests: XCTestCase {
             edits.add(args)
             if args[2] == "node" { throw DevmachineCLIError.commandFailed("error: node is not in the release") }
         }, jobs: { center })
-        let ok = await store.apply(PackageChanges(adds: ["docker", "node", "zsh"], removes: []), on: main)
+        let ok = await store.apply(PackageBatch(edits: [(main, PackageChanges(adds: ["docker", "node", "zsh"], removes: []))]))
         XCTAssertFalse(ok)
         XCTAssertEqual(edits.all.count, 2)
         XCTAssertNotNil(store.applyError)
@@ -77,7 +77,7 @@ final class PackagesStoreTests: XCTestCase {
         let center = MachineJobCenter(runner: NoRunner())
         let store = PackagesStore(read: { [snap = snapshot()] in snap }, edit: { edits.add($0) },
                                   jobs: { center }, isDemo: { true })
-        let ok = await store.apply(PackageChanges(adds: [], removes: []), on: main)
+        let ok = await store.apply(PackageBatch(edits: [(main, PackageChanges(adds: [], removes: []))]))
         XCTAssertFalse(ok)
         XCTAssertEqual(store.applyError?.details, "Demo mode never changes a configuration.")
         XCTAssertTrue(edits.all.isEmpty)
@@ -89,7 +89,7 @@ final class PackagesStoreTests: XCTestCase {
         let snap = snapshot()
         let center = MachineJobCenter(runner: FailsOnceRunner(), successSeconds: 0)
         let store = PackagesStore(read: { reads.add([]); return snap }, edit: { _ in }, jobs: { center })
-        _ = await store.apply(PackageChanges(adds: ["docker"], removes: []), on: main)
+        _ = await store.apply(PackageBatch(edits: [(main, PackageChanges(adds: ["docker"], removes: []))]))
         XCTAssertEqual(reads.all.count, 1)
         let id = try XCTUnwrap(center.jobs.first?.id)
         center.start(id, full: false)

@@ -262,14 +262,18 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(Set(DemoSnapshots.packagesScreens.map(\.fileName)).count, 7)
     }
 
-    func testThePackagesWalkTicksOneInstallAndOneRemovalOnMain() {
+    func testThePackagesWalkOpensPostgresAndSendsTwoPackagesToAMachineAndAWorkspace() {
         let page = DemoPackages.page(for: "packages-selected")
-        XCTAssertEqual(page.target, DemoPackages.target)
-        let statuses = DemoPackages.snapshot(after: .none).statuses(for: DemoPackages.target)
-        let changes = page.selection.changes(statuses: statuses)
-        XCTAssertEqual(changes, PackageChanges(adds: ["postgres"], removes: ["redis"]))
-        XCTAssertNil(DemoPackages.page(for: "packages-all").target)
-        XCTAssertTrue(DemoPackages.page(for: "packages-pending").selection.names.isEmpty)
+        XCTAssertEqual(page.expanded, "postgres")
+        XCTAssertEqual(page.selection, ["postgres", "nodejs"])
+        let batch = PackagesSettingsView.plan(
+            page.selection.sorted(), on: [DemoPackages.target, .workspace("acme", machine: "main")], .install,
+            snapshot: DemoPackages.snapshot(after: .none))
+        XCTAssertEqual(batch.edits.map(\.changes), [
+            PackageChanges(adds: ["postgres"], removes: []),
+        ])
+        XCTAssertNil(DemoPackages.page(for: "packages-all").expanded)
+        XCTAssertTrue(DemoPackages.page(for: "packages-pending").selection.isEmpty)
     }
 
     func testThePackagesWalkShowsEveryPillOnMain() {

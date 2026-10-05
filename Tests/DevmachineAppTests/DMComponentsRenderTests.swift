@@ -64,6 +64,8 @@ private struct DMComponentsGallery: View {
                 DMChip(title: "Nature", selected: true) {}
                 DMChip(title: "Cities", selected: false) {}
                 DMPill(text: "CI passing", color: .green)
+                DMDropdown(
+                    label: "Machine", options: [.init(value: "main", title: "main")], selection: .constant("main"))
             }
             DMRow(systemImage: "circle.fill", title: "acme / dash", selected: true)
             HStack(spacing: 10) {

@@ -34,19 +34,15 @@ final class PackagesPageRenderTests: XCTestCase {
         let statuses = loaded.statuses(for: main)
         let view = VStack(alignment: .leading, spacing: 12) {
             PackagesHeader(
-                targets: loaded.targets, target: .constant(main),
+                targets: loaded.targets, page: .constant(PackagesPageState(machine: "main")),
                 filter: .constant(PackageFilter(categories: ["Tools"])),
                 categories: PackageFilter.categories(in: loaded.entries))
             ForEach(Array(loaded.entries.enumerated()), id: \.element.id) { index, entry in
                 DMTableRow(index: index) {
                     PackageRow(
-                        entry: entry, target: main, status: statuses[entry.name] ?? .available,
-                        isSelected: index == 0, toggle: {})
-                }
-            }
-            ForEach(Array(loaded.entries.enumerated()), id: \.element.id) { index, entry in
-                DMTableRow(index: index) {
-                    PackageRow(entry: entry, target: nil, status: nil, isSelected: false, toggle: {})
+                        entry: entry,
+                        placements: PackagePlacement.list(for: entry, targets: [main], statuses: [main: statuses]),
+                        isSelected: index == 0, isExpanded: index == 1, toggleSelected: {}, toggleExpanded: {})
                 }
             }
         }
@@ -63,8 +59,10 @@ final class PackagesPageRenderTests: XCTestCase {
         let snap = snapshot()
         let store = PackagesStore(read: { snap }, edit: { _ in }, jobs: { nil })
         await store.load()
-        var page = PackagesPageState(target: .workspace("acme", machine: "main"))
-        page.selection.toggle("gh")
+        var page = PackagesPageState(workspace: "acme")
+        page.toggle("gh")
+        page.toggleExpanded("docker")
+        page.bulkDestinations = [.workspace("acme", machine: "main")]
         let view = PackagesSettingsView(store: store, page: page)
             .padding(24)
             .frame(width: 820, height: 420)

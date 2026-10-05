@@ -6,6 +6,7 @@ import DevmachineCore
 @MainActor
 final class PackagesPageLogicTests: XCTestCase {
     private let main = PackageTarget.machine("main", isSelf: false)
+    private let backup = PackageTarget.machine("backup", isSelf: false)
     private let acme = PackageTarget.workspace("acme", machine: "main")
 
     private func entry(_ name: String, scope: String = "machine") -> PackageEntry {
@@ -14,108 +15,89 @@ final class PackagesPageLogicTests: XCTestCase {
     }
 
     func testEachStatusHasItsPill() {
-        XCTAssertEqual(PackageRow.pill(for: .applied)?.text, "Installed")
-        XCTAssertEqual(PackageRow.pill(for: .applied)?.color, .green)
-        XCTAssertEqual(PackageRow.pill(for: .appliedAsDependency(of: "gh"))?.text, "Via gh")
-        XCTAssertEqual(PackageRow.pill(for: .appliedAsDependency(of: "gh"))?.color, .dmMuted)
-        XCTAssertEqual(PackageRow.pill(for: .pendingInstall)?.text, "Pending install")
-        XCTAssertEqual(PackageRow.pill(for: .pendingInstall)?.color, .orange)
-        XCTAssertEqual(PackageRow.pill(for: .pendingRemove)?.text, "Pending removal")
-        XCTAssertEqual(PackageRow.pill(for: .pendingRemove)?.color, .orange)
-        XCTAssertNil(PackageRow.pill(for: .available))
+        XCTAssertEqual(PackageRow.pillText(PackagePlacement(target: main, status: .applied)), "main")
+        XCTAssertEqual(PackageRow.pillText(PackagePlacement(target: main, status: .pendingInstall)), "main · pending install")
+        XCTAssertEqual(PackageRow.pillText(PackagePlacement(target: main, status: .pendingRemove)), "main · pending removal")
+        XCTAssertEqual(PackageRow.pillText(PackagePlacement(target: main, status: .appliedAsDependency(of: "gh"))),
+                       "main · via gh")
+        XCTAssertEqual(PackageRow.color(for: .applied), .green)
+        XCTAssertEqual(PackageRow.color(for: .pendingInstall), .orange)
+        XCTAssertEqual(PackageRow.color(for: .appliedAsDependency(of: "gh")), .dmMuted)
     }
 
-    func testOnlyAnInstalledRowTickedForRemovalSaysTheSoftwareStays() {
-        XCTAssertEqual(PackageRow.removalNote(status: .applied, isSelected: true), PackageRow.removalHint)
-        XCTAssertNil(PackageRow.removalNote(status: .applied, isSelected: false))
-        XCTAssertNil(PackageRow.removalNote(status: .available, isSelected: true))
-        XCTAssertNil(PackageRow.removalNote(status: .pendingInstall, isSelected: true))
-        XCTAssertNil(PackageRow.removalNote(status: nil, isSelected: true))
+    func testPlacementsListOnlyTargetsThatHaveThePackageOrWaitForIt() {
+        let placements = PackagePlacement.list(
+            for: entry("docker"), targets: [main, backup],
+            statuses: [main: ["docker": .applied], backup: [:]])
+        XCTAssertEqual(placements, [PackagePlacement(target: main, status: .applied)])
     }
 
-    func testTheShortLabelDropsTheKindPrefix() {
-        XCTAssertEqual(PackageRow.shortLabel("machine main"), "main")
-        XCTAssertEqual(PackageRow.shortLabel("workspace acme"), "acme")
-        XCTAssertEqual(PackageRow.shortLabel("dev"), "dev")
+    func testOneDropdownAloneNarrowsTheListToItsKind() {
+        XCTAssertNil(PackagesPageState().scope)
+        XCTAssertEqual(PackagesPageState(machine: "main").scope, "machine")
+        XCTAssertEqual(PackagesPageState(workspace: "acme").scope, "workspace")
+        XCTAssertNil(PackagesPageState(machine: "main", workspace: "acme").scope)
+        XCTAssertEqual(PackagesPageState(machine: "main", workspace: "acme").focus(in: [main, backup, acme]), [main, acme])
     }
 
-    func testTheConfirmMessageWarnsOnlyWhenSomethingIsRemoved() {
-        let adds = PackagesSettingsView.confirmMessage(PackageChanges(adds: ["docker", "gh"], removes: []))
-        XCTAssertEqual(adds, "Install: docker, gh")
-        XCTAssertFalse(adds.contains(PackagesSettingsView.removalNote))
-
-        let both = PackagesSettingsView.confirmMessage(PackageChanges(adds: ["docker"], removes: ["node"]))
-        XCTAssertEqual(both, "Install: docker\nRemove: node\n\(PackagesSettingsView.removalNote)")
-    }
-
-    func testTheCheckboxShowsWhatTheTargetHasOnceApplied() {
-        let declared: [PackageStatus] = [.applied, .pendingInstall, .appliedAsDependency(of: "gh")]
-        for status in declared {
-            XCTAssertTrue(PackageRow.isChecked(status: status, isSelected: false), "\(status)")
-            XCTAssertFalse(PackageRow.isChecked(status: status, isSelected: true), "\(status)")
-        }
-        for status: PackageStatus in [.available, .pendingRemove] {
-            XCTAssertFalse(PackageRow.isChecked(status: status, isSelected: false), "\(status)")
-            XCTAssertTrue(PackageRow.isChecked(status: status, isSelected: true), "\(status)")
-        }
-        XCTAssertFalse(PackageRow.isChecked(status: nil, isSelected: false))
-    }
-
-    func testTheCheckboxIsOffWithoutATargetOrWithABlock() {
-        XCTAssertTrue(PackageRow.isDisabled(target: nil, block: nil))
-        XCTAssertTrue(PackageRow.isDisabled(target: main, block: .essentials))
-        XCTAssertFalse(PackageRow.isDisabled(target: main, block: nil))
-
-        XCTAssertNil(PackageRow.block(entry: entry("docker"), status: .available, target: nil))
-        XCTAssertNil(PackageRow.block(entry: entry("docker"), status: .available, target: main))
-        XCTAssertEqual(PackageRow.block(entry: entry("gh", scope: "workspace"), status: nil, target: main),
-                       .wrongScope("workspace"))
-    }
-
-    func testWithoutATargetTheRowHasNoCheckboxAndThePageSaysWhatToPick() {
-        XCTAssertFalse(PackageRow.showsCheckbox(target: nil))
-        XCTAssertTrue(PackageRow.showsCheckbox(target: main))
-        XCTAssertEqual(PackagesSettingsView.pickTargetHint, "Choose a machine or workspace above to add or remove packages.")
-    }
-
-    func testChoosingAnotherTargetEmptiesTheSelection() {
-        var page = PackagesPageState(target: main)
-        page.selection.toggle("docker")
-        page.choose(main)
-        XCTAssertEqual(page.selection.names, ["docker"])
-
-        page.choose(acme)
-        XCTAssertEqual(page.target, acme)
-        XCTAssertTrue(page.selection.names.isEmpty)
-
-        page.selection.toggle("gh")
-        page.choose(nil)
-        XCTAssertNil(page.target)
-        XCTAssertTrue(page.selection.names.isEmpty)
-    }
-
-    func testThePageOpensOnTheFirstMachineSoItsRowsCanBeTicked() {
+    func testClickingARowOpensItAndAgainClosesIt() {
         var page = PackagesPageState()
-        page.keep(targets: [acme, main])
-        XCTAssertEqual(page.target, main)
+        page.toggleExpanded("docker")
+        page.rowDestinations = [main]
+        XCTAssertEqual(page.expanded, "docker")
+        page.toggleExpanded("redis")
+        XCTAssertEqual(page.expanded, "redis")
+        XCTAssertTrue(page.rowDestinations.isEmpty)
+        page.toggleExpanded("redis")
+        XCTAssertNil(page.expanded)
     }
 
-    func testAllMachinesStaysWhenThePersonPicksIt() {
-        var page = PackagesPageState(target: main)
-        page.choose(nil)
+    func testAReloadLetsGoOfWhatIsGone() {
+        var page = PackagesPageState(machine: "backup", workspace: "acme")
+        page.bulkDestinations = [backup, acme]
         page.keep(targets: [main, acme])
-        XCTAssertNil(page.target)
+        XCTAssertNil(page.machine)
+        XCTAssertEqual(page.workspace, "acme")
+        XCTAssertEqual(page.bulkDestinations, [acme])
     }
 
-    func testAReloadWithoutTheTargetGoesBackToTheFirstMachine() {
-        var page = PackagesPageState(target: acme)
-        page.selection.toggle("gh")
-        page.keep(targets: [main, acme])
-        XCTAssertEqual(page.target, acme)
-        XCTAssertEqual(page.selection.names, ["gh"])
+    func testInstalledTargetsHaveEveryPackage() {
+        let statuses: [PackageTarget: [String: PackageStatus]] = [
+            main: ["docker": .applied, "redis": .applied], backup: ["docker": .applied],
+        ]
+        XCTAssertEqual(PackagesSettingsView.installedTargets(of: ["docker", "redis"], among: [main, backup], statuses: statuses),
+                       [main])
+    }
 
-        page.keep(targets: [main])
-        XCTAssertEqual(page.target, main)
-        XCTAssertTrue(page.selection.names.isEmpty)
+    func testTheButtonsSayHowManyPlaces() {
+        let one = PackageBatch(edits: [(main, PackageChanges(adds: ["docker"], removes: []))])
+        XCTAssertEqual(PackagesSettingsView.buttonTitle(.install, batch: one), "Install on 1 place")
+        XCTAssertEqual(PackagesSettingsView.buttonTitle(.remove, batch: PackageBatch(edits: [])), "Remove")
+    }
+
+    func testTheConfirmListsEachPlaceWhatIsLeftOutAndThatRemovingDoesNotUninstall() {
+        let batch = PackageBatch(
+            edits: [(main, PackageChanges(adds: [], removes: ["redis"]))],
+            skips: [PackageSkip(package: "redis", target: backup, reason: "Not there.")])
+        XCTAssertEqual(
+            PackagesSettingsView.confirmMessage(batch, action: .remove),
+            "main: redis\n\nLeft out:\nredis on backup — Not there.\n\n\(PackageRow.removalHint)")
+    }
+
+    func testNewPackageOpensClaudeOrCodexWithTheAskAndAnyOtherPlain() {
+        XCTAssertEqual(
+            PackagesSettingsView.newPackageStartup(.harness(.claude), command: "claude"),
+            .command("claude 'I want to create a new devmachine-cli package'"))
+        XCTAssertEqual(
+            PackagesSettingsView.newPackageStartup(.harness(HarnessID(rawValue: "kimi")), command: "kimi"),
+            .program(.harness(HarnessID(rawValue: "kimi"))))
+        XCTAssertEqual(PackagesSettingsView.newPackageStartup(.terminal, command: nil), .program(.terminal))
+    }
+
+    func testALocalPackageFolderIsUnderTheConfiguration() {
+        XCTAssertEqual(
+            PackagesSettingsView.localFolder(configDirectory: "/Users/alice/.config/devmachine", name: "acme-tools"),
+            "/Users/alice/.config/devmachine/packages/acme-tools")
+        XCTAssertNil(PackagesSettingsView.localFolder(configDirectory: nil, name: "acme-tools"))
     }
 }

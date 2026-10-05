@@ -118,37 +118,51 @@ final class PackagesStore: ObservableObject {
         Task { await load() }
     }
 
-    /// Runs each `packages add|rm` in order and stops at the first that
-    /// fails; only a selection saved whole asks for a sync.
-    func apply(_ changes: PackageChanges, on target: PackageTarget) async -> Bool {
+    /// Runs each `packages add|rm` in order, target by target, and stops at
+    /// the first that fails; every target saved whole asks for its sync, and
+    /// the job center merges two asks for the same machine into one.
+    func apply(_ batch: PackageBatch) async -> Bool {
         guard !isDemo() else {
             applyError = DMErrorState(
                 title: "Packages were not changed", message: "Demo mode never changes a configuration.")
             return false
         }
-        guard !applying, let request = changes.syncRequest(target: target) else { return false }
+        guard !applying, !batch.isEmpty else { return false }
         applying = true
         defer { applying = false }
-        let commands = changes.commands(target: target)
+        let commands = batch.edits.flatMap { $0.changes.commands(target: $0.target) }
         let model = AppModel.shared
-        let task = model?.beginTask(label: "Changing packages on \(target.title)…", total: commands.count)
-        for (index, command) in commands.enumerated() {
-            do {
-                try await edit(command)
-            } catch {
-                applyError = DMErrorState(
-                    title: "\((["devmachine"] + command.prefix(3)).joined(separator: " ")) failed",
-                    message: error.localizedDescription)
-                if let task { model?.dropTask(task) }
-                await load()
-                return false
+        let task = model?.beginTask(label: "Changing packages…", total: commands.count)
+        var done = 0
+        var saved: [SyncRequest] = []
+        for item in batch.edits {
+            for command in item.changes.commands(target: item.target) {
+                do {
+                    try await edit(command)
+                } catch {
+                    applyError = DMErrorState(
+                        title: "\((["devmachine"] + command.prefix(3)).joined(separator: " ")) failed",
+                        message: error.localizedDescription)
+                    if let task { model?.dropTask(task) }
+                    requestSyncs(saved)
+                    await load()
+                    return false
+                }
+                done += 1
+                if let task { model?.setTask(task, completed: done) }
             }
-            if let task { model?.setTask(task, completed: index + 1) }
+            if let request = item.changes.syncRequest(target: item.target) { saved.append(request) }
         }
         if let task { model?.finishTask(task) }
-        jobs()?.requestSync(request, onFinish: { [weak self] _ in self?.requestLoad() })
+        requestSyncs(saved)
         await load()
         return true
+    }
+
+    private func requestSyncs(_ requests: [SyncRequest]) {
+        for request in requests {
+            jobs()?.requestSync(request, onFinish: { [weak self] _ in self?.requestLoad() })
+        }
     }
 
     /// Asks for the sync that applies what the configuration declares and

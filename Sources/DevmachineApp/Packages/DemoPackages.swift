@@ -36,10 +36,13 @@ enum DemoPackages {
 
     static func page(for id: String) -> PackagesPageState {
         guard id != "packages-all" else { return PackagesPageState() }
-        var page = PackagesPageState(target: target)
+        var page = PackagesPageState()
         if id == "packages-selected" || id == "packages-confirm" {
-            page.selection.toggle("postgres")
-            page.selection.toggle("redis")
+            page.toggleExpanded("postgres")
+            page.rowDestinations = [target]
+            page.toggle("postgres")
+            page.toggle("nodejs")
+            page.bulkDestinations = [target, .workspace("acme", machine: "main")]
         }
         return page
     }
@@ -65,12 +68,13 @@ enum DemoPackages {
     /// The confirm the page asks before `packages add|rm`, drawn by the alert
     /// AppKit shows for it, with the page's own words.
     static func confirmView() -> NSView {
-        let statuses = snapshot(after: .none).statuses(for: target)
-        let changes = page(for: "packages-confirm").selection.changes(statuses: statuses)
+        let batch = PackagesSettingsView.plan(
+            ["postgres", "nodejs"], on: [target, .workspace("acme", machine: "main")], .install,
+            snapshot: snapshot(after: .none))
         let alert = NSAlert()
-        alert.messageText = "Change packages on \(target.title)?"
-        alert.informativeText = PackagesSettingsView.confirmMessage(changes)
-        alert.addButton(withTitle: "Apply")
+        alert.messageText = PackagesSettingsView.confirmTitle(.install)
+        alert.informativeText = PackagesSettingsView.confirmMessage(batch, action: .install)
+        alert.addButton(withTitle: "Install")
         alert.addButton(withTitle: "Cancel")
         alert.window.appearance = NSAppearance(named: .darkAqua)
         alert.layout()

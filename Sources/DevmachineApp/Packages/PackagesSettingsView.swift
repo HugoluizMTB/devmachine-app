@@ -1,77 +1,115 @@
 import SwiftUI
+import AppKit
 import DevmachineCore
 
-/// The target the page acts on and the rows ticked for it. A selection
-/// belongs to one target, so choosing another one empties it. The page opens
-/// on the first machine, so its rows can be ticked at once; "All machines"
-/// only lists, and stays only when the person picks it.
+/// What the Packages page shows and what the person has picked: the machine
+/// and workspace dropdowns, the ticked packages and where the bar sends
+/// them, and the one row opened on its own actions.
 struct PackagesPageState: Equatable {
-    private(set) var target: PackageTarget?
-    private var showsEveryMachine = false
-    var selection = PackageSelection()
+    var machine: String?
+    var workspace: String?
+    var selection: Set<String> = []
+    var bulkDestinations: Set<PackageTarget> = []
+    private(set) var expanded: String?
+    var rowDestinations: Set<PackageTarget> = []
 
-    init(target: PackageTarget? = nil) {
-        self.target = target
+    mutating func toggle(_ name: String) {
+        if selection.remove(name) == nil { selection.insert(name) }
     }
 
-    mutating func choose(_ next: PackageTarget?) {
-        showsEveryMachine = next == nil
-        guard next != target else { return }
-        target = next
-        selection.clear()
+    mutating func toggleExpanded(_ name: String) {
+        expanded = expanded == name ? nil : name
+        rowDestinations = []
     }
 
+    mutating func clearSelection() {
+        selection = []
+        bulkDestinations = []
+    }
+
+    mutating func closeRow() {
+        expanded = nil
+        rowDestinations = []
+    }
+
+    /// A reload that no longer lists a dropdown's choice or a destination
+    /// lets go of it.
     mutating func keep(targets: [PackageTarget]) {
-        if let target, targets.contains(target) { return }
-        if target == nil, showsEveryMachine { return }
-        let firstMachine = targets.first { if case .machine = $0 { return true } else { return false } }
-        guard firstMachine != target else { return }
-        target = firstMachine
-        selection.clear()
+        if let machine, !targets.contains(where: { $0.scope == "machine" && $0.name == machine }) { self.machine = nil }
+        if let workspace, !targets.contains(where: { $0.scope == "workspace" && $0.name == workspace }) {
+            self.workspace = nil
+        }
+        bulkDestinations.formIntersection(targets)
+        rowDestinations.formIntersection(targets)
+    }
+
+    /// The machine and workspace the dropdowns picked; none means the page
+    /// looks at every one.
+    func focus(in targets: [PackageTarget]) -> [PackageTarget] {
+        targets.filter { target in
+            switch target {
+            case let .machine(name, _): return name == machine
+            case let .workspace(name, _): return name == workspace
+            }
+        }
+    }
+
+    /// One dropdown alone narrows the list to packages of its kind.
+    var scope: String? {
+        switch (machine, workspace) {
+        case (.some, nil): return "machine"
+        case (nil, .some): return "workspace"
+        default: return nil
+        }
     }
 }
 
-/// Settings → Packages: the catalog and the local packages, what each
-/// machine and workspace has, and a selection that `packages add|rm` saves
-/// before the job center asks to sync. It owns its scrolling so the Apply
-/// bar stays in view under the rows.
+/// An action waiting for the person to confirm it.
+struct PackagesPendingAction: Identifiable {
+    let id = UUID()
+    let action: PackageAction
+    let batch: PackageBatch
+    let fromRow: Bool
+}
+
+/// Settings → Packages: the catalog and the local packages, where each one
+/// is, and the actions that `packages add|rm` save before the job center
+/// asks to sync. It owns its scrolling so the bar stays in view under the rows.
 struct PackagesSettingsView: View {
     @Environment(\.dmMetrics) private var m
+    @Environment(\.harnessSettingsFacade) private var harnessFacade
     @ObservedObject var store: PackagesStore = .shared
     @State private var page: PackagesPageState
     @State private var filter = PackageFilter()
-    @State private var confirming = false
+    @State private var pending: PackagesPendingAction?
+    @State private var choosingHarness = false
 
     init(store: PackagesStore = .shared, page: PackagesPageState = PackagesPageState()) {
         self.store = store
         _page = State(initialValue: page)
     }
 
-    private var target: PackageTarget? { page.target }
-
-    static let pickTargetHint = "Choose a machine or workspace above to add or remove packages."
-
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear {
-            store.requestLoad()
-            page.keep(targets: store.snapshot?.targets ?? [])
-        }
+        .onAppear { store.requestLoad() }
         .onChange(of: store.snapshot?.targets) { _, targets in page.keep(targets: targets ?? []) }
         .confirmationDialog(
-            "Change packages on \(target?.title ?? "")?",
-            isPresented: $confirming,
-            presenting: target.map { ($0, changes) }
-        ) { target, changes in
-            Button("Apply") {
-                Task { if await store.apply(changes, on: target) { page.selection.clear() } }
+            pending.map { Self.confirmTitle($0.action) } ?? "",
+            isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+            presenting: pending
+        ) { pending in
+            Button(pending.action == .install ? "Install" : "Remove", role: pending.action == .remove ? .destructive : nil) {
+                Task {
+                    guard await store.apply(pending.batch) else { return }
+                    if pending.fromRow { page.closeRow() } else { page.clearSelection() }
+                }
             }
             Button("Cancel", role: .cancel) {}
-        } message: { _, changes in
-            Text(verbatim: Self.confirmMessage(changes))
+        } message: { pending in
+            Text(verbatim: Self.confirmMessage(pending.batch, action: pending.action))
         }
     }
 
@@ -91,42 +129,38 @@ struct PackagesSettingsView: View {
 
     @ViewBuilder
     private func loaded(_ snapshot: PackagesSnapshot) -> some View {
-        let statuses = target.map { snapshot.statuses(for: $0) }
-        PackagesHeader(
-            targets: snapshot.targets, target: Binding(get: { page.target }, set: { page.choose($0) }),
-            filter: $filter, categories: PackageFilter.categories(in: snapshot.entries))
-        if target == nil {
-            Text(verbatim: Self.pickTargetHint)
-                .font(.dm(11.5))
-                .foregroundStyle(Color.dmMuted)
+        let statuses = Self.statuses(snapshot)
+        let focus = page.focus(in: snapshot.targets)
+        HStack(alignment: .top, spacing: m.space.lg) {
+            PackagesHeader(
+                targets: snapshot.targets, page: $page, filter: $filter,
+                categories: PackageFilter.categories(in: snapshot.entries))
+            DMButton("New package", systemImage: "plus", variant: .outline, size: .small) { choosingHarness = true }
+                .popover(isPresented: $choosingHarness, arrowEdge: .bottom) {
+                    newPackagePicker(configDirectory: snapshot.configDirectory)
+                }
         }
-        if let target, let statuses, let request = PackagePending.syncRequest(statuses: statuses, target: target) {
-            HStack(spacing: m.space.md) {
-                Text(verbatim: "Some packages wait for a sync on \(request.machine).")
-                    .font(.dm(11.5))
-                    .foregroundStyle(Color.dmMuted)
-                DMButton("Sync now", variant: .outline, size: .small) { store.syncPending(on: target) }
-                Spacer(minLength: 0)
-            }
-        }
+        pendingSyncLine(snapshot, statuses: statuses)
         if let error = store.applyError {
             DMErrorStateView(state: error, retry: nil)
             DMButton("Dismiss", variant: .ghost, size: .small) { store.applyError = nil }
         }
         ScrollView(.vertical) {
-            rows(snapshot, statuses: statuses)
+            rows(snapshot, statuses: statuses, focus: focus)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .scrollIndicators(.automatic)
         .frame(maxHeight: .infinity)
-        if let target, !page.selection.names.isEmpty {
-            footer(target: target, changes: page.selection.changes(statuses: statuses ?? [:]))
+        if !page.selection.isEmpty {
+            bulkBar(snapshot, statuses: statuses)
         }
     }
 
     @ViewBuilder
-    private func rows(_ snapshot: PackagesSnapshot, statuses: [String: PackageStatus]?) -> some View {
-        let rows = filter.apply(snapshot.entries, statuses: statuses)
+    private func rows(
+        _ snapshot: PackagesSnapshot, statuses: [PackageTarget: [String: PackageStatus]], focus: [PackageTarget]
+    ) -> some View {
+        let rows = Self.narrowed(filter, scope: page.scope).apply(snapshot.entries, statuses: Self.installedAnywhere(on: focus, statuses: statuses))
         if filter.tab == .local, !snapshot.entries.contains(where: \.isLocal) {
             localEmptyState(snapshot.configDirectory)
         } else if rows.isEmpty {
@@ -137,19 +171,152 @@ struct PackagesSettingsView: View {
             LazyVStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, entry in
                     DMTableRow(index: index) {
-                        PackageRow(
-                            entry: entry, target: target, status: statuses.map { $0[entry.name] ?? .available },
-                            isSelected: page.selection.names.contains(entry.name),
-                            toggle: { page.selection.toggle(entry.name) })
+                        VStack(alignment: .leading, spacing: 0) {
+                            PackageRow(
+                                entry: entry,
+                                placements: PackagePlacement.list(
+                                    for: entry, targets: focus.isEmpty ? snapshot.targets : focus, statuses: statuses),
+                                isSelected: page.selection.contains(entry.name),
+                                isExpanded: page.expanded == entry.name,
+                                toggleSelected: { page.toggle(entry.name) },
+                                toggleExpanded: { page.toggleExpanded(entry.name) })
+                            if page.expanded == entry.name {
+                                rowPanel(entry, snapshot: snapshot, statuses: statuses)
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    private var changes: PackageChanges {
-        guard let target, let snapshot = store.snapshot else { return PackageChanges(adds: [], removes: []) }
-        return page.selection.changes(statuses: snapshot.statuses(for: target))
+    private func rowPanel(
+        _ entry: PackageEntry, snapshot: PackagesSnapshot, statuses: [PackageTarget: [String: PackageStatus]]
+    ) -> some View {
+        let fitting = snapshot.targets.filter { PackageBatch.fits(entry, on: $0) }
+        return VStack(alignment: .leading, spacing: m.space.md) {
+            if fitting.isEmpty {
+                Text(verbatim: "No machine or workspace here can take this package.")
+                    .font(.dm(11.5))
+                    .foregroundStyle(Color.dmMuted)
+            } else {
+                Text(verbatim: "Choose where, then install or remove.")
+                    .font(.dm(11.5))
+                    .foregroundStyle(Color.dmMuted)
+                PackageDestinationChips(
+                    targets: fitting,
+                    installed: Self.installedTargets(of: [entry.name], among: fitting, statuses: statuses),
+                    chosen: $page.rowDestinations)
+            }
+            HStack(spacing: m.space.sm) {
+                actionButtons(packages: [entry.name], destinations: page.rowDestinations, snapshot: snapshot, fromRow: true)
+                if entry.isLocal, let folder = Self.localFolder(configDirectory: snapshot.configDirectory, name: entry.name) {
+                    DMButton("Open folder", systemImage: "folder", variant: .ghost, size: .small) {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: folder))
+                    }
+                }
+                Spacer(minLength: 0)
+                DMButton("Close", variant: .ghost, size: .small) { page.closeRow() }
+            }
+        }
+        .padding(.leading, m.pt(34))
+        .padding(.trailing, m.row.horizontal)
+        .padding(.bottom, m.space.md)
+    }
+
+    private func bulkBar(_ snapshot: PackagesSnapshot, statuses: [PackageTarget: [String: PackageStatus]]) -> some View {
+        let names = page.selection.sorted()
+        return VStack(alignment: .leading, spacing: m.space.md) {
+            HStack(spacing: m.space.md) {
+                Text(verbatim: "\(names.count) selected: \(names.joined(separator: ", "))")
+                    .font(.dm(12, weight: .medium))
+                    .foregroundStyle(Color.dmRowText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: m.space.md)
+                DMButton("Clear", variant: .ghost, size: .small) { page.clearSelection() }
+            }
+            PackageDestinationChips(
+                targets: snapshot.targets,
+                installed: Self.installedTargets(of: names, among: snapshot.targets, statuses: statuses),
+                chosen: $page.bulkDestinations)
+            HStack(spacing: m.space.sm) {
+                actionButtons(packages: names, destinations: page.bulkDestinations, snapshot: snapshot, fromRow: false)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(m.space.md)
+        .dmSurface(Color.dmBand, radius: DMRadius.panel)
+    }
+
+    @ViewBuilder
+    private func actionButtons(
+        packages: [String], destinations: Set<PackageTarget>, snapshot: PackagesSnapshot, fromRow: Bool
+    ) -> some View {
+        let chosen = snapshot.targets.filter { destinations.contains($0) }
+        let install = Self.plan(packages, on: chosen, .install, snapshot: snapshot)
+        let remove = Self.plan(packages, on: chosen, .remove, snapshot: snapshot)
+        DMButton(Self.buttonTitle(.install, batch: install), systemImage: "arrow.down.circle", variant: .primary,
+                 size: .small, isLoading: store.applying) {
+            pending = PackagesPendingAction(action: .install, batch: install, fromRow: fromRow)
+        }
+        .disabled(install.isEmpty || store.applying)
+        DMButton(Self.buttonTitle(.remove, batch: remove), systemImage: "minus.circle", variant: .dangerOutline,
+                 size: .small) {
+            pending = PackagesPendingAction(action: .remove, batch: remove, fromRow: fromRow)
+        }
+        .disabled(remove.isEmpty || store.applying)
+    }
+
+    @ViewBuilder
+    private func pendingSyncLine(_ snapshot: PackagesSnapshot, statuses: [PackageTarget: [String: PackageStatus]]) -> some View {
+        let waiting = snapshot.targets.filter { target in
+            PackagePending.syncRequest(statuses: statuses[target] ?? [:], target: target) != nil
+        }
+        let machines = Array(Set(waiting.map(\.syncMachine))).sorted()
+        if !machines.isEmpty {
+            HStack(spacing: m.space.md) {
+                Text(verbatim: "Some packages wait for a sync on \(machines.joined(separator: ", ")).")
+                    .font(.dm(11.5))
+                    .foregroundStyle(Color.dmMuted)
+                DMButton("Sync now", variant: .outline, size: .small) {
+                    for target in waiting { store.syncPending(on: target) }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func newPackagePicker(configDirectory: String?) -> some View {
+        let settings = AppModel.shared?.settings ?? .empty
+        let harnesses = harnessFacade.launchOptions(for: settings, on: .thisMac).filter { $0.choice != .terminal }
+        return VStack(alignment: .leading, spacing: m.space.md) {
+            Text(verbatim: "Create a package with")
+                .font(.dm(12, weight: .semibold))
+                .foregroundStyle(Color.dmRowText)
+            Text(verbatim: "Opens a session on this Mac in your devmachine configuration folder.")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(harnesses) { option in
+                DMButton(option.title, variant: .outline, size: .small, fillsWidth: true) {
+                    startNewPackage(option.choice, configDirectory: configDirectory)
+                }
+            }
+            DMButton("Terminal only", variant: .ghost, size: .small, fillsWidth: true) {
+                startNewPackage(.terminal, configDirectory: configDirectory)
+            }
+        }
+        .padding(m.space.lg)
+        .frame(width: m.pt(260), alignment: .leading)
+        .environment(\.colorScheme, .dark)
+    }
+
+    private func startNewPackage(_ choice: SessionLaunchChoice, configDirectory: String?) {
+        choosingHarness = false
+        let folder = Self.expandingTilde(configDirectory ?? "~/.config/devmachine")
+        let startup = Self.newPackageStartup(choice, command: harnessFacade.startupCommand(for: choice))
+        AppModel.shared?.openLocalSession(at: folder, startup: startup)
     }
 
     private func localEmptyState(_ directory: String?) -> some View {
@@ -162,56 +329,117 @@ struct PackagesSettingsView: View {
         }
     }
 
-    private func footer(target: PackageTarget, changes: PackageChanges) -> some View {
-        HStack(spacing: m.space.md) {
-            Text(verbatim: "\(changes.adds.count) to install · \(changes.removes.count) to remove on \(target.title)")
-                .font(.dm(12, weight: .medium))
-                .foregroundStyle(Color.dmRowText)
-            Spacer(minLength: m.space.md)
-            DMButton("Clear", variant: .ghost, size: .small) { page.selection.clear() }
-            DMButton("Apply", variant: .primary, size: .small, isLoading: store.applying) { confirming = true }
-                .disabled(changes.isEmpty)
-        }
-        .padding(m.space.md)
-        .dmSurface(Color.dmBand, radius: DMRadius.panel)
+    // MARK: - Logic the tests read
+
+    static func narrowed(_ filter: PackageFilter, scope: String?) -> PackageFilter {
+        var result = filter
+        result.scope = scope
+        return result
     }
 
-    static let removalNote =
-        "Removing stops managing a package; the software stays on the machine until you remove it by hand."
+    static let newPackagePrompt = "I want to create a new devmachine-cli package"
 
-    static func confirmMessage(_ changes: PackageChanges) -> String {
-        var lines: [String] = []
-        if !changes.adds.isEmpty { lines.append("Install: \(changes.adds.joined(separator: ", "))") }
-        if !changes.removes.isEmpty {
-            lines.append("Remove: \(changes.removes.joined(separator: ", "))")
-            lines.append(removalNote)
+    /// Claude Code and Codex take a first message as an argument; any other
+    /// program starts as it is, and the person types the ask.
+    static func newPackageStartup(_ choice: SessionLaunchChoice, command: String?) -> SessionStartup {
+        guard case let .harness(id) = choice, let command else { return .program(choice) }
+        guard id == .claude || id == .codex else { return .program(choice) }
+        return .command("\(command) \(shellQuoted(newPackagePrompt))")
+    }
+
+    static func shellQuoted(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+    }
+
+    static func expandingTilde(_ path: String) -> String {
+        (path as NSString).expandingTildeInPath
+    }
+
+    static func localFolder(configDirectory: String?, name: String) -> String? {
+        configDirectory.map { expandingTilde($0) + "/packages/" + name }
+    }
+
+    static func statuses(_ snapshot: PackagesSnapshot) -> [PackageTarget: [String: PackageStatus]] {
+        Dictionary(uniqueKeysWithValues: snapshot.targets.map { ($0, snapshot.statuses(for: $0)) })
+    }
+
+    /// The Installed tab's answer for the dropdowns' machine and workspace:
+    /// installed on any of them. None picked keeps the CLI's own list.
+    static func installedAnywhere(
+        on focus: [PackageTarget], statuses: [PackageTarget: [String: PackageStatus]]
+    ) -> [String: PackageStatus]? {
+        guard !focus.isEmpty else { return nil }
+        var result: [String: PackageStatus] = [:]
+        for target in focus {
+            for (name, status) in statuses[target] ?? [:] where status.isInstalled { result[name] = .applied }
         }
+        return result
+    }
+
+    /// The targets that already have every one of `packages`.
+    static func installedTargets(
+        of packages: [String], among targets: [PackageTarget], statuses: [PackageTarget: [String: PackageStatus]]
+    ) -> Set<PackageTarget> {
+        Set(targets.filter { target in
+            packages.allSatisfy { name in
+                switch statuses[target]?[name] ?? .available {
+                case .applied, .pendingInstall, .appliedAsDependency: return true
+                case .available, .pendingRemove: return false
+                }
+            }
+        })
+    }
+
+    static func plan(_ packages: [String], on targets: [PackageTarget], _ action: PackageAction,
+                     snapshot: PackagesSnapshot) -> PackageBatch {
+        PackageBatch.plan(
+            packages: packages, targets: targets, action: action, entries: snapshot.entries,
+            statuses: { snapshot.statuses(for: $0) })
+    }
+
+    static func buttonTitle(_ action: PackageAction, batch: PackageBatch) -> String {
+        let verb = action == .install ? "Install" : "Remove"
+        let count = batch.edits.count
+        return count == 0 ? verb : "\(verb) on \(count) \(count == 1 ? "place" : "places")"
+    }
+
+    static func confirmTitle(_ action: PackageAction) -> String {
+        action == .install ? "Install these packages?" : "Remove these packages?"
+    }
+
+    static func confirmMessage(_ batch: PackageBatch, action: PackageAction) -> String {
+        var lines = batch.edits.map { edit in
+            let names = action == .install ? edit.changes.adds : edit.changes.removes
+            return "\(edit.target.title): \(names.joined(separator: ", "))"
+        }
+        if !batch.skips.isEmpty {
+            lines.append("")
+            lines.append("Left out:")
+            lines += batch.skips.map { "\($0.package) on \($0.target.name) — \($0.reason)" }
+        }
+        lines.append("")
+        lines.append(action == .install
+            ? "Each machine syncs afterwards; the corner card shows it."
+            : PackageRow.removalHint)
         return lines.joined(separator: "\n")
     }
 }
 
-/// The target, the tabs, the search and the filters above the package rows.
+/// The dropdowns, the tabs, the search and the category chips above the rows.
 struct PackagesHeader: View {
     let targets: [PackageTarget]
-    @Binding var target: PackageTarget?
+    @Binding var page: PackagesPageState
     @Binding var filter: PackageFilter
     let categories: [String]
     @Environment(\.dmMetrics) private var m
 
-    private static let scopes: [String?] = [nil, "machine", "workspace"]
-
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.md) {
             HStack(spacing: m.space.lg) {
-                Picker("Target", selection: $target) {
-                    Text(verbatim: "All machines").tag(PackageTarget?.none)
-                    ForEach(targets, id: \.self) { target in
-                        Text(verbatim: target.title).tag(PackageTarget?.some(target))
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(width: m.pt(180))
+                DMDropdown(label: "Machine", options: Self.options(targets, scope: "machine", all: "All machines"),
+                           selection: $page.machine)
+                DMDropdown(label: "Workspace", options: Self.options(targets, scope: "workspace", all: "All workspaces"),
+                           selection: $page.workspace)
                 DMTabStrip(
                     tabs: PackageTab.allCases, selection: $filter.tab, title: \.title,
                     fontSize: 12, grouped: true)
@@ -221,36 +449,26 @@ struct PackagesHeader: View {
                     .padding(.vertical, m.space.sm)
                     .dmSurface(Color.dmSelection, radius: DMRadius.row)
             }
-            HStack(alignment: .top, spacing: m.space.lg) {
-                FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
-                    ForEach(categories, id: \.self) { category in
-                        Button {
-                            toggle(category)
-                        } label: {
-                            Text(verbatim: category).font(.dm(11))
-                        }
-                        .buttonStyle(.dmChip(selected: filter.categories.contains(category)))
+            FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
+                ForEach(categories, id: \.self) { category in
+                    Button {
+                        toggle(category)
+                    } label: {
+                        Text(verbatim: category).font(.dm(11))
                     }
+                    .buttonStyle(.dmChip(selected: filter.categories.contains(category)))
                 }
-                Spacer(minLength: 0)
-                DMTabStrip(
-                    tabs: Self.scopes, selection: $filter.scope, title: Self.scopeTitle,
-                    fontSize: 11, horizontalPadding: 8, verticalPadding: 3, grouped: true)
-                    .fixedSize()
             }
         }
     }
 
-    private func toggle(_ category: String) {
-        if filter.categories.remove(category) == nil { filter.categories.insert(category) }
+    static func options(_ targets: [PackageTarget], scope: String, all: String) -> [DMDropdown<String?>.Option] {
+        [.init(value: nil, title: all)]
+            + targets.filter { $0.scope == scope }.map { .init(value: $0.name, title: $0.title) }
     }
 
-    private static func scopeTitle(_ scope: String?) -> String {
-        switch scope {
-        case "machine": return "Machine"
-        case "workspace": return "Workspace"
-        default: return "All"
-        }
+    private func toggle(_ category: String) {
+        if filter.categories.remove(category) == nil { filter.categories.insert(category) }
     }
 }
 

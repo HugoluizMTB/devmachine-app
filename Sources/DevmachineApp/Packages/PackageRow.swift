@@ -1,56 +1,24 @@
 import SwiftUI
 import DevmachineCore
 
-/// One package on the Packages page. With a target the checkbox shows what
-/// the target will have once the selection is applied, and the pill what it
-/// has now; without one, the pills name every machine and workspace with it.
+/// One package on the Packages page. The checkbox adds it to the selection
+/// the bar at the bottom acts on; a click anywhere else opens the row on
+/// what to do with this one package. The pills say where it is now.
 struct PackageRow: View {
     let entry: PackageEntry
-    let target: PackageTarget?
-    let status: PackageStatus?
+    let placements: [PackagePlacement]
     let isSelected: Bool
-    let toggle: () -> Void
+    let isExpanded: Bool
+    let toggleSelected: () -> Void
+    let toggleExpanded: () -> Void
     @Environment(\.dmMetrics) private var m
-
-    private var block: PackageBlock? { Self.block(entry: entry, status: status, target: target) }
-
-    static func block(entry: PackageEntry, status: PackageStatus?, target: PackageTarget?) -> PackageBlock? {
-        guard let target else { return nil }
-        return PackageAvailability.block(entry: entry, status: status ?? .available, target: target)
-    }
-
-    /// Ticked means "on the target once applied": a ticked row in the
-    /// selection flips what the target has now.
-    static func isChecked(status: PackageStatus?, isSelected: Bool) -> Bool {
-        let declared: Bool
-        switch status ?? .available {
-        case .applied, .pendingInstall, .appliedAsDependency: declared = true
-        case .available, .pendingRemove: declared = false
-        }
-        return declared != isSelected
-    }
-
-    static let removalHint = "devmachine stops installing and updating it here. It does not uninstall what is already on the machine."
-
-    static func removalNote(status: PackageStatus?, isSelected: Bool) -> String? {
-        isSelected && status == .applied ? removalHint : nil
-    }
-
-    static func showsCheckbox(target: PackageTarget?) -> Bool { target != nil }
-
-    static func isDisabled(target: PackageTarget?, block: PackageBlock?) -> Bool {
-        target == nil || block != nil
-    }
 
     var body: some View {
         HStack(alignment: .top, spacing: m.space.md) {
-            if Self.showsCheckbox(target: target) {
-                Toggle("", isOn: Binding(get: { Self.isChecked(status: status, isSelected: isSelected) }, set: { _ in toggle() }))
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .disabled(Self.isDisabled(target: target, block: block))
-                    .help(Text(verbatim: help))
-            }
+            Toggle("", isOn: Binding(get: { isSelected }, set: { _ in toggleSelected() }))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .help(Text(verbatim: "Select to act on several packages at once"))
             VStack(alignment: .leading, spacing: m.space.xs) {
                 HStack(spacing: m.space.sm) {
                     Text(verbatim: entry.name)
@@ -75,12 +43,6 @@ struct PackageRow: View {
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
                 }
-                if let note = Self.removalNote(status: status, isSelected: isSelected) {
-                    Text(verbatim: note)
-                        .font(.dm(11))
-                        .foregroundStyle(Color.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
                 if !entry.needs.isEmpty {
                     Text(verbatim: "Brings \(entry.needs.joined(separator: ", "))")
                         .font(.dm(11))
@@ -88,48 +50,104 @@ struct PackageRow: View {
                 }
             }
             Spacer(minLength: m.space.md)
-            pills
+            FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
+                ForEach(placements, id: \.target) { placement in
+                    DMPill(text: Self.pillText(placement), color: Self.color(for: placement.status))
+                }
+            }
+            .frame(maxWidth: m.pt(320), alignment: .trailing)
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.dm(10, weight: .semibold))
+                .foregroundStyle(Color.dmMuted)
         }
         .padding(.horizontal, m.row.horizontal)
         .padding(.vertical, m.space.md)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggleExpanded)
     }
 
-    private var help: String {
-        if let block { return block.message }
-        return target == nil ? "Choose a machine or workspace first." : ""
+    static func pillText(_ placement: PackagePlacement) -> String {
+        let name = placement.target.name
+        switch placement.status {
+        case .applied, .available: return name
+        case let .appliedAsDependency(parent): return "\(name) · via \(parent)"
+        case .pendingInstall: return "\(name) · pending install"
+        case .pendingRemove: return "\(name) · pending removal"
+        }
+    }
+
+    static func color(for status: PackageStatus) -> Color {
+        switch status {
+        case .applied: return .green
+        case .pendingInstall, .pendingRemove: return .orange
+        case .appliedAsDependency, .available: return .dmMuted
+        }
+    }
+
+    static let removalHint = "devmachine stops installing and updating it there. It does not uninstall what is already on the machine."
+}
+
+/// Where a package is now: one machine or workspace and its status there.
+struct PackagePlacement: Equatable {
+    let target: PackageTarget
+    let status: PackageStatus
+
+    /// Every machine and workspace that has the package, or waits for a sync
+    /// to add or drop it, among `targets`.
+    static func list(for entry: PackageEntry, targets: [PackageTarget], statuses: [PackageTarget: [String: PackageStatus]])
+        -> [PackagePlacement] {
+        targets.compactMap { target in
+            let status = statuses[target]?[entry.name] ?? .available
+            return status == .available ? nil : PackagePlacement(target: target, status: status)
+        }
+    }
+}
+
+/// The machines and workspaces an action goes to, as chips: one group for
+/// machines, one for workspaces. A green dot marks one that has every
+/// package already.
+struct PackageDestinationChips: View {
+    let targets: [PackageTarget]
+    let installed: Set<PackageTarget>
+    @Binding var chosen: Set<PackageTarget>
+    @Environment(\.dmMetrics) private var m
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            group("Machines", targets.filter { $0.scope == "machine" })
+            group("Workspaces", targets.filter { $0.scope == "workspace" })
+        }
     }
 
     @ViewBuilder
-    private var pills: some View {
-        if target != nil {
-            if let pill = Self.pill(for: status ?? .available) {
-                DMPill(text: pill.text, color: pill.color)
-            }
-        } else {
-            HStack(spacing: m.space.xs) {
-                ForEach(entry.installedOn, id: \.self) { label in
-                    DMPill(text: Self.shortLabel(label), color: .dmMuted)
+    private func group(_ title: String, _ items: [PackageTarget]) -> some View {
+        if !items.isEmpty {
+            HStack(alignment: .firstTextBaseline, spacing: m.space.md) {
+                Text(verbatim: title)
+                    .font(.dm(11, weight: .semibold))
+                    .foregroundStyle(Color.dmMuted)
+                    .frame(width: m.pt(80), alignment: .leading)
+                FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
+                    ForEach(items, id: \.self) { target in
+                        Button {
+                            if chosen.remove(target) == nil { chosen.insert(target) }
+                        } label: {
+                            HStack(spacing: m.space.xs) {
+                                Image(systemName: chosen.contains(target) ? "checkmark.circle.fill" : "circle")
+                                    .font(.dm(10))
+                                    .foregroundStyle(chosen.contains(target) ? Color.accentColor : Color.dmMuted)
+                                if installed.contains(target) {
+                                    Circle().fill(Color.green).frame(width: m.pt(6), height: m.pt(6))
+                                }
+                                Text(verbatim: target.name).font(.dm(11.5))
+                            }
+                        }
+                        .buttonStyle(.dmChip(selected: chosen.contains(target)))
+                        .help(Text(verbatim: installed.contains(target) ? "Already there" : target.title))
+                    }
                 }
             }
         }
-    }
-
-    static func pill(for status: PackageStatus) -> (text: String, color: Color)? {
-        switch status {
-        case .applied: return ("Installed", .green)
-        case let .appliedAsDependency(parent): return ("Via \(parent)", .dmMuted)
-        case .pendingInstall: return ("Pending install", .orange)
-        case .pendingRemove: return ("Pending removal", .orange)
-        case .available: return nil
-        }
-    }
-
-    /// `installed_on` says "machine main"; beside a package the name is enough.
-    static func shortLabel(_ label: String) -> String {
-        for prefix in ["machine ", "workspace "] where label.hasPrefix(prefix) {
-            return String(label.dropFirst(prefix.count))
-        }
-        return label
     }
 }
