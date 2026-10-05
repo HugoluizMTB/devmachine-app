@@ -828,10 +828,12 @@ once may fail there.
 - Branch prefix `da-` when not committing straight to `main` locally.
 
 ## Updates
-- The updater replaces this app only. It never runs, changes or upgrades the
-  CLI, its configuration, packages, machines or `sync`. For the CLI it shows
-  the command (`CLIUpdateAdvice`) in a `DMCommandBlock` and stops there: never
-  run it, never type it into a session.
+- The updater replaces this app. For the CLI it runs only
+  `update --cli-only`, which replaces the CLI binary and nothing else; it never
+  runs plain `update`, and never changes the configuration, packages,
+  machines or `sync`. A CLI too old for `--cli-only` gets the command
+  (`CLIUpdateAdvice`) in a `DMCommandBlock`: never run it, never type it
+  into a session.
 - **A newer CLI gets its own corner toast** (`CLIUpdateBanner`, under the
   app's; both stack). Update runs only `update --cli-only` and only when
   `canUpdateCLIInApp`; any other CLI gets the `CLIUpdateAdvice` command in a
