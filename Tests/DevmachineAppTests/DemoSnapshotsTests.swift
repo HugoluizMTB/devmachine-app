@@ -190,7 +190,7 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "workspaces"]).map(\.id), [
             "workspaces-list", "workspaces-new", "workspaces-new-taken", "workspaces-review", "workspaces-running",
             "workspaces-failed", "workspaces-done", "workspaces-edit", "workspaces-edit-review", "workspaces-forget",
-            "workspaces-forget-refused", "workspaces-destroy", "workspaces-settings", "workspaces-new-no-agents",
+            "workspaces-forget-refused", "workspaces-destroy", "workspaces-reopened", "workspaces-new-no-agents",
             "workspaces-harnesses",
         ])
     }

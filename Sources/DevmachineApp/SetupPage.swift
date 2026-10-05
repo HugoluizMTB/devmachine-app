@@ -24,7 +24,7 @@ enum SettingsSection: String, CaseIterable {
         switch self {
         case .general: return "The devmachine configuration this app reads, your domain, ssh, previews and logging."
         case .machines: return "The servers and local machines in the devmachine configuration."
-        case .workspaces: return "Which workspaces the sidebar shows and the app reaches."
+        case .workspaces: return "Every workspace by machine: which ones the app reaches, and new, edit, forget or destroy."
         case .packages: return "Browse the catalog, and add or remove packages on a machine or workspace."
         case .harnesses: return "Choose what new sessions start with."
         case .appearance: return "The size of the interface, the wallpaper, and how a terminal looks."
@@ -220,11 +220,12 @@ struct SetupPage: View {
     }
 
     private func openRequestedSection() {
-        if let machine = model.requestedPackagesMachine {
-            var page = PackagesPageState()
-            page.machine = machine
+        if let page = PackagesPageState.requested(
+            machine: model.requestedPackagesMachine, workspace: model.requestedPackagesWorkspace
+        ) {
             packagesPage = page
             model.requestedPackagesMachine = nil
+            model.requestedPackagesWorkspace = nil
         }
         guard let requested = model.requestedSettingsSection else { return }
         section = requested
@@ -298,8 +299,9 @@ struct SetupPage: View {
         .onTapGesture { section = item }
     }
 
-    /// Packages scrolls its own rows so its Apply bar stays in view; every
-    /// other section scrolls whole.
+    /// Packages scrolls its own rows so its Apply bar stays in view, and
+    /// Workspaces so a flow's buttons stay at the bottom; every other
+    /// section scrolls whole.
     @ViewBuilder
     private var sectionBody: some View {
         if section == .packages {
@@ -309,6 +311,10 @@ struct SetupPage: View {
             }
             .padding(m.space.xxl)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else if section == .workspaces {
+            WorkspacesSettingsView(hiddenWorkspaces: hiddenWorkspaces, setActive: setWorkspaceActive)
+                .padding(m.space.xxl)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: m.pt(18)) {
@@ -316,7 +322,7 @@ struct SetupPage: View {
                     switch section {
                     case .general: generalBlock
                     case .machines: MachinesSettingsView()
-                    case .workspaces: workspacesBlock
+                    case .workspaces: EmptyView()
                     case .packages: EmptyView()
                     case .harnesses: harnessesBlock.task { await machinesStore.load() }
                     case .appearance: appearanceBlock
@@ -344,7 +350,7 @@ struct SetupPage: View {
         }
     }
 
-    static func showsFooter(for section: SettingsSection) -> Bool { section != .packages }
+    static func showsFooter(for section: SettingsSection) -> Bool { section != .packages && section != .workspaces }
 
     private var footer: some View {
         HStack(spacing: m.pt(10)) {
@@ -554,61 +560,11 @@ struct SetupPage: View {
     }
 
     /// A list of what to hide, never of what to show: a workspace that appears
-    /// in `~/.ssh/config` later is visible without anyone opening Settings.
-    private var workspacesBlock: some View {
-        VStack(alignment: .leading, spacing: m.space.lg) {
-            HStack(spacing: m.space.md) {
-                Text(verbatim: "Add, change, forget or destroy a workspace on the Workspaces page. "
-                    + "Here you only choose which ones the sidebar shows.")
-                    .font(.dm(11))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-                DMButton("Manage workspaces…", systemImage: "square.grid.2x2", variant: .outline, size: .small) {
-                    model.showPage(.workspaces)
-                }
-            }
-            workspaceVisibility
-        }
-    }
-
-    @ViewBuilder
-    private var workspaceVisibility: some View {
-        if model.workspaces.isEmpty {
-            note("No workspace yet. They are the ssh aliases ending in "
-                + "-\(hostAlias.isEmpty ? "devmachine" : hostAlias); the app reads them from "
-                + "~/.ssh/config once the host above is set.")
-        } else {
-            VStack(alignment: .leading, spacing: m.pt(10)) {
-                ForEach(model.workspaces, id: \.alias) { workspace in
-                    Toggle(isOn: Binding(
-                        get: {
-                            !WorkspaceVisibility.isHidden(
-                                workspace.alias, hidden: hiddenWorkspaces)
-                        },
-                        set: { _ in
-                            hiddenWorkspaces = WorkspaceVisibility.toggling(
-                                workspace.alias, in: hiddenWorkspaces)
-                        }
-                    )) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(workspace.name)
-                                .font(.dm(12.5))
-                                .foregroundStyle(.white.opacity(0.9))
-                            Text(workspace.alias)
-                                .font(.dm(10, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.4))
-                        }
-                    }
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                }
-                note("A workspace turned off leaves the sidebar, and the app stops "
-                    + "reaching its host: no ssh, no mosh, no poll. Its sessions keep "
-                    + "running on the host and come back the moment you turn it on "
-                    + "again. This Mac cannot be turned off.")
-            }
-        }
+    /// in the configuration later is on without anyone opening Settings. The
+    /// switch saves at once; the draft follows so a later Save keeps it.
+    private func setWorkspaceActive(_ alias: String, _ active: Bool) {
+        hiddenWorkspaces = WorkspaceVisibility.setting(alias, active: active, in: hiddenWorkspaces)
+        model.setHiddenWorkspaces(hiddenWorkspaces)
     }
 
     private func harnessLabel(_ descriptor: HarnessDescriptor, detail: String) -> some View {

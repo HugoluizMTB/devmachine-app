@@ -13,6 +13,16 @@ struct PackagesPageState: Equatable {
     private(set) var expanded: String?
     var rowDestinations: Set<PackageTarget> = []
 
+    /// "Packages on this machine" or "Packages for this workspace": the
+    /// page opens with that dropdown set. Nil when nothing asked.
+    static func requested(machine: String?, workspace: String?) -> PackagesPageState? {
+        guard machine != nil || workspace != nil else { return nil }
+        var page = PackagesPageState()
+        page.machine = machine
+        page.workspace = workspace
+        return page
+    }
+
     mutating func toggle(_ name: String) {
         if selection.remove(name) == nil { selection.insert(name) }
     }
