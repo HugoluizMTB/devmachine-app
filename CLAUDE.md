@@ -527,6 +527,20 @@ Rules:
   have the keyboard). Esc is never taken; it closes the find bar only from
   inside its field. WebKit's "Open Link in New Window" reads "New Tab".
 
+## Home layout
+- **`HomeLayout.plan` decides from Home's width alone**; showing or hiding
+  the sidebar only changes that width. The clock sits in the middle of all of
+  Home when, there, it still clears the cards column by the gap
+  (`HomeClockPlacement`, Core, with the clock's width estimated at 2.8 times
+  its scaled point size); otherwise in the middle of the column beside the
+  cards. Its height never changes: it is laid across the same row.
+- **The button that reopens a collapsed sidebar floats over the centre**, so
+  Home moves its cards (stacked: everything) down until they start below it
+  plus a gap (`FloatingButtonClearance`, Core). ContentView measures the
+  button in its `window` coordinate space and hands it down as
+  `\.collapsedSidebarButtonFrame` (nil while the sidebar shows); HomeView
+  measures itself in the same space. It once covered the first card's name.
+
 ## Coding harnesses
 - **Detection never depends on the toggle.** Every harness in
   `HarnessRegistry.builtIn` is detected, badged, gets its icon, upload folder
@@ -1066,21 +1080,38 @@ once may fail there.
   6 sites are drawn, the rest counted. A click on a tile selects its card.
 - **The map is one view with two presentations** (`NetworkMapView`,
   `NetworkMapPresentation` in Core). `.interactive` is the page above.
-  `.decorative` is Home's wallpaper (Settings → Appearance → Wallpaper →
-  Network map, `WallpaperChoice.networkMap`, saved as `{"kind":"networkMap"}`;
-  an older build reads it as the bundled photo): no hit testing, no
-  selection or hover, ink at 45%, no site hosts (they ran under the clock's
-  digits) and no "+N more", and its site lanes sit closer
-  (`NetworkMapBackdrop.siteRow`). The grid covers all of Home; the map goes
-  only in Home's free area (`HomeMapArea`, Core): right of the cards
-  column and under the clock and date when they sit side by side, under
-  everything when Home is stacked, always above the stats pill. HomeView
-  measures the clock, the stacked content and the pill in its `home`
-  coordinate space and the plan gives the cards column. `NetworkMapBackdrop`
-  centres the map in that area inside 12% margins (16 pt at least there),
-  at most scale 2, shrunk whole to fit; no area, or a map that would draw
-  below scale 0.5, leaves the grid alone. The cards once hid half the map
-  and the clock sat on its middle: that is why it does not fill Home.
+  `.decorative` is Home's wallpaper in two sizes (`WallpaperChoice.networkMap(
+  NetworkMapSize)`, saved as `{"kind":"networkMap","size":"large"|"compact"}`;
+  a value saved before there were two sizes, or a size a newer build wrote,
+  reads as compact; a build older than the map reads it as the bundled
+  photo): no hit testing, no selection or hover, ink at 45%, no site hosts
+  (they ran under the clock's digits) and no "+N more", and its site lanes
+  sit closer (`NetworkMapBackdrop.siteRow`). The grid covers all of Home.
+  - **Compact** goes only in Home's free area (`HomeMapArea.rect`, Core):
+    right of the cards column and under the clock and date when they sit
+    side by side, under everything when Home is stacked, always above the
+    stats pill. HomeView measures the clock, the stacked content and the pill
+    in its `home` coordinate space and the plan gives the cards column.
+    `NetworkMapBackdrop` centres the map in that area inside 12% margins
+    (16 pt at least there), at most scale 2, shrunk whole to fit; no area, or
+    a map that would draw below scale 0.5, leaves the grid alone.
+  - **Large** sits behind everything, cards and clock drawn over it
+    (`HomeMapArea.large`, `NetworkMapPlacement.filling`,
+    `NetworkMapBackdrop.Fit.large`): a rect centred in all of Home, 70% of its
+    width, with the same room top and bottom so it clears the pill by the gap
+    and stays centred; the map fills it with no margins of its own, up to
+    scale 5, and shrinks whole to fit its height.
+- **Settings → Appearance opens on a Background picker** (`WallpaperKind`,
+  Core): four `DMPictureChoice` cards, Photo, Gradient, Network map — large,
+  Network map — compact, the chosen one ringed and checked. The map cards draw
+  a miniature Home (`HomeSketch`: Home's size scaled down, so the map lands
+  where Home puts it and is not dropped as too small). Picking Photo or
+  Gradient comes back to the last photo or gradient picked (else the bundled
+  photo, `midnight`), then shows that kind's own picks under the cards: the
+  theme chips and photos, or the gradients. Every picture there is 150 pt tall
+  and cropped, in a grid that wraps (200–300 pt columns), so it never turns
+  into a strip; thumbnails are fetched at 640 px (`-thumb640.jpg`, so an old
+  320 px file is not reused).
 - **The wallpaper reads no data of its own** (`NetworkMapWallpaper`): on
   appear it loads `MachinesStore` only if nobody has, and asks
   `CaddyStore.appearForMap` for the sites (cache first, read again only past
@@ -1089,11 +1120,13 @@ once may fail there.
   canvases are `Equatable`, so a stats tick or usage refresh on Home does
   not repaint them, and there is no motion to keep them busy. Only the
   bottom is dimmed (`WallpaperBackground.dimming`); behind terminals the
-  ambient backdrop is the ground without the grid. The Appearance cell is
-  the same view, small.
+  ambient backdrop is the ground without the grid. The Appearance cards draw
+  the same view inside their miniature Home.
 - `DEVMACHINE_DEMO_WALK=map-wallpaper` (`DemoMapWallpaper`) captures
-  `180`–`183`: Home over the demo configuration, over the five-machine
-  fleet, with no machine, and Appearance with the chip open. Run it with
+  `180`–`188`: Home with the compact map over the demo configuration, over
+  the five-machine fleet, with no machine; Appearance on the large map; Home
+  with the large map over both; Appearance on a photo theme and on the
+  gradients; and Home with the sidebar collapsed. Run it with
   `DEVMACHINE_DEMO_WINDOW=1280x800` and `1728x1080` to check laptop sizes.
 - **Per machine**: Check (`doctor --machine`, `machine doctor` for this
   Mac), Addresses (`resolve`), Credentials (`credentials list`) open inline
