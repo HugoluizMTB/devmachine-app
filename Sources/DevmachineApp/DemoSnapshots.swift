@@ -78,7 +78,8 @@ enum DemoSnapshots {
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
              "file-viewer", "packages-confirm", "map-location-editor",
              "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
-             "cli-update-toast-manual":
+             "cli-update-toast-manual", "cli-update-toast-pinned", "packages-update-toast",
+             "packages-update-toast-running", "packages-update-toast-done", "packages-update-toast-failed":
             return .panel
         case _ where DemoHostKey.handles(screenID):
             return .panel
@@ -206,7 +207,9 @@ enum DemoSnapshots {
     /// The CLI update walk (`DEVMACHINE_DEMO_WALK=cli-update`): the Updates
     /// pane's CLI block before, during and after `update --cli-only`, run on
     /// a fake CLI script, then the corner toast in the same states (`65` has
-    /// an app update too, so both cards stack).
+    /// an app update too, so both cards stack). `57` is a CLI 0.7.31 that ran
+    /// `update --no-machines`; `53`–`56` are the packages card, the first one
+    /// under the app's and the CLI's.
     static let cliUpdateScreens: [Screen] = [
         Screen(id: "cli-update-available", fileName: "60-cli-update-available.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-running", fileName: "61-cli-update-running.png", settleNanoseconds: 200_000_000),
@@ -218,6 +221,17 @@ enum DemoSnapshots {
         Screen(id: "cli-update-toast-updated", fileName: "67-cli-update-toast-updated.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-toast-failed", fileName: "68-cli-update-toast-failed.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-toast-manual", fileName: "69-cli-update-toast-manual.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast-pinned", fileName: "57-cli-update-toast-pinned.png", settleNanoseconds: 200_000_000),
+        Screen(id: "packages-update-toast", fileName: "53-packages-update-toast.png", settleNanoseconds: 200_000_000),
+        Screen(
+            id: "packages-update-toast-running", fileName: "54-packages-update-toast-running.png",
+            settleNanoseconds: 200_000_000),
+        Screen(
+            id: "packages-update-toast-done", fileName: "55-packages-update-toast-done.png",
+            settleNanoseconds: 200_000_000),
+        Screen(
+            id: "packages-update-toast-failed", fileName: "56-packages-update-toast-failed.png",
+            settleNanoseconds: 200_000_000),
     ]
 
     /// The setup flow walk (`DEVMACHINE_DEMO_WALK=setup-flow`): the first-run
@@ -486,8 +500,11 @@ enum DemoSnapshots {
                  "cli-update-old":
                 view = await cliUpdateView(screen.id)
             case "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
-                 "cli-update-toast-manual":
+                 "cli-update-toast-manual", "cli-update-toast-pinned":
                 view = await cliUpdateToastView(screen.id, model: environment.model)
+            case "packages-update-toast", "packages-update-toast-running", "packages-update-toast-done",
+                 "packages-update-toast-failed":
+                view = await packagesUpdateToastView(screen.id, model: environment.model)
             case "packages-confirm":
                 view = DemoPackages.confirmView()
             case "map-location-editor":
@@ -835,10 +852,23 @@ enum DemoSnapshots {
         case "cli-update-toast-updated": state = .updated
         case "cli-update-toast-failed": state = .failed
         case "cli-update-toast-manual": state = .manual
+        case "cli-update-toast-pinned": state = .pinned
         default: state = .withAppUpdate
         }
         return standaloneView(
             await DemoCLIUpdate.toastStack(state, model: model), fittingSize: NSSize(width: 400, height: 520))
+    }
+
+    private static func packagesUpdateToastView(_ id: String, model: AppModel) async -> NSView {
+        let state: DemoCLIUpdate.PackagesState
+        switch id {
+        case "packages-update-toast-running": state = .running
+        case "packages-update-toast-done": state = .done
+        case "packages-update-toast-failed": state = .failed
+        default: state = .available
+        }
+        return standaloneView(
+            await DemoCLIUpdate.packagesStack(state, model: model), fittingSize: NSSize(width: 400, height: 760))
     }
     #endif
 
