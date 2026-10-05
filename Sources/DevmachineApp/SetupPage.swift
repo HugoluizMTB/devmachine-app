@@ -236,8 +236,7 @@ struct SetupPage: View {
                 sectionBody
                 if Self.showsFooter(for: section) { footer }
             }
-            .frame(maxWidth: m.pt(880), maxHeight: .infinity)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
         .environment(\.colorScheme, .dark)
     }

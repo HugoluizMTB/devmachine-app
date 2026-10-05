@@ -200,7 +200,9 @@ Rules:
   Never `Text("\(intValue)")` — SwiftUI localizes it (pt-BR renders `5.182`,
   `740,31M`). This bug already shipped once; don't repeat it.
 - A central page must fill the center (`.frame(maxWidth:.infinity, maxHeight:.infinity)`),
-  never float at intrinsic size.
+  never float at intrinsic size. Its content uses the whole width too: no
+  `maxWidth` cap on a page body (Settings had one, and the owner asked twice
+  for it to reach the edge).
 - **A running job is a `BGTask` card, never a strip inside a layout.** Whatever
   the app is doing — the workspace sweep, deleting sessions, sending an image,
   adding a subdomain — registers through `AppModel.beginTask/bumpTask/setTask/

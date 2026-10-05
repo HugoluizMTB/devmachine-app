@@ -41,6 +41,8 @@ struct PackagesSettingsView: View {
 
     private var target: PackageTarget? { page.target }
 
+    static let pickTargetHint = "Choose a machine or workspace above to add or remove packages."
+
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
             content
@@ -82,6 +84,11 @@ struct PackagesSettingsView: View {
         PackagesHeader(
             targets: snapshot.targets, target: Binding(get: { page.target }, set: { page.choose($0) }),
             filter: $filter, categories: PackageFilter.categories(in: snapshot.entries))
+        if target == nil {
+            Text(verbatim: Self.pickTargetHint)
+                .font(.dm(11.5))
+                .foregroundStyle(Color.dmMuted)
+        }
         if let target, let statuses, let request = PackagePending.syncRequest(statuses: statuses, target: target) {
             HStack(spacing: m.space.md) {
                 Text(verbatim: "Some packages wait for a sync on \(request.machine).")

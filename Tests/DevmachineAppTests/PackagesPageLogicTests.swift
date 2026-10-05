@@ -72,6 +72,12 @@ final class PackagesPageLogicTests: XCTestCase {
                        .wrongScope("workspace"))
     }
 
+    func testWithoutATargetTheRowHasNoCheckboxAndThePageSaysWhatToPick() {
+        XCTAssertFalse(PackageRow.showsCheckbox(target: nil))
+        XCTAssertTrue(PackageRow.showsCheckbox(target: main))
+        XCTAssertEqual(PackagesSettingsView.pickTargetHint, "Choose a machine or workspace above to add or remove packages.")
+    }
+
     func testChoosingAnotherTargetEmptiesTheSelection() {
         var page = PackagesPageState(target: main)
         page.selection.toggle("docker")

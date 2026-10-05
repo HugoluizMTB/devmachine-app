@@ -36,17 +36,21 @@ struct PackageRow: View {
         isSelected && status == .applied ? removalHint : nil
     }
 
+    static func showsCheckbox(target: PackageTarget?) -> Bool { target != nil }
+
     static func isDisabled(target: PackageTarget?, block: PackageBlock?) -> Bool {
         target == nil || block != nil
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: m.space.md) {
-            Toggle("", isOn: Binding(get: { Self.isChecked(status: status, isSelected: isSelected) }, set: { _ in toggle() }))
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .disabled(Self.isDisabled(target: target, block: block))
-                .help(Text(verbatim: help))
+            if Self.showsCheckbox(target: target) {
+                Toggle("", isOn: Binding(get: { Self.isChecked(status: status, isSelected: isSelected) }, set: { _ in toggle() }))
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+                    .disabled(Self.isDisabled(target: target, block: block))
+                    .help(Text(verbatim: help))
+            }
             VStack(alignment: .leading, spacing: m.space.xs) {
                 HStack(spacing: m.space.sm) {
                     Text(verbatim: entry.name)
