@@ -30,6 +30,14 @@ final class UpdatePreferencesTests: XCTestCase {
         XCTAssertNil(UpdatePreferences(defaults: defaults).skippedVersion)
     }
 
+    func testRemembersTheCLIVersionPutOffWithLater() {
+        let preferences = UpdatePreferences(defaults: defaults)
+        XCTAssertNil(preferences.cliLaterVersion)
+        preferences.cliLaterVersion = "0.8.0"
+        XCTAssertEqual(UpdatePreferences(defaults: defaults).cliLaterVersion, "0.8.0")
+        XCTAssertNil(preferences.skippedVersion)
+    }
+
     func testKeepsOneCachedAnswerPerFeed() {
         let preferences = UpdatePreferences(defaults: defaults)
         let app = CachedRelease(etag: "\"a\"", body: Data("{}".utf8))

@@ -16,6 +16,12 @@ enum CLIUpdateContent {
         manual ? "Run this once in a terminal:" : "Or run this in a terminal:"
     }
 
+    static func available(_ version: SemanticVersion) -> String { "devmachine CLI \(version) is available" }
+    static let toastNote = "Updates only the CLI. Your machines and configuration stay as they are."
+    static let updatedNote = "Your machines and configuration stay as they are."
+    static let toastButtonTitle = "Update"
+    static let detailsTitle = "Details"
+
     static func needsManualUpdate(installed: SemanticVersion) -> String {
         "The app can update the CLI from \(CLISelfUpdate.minimumVersion) on. Your \(installed) needs one "
             + "update in a terminal first; after that, the button here does it."
@@ -167,34 +173,123 @@ struct UpdateBanner: View {
 /// text, so this holds at every text size; a longer label moves the update
 /// button to a full-width row of its own instead of past the edge.
 struct UpdateBannerActions: View {
+    var notesTitle = "What's new"
+    var updateTitle = "Update and Relaunch"
+    var laterTitle = "Later"
     let showNotes: () -> Void
     let later: () -> Void
-    let update: () -> Void
+    let update: (() -> Void)?
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: m.space.sm) {
-                secondary
-                updateButton(fillsWidth: false)
+        if let update {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: m.space.sm) {
+                    secondary
+                    updateButton(fillsWidth: false, action: update)
+                }
+                VStack(spacing: m.space.md) {
+                    secondary
+                    updateButton(fillsWidth: true, action: update)
+                }
             }
-            VStack(spacing: m.space.md) {
-                secondary
-                updateButton(fillsWidth: true)
-            }
+        } else {
+            secondary
         }
     }
 
     private var secondary: some View {
         HStack(spacing: m.space.sm) {
-            DMButton("What's new", variant: .link, size: .small, action: showNotes)
+            DMButton(notesTitle, variant: .link, size: .small, action: showNotes)
             Spacer(minLength: m.space.sm)
-            DMButton("Later", variant: .ghost, size: .small, action: later)
+            DMButton(laterTitle, variant: .ghost, size: .small, action: later)
         }
     }
 
-    private func updateButton(fillsWidth: Bool) -> some View {
-        DMButton("Update and Relaunch", size: .small, fillsWidth: fillsWidth, action: update)
+    private func updateButton(fillsWidth: Bool, action: @escaping () -> Void) -> some View {
+        DMButton(updateTitle, size: .small, fillsWidth: fillsWidth, action: action)
+    }
+}
+
+/// The corner toast for a newer devmachine CLI, below the app's own. Update
+/// runs only `update --cli-only`, and only on a CLI that has it; any other
+/// CLI gets the terminal command to copy, which the app never runs or types.
+struct CLIUpdateBanner: View {
+    @EnvironmentObject private var updates: UpdateController
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dmMetrics) private var m
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.row.horizontal) {
+            if case .updated(let version) = updates.cliPhase {
+                header(
+                    icon: "checkmark.circle.fill", tint: .green, title: CLIUpdateContent.updated(version),
+                    note: CLIUpdateContent.updatedNote)
+                UpdateBannerActions(
+                    notesTitle: CLIUpdateContent.detailsTitle, laterTitle: "Close",
+                    showNotes: { model.openSettings(.about) }, later: { updates.closeCLIUpdated() }, update: nil)
+            } else if let notice = updates.cliNotice {
+                header(
+                    icon: "terminal.fill", tint: .accentColor, title: CLIUpdateContent.available(notice.latest),
+                    note: CLIUpdateContent.toastNote)
+                state(notice)
+            }
+        }
+        .frame(width: m.card.banner, alignment: .leading)
+        .dmToastChrome()
+    }
+
+    private func header(icon: String, tint: Color, title: String, note: String) -> some View {
+        HStack(alignment: .top, spacing: m.row.horizontal) {
+            Image(systemName: icon)
+                .font(.dm(16))
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: m.space.xxs) {
+                Text(verbatim: title)
+                    .font(.dm(12, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(verbatim: note)
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func state(_ notice: CLIUpdateNotice) -> some View {
+        switch updates.cliPhase {
+        case .running:
+            UpdateProgressView(label: CLIUpdateContent.running)
+        case .failed(let error):
+            DMErrorStateView(state: error, retry: { Task { await updates.updateCLI() } })
+            actions(update: nil)
+        case .needsManualUpdate:
+            VStack(alignment: .leading, spacing: m.space.sm) {
+                Text(verbatim: CLIUpdateContent.terminalLead(manual: true))
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                DMCommandBlock(notice.command, wraps: true)
+            }
+            actions(update: nil)
+        case .idle, .updated:
+            actions(update: update)
+        }
+    }
+
+    private func actions(update: (() -> Void)?) -> some View {
+        UpdateBannerActions(
+            notesTitle: CLIUpdateContent.detailsTitle, updateTitle: CLIUpdateContent.toastButtonTitle,
+            showNotes: { model.openSettings(.about) }, later: { updates.cliLater() }, update: update)
+    }
+
+    private func update() {
+        if updates.canUpdateCLIInApp {
+            Task { await updates.updateCLI() }
+        } else {
+            updates.showCLICommand()
+        }
     }
 }
 

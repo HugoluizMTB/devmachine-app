@@ -131,6 +131,26 @@ final class UpdateViewsRenderTests: XCTestCase {
         }
     }
 
+    func testTheCLIToastFitsAtEveryTextSize() async {
+        let updates = await controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"))
+        XCTAssertTrue(updates.showsCLIBanner)
+        let model = AppModel(store: SessionStore(runner: SilentRunner()))
+        DMFitCheck.assertFits("CLI update toast") {
+            CLIUpdateBanner().environmentObject(updates).environmentObject(model)
+        }
+        updates.showCLICommand()
+        DMFitCheck.assertFits("CLI update toast with the command") {
+            CLIUpdateBanner().environmentObject(updates).environmentObject(model)
+        }
+    }
+
+    func testTheCLIToastActionsWithoutAnUpdateButtonStayInOneRow() {
+        let m = DMMetrics(scale: 1)
+        let frame = laidOutFrame(
+            UpdateBannerActions(notesTitle: "Details", showNotes: {}, later: {}, update: nil), width: m.card.banner)
+        XCTAssertEqual(frame.height, m.control.small)
+    }
+
     /// Where `content` lands inside a card `width` points wide, laid out by a
     /// real hosting view in a window that is never shown.
     private func laidOutFrame(_ content: some View, width: CGFloat) -> CGRect {

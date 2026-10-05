@@ -246,6 +246,18 @@ final class DemoSnapshotsTests: XCTestCase {
         }
     }
 
+    func testTheCLIUpdateWalkEndsWithTheCornerToastAsPanels() {
+        let toasts = DemoSnapshots.cliUpdateScreens.filter { $0.id.hasPrefix("cli-update-toast") }
+        XCTAssertEqual(toasts.map(\.fileName), [
+            "65-cli-update-toast.png", "66-cli-update-toast-running.png", "67-cli-update-toast-updated.png",
+            "68-cli-update-toast-failed.png", "69-cli-update-toast-manual.png",
+        ])
+        for screen in toasts {
+            XCTAssertEqual(DemoSnapshots.chrome(for: screen.id), .panel)
+        }
+        XCTAssertEqual(DemoSnapshots.chrome(for: "cli-update-available"), .window)
+    }
+
     func testTheMachineReadyWalkIsItsOwnSet() {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "machine-ready"]).map(\.id), [
             "ready-home", "ready-running", "ready-failed", "ready-done", "ready-old-cli", "ready-outdated",

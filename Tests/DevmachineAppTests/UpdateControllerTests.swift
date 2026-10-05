@@ -304,6 +304,70 @@ final class UpdateControllerTests: XCTestCase {
         XCTAssertEqual(updates.cliPhase, .needsManualUpdate)
     }
 
+    func testANewerCLIShowsItsOwnToastBesideTheApps() async {
+        serve(app: "v0.1.3", cli: "v0.8.0")
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        XCTAssertTrue(updates.showsBanner)
+        XCTAssertTrue(updates.showsCLIBanner)
+    }
+
+    func testNoNewerCLIShowsNoToast() async {
+        let updates = await cliNoticeFor(installed: "0.8.0")
+        XCTAssertFalse(updates.showsCLIBanner)
+    }
+
+    func testCLILaterIsSavedAndHidesTheToastUntilANewerCLI() async {
+        let updates = await cliNoticeFor(installed: "0.7.23")
+        updates.cliLater()
+
+        XCTAssertFalse(updates.showsCLIBanner)
+        XCTAssertEqual(preferences.cliLaterVersion, "0.8.0")
+        XCTAssertNil(preferences.skippedVersion)
+        XCTAssertNotNil(updates.cliNotice)
+
+        let relaunched = await cliNoticeFor(installed: "0.7.23")
+        XCTAssertFalse(relaunched.showsCLIBanner)
+
+        let newer = await cliNoticeFor(installed: "0.7.23", latest: "v0.8.1")
+        XCTAssertTrue(newer.showsCLIBanner)
+    }
+
+    func testCLILaterLeavesTheAppToastAlone() async {
+        serve(app: "v0.1.3", cli: "v0.8.0")
+        cliOutput = "0.7.23"
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        updates.cliLater()
+        XCTAssertTrue(updates.showsBanner)
+        XCTAssertFalse(updates.showsCLIBanner)
+    }
+
+    func testTheToastOnAnOldCLIShowsTheCommandAndRunsNothing() async {
+        let updates = await cliNoticeFor(installed: "0.7.22")
+        updates.showCLICommand()
+
+        XCTAssertEqual(updates.cliPhase, .needsManualUpdate)
+        XCTAssertTrue(updates.showsCLIBanner)
+        XCTAssertEqual(cliUpdater.runs, 0)
+        XCTAssertEqual(updates.cliNotice?.command, "brew upgrade devmachine")
+    }
+
+    func testTheToastStaysForAFailureAndAfterASuccessUntilClosed() async {
+        cliUpdater.failure = CLIUpdateError.exited(1)
+        let updates = await cliNoticeFor(installed: "0.7.23")
+        await updates.updateCLI()
+        XCTAssertTrue(updates.showsCLIBanner)
+
+        cliUpdater.failure = nil
+        await updates.updateCLI()
+        XCTAssertEqual(updates.cliPhase, .updated(SemanticVersion("0.8.0")!))
+        XCTAssertTrue(updates.showsCLIBanner)
+
+        updates.closeCLIUpdated()
+        XCTAssertFalse(updates.showsCLIBanner)
+    }
+
     func testAVersionThatDidNotMoveIsAFailure() async {
         cliUpdater.installs = "0.7.23"
         let updates = await cliNoticeFor(installed: "0.7.23")

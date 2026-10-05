@@ -832,6 +832,14 @@ once may fail there.
   CLI, its configuration, packages, machines or `sync`. For the CLI it shows
   the command (`CLIUpdateAdvice`) in a `DMCommandBlock` and stops there: never
   run it, never type it into a session.
+- **A newer CLI gets its own corner toast** (`CLIUpdateBanner`, under the
+  app's; both stack). Update runs only `update --cli-only` and only when
+  `canUpdateCLIInApp`; any other CLI gets the `CLIUpdateAdvice` command in a
+  `DMCommandBlock`. Later is saved per CLI version
+  (`UpdatePreferences.cliLaterVersion`) and hides that version and older
+  ones (`CLIUpdateToast.shows`); a running or finished update shows
+  whatever Later said, the finished one until Close. Details opens
+  Settings → About. Demo shots `65`–`69` in the `cli-update` walk.
 - Pure logic lives in `DevmachineCore/Updates` (versions, release JSON, ETag
   feed, schedule, install method, digest, bundle checks, swap); the app's
   `Updates/` folder holds `UpdateController` and the real system calls. Tests
