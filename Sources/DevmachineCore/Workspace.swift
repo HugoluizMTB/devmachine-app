@@ -21,7 +21,7 @@ public struct Workspace: Equatable, Identifiable, Sendable {
         self.kind = kind
     }
 
-    /// This Mac, always the last workspace in the sidebar.
+    /// This Mac. Last in the sidebar until the person drags it elsewhere.
     public static let local = Workspace(name: "Local", alias: "local", kind: .local)
 
     /// The session Local always has: the operator shell for the ops repository.

@@ -42,6 +42,16 @@ cards and the menu-bar Usage tab shows them side by side. Codex account limits
 and activity come from `codex app-server` account reads; they do not start a
 model turn or consume inference tokens.
 
+## Sidebar order
+
+Drag a workspace's header to move the whole workspace, Local included. Drag a
+session to move it inside its own workspace; a session never moves to another
+workspace, and dropping it on one does nothing. The order is kept for your
+macOS user and survives a relaunch. A new workspace or session goes to the
+end. Hiding a workspace in Settings → Workspaces forgets its place, so it
+comes back at the end. ⌘⇧↑/↓, the command palette and workspace stacks follow
+the same order.
+
 ## Color picker
 
 The eyedropper in the menu bar's footer, or ⌘K → Pick a color from the

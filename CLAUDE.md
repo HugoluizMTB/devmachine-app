@@ -401,6 +401,17 @@ Rules:
   except Settings reads `AppModel.visibleWorkspaces`, so a hidden workspace
   costs no row, no poll and no ssh; hiding also closes its panes at once
   (`TerminalRegistry.closeWorkspace`), which is what ends the mosh it held.
+- **The sidebar order is a drag away and forgets what is gone**
+  (`SidebarOrder` in `UserDefaults`, key `sidebarOrder`). Workspaces, Local
+  included, move as whole blocks; a session moves only inside its own
+  workspace (`SidebarDrop` refuses anything else). Anything without a saved
+  place goes to the end. Hiding a workspace forgets its place and its
+  sessions'. A workspace or session is forgotten only when a list was really
+  read without it: a failed CLI read or ssh poll never prunes, or an outage
+  would wipe the order. A rename through the app moves the place to the new
+  name at once, and polls keep that name for 30 s or until they list it, so
+  one landing before tmux renames cannot drop it. Navigation,
+  the palette and workspace stacks read the same order as the sidebar.
 - **The Local workspace lists what `zmx ls` reports**, merged with what the app
   remembers (`LocalSessionScan.merge`): a session started outside the app shows
   up, and a remembered one that has no shell yet shows without a client count.
