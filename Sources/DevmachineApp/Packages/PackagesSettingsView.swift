@@ -204,7 +204,7 @@ struct PackagesHeader: View {
                     .dmSurface(Color.dmSelection, radius: DMRadius.row)
             }
             HStack(alignment: .top, spacing: m.space.lg) {
-                FlowLayout(spacing: m.space.xs, rowSpacing: m.space.xs) {
+                FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
                     ForEach(categories, id: \.self) { category in
                         Button {
                             toggle(category)

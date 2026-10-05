@@ -27,7 +27,7 @@ struct SetupFailurePanel: View {
                     cause: cause,
                     details: details),
                 retry: offersRetry ? onRetry : nil, retryTitle: "Retry")
-            FlowLayout(spacing: m.space.sm) {
+            FlowLayout(spacing: DMSpace.sm) {
                 ForEach(Array(extraActions.enumerated()), id: \.offset) { _, action in
                     button(action)
                 }

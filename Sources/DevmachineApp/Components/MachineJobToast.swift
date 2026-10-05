@@ -177,7 +177,7 @@ struct MachineJobToast: View {
                 Spacer(minLength: 0)
             }
         case .failed:
-            FlowLayout(spacing: m.space.sm) {
+            FlowLayout(spacing: DMSpace.sm) {
                 DMButton("Retry", variant: .primary, size: .small, action: actions.retry)
                 logButton
                 DMCopyButton(text: job.currentCommand ?? "", title: "Copy command")

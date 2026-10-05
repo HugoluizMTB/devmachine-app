@@ -145,7 +145,7 @@ struct WorkspacesPage: View {
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
         } else {
-            FlowLayout(spacing: m.space.xs, rowSpacing: m.space.xs) {
+            FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
                 ForEach(names, id: \.self) { DMKindLabel(text: $0) }
             }
         }

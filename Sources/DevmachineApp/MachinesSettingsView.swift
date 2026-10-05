@@ -124,7 +124,7 @@ private struct MachineSettingsRow: View {
                     .font(.dm(11))
                     .foregroundStyle(.white.opacity(0.35))
             } else {
-                FlowLayout(spacing: m.space.xs, rowSpacing: m.space.xs) {
+                FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
                     ForEach(values, id: \.self) { DMKindLabel(text: $0) }
                 }
             }

@@ -222,7 +222,7 @@ struct HomeView: View {
                     .kerning(0.8)
                     .foregroundStyle(.white.opacity(0.7))
                     .shadow(color: .black.opacity(0.4), radius: 4)
-                FlowLayout(spacing: m.pt(HomeLayout.cardSpacing), rowSpacing: m.pt(HomeLayout.cardSpacing)) {
+                FlowLayout(spacing: HomeLayout.cardSpacing, rowSpacing: HomeLayout.cardSpacing) {
                     ForEach(stats.machines) { machine in
                         MachineStatsCard(
                             machine: machine,
