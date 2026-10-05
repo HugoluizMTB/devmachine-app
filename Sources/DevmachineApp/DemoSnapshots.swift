@@ -21,7 +21,7 @@ enum DemoSnapshots {
 
     /// Read by `ContentView` so Settings opens straight onto Health for one
     /// screen. Same rule as `subdomainsInitialTab`.
-    static var setupInitialSection: SettingsSection = .connection
+    static var setupInitialSection: SettingsSection = .general
 
     /// Read by `CommandPaletteView` so the palette opens already typed into
     /// for one screen. Same rule as `subdomainsInitialTab`.
@@ -555,7 +555,7 @@ enum DemoSnapshots {
         case "stats":
             model.showPage(.stats)
         case "settings-health":
-            setupInitialSection = .advanced
+            setupInitialSection = .healthCheck
             model.showPage(.setup)
         case "session-defaults":
             setupInitialSection = .harnesses
@@ -568,7 +568,7 @@ enum DemoSnapshots {
             model.seedDemoDetected(CLIDetectedSettings(
                 opsRepoPath: DemoData.operatorPath, adminMachine: "main",
                 publicIP: DemoData.machineAddress, baseDomain: "example.com"))
-            setupInitialSection = .connection
+            setupInitialSection = .general
             model.showPage(.setup)
         #endif
         case "git-worktrees":

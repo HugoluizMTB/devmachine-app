@@ -45,11 +45,11 @@ enum CommandRegistry {
                 id: "go.settings", title: "Settings", subtitle: "", category: .goTo,
                 systemImage: "gearshape", shortcut: "⌘,",
                 keywords: ["prefs", "preferences", "config", "options"],
-                action: .openSettings(.connection))),
+                action: .openSettings(.general))),
             Entry(command: PaletteCommand(
                 id: "go.health", title: "Health", subtitle: "Settings", category: .goTo,
                 systemImage: "stethoscope", keywords: ["doctor", "check", "status"],
-                action: .openSettings(.advanced))),
+                action: .openSettings(.healthCheck))),
             Entry(command: PaletteCommand(
                 id: "go.shortcuts", title: "Keyboard shortcuts", subtitle: "", category: .goTo,
                 systemImage: "keyboard", shortcut: "⌘?", keywords: ["keys", "hotkeys", "help"],

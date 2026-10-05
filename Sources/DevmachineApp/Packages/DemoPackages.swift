@@ -31,7 +31,7 @@ enum DemoPackages {
 
     static func reset() {
         DemoSnapshots.packagesInitialPage = PackagesPageState()
-        DemoSnapshots.setupInitialSection = .connection
+        DemoSnapshots.setupInitialSection = .general
     }
 
     static func page(for id: String) -> PackagesPageState {

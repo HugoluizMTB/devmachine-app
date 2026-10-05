@@ -80,7 +80,7 @@ struct PaletteDispatcher {
         case let .openSettings(section): model.openSettings(section)
         case .runHealthCheck:
             health.run()
-            model.openSettings(.advanced)
+            model.openSettings(.healthCheck)
         case let .openSession(item): model.jump(to: item)
         case let .newSession(alias, choice): model.openSession(in: alias, startup: .program(choice))
         case let .runSavedCommand(alias, command):

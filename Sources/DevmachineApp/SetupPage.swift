@@ -5,56 +5,50 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case connection, machines, workspaces, packages, harnesses, appearance, terminal, previews, advanced, about
+    case general, machines, workspaces, packages, harnesses, appearance, healthCheck, about
 
     var title: String {
         switch self {
-        case .connection: return "Connection"
+        case .general: return "General"
         case .machines: return "Machines"
         case .workspaces: return "Workspaces"
         case .packages: return "Packages"
         case .harnesses: return "Harnesses"
         case .appearance: return "Appearance"
-        case .terminal: return "Terminal"
-        case .previews: return "Previews"
-        case .advanced: return "Advanced"
+        case .healthCheck: return "Health check"
         case .about: return "About"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .connection: return "The host this app talks to, and the devmachine configuration it reads."
+        case .general: return "The devmachine configuration this app reads, your domain, ssh, previews and logging."
         case .machines: return "The servers and local machines in the devmachine configuration."
         case .workspaces: return "Which workspaces the sidebar shows and the app reaches."
         case .packages: return "Browse the catalog, and add or remove packages on a machine or workspace."
         case .harnesses: return "Choose what new sessions start with."
-        case .appearance: return "The wallpaper behind the panes, and the size of the interface."
-        case .terminal: return "How a terminal looks, and how many stay connected."
-        case .previews: return "Where a dev server, a published site or a link opens."
-        case .advanced: return "Things to turn on only while chasing a problem."
+        case .appearance: return "The size of the interface, the wallpaper, and how a terminal looks."
+        case .healthCheck: return "Checks that this Mac, the devmachine CLI and your machines work together."
         case .about: return "This app's version and updates, and the devmachine CLI's."
         }
     }
 
     var systemImage: String {
         switch self {
-        case .connection: return "network"
+        case .general: return "gearshape"
         case .machines: return "server.rack"
         case .workspaces: return "square.grid.2x2"
         case .packages: return "shippingbox"
         case .harnesses: return "sparkles"
         case .appearance: return "photo"
-        case .terminal: return "terminal"
-        case .previews: return "safari"
-        case .advanced: return "wrench.and.screwdriver"
+        case .healthCheck: return "stethoscope"
         case .about: return "info.circle"
         }
     }
 
-    /// Every field that can fail validation lives in Connection, so that is the
+    /// Every field that can fail validation lives in General, so that is the
     /// pane the rail marks when something is wrong.
-    var showsValidation: Bool { self == .connection }
+    var showsValidation: Bool { self == .general }
 }
 
 private enum LaunchChoiceTag: Hashable {
@@ -193,9 +187,9 @@ struct SetupPage: View {
 
     @State private var section: SettingsSection
 
-    /// `initialSection` only ever differs from `.connection` for the
+    /// `initialSection` only ever differs from `.general` for the
     /// website's demo screenshots, which need to open straight onto Health.
-    init(initialSection: SettingsSection = .connection) {
+    init(initialSection: SettingsSection = .general) {
         _section = State(initialValue: initialSection)
     }
 
@@ -311,15 +305,13 @@ struct SetupPage: View {
                 VStack(alignment: .leading, spacing: m.pt(18)) {
                     sectionTitle
                     switch section {
-                    case .connection: connectionBlock
+                    case .general: generalBlock
                     case .machines: MachinesSettingsView()
                     case .workspaces: workspacesBlock
                     case .packages: EmptyView()
                     case .harnesses: harnessesBlock.task { await machinesStore.load() }
-                    case .appearance: wallpaperBlock
-                    case .terminal: terminalBlock
-                    case .previews: previewsBlock
-                    case .advanced: advancedBlock
+                    case .appearance: appearanceBlock
+                    case .healthCheck: HealthCheckView()
                     case .about: UpdatesSettingsView()
                     }
                 }
@@ -383,6 +375,41 @@ struct SetupPage: View {
         .padding(.vertical, m.pt(14))
     }
 
+    static func domainHint(hasCaddyMachine: Bool) -> String {
+        let base = "Optional. The base domain for your whole network: a machine with Caddy publishes "
+            + "ports and apps under it, as app.example.com. One domain serves every machine."
+        return hasCaddyMachine
+            ? base
+            : base + " No machine has Caddy yet, so nothing uses it until you add the caddy package to one."
+    }
+
+    static let sshAgentHint = "Optional. Empty uses the ssh agent this Mac already runs. "
+        + "If the 1Password ssh agent is set up, it is used instead. Type a socket path to use another agent."
+
+    private var generalBlock: some View {
+        VStack(alignment: .leading, spacing: m.pt(28)) {
+            connectionBlock
+            subsection("Previews") { previewsBlock }
+            subsection("Logging") { debugLoggingBlock }
+        }
+    }
+
+    private var appearanceBlock: some View {
+        VStack(alignment: .leading, spacing: m.pt(28)) {
+            wallpaperBlock
+            subsection("Terminal") { terminalBlock }
+        }
+    }
+
+    private func subsection(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: m.space.lg) {
+            Text(verbatim: title)
+                .font(.dm(13, weight: .semibold))
+                .foregroundStyle(.white)
+            content()
+        }
+    }
+
     private var connectionBlock: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
             field(
@@ -399,22 +426,9 @@ struct SetupPage: View {
             }
 
             editableField(
-                title: "Public IP",
-                hint: "The A record new subdomains point at. Leave it empty without a server.",
-                field: .publicIP, text: $publicIP, placeholder: "203.0.113.10")
-
-            editableField(
                 title: "Base domain",
-                hint: "New subdomains are created under it. Leave it empty without a server.",
+                hint: Self.domainHint(hasCaddyMachine: model.hasCaddyMachine),
                 field: .baseDomain, text: $baseDomain, placeholder: "example.com")
-
-            editableField(
-                title: "Host ssh alias",
-                hint: "Optional. Empty means \"devmachine\", the name `devmachine aliases --write` gives "
-                    + "every workspace's ssh alias (the aliases ending in -\(hostAlias.isEmpty ? "devmachine" : hostAlias)). "
-                    + "Admin commands (stats, Caddy) run through the devmachine CLI and do not need it.",
-                field: .hostAlias, text: $hostAlias, placeholder: "devmachine",
-                emptyValue: "devmachine (default)")
 
             VStack(alignment: .leading, spacing: m.pt(5)) {
                 Text(verbatim: "SSH agent socket")
@@ -422,8 +436,7 @@ struct SetupPage: View {
                     .foregroundStyle(.white.opacity(0.7))
                 TextField("Leave empty to detect it automatically", text: $sshAgentSocket)
                     .dmField()
-                note("Only needed if 1Password's agent is not what this Mac should use. "
-                    + "Empty tries the 1Password socket, then the ssh agent already running.")
+                note(Self.sshAgentHint)
             }
         }
     }
@@ -516,6 +529,12 @@ struct SetupPage: View {
                     .font(.dm(11))
                     .foregroundStyle(.blue)
                     .fixedSize(horizontal: false, vertical: true)
+                if field == .baseDomain {
+                    Text(hint)
+                        .font(.dm(11))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
                 Text(hint)
                     .font(.dm(11))
@@ -964,7 +983,7 @@ struct SetupPage: View {
         }
     }
 
-    private var advancedBlock: some View {
+    private var debugLoggingBlock: some View {
         VStack(alignment: .leading, spacing: m.pt(10)) {
             Toggle(isOn: $debugLogging) {
                 Text(verbatim: "Debug logging")
@@ -978,9 +997,6 @@ struct SetupPage: View {
                 + "— to ~/.devmachine-app/terminal.log. Turn it on only while "
                 + "chasing something; off, nothing is written. The file keeps "
                 + "itself under a megabyte.")
-
-            HealthCheckView()
-                .padding(.top, m.pt(20))
         }
     }
 

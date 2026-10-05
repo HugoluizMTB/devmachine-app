@@ -30,7 +30,7 @@ struct PackageRow: View {
         return declared != isSelected
     }
 
-    static let removalHint = "Stops being managed; the software stays on the machine."
+    static let removalHint = "devmachine stops installing and updating it here. It does not uninstall what is already on the machine."
 
     static func removalNote(status: PackageStatus?, isSelected: Bool) -> String? {
         isSelected && status == .applied ? removalHint : nil

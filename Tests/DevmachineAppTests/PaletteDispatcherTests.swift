@@ -158,7 +158,7 @@ final class PaletteDispatcherTests: XCTestCase {
         run(.runHealthCheck)
         XCTAssertEqual(health.runs, 1)
         XCTAssertEqual(model.activePage, .setup)
-        XCTAssertEqual(model.requestedSettingsSection, .advanced)
+        XCTAssertEqual(model.requestedSettingsSection, .healthCheck)
     }
 
     func testCustomCommandOpensTheSheetForThatWorkspace() {

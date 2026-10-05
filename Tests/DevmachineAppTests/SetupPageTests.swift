@@ -23,7 +23,7 @@ private struct SetupPageLocator: ExecutableLocating {
 final class SetupPageTests: XCTestCase {
     func testThePackagesSectionHasNoSaveFooter() {
         XCTAssertFalse(SetupPage.showsFooter(for: .packages))
-        XCTAssertTrue(SetupPage.showsFooter(for: .connection))
+        XCTAssertTrue(SetupPage.showsFooter(for: .general))
     }
 
     private let facade = HarnessSettingsFacade(
@@ -160,5 +160,17 @@ final class SetupPageWallpaperTests: XCTestCase {
     func testTheGradientChipIDIsNotAThemeOfTheShippedLibrary() {
         let library = WallpaperStore.shippedLibrary()
         XCTAssertFalse(library.themes.map(\.id).contains(SetupPage.gradientTheme))
+    }
+
+    func testTheDomainHintSaysItIsOptionalAndWhenNoMachineCanUseItYet() {
+        XCTAssertTrue(SetupPage.domainHint(hasCaddyMachine: true).hasPrefix("Optional."))
+        XCTAssertFalse(SetupPage.domainHint(hasCaddyMachine: true).contains("No machine has Caddy"))
+        XCTAssertTrue(SetupPage.domainHint(hasCaddyMachine: false).contains("No machine has Caddy yet"))
+    }
+
+    func testSettingsHasGeneralAppearanceAndHealthCheckButNoTerminalPreviewsOrAdvanced() {
+        XCTAssertEqual(
+            SettingsSection.allCases.map(\.title),
+            ["General", "Machines", "Workspaces", "Packages", "Harnesses", "Appearance", "Health check", "About"])
     }
 }

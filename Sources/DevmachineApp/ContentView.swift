@@ -305,7 +305,7 @@ private struct PageHost: View {
     var body: some View {
         switch page {
         // `DemoSnapshots.setupInitialSection` only ever differs from
-        // `.connection` while the website's screenshot walk owns the window.
+        // `.general` while the website's screenshot walk owns the window.
         case .setup: SetupPage(initialSection: DemoSnapshots.setupInitialSection)
         case .stats: StatsView()
         // `DemoSnapshots.subdomainsInitialTab` only ever differs from `.sites`

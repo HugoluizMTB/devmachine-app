@@ -9,7 +9,7 @@ final class DemoSnapshotsTests: XCTestCase {
         unsetenv("DEVMACHINE_DEMO_SNAPSHOTS")
         unsetenv("DEVMACHINE_DEMO_LOADING")
         DemoSnapshots.subdomainsInitialTab = .sites
-        DemoSnapshots.setupInitialSection = .connection
+        DemoSnapshots.setupInitialSection = .general
         DemoSnapshots.paletteInitialQuery = ""
         DemoData.typedAtPrompt = [:]
         try await super.tearDown()
@@ -138,7 +138,7 @@ final class DemoSnapshotsTests: XCTestCase {
     }
 
     func testSetupInitialSectionDefaultsToConnection() {
-        XCTAssertEqual(DemoSnapshots.setupInitialSection, .connection)
+        XCTAssertEqual(DemoSnapshots.setupInitialSection, .general)
     }
     func testTheLoadingWalkFollowsTheMainWalksNumbering() {
         let names = DemoSnapshots.skeletonScreens.map(\.fileName)

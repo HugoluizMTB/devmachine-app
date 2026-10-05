@@ -55,26 +55,10 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
     }
 
-    func testValidateRejectsAliasWithSpace() {
-        var settings = goodSettings
-        settings.hostAlias = "my host"
-        let fields = AppSettings.validate(settings, fileExists: fullRepo()).map(\.field)
-        XCTAssertEqual(fields, [.hostAlias])
-    }
-
     func testValidateAcceptsAliasWithDotDashUnderscore() {
         var settings = goodSettings
         settings.hostAlias = "box-1_a.dev"
         XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
-    }
-
-    func testValidateRejectsNonIPv4() {
-        for bad in ["1.2.3", "256.1.1.1", "1.2.3.4.5", "abc", "1.2.3.4 "] {
-            var settings = goodSettings
-            settings.publicIP = bad
-            let fields = AppSettings.validate(settings, fileExists: fullRepo()).map(\.field)
-            XCTAssertEqual(fields, [.publicIP], "expected \(bad) to be rejected")
-        }
     }
 
     func testValidateRejectsBadDomain() {
@@ -427,10 +411,17 @@ extension AppSettingsTests {
 
     func testAnIssueTheAppCannotFixCarriesNoRemedy() {
         var settings = goodSettings
-        settings.publicIP = "not an ip"
+        settings.baseDomain = "Not A Domain"
         let issues = AppSettings.validate(settings, fileExists: fullRepo())
-        XCTAssertEqual(issues.map(\.field), [.publicIP])
+        XCTAssertEqual(issues.map(\.field), [.baseDomain])
         XCTAssertNil(issues.first?.remedy)
+    }
+
+    func testAStaleHostAliasOrPublicIPNeverBlocksSaving() {
+        var settings = goodSettings
+        settings.publicIP = "not an ip"
+        settings.hostAlias = "bad alias!"
+        XCTAssertTrue(AppSettings.validate(settings, fileExists: fullRepo()).isEmpty)
     }
 
     func testValidatePassesWhenTheCLIExecutableIsFound() {

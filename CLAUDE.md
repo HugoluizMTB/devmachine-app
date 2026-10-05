@@ -336,7 +336,7 @@ Rules:
   off for that call), a plain single click is replayed afterwards for a
   program that reads the mouse, and the wheel keeps SwiftTerm's rule, so tmux
   still scrolls its history. A drag shorter than `TerminalPointer.dragThreshold`
-  is a click. Copy on select (Settings → Terminal, on by default) copies a drag,
+  is a click. Copy on select (Settings → Appearance → Terminal, on by default) copies a drag,
   a word or a line on release; ⌘C with nothing selected leaves the clipboard
   alone. No key is intercepted for selection: SwiftTerm clears it on any key,
   and Esc, ⌃C and the rest reach the program unchanged.
@@ -719,10 +719,10 @@ Rules:
 - Demo walk `DEVMACHINE_DEMO_WALK=setup-flow` (`DemoSetupFlow`): `80`–`91`
   are the setup (start, CLI install and its failure, choice, server and
   local details, packages, review, running, failed, ready, old CLI),
-  `92`–`95` Settings → Connection.
+  `92`–`95` Settings → General.
 - **It ends on "Start using Devmachine"**: `completeOnboarding` reads the CLI
-  again, fills the empty Connection fields, saves them and opens Home, with
-  no restart. Settings → Connection shows what the CLI reports read-only
+  again, fills the empty General fields, saves them and opens Home, with
+  no restart. Settings → General shows what the CLI reports read-only
   ("Change…", "Edit"), re-reads it each time it opens, and an issue the setup
   fixes (no CLI; a folder other than the CLI's own with no `config.yml`)
   carries a button back into onboarding.
