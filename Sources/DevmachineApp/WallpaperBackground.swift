@@ -37,9 +37,7 @@ struct WallpaperBackground: View {
             .overlay { wallpaper }
             .overlay(
                 LinearGradient(
-                    colors: style == .photo
-                        ? [.black.opacity(0.25), .black.opacity(0.55)]
-                        : [.black.opacity(0.5), .black.opacity(0.8)],
+                    colors: Self.dimming(style: style, choice: active).map { .black.opacity($0) },
                     startPoint: .top, endPoint: .bottom
                 )
             )
@@ -50,9 +48,25 @@ struct WallpaperBackground: View {
             .allowsHitTesting(false)
     }
 
+    /// The black laid over the wallpaper, top and bottom, so Home's text
+    /// reads on any photo. The map is already dark and quiet; it needs only
+    /// the bottom darkened, under the stats pill.
+    static func dimming(style: WallpaperStyle, choice: WallpaperChoice) -> [Double] {
+        switch (style, choice) {
+        case (.photo, .networkMap): return [0, 0.35]
+        case (.photo, _): return [0.25, 0.55]
+        case (.ambient, _): return [0.5, 0.8]
+        }
+    }
+
     @ViewBuilder
     private var wallpaper: some View {
-        if let image = baked {
+        if active == .networkMap {
+            switch style {
+            case .photo: NetworkMapWallpaper()
+            case .ambient: NetworkMapGround()
+            }
+        } else if let image = baked {
             let filled = Image(nsImage: image).resizable().scaledToFill()
             switch style {
             case .photo:
@@ -80,6 +94,8 @@ struct WallpaperBackground: View {
             return WallpaperBaker.image(key: "gradient:" + gradient.name, style: style) {
                 gradient.isLandscape ? gradient.bitmap(width: 1920, height: 1200) : gradient.bitmap()
             }
+        case .networkMap:
+            return nil
         }
     }
 

@@ -94,6 +94,8 @@ struct SetupPage: View {
 
     /// Not a theme id in the library — the chip that shows the built-in gradients.
     static let gradientTheme = "gradient"
+    /// Not a theme id either — the chip of the machines' network map.
+    static let networkMapTheme = "network-map"
 
     @State private var opsRepoPath = ""
     @State private var hostAlias = ""
@@ -1049,16 +1051,21 @@ struct SetupPage: View {
 
             FlowLayout(spacing: 6, rowSpacing: 6) {
                 chip(id: Self.gradientTheme, title: "Gradient")
+                chip(id: Self.networkMapTheme, title: "Network map")
                 ForEach(wallpapers.themes) { theme in
                     chip(id: theme.id, title: theme.title)
                 }
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                if themeID == Self.gradientTheme {
-                    ForEach(WallpaperGradient.all) { gradientCell($0) }
-                } else if let theme = wallpapers.library.theme(id: themeID) {
-                    ForEach(theme.photos) { photoCell($0) }
+            if themeID == Self.networkMapTheme {
+                networkMapCell
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                    if themeID == Self.gradientTheme {
+                        ForEach(WallpaperGradient.all) { gradientCell($0) }
+                    } else if let theme = wallpapers.library.theme(id: themeID) {
+                        ForEach(theme.photos) { photoCell($0) }
+                    }
                 }
             }
 
@@ -1116,6 +1123,24 @@ struct SetupPage: View {
             .onTapGesture { wallpaper = .gradient(name: gradient.name) }
     }
 
+    /// Home's network map, drawn from the same machines and sites, so the
+    /// cell is the preview.
+    private var networkMapCell: some View {
+        NetworkMapWallpaper(minimumMargin: 14)
+            .frame(maxWidth: .infinity)
+            .frame(height: m.pt(180))
+            .clipShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
+            .overlay(alignment: .bottomLeading) {
+                Text(verbatim: "Your machines")
+                    .font(.dm(10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .padding(m.space.sm)
+            }
+            .overlay(ring(selected: wallpaper == .networkMap))
+            .contentShape(RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous))
+            .onTapGesture { wallpaper = .networkMap }
+    }
+
     private func ring(selected: Bool) -> some View {
         RoundedRectangle(cornerRadius: m.radius.tile, style: .continuous)
             .stroke(
@@ -1132,6 +1157,8 @@ struct SetupPage: View {
             } else {
                 Text(photo.credit)
             }
+        } else if wallpaper == .networkMap {
+            Text(verbatim: "Drawn from your machines and their sites; it changes when they do.")
         } else {
             Text(verbatim: "Built-in gradient")
         }
@@ -1139,7 +1166,7 @@ struct SetupPage: View {
 
     private var creditPhoto: WallpaperPhoto? {
         switch wallpaper {
-        case .gradient:
+        case .gradient, .networkMap:
             return nil
         case .bundled:
             return wallpapers.library.bundledPhoto
@@ -1157,12 +1184,13 @@ struct SetupPage: View {
     /// The chip that opens with a choice already made: its theme, or the first one.
     static func openThemeID(for choice: WallpaperChoice, in library: WallpaperLibrary) -> String {
         if case .gradient = choice { return gradientTheme }
+        if case .networkMap = choice { return networkMapTheme }
 
         let photoID: String?
         switch choice {
         case .bundled: photoID = library.bundledPhoto?.id
         case .unsplash(let id): photoID = id
-        case .gradient: photoID = nil
+        case .gradient, .networkMap: photoID = nil
         }
 
         let theme = photoID.flatMap { library.theme(ofPhoto: $0) } ?? library.themes.first

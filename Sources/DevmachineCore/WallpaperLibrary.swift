@@ -98,13 +98,15 @@ public enum WallpaperChoice: Codable, Equatable, Hashable, Sendable {
     case bundled
     case unsplash(id: String)
     case gradient(name: String)
+    /// The machines' network map, drawn from the CLI's configuration.
+    case networkMap
 
     private enum CodingKeys: String, CodingKey {
         case kind, id, name
     }
 
     private enum Kind: String {
-        case bundled, unsplash, gradient
+        case bundled, unsplash, gradient, networkMap
     }
 
     public init(from decoder: Decoder) throws {
@@ -116,6 +118,8 @@ public enum WallpaperChoice: Codable, Equatable, Hashable, Sendable {
             self = .unsplash(id: try values.decode(String.self, forKey: .id))
         case Kind.gradient.rawValue:
             self = .gradient(name: try values.decode(String.self, forKey: .name))
+        case Kind.networkMap.rawValue:
+            self = .networkMap
         default:
             self = .bundled
         }
@@ -132,6 +136,8 @@ public enum WallpaperChoice: Codable, Equatable, Hashable, Sendable {
         case .gradient(let name):
             try values.encode(Kind.gradient.rawValue, forKey: .kind)
             try values.encode(name, forKey: .name)
+        case .networkMap:
+            try values.encode(Kind.networkMap.rawValue, forKey: .kind)
         }
     }
 }

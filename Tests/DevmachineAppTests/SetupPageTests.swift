@@ -137,6 +137,11 @@ final class SetupPageWallpaperTests: XCTestCase {
         )
     }
 
+    func testTheNetworkMapChoiceOpensItsOwnChip() {
+        XCTAssertEqual(SetupPage.openThemeID(for: .networkMap, in: library), SetupPage.networkMapTheme)
+        XCTAssertNotEqual(SetupPage.networkMapTheme, SetupPage.gradientTheme)
+    }
+
     func testTheBundledChoiceOpensTheThemeOfTheShippedPhoto() {
         XCTAssertEqual(SetupPage.openThemeID(for: .bundled, in: library), "ocean")
     }
@@ -160,6 +165,7 @@ final class SetupPageWallpaperTests: XCTestCase {
     func testTheGradientChipIDIsNotAThemeOfTheShippedLibrary() {
         let library = WallpaperStore.shippedLibrary()
         XCTAssertFalse(library.themes.map(\.id).contains(SetupPage.gradientTheme))
+        XCTAssertFalse(library.themes.map(\.id).contains(SetupPage.networkMapTheme))
     }
 
     func testTheDomainHintSaysItIsOptionalAndWhenNoMachineCanUseItYet() {

@@ -144,7 +144,7 @@ final class WallpaperChoiceTests: XCTestCase {
     }
 
     func testEveryCaseSurvivesARoundTrip() throws {
-        for choice: WallpaperChoice in [.bundled, .unsplash(id: "aaa111"), .gradient(name: "midnight")] {
+        for choice: WallpaperChoice in [.bundled, .unsplash(id: "aaa111"), .gradient(name: "midnight"), .networkMap] {
             XCTAssertEqual(try roundTrip(choice), choice)
         }
     }
@@ -165,6 +165,29 @@ final class WallpaperChoiceTests: XCTestCase {
             try decoder.decode(WallpaperChoice.self, from: Data(#"{"kind":"gradient","name":"ember"}"#.utf8)),
             .gradient(name: "ember")
         )
+    }
+
+    func testTheNetworkMapIsAKindWithNoOtherField() throws {
+        let data = try JSONEncoder().encode(WallpaperChoice.networkMap)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: String])
+        XCTAssertEqual(json, ["kind": "networkMap"])
+        XCTAssertEqual(
+            try JSONDecoder().decode(WallpaperChoice.self, from: Data(#"{"kind":"networkMap"}"#.utf8)),
+            .networkMap
+        )
+    }
+
+    func testSettingsSavedBeforeTheNetworkMapStillLoad() throws {
+        let decoder = JSONDecoder()
+        let saved = [
+            (#"{"kind":"bundled"}"#, WallpaperChoice.bundled),
+            (#"{"kind":"unsplash","id":"aaa111"}"#, .unsplash(id: "aaa111")),
+            (#"{"kind":"gradient","name":"peaks"}"#, .gradient(name: "peaks")),
+            (#"{}"#, .bundled),
+        ]
+        for (json, choice) in saved {
+            XCTAssertEqual(try decoder.decode(WallpaperChoice.self, from: Data(json.utf8)), choice, json)
+        }
     }
 
     func testUnknownKindFallsBackToBundled() throws {
