@@ -337,6 +337,7 @@ private struct PageHost: View {
         case .subdomains: SubdomainsView(initialTab: DemoSnapshots.subdomainsInitialTab)
         case .stack(let refs): StackGridView(refs: refs).ignoresSafeArea(edges: .top)
         case .addMachine: AddMachinePage()
+        case .operatorChooser(let harnesses): OperatorChooserPage(harnesses: harnesses)
         }
     }
 }

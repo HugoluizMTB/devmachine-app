@@ -144,6 +144,25 @@ struct HarnessSettingsFacade: Sendable {
         registry.adapters.map(\.descriptor)
     }
 
+    /// Every harness whose CLI is on this Mac, in the registry's order,
+    /// turned on or not. Looks each CLI up once, so call it off the main
+    /// thread before the first lookup ends.
+    var installedHarnesses: [HarnessDescriptor] {
+        registry.adapters.filter { isOnThisMac($0.id) }.map(\.descriptor)
+    }
+
+    /// What the Operator starts: a harness whose CLI has gone from this Mac
+    /// falls back to a plain shell, as the local default does.
+    func operatorProgram(for settings: AppSettings) -> SessionLaunchChoice? {
+        if case let .harness(id) = settings.operatorProgram, !isOnThisMac(id) { return .terminal }
+        return settings.operatorProgram
+    }
+
+    /// The Operator's choices: a terminal and every installed harness.
+    var operatorLaunchOptions: [HarnessLaunchOption] {
+        [.terminal] + installedHarnesses.map { HarnessLaunchOption(choice: .harness($0.id), descriptor: $0) }
+    }
+
     /// The harnesses Settings shows a toggle for: those whose package the
     /// pinned release has (`available`, nil before it is read).
     func activatable(available: Set<String>?) -> [HarnessDescriptor] {

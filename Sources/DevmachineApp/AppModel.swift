@@ -108,6 +108,78 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private var operatorLaunchInFlight = false
+
+    /// Every way into the Operator comes here (sidebar, ⌘K). A shell the
+    /// multiplexer already holds is only shown. Otherwise the first open asks
+    /// which installed harness to start, and later opens start the answer.
+    func openOperatorSession() {
+        guard !operatorLaunchInFlight,
+              let session = localSessions.first(where: { $0.handle == Workspace.operatorSession })
+        else { return }
+        let item = SidebarItem.localSession(name: session.handle, path: session.path)
+        let kind = TerminalKind.local(session: session.handle, path: session.path)
+        if TerminalRegistry.shared.isStarted(kind) {
+            selection = item
+            return
+        }
+        operatorLaunchInFlight = true
+        let facade = harnessSettingsFacade
+        let saved = settings.flatMap { facade.operatorProgram(for: $0) }
+        let runner = localRunner
+        let zmxPath = DemoMode.isActive ? nil : zmxPath
+        Task.detached {
+            let isRunning = zmxPath.map { Self.multiplexerHolds(session.handle, zmx: $0, runner: runner) } ?? false
+            let installed = facade.installedHarnesses.map(\.id)
+            let plan = OperatorLaunch.plan(isRunning: isRunning, saved: saved, installed: installed)
+            await MainActor.run {
+                self.operatorLaunchInFlight = false
+                self.apply(plan, item: item)
+            }
+        }
+    }
+
+    nonisolated private static func multiplexerHolds(_ session: String, zmx: String, runner: any CommandRunner) -> Bool {
+        let socketDirectory = Zmx.socketDirectory()
+        let name = Zmx.sessionName(from: session, socketDirectory: socketDirectory)
+        let listing = (try? runner.run(
+            executable: zmx, args: Zmx.listArguments, environment: ["ZMX_DIR": socketDirectory])) ?? ""
+        return ZmxListParser.parse(listing).contains { $0.name == name }
+    }
+
+    private func apply(_ plan: OperatorLaunch, item: SidebarItem) {
+        switch plan {
+        case .attach:
+            selection = item
+        case let .choose(harnesses):
+            selection = nil
+            activePage = .operatorChooser(harnesses)
+        case let .start(choice):
+            selection = item
+            startOperator(item, startup: .program(choice))
+        }
+    }
+
+    /// The chooser's answer becomes the Operator's program, and this first
+    /// start asks the harness what the folder is for.
+    func chooseOperatorProgram(_ choice: SessionLaunchChoice, in store: SettingsStore = .shared) {
+        if var current = store.settings {
+            current.operatorProgram = choice
+            store.settings = current
+        }
+        settings?.operatorProgram = choice
+        guard let session = localSessions.first(where: { $0.handle == Workspace.operatorSession }) else { return }
+        let item = SidebarItem.localSession(name: session.handle, path: session.path)
+        selection = item
+        startOperator(item, startup: .asking(
+            HarnessPrompt.operatorIntro, with: choice, command: harnessSettingsFacade.startupCommand(for: choice)))
+    }
+
+    private func startOperator(_ item: SidebarItem, startup: SessionStartup) {
+        guard !DemoMode.isActive, case let .localSession(name, path) = item else { return }
+        startProgram(in: .local(session: name, path: path), startup: startup)
+    }
+
     /// The context users behind the workspaces still on: what Stats and the
     /// subdomain list are allowed to show. A row the host cannot attribute to
     /// any of them (a system container, the apex site) is left alone — hiding
@@ -1056,9 +1128,11 @@ final class AppModel: ObservableObject {
     }
 
     func clickLocalSession(_ item: SidebarItem) {
-        guard case .localSession = item else { return }
+        guard case let .localSession(name, _) = item else { return }
         if selection == item, activePage == nil {
             goHome()
+        } else if name == Workspace.operatorSession {
+            openOperatorSession()
         } else {
             selection = item
         }
@@ -1101,6 +1175,10 @@ final class AppModel: ObservableObject {
     }
 
     func jump(to item: SidebarItem) {
+        if case let .localSession(name, _) = item, name == Workspace.operatorSession {
+            openOperatorSession()
+            return
+        }
         selection = item
         if case let .session(alias, name) = item {
             let ref = SessionRef(alias: alias, name: name)

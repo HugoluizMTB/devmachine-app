@@ -629,6 +629,33 @@ Rules:
   and 127 is how a host without tmux is told apart. Without a process table
   the pane's own command still counts.
 
+## Operator session
+- **The Operator is the local session in the CLI's configuration folder**
+  (`Workspace.operatorSession`, path `AppSettings.opsRepoPath`). Every way
+  in (sidebar click, ⌘K `go.operator`) goes through
+  `AppModel.openOperatorSession`, which decides with `OperatorLaunch.plan`
+  (Core): a shell the multiplexer already holds (`zmx ls`) or a pane already
+  started is only shown, never typed into.
+- **The first open asks** (`AppSettings.operatorProgram == nil`): a central
+  page (`AppPage.operatorChooser`, `OperatorChooserPage`) with one
+  `DMPictureChoice` per harness whose CLI is on this Mac
+  (`HarnessSettingsFacade.installedHarnesses`, turned on or not: the point is
+  finding out what you have) and "Terminal only". The pick is saved as
+  `operatorProgram` and starts the session; Claude Code and Codex get
+  `HarnessPrompt.operatorIntro` as their positional first message
+  (`SessionStartup.asking`, shared with Packages' "New package"), any other
+  harness starts plain. Later opens start the saved program without the
+  question; Settings → Harnesses → Session defaults → Operator session
+  changes it (every installed harness offered). A saved harness whose CLI is
+  gone starts a plain shell.
+- **No harness installed: the terminal opens and nothing is saved**, so the
+  chooser shows once one is installed. Settings written before this decode
+  as not chosen, so an existing Mac sees the chooser once too.
+- Demo walk `DEVMACHINE_DEMO_WALK=operator`: `200` the chooser over the demo
+  Mac's CLIs, `203` the Operator's program in Settings → Harnesses.
+  The default walk's demo settings have Claude chosen, so `18-operator` still
+  opens the terminal.
+
 ## Performance rules (learned from a 2 GB footprint)
 - Poll only while a view is visible (`onAppear`/`onDisappear` begin/end, refcount),
   one in-flight run per target, publish a `@Published` only when the value changed.

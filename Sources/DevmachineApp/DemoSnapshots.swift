@@ -182,6 +182,14 @@ enum DemoSnapshots {
         Screen(id: "worktree-foreign", fileName: "34-worktree-foreign.png", settleNanoseconds: 400_000_000),
     ]
 
+    /// The Operator walk (`DEVMACHINE_DEMO_WALK=operator`): the first open's
+    /// chooser over the demo Mac's harness CLIs and the Operator's program in
+    /// Settings → Harnesses.
+    static let operatorScreens: [Screen] = [
+        Screen(id: "operator-chooser", fileName: "200-operator-chooser.png", settleNanoseconds: 700_000_000),
+        Screen(id: "operator-harnesses", fileName: "203-operator-harnesses.png", settleNanoseconds: 500_000_000),
+    ]
+
     /// The harness icon walk (`DEVMACHINE_DEMO_WALK=harness-icons`): acme's
     /// workspace home with Settings → Harnesses → "Show harness icon" on.
     static let harnessIconScreens: [Screen] = [
@@ -368,6 +376,7 @@ enum DemoSnapshots {
         case "dns-setup": return dnsSetupScreens
         case "packages": return packagesScreens
         case "host-key": return DemoHostKey.screens
+        case "operator": return operatorScreens
         #if DEBUG
         case "machines": return DemoAddMachine.screens
         case "machines-map": return DemoMachinesMap.screens
@@ -579,6 +588,8 @@ enum DemoSnapshots {
         case "operator":
             model.clickLocalSession(operatorSelection)
             model.contextTab = .context
+        case "operator-chooser", "operator-harnesses":
+            prepareOperator(screen.id, model: model, settingsStore: environment.settingsStore)
         case "subdomains-sites":
             subdomainsInitialTab = .sites
             model.showPage(.subdomains)
@@ -656,6 +667,20 @@ enum DemoSnapshots {
             model.showPage(.subdomains)
         default:
             break
+        }
+    }
+
+    private static func prepareOperator(_ id: String, model: AppModel, settingsStore: SettingsStore) {
+        guard var settings = settingsStore.settings else { return }
+        settings.operatorProgram = id == "operator-harnesses" ? .harness(.codex) : nil
+        settingsStore.settings = settings
+        model.settings = settings
+        switch id {
+        case "operator-chooser":
+            model.clickLocalSession(operatorSelection)
+        default:
+            setupInitialSection = .harnesses
+            model.showPage(.setup)
         }
     }
 

@@ -486,7 +486,8 @@ enum DemoData {
         workspaceSessionPrograms: [
             "globex-devmachine": .custom("npm run dev"),
             "initech-devmachine": .harness(.codex),
-        ])
+        ],
+        operatorProgram: .harness(.claude))
 
     /// The CLIs the demo Mac has. Antigravity and Cline are left out, so
     /// Settings shows a harness that only starts on a remote workspace.

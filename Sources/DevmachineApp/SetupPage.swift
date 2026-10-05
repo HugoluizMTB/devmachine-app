@@ -118,6 +118,7 @@ struct SetupPage: View {
     @State private var localSessionProgram = SessionLaunchChoice.terminal
     @State private var remoteSessionProgram = SessionLaunchChoice.terminal
     @State private var workspaceSessionPrograms: [String: SessionLaunchChoice] = [:]
+    @State private var operatorProgram: SessionLaunchChoice?
     @State private var harnessErrors: [HarnessID: String] = [:]
     /// Bumped once the CLIs on this Mac were looked up again, to redraw
     /// what depends on them.
@@ -148,7 +149,8 @@ struct SetupPage: View {
             localSessionProgram: localSessionProgram,
             remoteSessionProgram: remoteSessionProgram,
             workspaceSessionPrograms: workspaceSessionPrograms,
-            linkOpening: linkOpening
+            linkOpening: linkOpening,
+            operatorProgram: operatorProgram
         )
     }
 
@@ -636,6 +638,16 @@ struct SetupPage: View {
                     selection: $localSessionProgram
                 )
                 launchChoicePicker(
+                    title: "Operator session",
+                    detail: operatorProgram == nil
+                        ? "Not chosen yet: its first open asks" : "Your configuration folder",
+                    savedFor: Workspace.operatorSession,
+                    options: operatorLaunchOptions,
+                    selection: Binding(
+                        get: { operatorProgram ?? .terminal },
+                        set: { operatorProgram = $0 })
+                )
+                launchChoicePicker(
                     title: "Remote fallback",
                     detail: "New workspaces inherit this choice",
                     savedFor: RecentCommandStore.remoteFallback,
@@ -681,9 +693,10 @@ struct SetupPage: View {
         savedFor alias: String,
         place: LaunchPlace = .remote,
         showsCommandField: Bool = true,
+        options offered: [HarnessLaunchOption]? = nil,
         selection: Binding<SessionLaunchChoice>
     ) -> some View {
-        let options = launchOptions(on: place)
+        let options = offered ?? launchOptions(on: place)
         return VStack(alignment: .trailing, spacing: m.space.sm) {
             HStack(spacing: m.space.lg) {
                 VStack(alignment: .leading, spacing: 1) {
@@ -762,6 +775,12 @@ struct SetupPage: View {
     private func launchOptions(on place: LaunchPlace) -> [HarnessLaunchOption] {
         _ = cliAvailabilityRead
         return SettingsDraft(value: draft).launchOptions(using: harnessSettingsFacade, on: place)
+    }
+
+    /// Every harness on this Mac, turned on or not, as the first open offers.
+    private var operatorLaunchOptions: [HarnessLaunchOption] {
+        _ = cliAvailabilityRead
+        return harnessSettingsFacade.operatorLaunchOptions
     }
 
     private func remoteOnlyNote(_ id: HarnessID) -> String? {
@@ -1219,6 +1238,7 @@ struct SetupPage: View {
             harnessIconStyle = current.harnessIconStyle
             linkOpening = current.linkOpening
             hiddenWorkspaces = current.hiddenWorkspaces
+            operatorProgram = current.operatorProgram
             applyHarnessSettings(current)
         } else {
             let configPath = NSHomeDirectory() + "/.ssh/config"
