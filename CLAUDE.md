@@ -541,12 +541,11 @@ Rules:
   opencode, kimi-code, cline) is in the pinned release's
   `packages list` (`CodingAgentPackages.activatable`; before the list is
   read, the declared name is trusted). Any other harness shows its row with
-  no switch, and its saved on/off is left as it was. The Workspaces page's
+  no switch, and its saved on/off is left as it was. New workspace's
   Coding agents group offers only the packages of harnesses turned on
   (`CodingAgentPackages.choose`), hides the others and what needs them
-  (claude-plugins needs claude-code), keeps one a workspace already has so
-  Edit can take it off, and with none on says so and links to Settings →
-  Harnesses. The first run's skills picker is unrelated: it offers what
+  (claude-plugins needs claude-code), and with none on says so and links to
+  Settings → Harnesses. The first run's skills picker is unrelated: it offers what
   `skills add --agent` accepts (`SkillAgent`). Views never name a package.
 - **A harness on without its CLI on this Mac starts on remote workspaces
   only** (`LaunchPlace`): it is offered in the remote fallback, the
@@ -948,7 +947,7 @@ once may fail there.
   `sync`. A workspace name is its Linux account's: the CLI's
   `linuxUserName` rule, at most 32 characters, not a system account or
   the admin login, not a workspace the configuration has
-  (`WorkspaceName.problem`, shared with the Workspaces page). Package cards are machine packages whose `platforms` hold `linux`
+  (`WorkspaceName.problem`, shared with Settings → Workspaces). Package cards are machine packages whose `platforms` hold `linux`
   or are empty (any): a server and a Lima machine are both Linux, so a
   `[macos]` package is never offered. Essentials is always installed
   (locked, its `needs` listed as included and not offered again on their
@@ -1106,18 +1105,48 @@ once may fail there.
   corner at each moment (every machine, `main` with two ticks, the confirm,
   the sync pending, running, done, failed); nothing runs.
 
-## Workspaces page
-- **`AppPage.workspaces` lists every workspace by machine** (`WorkspacesStore`:
-  `workspaces list --format json` with its `settings`, and `packages.lock`).
-  "Applied", "Waiting for sync" or "Not created yet" come from the lock's
-  `workspaces` map (`WorkspaceSync`): every declared package in it is applied.
-  A package taken off is not caught: the lock also lists what the declared
-  ones pull in. No `config.yml` yet means no workspace, without a list call.
+## Settings → Workspaces
+- **Settings → Workspaces lists every workspace under its machine**
+  (`WorkspacesSettingsView`, `WorkspacesStore`: `workspaces list --format
+  json` with its `settings`, and `packages.lock`; grouping in
+  `WorkspaceSettingsList`, Core). Each machine has a title with its
+  location; machines in the configuration's order. A sidebar workspace the
+  CLI's list does not hold goes under "Other workspaces", so its switch is
+  never lost. "Applied", "Waiting for sync" or "Not created yet" come from
+  the lock's `workspaces` map (`WorkspaceSync`): every declared package in
+  it is applied. A package taken off is not caught: the lock also lists
+  what the declared ones pull in. No `config.yml` yet means no workspace,
+  without a list call. There is no separate page (`AppPage` has no
+  workspaces case) and no "Manage workspaces…" button: the list is the
+  section, at the full width and height.
+- **Each row's switch is the sidebar's on/off** (`AppSettings.hiddenWorkspaces`
+  by ssh alias, `WorkspaceVisibility.setting`). It saves at once, with no
+  Save (`AppModel.setHiddenWorkspaces` writes only the hidden list), and a
+  workspace off is not reached: no ssh, mosh or poll, its panes closed.
+  The section has no Save footer, like Packages.
 - **Reached from** the sidebar's + beside WORKSPACES ("New workspace…", under
-  the new-session items), ⌘K "Workspaces…" and "New workspace…"
-  (`requestNewWorkspace`, taken by the page through `pendingNewWorkspace`),
-  and Settings → Workspaces "Manage workspaces…". Settings keeps only the
-  sidebar visibility toggles; the page owns everything else.
+  the new-session items), ⌘K "Workspaces…" (`openSettings(.workspaces)`) and
+  "New workspace…" (`requestNewWorkspace`: Settings → Workspaces plus
+  `pendingNewWorkspace`, taken by the view).
+- **A flow opens inside the section, under a breadcrumb** ("Workspaces ›
+  Edit acme", "Workspaces › New workspace"), with the Settings rail beside
+  it and its buttons at the bottom. "Workspaces" goes back to the list,
+  except while a run is going (Stop first). Leaving the section or closing
+  Settings drops any flow that is not running (`WorkspacesStore.leave`, from
+  the view's `onDisappear`): the store lives for the app, and a flow kept
+  there once left Settings stuck on the last workspace clicked. There is no
+  side column: New and Edit show their commands on the review step, Forget
+  and Destroy on their own screen.
+- **Edit never changes packages**: they live in Settings → Packages.
+  `WorkspaceFlow.togglePackage` does nothing for Edit, so its plan has no
+  `--add`/`--rm`. Edit shows the packages as labels and "Packages for this
+  workspace →" (`AppModel.openPackages(workspace:)`, which opens Packages
+  with its Workspace dropdown set, `PackagesPageState.requested`), then
+  the declared variables, other settings and logins. New keeps its package
+  picker: a workspace has to start from some list (`defaults.workspace`
+  and the harnesses turned on). Onboarding and Add machine make the first
+  workspace through `MachinePlan` (`workspaces new … --yes`) and never use
+  this section.
 - **Every flow is a `WorkspaceFlow` (Core) and runs through
   `MachineStepRunner` in the background**, with `MachineRunLayout`,
   `DMLogView` and `SetupFailurePanel` (Retry, Report a bug), like the wizard.
@@ -1127,15 +1156,15 @@ once may fail there.
   <w> --add/--rm/--set/--unset … --yes` then the same sync, never `--machine`
   (there it moves the workspace). "Apply it now" off skips the sync.
 - The name uses the wizard's rule (`WorkspaceName`); the machine picker lists
-  non-self machines only. Package cards are workspace packages for Linux,
-  grouped by `category`, the account package `workspace` locked on.
+  non-self machines only. New's package cards are workspace packages for
+  Linux, grouped by `category`, the account package `workspace` locked on.
 - **CLI 0.7.29 reports what the page used to guess** (`WorkspaceJSON`, read
   from `version`; an older CLI keeps the fallbacks). `config show` gives
   `defaults.workspace`, which is the preselection and the DEFAULT badge
   (fallback: the setup's own `dev`, `zsh`, `mise`, and the form says it
   cannot read yours), and the top-level login answers. `packages list` gives
   each package's `variables`: Edit shows one typed field per declared
-  variable of the packages kept (boolean as Default/On/Off, list and map as
+  variable of the workspace's packages (boolean as Default/On/Off, list and map as
   YAML text, a number checked before Continue), empty meaning the default;
   anything else stays in the free-text "Other settings". `workspaces list`
   gives each workspace's own `credentials`: Edit lists the logins its
@@ -1163,11 +1192,13 @@ once may fail there.
   workspace list.
 - Demo mode reads `DemoData.workspacesSnapshot` and refuses every run ("Demo
   mode never changes a workspace."). `DEVMACHINE_DEMO_WALK=workspaces`
-  captures `130`–`144`: list, new, a taken name, review, running, failed,
-  done, edit, edit review, forget, a refused forget, destroy, Settings →
-  Workspaces, a new workspace with no harness on, and Settings → Harnesses
-  (every harness with a package has a switch). It turns on Claude, Codex
-  and Pi, and Edit shows glab's login, which cannot be shared.
+  captures `130`–`144`, all inside Settings: the list by machine (umbrella
+  switched off), new, a taken name, review, running, failed, done, edit,
+  edit review, forget, a refused forget, destroy, the list again after an
+  edit was left (`142-workspaces-reopened`), a new workspace with no
+  harness on, and Settings → Harnesses (every harness with a package has a
+  switch). It turns on Claude, Codex and Pi, and Edit shows glab's login,
+  which cannot be shared.
 
 ## VPS writes
 Features that write to the VPS or public DNS run only on an explicit user action
