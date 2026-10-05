@@ -35,6 +35,9 @@ enum HomeLayout {
         let usageColumns: Int
         let cardsWidth: CGFloat
         let clockSize: CGFloat
+        /// The clock sits in the middle of all of Home, not of the column
+        /// beside the cards, when it still clears the cards by the gap there.
+        var clockCentredInHome = false
         /// The machine cards open the page, top left, with usage under them.
         var cardsEdge: HorizontalEdge { .leading }
     }
@@ -58,7 +61,12 @@ enum HomeLayout {
         if clockWidth < m.pt(minClockWidth) {
             return Plan(stacked: true, usageColumns: oneColumn, cardsWidth: cards, clockSize: clockSize(for: inner))
         }
-        return Plan(stacked: false, usageColumns: columns, cardsWidth: cards, clockSize: clockSize(for: clockWidth))
+        let size = clockSize(for: clockWidth)
+        let centred = HomeClockPlacement.centresInHome(
+            homeWidth: width, cardsMaxX: m.pt(padding) + cards,
+            clockWidth: m.pt(size) * clockWidthPerPoint, gap: m.pt(gap))
+        return Plan(
+            stacked: false, usageColumns: columns, cardsWidth: cards, clockSize: size, clockCentredInHome: centred)
     }
 
     private static func clockSize(for width: CGFloat) -> CGFloat {
@@ -174,8 +182,21 @@ struct HomeView: View {
             }
             .scrollIndicators(.hidden)
             .frame(width: plan.cardsWidth)
-            clock(size: plan.clockSize)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if plan.clockCentredInHome {
+                Spacer(minLength: 0)
+            } else {
+                clock(size: plan.clockSize)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .overlay {
+            // Across the whole row, so its middle is Home's; the row has the
+            // column's height, so the clock stays at the same height.
+            if plan.clockCentredInHome {
+                clock(size: plan.clockSize)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+            }
         }
     }
 

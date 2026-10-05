@@ -7,7 +7,8 @@ import DevmachineCore
 /// demo configuration (read through the same stores as outside the walk),
 /// over a five-machine fleet, with no machine (the ground alone), then the
 /// large map over both, and Settings → Appearance's Background picker on
-/// the large map, a photo theme and the gradients.
+/// the large map, a photo theme and the gradients; last, Home with the
+/// sidebar collapsed, where the clock centres in the whole window.
 /// `DEVMACHINE_DEMO_WINDOW` checks other window sizes. Nothing runs.
 @MainActor
 enum DemoMapWallpaper {
@@ -24,6 +25,8 @@ enum DemoMapWallpaper {
               settleNanoseconds: 2_500_000_000),
         .init(id: "map-wallpaper-appearance-gradient", fileName: "187-appearance-gradient.png",
               settleNanoseconds: 1_200_000_000),
+        .init(id: "map-wallpaper-sidebar-collapsed", fileName: "188-home-sidebar-collapsed.png",
+              settleNanoseconds: 1_500_000_000),
     ]
 
     static func choice(for id: String) -> WallpaperChoice {
@@ -42,6 +45,7 @@ enum DemoMapWallpaper {
         value.wallpaper = choice(for: id)
         settings.settings = value
         model.settings = value
+        model.sidebarCollapsed = id == "map-wallpaper-sidebar-collapsed"
 
         if id.hasPrefix("map-wallpaper-appearance") {
             DemoSnapshots.setupInitialSection = .appearance
