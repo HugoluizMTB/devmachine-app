@@ -137,3 +137,81 @@ final class NetworkMapGeometryScaleLimitTests: XCTestCase {
         XCTAssertEqual(NetworkMapGeometry(map: map, width: 4000, maximumScale: 1.5).scale, 1.5)
     }
 }
+
+final class NetworkMapBackdropAreaTests: XCTestCase {
+    private var fleet: NetworkMap {
+        NetworkMap.build(NetworkMapInput(machines: [
+            .init(name: "laptop", location: "local", hosts: [], isSelf: true, isLocalVM: false, hasCaddy: false,
+                  workspaces: []),
+            .init(name: "main", location: "hostinger", hosts: ["100.64.0.10"], isSelf: false, isLocalVM: false,
+                  hasCaddy: true, workspaces: ["acme"]),
+            .init(name: "homebox", location: "home", hosts: ["100.64.0.11"], isSelf: false, isLocalVM: false,
+                  hasCaddy: false, workspaces: []),
+        ], sites: [.init(host: "app.example.com", servingMachine: "main", workspace: "acme")]))
+    }
+
+    func testTheMapIsCentredInsideTheAreaAndTheGroundStillCoversTheContainer() {
+        let size = CGSize(width: 1200, height: 800)
+        let area = CGRect(x: 600, y: 420, width: 560, height: 300)
+        let backdrop = NetworkMapBackdrop(map: fleet, size: size, area: area, minimumMargin: 16)
+        XCTAssertTrue(area.insetBy(dx: 15.5, dy: 15.5).contains(backdrop.mapFrame), "\(backdrop.mapFrame)")
+        XCTAssertEqual(backdrop.mapFrame.midX, area.midX, accuracy: 1)
+        XCTAssertEqual(backdrop.mapFrame.midY, area.midY, accuracy: 1)
+        XCTAssertEqual(backdrop.origin.x + backdrop.ground.minX * backdrop.zoom, 0, accuracy: 0.01)
+        XCTAssertEqual(backdrop.origin.y + backdrop.ground.minY * backdrop.zoom, 0, accuracy: 0.01)
+        XCTAssertEqual(backdrop.ground.width * backdrop.zoom, size.width, accuracy: 0.01)
+        XCTAssertEqual(backdrop.ground.height * backdrop.zoom, size.height, accuracy: 0.01)
+    }
+
+    func testMarginsFollowTheAreaNotTheContainer() {
+        let area = CGRect(x: 600, y: 420, width: 560, height: 300)
+        let backdrop = NetworkMapBackdrop(map: fleet, size: CGSize(width: 1200, height: 800), area: area)
+        XCTAssertEqual(backdrop.margins.width, max(NetworkMapBackdrop.minimumMargin, 560 * 0.12), accuracy: 0.01)
+    }
+
+    func testWithoutHostLabelsTheSiteLanesSitCloserAndTheMapIsShorter() {
+        let page = NetworkMapGeometry(map: fleet, width: 600)
+        let background = NetworkMapGeometry(map: fleet, width: 600, siteRow: NetworkMapBackdrop.siteRow)
+        XCTAssertLessThan(background.height, page.height)
+        XCTAssertEqual(page.height - background.height, NetworkMapGeometry.siteRow - NetworkMapBackdrop.siteRow,
+                       accuracy: 0.01, "one site, one lane closer")
+    }
+
+    func testAMapShrunkPastLegibleIsLeftOut() {
+        let roomy = NetworkMapBackdrop(map: fleet, size: CGSize(width: 1400, height: 900))
+        XCTAssertTrue(roomy.showsMap)
+        let cramped = NetworkMapBackdrop(
+            map: fleet, size: CGSize(width: 1400, height: 900), area: CGRect(x: 0, y: 0, width: 160, height: 60),
+            minimumMargin: 4)
+        XCTAssertFalse(cramped.showsMap)
+        let empty = NetworkMapBackdrop(
+            map: NetworkMap.build(NetworkMapInput(machines: [], sites: [])), size: CGSize(width: 1400, height: 900))
+        XCTAssertFalse(empty.showsMap)
+    }
+}
+
+final class HomeMapAreaTests: XCTestCase {
+    private let size = CGSize(width: 1040, height: 760)
+
+    func testSideBySideTheAreaIsRightOfTheCardsBelowTheClockAndAboveThePill() {
+        let area = HomeMapArea.rect(
+            size: size, padding: 24, gap: 24, pillMinY: 700,
+            layout: .sideBySide(cardsMaxX: 444, clockMaxY: 460))
+        XCTAssertEqual(area, CGRect(x: 468, y: 484, width: 1040 - 24 - 468, height: 676 - 484))
+    }
+
+    func testStackedTheAreaIsUnderTheContentAcrossTheWidth() {
+        let area = HomeMapArea.rect(
+            size: CGSize(width: 700, height: 1000), padding: 24, gap: 24, pillMinY: 940,
+            layout: .stacked(contentMaxY: 600))
+        XCTAssertEqual(area, CGRect(x: 24, y: 624, width: 652, height: 916 - 624))
+    }
+
+    func testNoAreaWhenTheContentLeavesNoRoom() {
+        XCTAssertNil(HomeMapArea.rect(
+            size: CGSize(width: 700, height: 800), padding: 24, gap: 24, pillMinY: 740,
+            layout: .stacked(contentMaxY: 1400)))
+        XCTAssertNil(HomeMapArea.rect(
+            size: size, padding: 24, gap: 24, pillMinY: 700, layout: .sideBySide(cardsMaxX: 444, clockMaxY: 640)))
+    }
+}

@@ -119,7 +119,7 @@ public struct NetworkMapGeometry: Sendable {
     static let zoneHeadroom = 24.0
     static let laneGap = 16.0
     static let edge = 18.0
-    static let siteRow = 17.0
+    public static let siteRow = 17.0
     static let bottomEdge = 30.0
 
     public let map: NetworkMap
@@ -132,9 +132,15 @@ public struct NetworkMapGeometry: Sendable {
     let internetY: Double
     let lanes: [NetworkMap.LinkKind: Double]
     let siteLaneTop: Double
+    /// Between two site lanes: room for a host's label, or less when none is drawn.
+    let siteRow: Double
 
-    public init(map: NetworkMap, width: Double, maximumScale: Double = NetworkMapGeometry.maximumScale) {
+    public init(
+        map: NetworkMap, width: Double, maximumScale: Double = NetworkMapGeometry.maximumScale,
+        siteRow: Double = NetworkMapGeometry.siteRow
+    ) {
         self.map = map
+        self.siteRow = siteRow
         let columns = map.nodes.map(\.column)
         let minColumn = columns.min() ?? 0
         let span = (columns.max() ?? 0) - minColumn
@@ -159,7 +165,7 @@ public struct NetworkMapGeometry: Sendable {
             internetY = y
         }
         siteLaneTop = y
-        y += Double(map.sites.count + (map.hiddenSites > 0 ? 1 : 0)) * Self.siteRow + Self.laneGap
+        y += Double(map.sites.count + (map.hiddenSites > 0 ? 1 : 0)) * siteRow + Self.laneGap
         let kinds = Set(map.links.map(\.kind))
         for kind in [NetworkMap.LinkKind.ssh, .tailnet] where kinds.contains(kind) {
             lanes[kind] = y
@@ -227,7 +233,7 @@ public struct NetworkMapGeometry: Sendable {
     /// The lane a site in `row` would take: the one under the last site
     /// shown carries the count of the hidden ones.
     public func siteLane(row: Int) -> Double {
-        siteLaneTop + Double(row) * Self.siteRow
+        siteLaneTop + Double(row) * siteRow
     }
 
     public func lane(of link: NetworkMap.Link) -> Double {
