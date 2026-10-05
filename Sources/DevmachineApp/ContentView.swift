@@ -106,6 +106,15 @@ struct ContentView: View {
         .sheet(isPresented: $updates.showsDialog) {
             UpdateDialog().environmentObject(updates)
         }
+        .sheet(isPresented: Binding(
+            get: { model.hostKeyMachine != nil },
+            set: { if !$0 { model.closeHostKey() } }
+        )) {
+            if let machine = model.hostKeyMachine {
+                HostKeySheet(store: HostKeyStore.shared, machine: machine)
+                    .environmentObject(model)
+            }
+        }
         .sheet(isPresented: $model.showShortcuts) {
             ShortcutsSheet().environmentObject(model)
         }
@@ -317,7 +326,6 @@ private struct PageHost: View {
         // while the website's screenshot walk owns the window.
         case .subdomains: SubdomainsView(initialTab: DemoSnapshots.subdomainsInitialTab)
         case .stack(let refs): StackGridView(refs: refs).ignoresSafeArea(edges: .top)
-        case .hostKey(let machine): HostKeyPage(store: HostKeyStore.shared, machine: machine)
         case .addMachine: AddMachinePage()
         case .workspaces: WorkspacesPage()
         }

@@ -764,13 +764,18 @@ Rules:
   sessions opens the review. The 5s selection poll skips the alias; the 60s
   sweep still tries it. Only ssh's abort line ("Host key verification
   failed") counts: the CHANGED banner alone can precede a real login.
-- **Review → `AppPage.hostKey(machine)`.** `HostKeyStore` runs `devmachine
+- **Review → `AppModel.showHostKey(machine)`, a sheet (`HostKeySheet`)** over
+  whatever screen asked for it (sidebar card, a refused session's click,
+  Settings → Machines' Host key, ⌘K), never a page: the screen under it stays
+  as it was, and Close (Esc) or Done goes back to it. It cannot close while
+  the trust is writing. `HostKeyStore` runs `devmachine
   machines trust <m> --check --format json` (CLI 0.7.24+; an older CLI
   refuses a changed key without JSON and gets the update advice) on every
   visit, never from a remembered answer: a Lima VM writes a new key on every
-  restart. The page
+  restart. The sheet
   shows both fingerprints and the CLI's `verify` command for the machine's
-  own console, never over SSH.
+  own console, never over SSH. Demo walk: `DEVMACHINE_DEMO_WALK=host-key`
+  (`DemoHostKey`, `150`–`153`).
 - **The trust button stays off until the pasted console output holds the
   exact presented fingerprint** (`HostKeyTrust.confirms`), and the write
   passes `--expect <fingerprint>`, so the CLI refuses if a second scan meets

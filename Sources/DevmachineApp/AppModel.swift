@@ -421,6 +421,9 @@ final class AppModel: ObservableObject {
     @Published var pendingNewWorkspace = false
     /// The Settings pane to open on, read once by the Settings page.
     @Published var requestedSettingsSection: SettingsSection?
+    /// The machine whose host key review is open, as a sheet over whatever
+    /// screen asked for it.
+    @Published var hostKeyMachine: String?
     var selectionAnchor: SessionRef? = nil
 
     @Published var sidebarCollapsed: Bool = (UserDefaults.standard.object(forKey: "sidebarCollapsed") as? Bool) ?? true {
@@ -1022,7 +1025,7 @@ final class AppModel: ObservableObject {
         if sessionProblems[ref.alias]?.isHostKeyRejected == true,
            let workspace = visibleWorkspaces.first(where: { $0.alias == ref.alias }),
            let machine = MachineReadinessStore.shared.machine(forWorkspace: workspace.name) {
-            showPage(.hostKey(machine))
+            showHostKey(machine)
             return
         }
         // re-clicking the open session (no multi-select) goes back home
@@ -1123,6 +1126,15 @@ final class AppModel: ObservableObject {
     func requestAddSubdomain() {
         activePage = .subdomains
         pendingAddSubdomain = true
+    }
+
+    /// Opens the host key review over the current screen, which stays as it is.
+    func showHostKey(_ machine: String) {
+        hostKeyMachine = machine
+    }
+
+    func closeHostKey() {
+        hostKeyMachine = nil
     }
 
     /// The terminal a command such as "Send file" acts on: the selected

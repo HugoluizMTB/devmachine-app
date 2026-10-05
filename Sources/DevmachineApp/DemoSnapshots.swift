@@ -77,6 +77,8 @@ enum DemoSnapshots {
              "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
              "cli-update-toast-manual":
             return .panel
+        case _ where DemoHostKey.handles(screenID):
+            return .panel
         default:
             return .window
         }
@@ -362,6 +364,7 @@ enum DemoSnapshots {
         case "setup-flow": return setupFlowScreens
         case "dns-setup": return dnsSetupScreens
         case "packages": return packagesScreens
+        case "host-key": return DemoHostKey.screens
         #if DEBUG
         case "machines": return DemoAddMachine.screens
         case "workspaces": return DemoWorkspaces.screens
@@ -463,6 +466,8 @@ enum DemoSnapshots {
                 view = standaloneView(mergedWorktreesSheet, fittingSize: NSSize(width: 420, height: 360))
             case "worktree-foreign":
                 view = standaloneView(foreignWorktreeSheet, fittingSize: NSSize(width: 460, height: 560))
+            case _ where DemoHostKey.handles(screen.id):
+                view = await hostKeySheetView(screen.id, model: environment.model)
             case "file-viewer":
                 view = await fileViewerView(model: environment.model)
             case "file-transfer-tree":
@@ -839,6 +844,23 @@ enum DemoSnapshots {
     /// width but ignores its *height* fit: a scrollable, unbounded-height
     /// list reports a `fittingSize` far taller than the panel's own fixed
     /// `.frame(height:)`.
+    /// The sheet checks again when it appears; the capture waits for that
+    /// check and measures the sheet afterwards.
+    private static func hostKeySheetView(_ id: String, model: AppModel) async -> NSView {
+        let hosting = standaloneView(DemoHostKey.sheet(id, model: model), fittingSize: NSSize(width: 520, height: 400))
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        // A multi-line field settles its height one pass after the first fit.
+        for _ in 0..<2 {
+            let size = hosting.fittingSize
+            hosting.setFrameSize(size)
+            hosting.window?.setContentSize(size)
+            hosting.layoutSubtreeIfNeeded()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        hosting.window?.displayIfNeeded()
+        return hosting
+    }
+
     private static func standaloneView<V: View>(
         _ view: V, fittingSize: NSSize, autosize: Bool = true, fixedHeight: CGFloat? = nil
     ) -> NSView {
