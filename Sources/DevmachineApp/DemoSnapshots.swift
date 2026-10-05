@@ -371,6 +371,7 @@ enum DemoSnapshots {
         #if DEBUG
         case "machines": return DemoAddMachine.screens
         case "machines-map": return DemoMachinesMap.screens
+        case "map-wallpaper": return DemoMapWallpaper.screens
         case "workspaces": return DemoWorkspaces.screens
         #endif
         default: return screens
@@ -543,6 +544,11 @@ enum DemoSnapshots {
         }
         if DemoMachinesMap.handles(screen.id) {
             await DemoMachinesMap.prepare(screen.id, model: model, caddy: environment.caddyStore)
+            return
+        }
+        if DemoMapWallpaper.handles(screen.id) {
+            await DemoMapWallpaper.prepare(
+                screen.id, model: model, settings: environment.settingsStore, caddy: environment.caddyStore)
             return
         }
         if DemoWorkspaces.handles(screen.id) {

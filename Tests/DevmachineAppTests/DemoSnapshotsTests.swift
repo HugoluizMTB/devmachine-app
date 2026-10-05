@@ -195,6 +195,12 @@ final class DemoSnapshotsTests: XCTestCase {
         ])
     }
 
+    func testTheMapWallpaperWalkShowsHomeWithAndWithoutMachinesAndTheAppearanceChip() {
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "map-wallpaper"]).map(\.id), [
+            "map-wallpaper-home", "map-wallpaper-fleet", "map-wallpaper-empty", "map-wallpaper-appearance",
+        ])
+    }
+
     func testTheHostKeyWalkIsItsOwnSetOfPanelsPickedByTheEnvironment() {
         let screens = DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "host-key"])
         XCTAssertEqual(screens.map(\.id), ["hostkey-review", "hostkey-matching", "hostkey-older-cli", "hostkey-failed"])
