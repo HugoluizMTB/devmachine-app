@@ -1092,20 +1092,37 @@ once may fail there.
     side by side, under everything when Home is stacked, always above the
     stats pill. HomeView measures the clock, the stacked content and the pill
     in its `home` coordinate space and the plan gives the cards column.
-    `NetworkMapBackdrop` centres the map in that area inside 12% margins
-    (16 pt at least there), at most scale 2, shrunk whole to fit; no area, or
-    a map that would draw below scale 0.5, leaves the grid alone.
+    The map is centred on the clock's middle, not the free column's
+    (`NetworkMapBackdrop.compact`): the area is narrowed the same on both
+    sides of the clock's x (`HomeMapArea.centred`), so it still keeps clear of
+    the cards; only when that leaves the map below scale 0.5 does it centre
+    in the free column. The clock centres in all of Home when it can, and a
+    map centred in the column then sat off to its right. Inside its area
+    `NetworkMapBackdrop` keeps 12% margins (16 pt at least there), at most
+    scale 2, shrunk whole to fit; no area, or a map that would draw below
+    scale 0.5, leaves the grid alone.
   - **Large** sits behind everything, cards and clock drawn over it
     (`HomeMapArea.large`, `NetworkMapPlacement.filling`,
     `NetworkMapBackdrop.Fit.large`): a rect centred in all of Home, 70% of its
     width, with the same room top and bottom so it clears the pill by the gap
-    and stays centred; the map fills it with no margins of its own, up to
-    scale 5, and shrinks whole to fit its height.
+    and stays centred. It is spread around the clock's measured frame (time,
+    date and Mac name) so that band stays empty
+    (`NetworkMapGeometry.spread`, `keepClear`): the internet tile at the top,
+    the machines in a row at the bottom, placed on the two sides of the band
+    with a wider pitch, and the lanes above the band (or between it and the
+    machines, with the internet tile moved beside the band). The search goes
+    from scale 3.5 down and takes the first layout that keeps machines off
+    the band and no line through it; only when none fits may a thin vertical
+    cross it; with no room at all it falls back to the map centred in the
+    rect. Owner feedback: the clock sat on the map's middle, digits over the
+    internet tile and the server. The Machines page never spreads (its
+    snapshots are byte-identical to before).
 - **Settings → Appearance opens on a Background picker** (`WallpaperKind`,
   Core): four `DMPictureChoice` cards, Photo, Gradient, Network map — large,
   Network map — compact, the chosen one ringed and checked. The map cards draw
-  a miniature Home (`HomeSketch`: Home's size scaled down, so the map lands
-  where Home puts it and is not dropped as too small). Picking Photo or
+  a miniature Home (`HomeSketch`: a 760-point-tall Home scaled down, so the
+  map lands where Home puts it, spread around the sketch's clock, and is not
+  dropped as too small). Picking Photo or
   Gradient comes back to the last photo or gradient picked (else the bundled
   photo, `midnight`), then shows that kind's own picks under the cards: the
   theme chips and photos, or the gradients. Every picture there is 150 pt tall
@@ -1123,10 +1140,11 @@ once may fail there.
   ambient backdrop is the ground without the grid. The Appearance cards draw
   the same view inside their miniature Home.
 - `DEVMACHINE_DEMO_WALK=map-wallpaper` (`DemoMapWallpaper`) captures
-  `180`–`188`: Home with the compact map over the demo configuration, over
+  `180`–`190`: Home with the compact map over the demo configuration, over
   the five-machine fleet, with no machine; Appearance on the large map; Home
   with the large map over both; Appearance on a photo theme and on the
-  gradients; and Home with the sidebar collapsed. Run it with
+  gradients; and Home with the sidebar collapsed, with the compact map and
+  with the large one over both configurations. Run it with
   `DEVMACHINE_DEMO_WINDOW=1280x800` and `1728x1080` to check laptop sizes.
 - **Per machine**: Check (`doctor --machine`, `machine doctor` for this
   Mac), Addresses (`resolve`), Credentials (`credentials list`) open inline
