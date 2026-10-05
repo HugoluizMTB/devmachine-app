@@ -18,6 +18,7 @@ struct ContentView: View {
     @StateObject private var quickPublish = QuickPublishState()
     @ObservedObject private var previews = PreviewStore.shared
     @ObservedObject private var split = DocumentSplitState.shared
+    @State private var sidebarButtonFrame: CGRect?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -32,9 +33,16 @@ struct ContentView: View {
             } else {
                 mainRow
                     .onAppear { stats.start() }
-                if model.sidebarCollapsed { collapsedSidebarButton }
+                    .environment(\.collapsedSidebarButtonFrame, model.sidebarCollapsed ? sidebarButtonFrame : nil)
+                if model.sidebarCollapsed {
+                    collapsedSidebarButton
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.windowSpace)) } action: {
+                            sidebarButtonFrame = $0
+                        }
+                }
             }
         }
+        .coordinateSpace(.named(Self.windowSpace))
         .background(Color.dmSidebarBg)
         .overlay {
             if model.showFileSearch, let target = model.commandTarget(for: model.selection) {
@@ -295,6 +303,8 @@ struct ContentView: View {
                 .frame(width: m.pt(model.contextWidth))
         }
     }
+
+    static let windowSpace = "window"
 
     private var collapsedSidebarButton: some View {
         Button {

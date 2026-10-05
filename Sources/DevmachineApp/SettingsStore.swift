@@ -42,7 +42,18 @@ private struct HarnessSettingsFacadeKey: EnvironmentKey {
     static let defaultValue = HarnessSettingsFacade()
 }
 
+private struct CollapsedSidebarButtonFrameKey: EnvironmentKey {
+    static let defaultValue: CGRect? = nil
+}
+
 extension EnvironmentValues {
+    /// The button that reopens the collapsed sidebar, in `ContentView.windowSpace`;
+    /// nil while the sidebar is shown. Home keeps its cards out from under it.
+    var collapsedSidebarButtonFrame: CGRect? {
+        get { self[CollapsedSidebarButtonFrameKey.self] }
+        set { self[CollapsedSidebarButtonFrameKey.self] = newValue }
+    }
+
     var harnessSettingsFacade: HarnessSettingsFacade {
         get { self[HarnessSettingsFacadeKey.self] }
         set { self[HarnessSettingsFacadeKey.self] = newValue }

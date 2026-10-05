@@ -77,6 +77,8 @@ enum HomeLayout {
 /// Where Home's parts were laid out, for the network map wallpaper's free area.
 private struct HomeFrames: Equatable {
     var size: CGSize = .zero
+    /// Home's own frame in the window, to place the sidebar button in Home's coordinates.
+    var inWindow: CGRect = .zero
     var clock: CGRect?
     var pill: CGRect?
     var stackedContent: CGRect?
@@ -88,6 +90,7 @@ struct HomeView: View {
     @EnvironmentObject var usage: HarnessUsageStore
     @EnvironmentObject var stats: StatsStore
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
+    @Environment(\.collapsedSidebarButtonFrame) private var sidebarButton
     @ObservedObject private var readiness = MachineReadinessStore.shared
     @State private var frames = HomeFrames()
 
@@ -124,6 +127,9 @@ struct HomeView: View {
             .padding(m.pt(HomeLayout.padding))
             .onAppear { frames.size = proxy.size }
             .onChange(of: proxy.size) { _, size in frames.size = size }
+            .onGeometryChange(for: CGRect.self) { _ in proxy.frame(in: .named(ContentView.windowSpace)) } action: {
+                frames.inWindow = $0
+            }
         }
         .coordinateSpace(.named(Self.space))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -138,6 +144,15 @@ struct HomeView: View {
     }
 
     private static let space = "home"
+
+    /// Pushes the cards (and, stacked, everything) down so the floating
+    /// button that reopens the sidebar covers none of them.
+    private var sidebarButtonInset: CGFloat {
+        let button = sidebarButton?.offsetBy(dx: -frames.inWindow.minX, dy: -frames.inWindow.minY)
+        let padding = m.pt(HomeLayout.padding)
+        return FloatingButtonClearance.topInset(
+            button: button, contentMinX: padding, contentMinY: padding, gap: m.space.md)
+    }
 
     /// The large map is centred in all of Home and clears the stats pill;
     /// the compact one keeps to Home's free area.
@@ -178,6 +193,7 @@ struct HomeView: View {
                     machinesSection
                     usageGrid(columns: plan.usageColumns)
                 }
+                .padding(.top, sidebarButtonInset)
                 .frame(width: plan.cardsWidth, alignment: .leading)
             }
             .scrollIndicators(.hidden)
@@ -209,6 +225,7 @@ struct HomeView: View {
                     .padding(.vertical, m.space.lg)
                 usageGrid(columns: plan.usageColumns)
             }
+            .padding(.top, sidebarButtonInset)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
                 frames.stackedContent = $0
             }
