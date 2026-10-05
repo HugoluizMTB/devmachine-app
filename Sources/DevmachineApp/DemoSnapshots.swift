@@ -73,7 +73,9 @@ enum DemoSnapshots {
         case "pull-requests", "publish-port", "publish-port-via", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
              "worktree-remove", "worktrees-merged", "worktree-foreign",
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
-             "file-viewer", "packages-confirm":
+             "file-viewer", "packages-confirm",
+             "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
+             "cli-update-toast-manual":
             return .panel
         default:
             return .window
@@ -198,13 +200,19 @@ enum DemoSnapshots {
 
     /// The CLI update walk (`DEVMACHINE_DEMO_WALK=cli-update`): the Updates
     /// pane's CLI block before, during and after `update --cli-only`, run on
-    /// a fake CLI script.
+    /// a fake CLI script, then the corner toast in the same states (`65` has
+    /// an app update too, so both cards stack).
     static let cliUpdateScreens: [Screen] = [
         Screen(id: "cli-update-available", fileName: "60-cli-update-available.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-running", fileName: "61-cli-update-running.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-updated", fileName: "62-cli-update-updated.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-failed", fileName: "63-cli-update-failed.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-old", fileName: "64-cli-update-old.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast", fileName: "65-cli-update-toast.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast-running", fileName: "66-cli-update-toast-running.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast-updated", fileName: "67-cli-update-toast-updated.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast-failed", fileName: "68-cli-update-toast-failed.png", settleNanoseconds: 200_000_000),
+        Screen(id: "cli-update-toast-manual", fileName: "69-cli-update-toast-manual.png", settleNanoseconds: 200_000_000),
     ]
 
     /// The setup flow walk (`DEVMACHINE_DEMO_WALK=setup-flow`): the first-run
@@ -467,6 +475,9 @@ enum DemoSnapshots {
             case "cli-update-available", "cli-update-running", "cli-update-updated", "cli-update-failed",
                  "cli-update-old":
                 view = await cliUpdateView(screen.id)
+            case "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
+                 "cli-update-toast-manual":
+                view = await cliUpdateToastView(screen.id, model: environment.model)
             case "packages-confirm":
                 view = DemoPackages.confirmView()
             case "ready-old-cli", "ready-outdated":
@@ -793,6 +804,19 @@ enum DemoSnapshots {
         default: state = .available
         }
         return standaloneView(await DemoCLIUpdate.pane(state), fittingSize: NSSize(width: 688, height: 700))
+    }
+
+    private static func cliUpdateToastView(_ id: String, model: AppModel) async -> NSView {
+        let state: DemoCLIUpdate.ToastState
+        switch id {
+        case "cli-update-toast-running": state = .running
+        case "cli-update-toast-updated": state = .updated
+        case "cli-update-toast-failed": state = .failed
+        case "cli-update-toast-manual": state = .manual
+        default: state = .withAppUpdate
+        }
+        return standaloneView(
+            await DemoCLIUpdate.toastStack(state, model: model), fittingSize: NSSize(width: 400, height: 520))
     }
     #endif
 

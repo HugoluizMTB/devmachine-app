@@ -66,6 +66,10 @@ struct ContentView: View {
                     UpdateBanner()
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+                if updates.showsCLIBanner {
+                    CLIUpdateBanner()
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
                 MachineJobStack()
                 ForEach(caddy.jobs) { job in
                     PublishJobCard(
@@ -84,6 +88,7 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.2), value: model.activeTasks)
             .animation(.easeInOut(duration: 0.2), value: caddy.jobs)
             .animation(.easeInOut(duration: 0.2), value: updates.showsBanner)
+            .animation(.easeInOut(duration: 0.2), value: updates.showsCLIBanner)
             .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.id))
             .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.phase))
         }

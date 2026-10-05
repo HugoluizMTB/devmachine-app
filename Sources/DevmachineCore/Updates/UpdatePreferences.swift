@@ -19,6 +19,11 @@ public final class UpdatePreferences: @unchecked Sendable {
         set { defaults.set(newValue, forKey: "updates.skippedVersion") }
     }
 
+    public var cliLaterVersion: String? {
+        get { defaults.string(forKey: "updates.cliLaterVersion") }
+        set { defaults.set(newValue, forKey: "updates.cliLaterVersion") }
+    }
+
     public func cache(for feed: URL) -> CachedRelease? {
         defaults.data(forKey: cacheKey(feed)).flatMap { try? JSONDecoder().decode(CachedRelease.self, from: $0) }
     }

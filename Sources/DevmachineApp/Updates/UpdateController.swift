@@ -112,6 +112,8 @@ final class UpdateController: ObservableObject {
     @Published private(set) var cliPhase: CLIUpdatePhase = .idle
     @Published private(set) var cliOutput: [String] = []
     @Published private var dismissedVersion: SemanticVersion?
+    @Published private var cliLaterVersion: String?
+    @Published private var cliUpdateClosed = false
     @Published var showsDialog = false
 
     private let dependencies: UpdateDependencies
@@ -124,6 +126,7 @@ final class UpdateController: ObservableObject {
     init(dependencies: UpdateDependencies) {
         self.dependencies = dependencies
         launchedAt = dependencies.now()
+        cliLaterVersion = dependencies.preferences.cliLaterVersion
     }
 
     var currentVersion: SemanticVersion? { dependencies.currentVersion }
@@ -224,12 +227,46 @@ final class UpdateController: ObservableObject {
         return CLISelfUpdate.supportsCLIOnly(notice.installed)
     }
 
+    var showsCLIBanner: Bool {
+        CLIUpdateToast.shows(stage: cliToastStage, latest: cliNotice?.latest, laterVersion: cliLaterVersion)
+    }
+
+    private var cliToastStage: CLIUpdateToast.Stage {
+        switch cliPhase {
+        case .idle: return .idle
+        case .running: return .running
+        case .updated: return .updated(closed: cliUpdateClosed)
+        case .failed: return .failed
+        case .needsManualUpdate: return .manual
+        }
+    }
+
+    /// Hides the toast for this CLI version, across relaunches, until a newer
+    /// one comes out. Settings → About still offers it.
+    func cliLater() {
+        guard let latest = cliNotice?.latest else { return }
+        dependencies.preferences.cliLaterVersion = latest.description
+        cliLaterVersion = latest.description
+    }
+
+    /// The toast's way to the terminal command for a CLI the app cannot update.
+    /// Nothing runs: the command is only shown.
+    func showCLICommand() {
+        guard cliNotice != nil, cliPhase != .running else { return }
+        cliPhase = .needsManualUpdate
+    }
+
+    func closeCLIUpdated() {
+        cliUpdateClosed = true
+    }
+
     func updateCLI() async {
         guard let notice = cliNotice, cliPhase != .running else { return }
         guard canUpdateCLIInApp else {
             cliPhase = .needsManualUpdate
             return
         }
+        cliUpdateClosed = false
         cliOutput = []
         cliPhase = .running
         let sink = ProcessOutputSink { [weak self] lines in

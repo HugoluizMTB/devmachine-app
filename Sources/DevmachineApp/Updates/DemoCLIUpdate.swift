@@ -2,14 +2,40 @@
 import DevmachineCore
 import SwiftUI
 
-/// Debug builds only. The Updates pane's CLI block in each state, for the
-/// `DEVMACHINE_DEMO_WALK=cli-update` capture. The update runs a real process
+/// Debug builds only. The Updates pane's CLI block and the corner toast in
+/// each state, for the `DEVMACHINE_DEMO_WALK=cli-update` capture. The update runs a real process
 /// through `ProcessCLIUpdater`, but on a fake CLI script written to a temporary
 /// folder, never the installed devmachine.
 @MainActor
 enum DemoCLIUpdate {
     enum State {
         case available, running, updated, failed, oldCLI
+    }
+
+    enum ToastState {
+        case withAppUpdate, running, updated, failed, manual
+    }
+
+    static func toastStack(_ state: ToastState, model: AppModel) async -> some View {
+        let updates: UpdateController
+        switch state {
+        case .withAppUpdate: updates = await controller(.available, appUpdate: true)
+        case .running: updates = await controller(.running)
+        case .updated: updates = await controller(.updated)
+        case .failed: updates = await controller(.failed)
+        case .manual:
+            updates = await controller(.oldCLI)
+            updates.showCLICommand()
+        }
+        return VStack(alignment: .trailing, spacing: 8) {
+            if updates.showsBanner { UpdateBanner() }
+            if updates.showsCLIBanner { CLIUpdateBanner() }
+        }
+        .environmentObject(updates)
+        .environmentObject(model)
+        .padding(18)
+        .background(Color.dmContentBg)
+        .environment(\.colorScheme, .dark)
     }
 
     static func pane(_ state: State) async -> some View {
@@ -24,7 +50,7 @@ enum DemoCLIUpdate {
 
     private static let suite = "app.devmachine.mac.demo.cli-update"
 
-    private static func controller(_ state: State) async -> UpdateController {
+    private static func controller(_ state: State, appUpdate: Bool = false) async -> UpdateController {
         UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("devmachine-demo-cli-\(UUID().uuidString)")
@@ -39,7 +65,7 @@ enum DemoCLIUpdate {
         let appFeed = ReleaseFeed(url: ReleaseFeed.appReleases, fetcher: DemoCLIRelease(), userAgent: "")
         let path = script.path
         let updates = UpdateController(dependencies: UpdateDependencies(
-            currentVersion: SemanticVersion("0.1.7"),
+            currentVersion: SemanticVersion(appUpdate ? "0.1.6" : "0.1.7"),
             appFeed: appFeed,
             cliFeed: cliFeed,
             preferences: UpdatePreferences(defaults: UserDefaults(suiteName: suite) ?? .standard),
