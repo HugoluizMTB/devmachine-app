@@ -555,6 +555,28 @@ struct DevmachineCLI: Sendable {
         try requireSuccess(result)
     }
 
+    /// `resolve --machine`: the addresses its `hosts` turn into from here.
+    func addresses(machine: String) throws -> MachineAddresses {
+        let result = try runner.runCapturing(
+            executable: executable, args: MachineAddresses.arguments(machine: machine), environment: environment())
+        try requireSuccess(result)
+        guard let report = MachineAddresses.parse(result.stdout) else {
+            throw DevmachineCLIError.commandFailed("The CLI gave no addresses for \(machine).")
+        }
+        return report
+    }
+
+    /// `credentials list --machine`: logs in to see what the machine has.
+    func credentials(machine: String) throws -> MachineCredentials {
+        let result = try runner.runCapturing(
+            executable: executable, args: MachineCredentials.arguments(machine: machine), environment: environment())
+        try requireSuccess(result)
+        guard let report = MachineCredentials.parse(result.stdout) else {
+            throw DevmachineCLIError.commandFailed("The CLI gave no credentials for \(machine).")
+        }
+        return report
+    }
+
     /// Every configured machine that is not this Mac — the set Stats and the
     /// package gate check, instead of only the first one.
     func nonSelfMachines() throws -> [CLIConfigMachine] {

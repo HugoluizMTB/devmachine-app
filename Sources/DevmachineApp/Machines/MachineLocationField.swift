@@ -26,7 +26,7 @@ struct MachineLocationField: View {
     private var choices: [MachineLocation.Suggestion] {
         var seen = Set<String>()
         let all = [MachineLocation.Suggestion(title: defaultLocation.capitalized, value: defaultLocation)]
-            + known.map { MachineLocation.Suggestion(title: $0, value: $0) }
+            + known.map { MachineLocation.Suggestion(title: $0.capitalized, value: $0) }
             + MachineLocation.suggestions
         return all.filter { seen.insert($0.value).inserted }
     }

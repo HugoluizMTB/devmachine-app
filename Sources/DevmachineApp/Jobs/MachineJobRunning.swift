@@ -17,6 +17,8 @@ struct ProcessJobRunner: MachineJobRunning {
         let instance = try cli()
         return try await StreamingProcess.run(
             executable: instance.executable, arguments: arguments,
-            environment: CLISelfUpdate.environment(base: instance.environment()), output: output)
+            environment: LimaInstall.environment(
+                base: CLISelfUpdate.environment(base: instance.environment()), home: NSHomeDirectory()),
+            output: output)
     }
 }

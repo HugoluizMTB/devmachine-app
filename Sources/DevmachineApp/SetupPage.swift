@@ -186,6 +186,8 @@ struct SetupPage: View {
     private var isFirstRun: Bool { !settingsStore.isConfigured }
 
     @State private var section: SettingsSection
+    /// Set by "Packages on this machine" in Settings → Machines.
+    @State private var packagesPage: PackagesPageState?
 
     /// `initialSection` only ever differs from `.general` for the
     /// website's demo screenshots, which need to open straight onto Health.
@@ -214,9 +216,16 @@ struct SetupPage: View {
                 cliAvailabilityRead += 1
             }
             .onChange(of: model.requestedSettingsSection) { _, _ in openRequestedSection() }
+            .onChange(of: section) { _, next in if next != .packages { packagesPage = nil } }
     }
 
     private func openRequestedSection() {
+        if let machine = model.requestedPackagesMachine {
+            var page = PackagesPageState()
+            page.machine = machine
+            packagesPage = page
+            model.requestedPackagesMachine = nil
+        }
         guard let requested = model.requestedSettingsSection else { return }
         section = requested
         model.requestedSettingsSection = nil
@@ -296,7 +305,7 @@ struct SetupPage: View {
         if section == .packages {
             VStack(alignment: .leading, spacing: m.pt(18)) {
                 sectionTitle
-                PackagesSettingsView(page: DemoSnapshots.packagesInitialPage)
+                PackagesSettingsView(page: packagesPage ?? DemoSnapshots.packagesInitialPage)
             }
             .padding(m.space.xxl)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

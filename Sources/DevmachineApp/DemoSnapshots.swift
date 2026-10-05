@@ -34,6 +34,9 @@ enum DemoSnapshots {
     /// for one screen. Same rule as `subdomainsInitialTab`.
     static var packagesInitialPage = PackagesPageState()
     static var settingsNoMachine = false
+    /// Read by Settings → Machines so a machine opens selected for one
+    /// screen. Same rule as `subdomainsInitialTab`.
+    static var machinesSelected: String?
 
     private static let acmeAlias = "acme-devmachine"
     /// A big-display window, the proportions a Mac screenshot has on the
@@ -73,7 +76,7 @@ enum DemoSnapshots {
         case "pull-requests", "publish-port", "publish-port-via", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
              "worktree-remove", "worktrees-merged", "worktree-foreign",
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
-             "file-viewer", "packages-confirm",
+             "file-viewer", "packages-confirm", "map-location-editor",
              "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
              "cli-update-toast-manual":
             return .panel
@@ -367,6 +370,7 @@ enum DemoSnapshots {
         case "host-key": return DemoHostKey.screens
         #if DEBUG
         case "machines": return DemoAddMachine.screens
+        case "machines-map": return DemoMachinesMap.screens
         case "workspaces": return DemoWorkspaces.screens
         #endif
         default: return screens
@@ -485,6 +489,8 @@ enum DemoSnapshots {
                 view = await cliUpdateToastView(screen.id, model: environment.model)
             case "packages-confirm":
                 view = DemoPackages.confirmView()
+            case "map-location-editor":
+                view = DemoMachinesMap.locationEditorView()
             case "ready-old-cli", "ready-outdated":
                 view = readinessCardView(screen.id, model: environment.model)
             case "install-cli", "install-cli-running", "install-cli-failed":
@@ -504,6 +510,7 @@ enum DemoSnapshots {
         #if DEBUG
         DemoDNSWalk.reset()
         DemoPackages.reset()
+        DemoMachinesMap.reset()
         #endif
         environment.model.goHome()
     }
@@ -532,6 +539,10 @@ enum DemoSnapshots {
         #if DEBUG
         if DemoAddMachine.handles(screen.id) {
             await DemoAddMachine.prepare(screen.id, model: model, stats: environment.statsStore)
+            return
+        }
+        if DemoMachinesMap.handles(screen.id) {
+            await DemoMachinesMap.prepare(screen.id, model: model, caddy: environment.caddyStore)
             return
         }
         if DemoWorkspaces.handles(screen.id) {

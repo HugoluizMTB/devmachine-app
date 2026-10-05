@@ -421,6 +421,8 @@ final class AppModel: ObservableObject {
     @Published var pendingNewWorkspace = false
     /// The Settings pane to open on, read once by the Settings page.
     @Published var requestedSettingsSection: SettingsSection?
+    /// Settings → Packages should open with its Machine dropdown on this one.
+    @Published var requestedPackagesMachine: String?
     /// The machine whose host key review is open, as a sheet over whatever
     /// screen asked for it.
     @Published var hostKeyMachine: String?
@@ -1097,6 +1099,12 @@ final class AppModel: ObservableObject {
     func openSettings(_ section: SettingsSection) {
         requestedSettingsSection = section
         activePage = .setup
+    }
+
+    /// "Packages on this machine": Settings → Packages, filtered to it.
+    func openPackages(machine: String) {
+        requestedPackagesMachine = machine
+        openSettings(.packages)
     }
 
     /// The wizard opened from Settings → Machines goes back there, so Settings

@@ -192,3 +192,32 @@ extension DemoData {
 
         """
 }
+
+extension DemoData {
+    /// Invented answers for Settings → Machines' panels: nothing is asked.
+    static let machineDetailsService = MachineDetailsService(
+        doctor: { machine, _ in
+            .report(DoctorReport(checks: [
+                DoctorCheck(name: "ssh", status: .pass, detail: "root@\(machine) answers with the trusted key"),
+                DoctorCheck(name: "ansible", status: .pass, detail: "ansible-core 2.17 on the machine"),
+                DoctorCheck(name: "packages", status: .warn, detail: "1 package waits for a sync: run `devmachine sync`"),
+            ], ok: true))
+        },
+        addresses: { machine in
+            MachineAddresses.parse("""
+                {"machine":"\(machine)","addresses":[
+                 {"address":"100.64.0.10","source":"tailscale:\(machine)","package":"tailscale"},
+                 {"address":"203.0.113.10","source":"203.0.113.10","package":""}],
+                 "dropped":[{"source":"\(machine).example.com","reason":"no such host"}]}
+                """)!
+        },
+        credentials: { _ in
+            MachineCredentials.parse("""
+                {"credentials":[
+                 {"key":"claude","name":"claude","kind":"file","package":"claude-code","status":"present"},
+                 {"key":"acme/gh","name":"gh","kind":"manual","package":"dev","workspace":"acme","status":"missing",
+                  "fix":"devmachine login gh --workspace acme"}]}
+                """)!
+        },
+        editLocation: { _, _ in })
+}
