@@ -134,6 +134,14 @@ public struct NetworkMapGeometry: Sendable {
     let siteLaneTop: Double
     /// Between two site lanes: room for a host's label, or less when none is drawn.
     let siteRow: Double
+    /// Set only by `spread`: the distance between two columns, and where the
+    /// internet tile goes across. Nil keeps the page's own layout.
+    let columnStep: Double?
+    let internetX: Double?
+    /// Set only by `spread`: columns past `skipAfter` move right by `skipBy`,
+    /// over the clock's band, so no machine stands under it.
+    let skipAfter: Double?
+    let skipBy: Double
 
     public init(
         map: NetworkMap, width: Double, maximumScale: Double = NetworkMapGeometry.maximumScale,
@@ -178,6 +186,32 @@ public struct NetworkMapGeometry: Sendable {
         // tier draws a little lower; the zones' outlines end flush, so the
         // bottom gets the difference back to look as open as the top.
         height = y + Self.bottom(Self.tileHalf) * scale + Self.labelHeight + Self.zoneFooter + Self.bottomEdge
+        columnStep = nil
+        internetX = nil
+        skipAfter = nil
+        skipBy = 0
+    }
+
+    private init(
+        map: NetworkMap, scale: Double, size: CGSize, left: Double, minColumn: Double, columnStep: Double,
+        skipAfter: Double?, skipBy: Double, internetX: Double?, internetY: Double, lanes: [NetworkMap.LinkKind: Double], siteLaneTop: Double,
+        siteRow: Double, machineRowY: Double
+    ) {
+        self.map = map
+        self.scale = scale
+        contentWidth = size.width
+        height = size.height
+        self.left = left
+        self.minColumn = minColumn
+        self.columnStep = columnStep
+        self.skipAfter = skipAfter
+        self.skipBy = skipBy
+        self.internetX = internetX
+        self.internetY = internetY
+        self.lanes = lanes
+        self.siteLaneTop = siteLaneTop
+        self.siteRow = siteRow
+        self.machineRowY = machineRowY
     }
 
     static func halfWidth(_ half: Double) -> Double { 2 * half * IsoCamera.cosine }
@@ -196,8 +230,19 @@ public struct NetworkMapGeometry: Sendable {
     /// A node's centre on the ground.
     public func center(of id: String) -> CGPoint {
         guard let node = map.node(id) else { return .zero }
+        if let columnStep {
+            let x = node.kind == .internet ? internetX ?? spreadX(node.column, step: columnStep)
+                : spreadX(node.column, step: columnStep)
+            return CGPoint(x: x, y: node.kind == .internet ? internetY : machineRowY)
+        }
         let x = left + (node.column - minColumn) * Self.pitch * IsoCamera.cosine * 2 * scale
         return CGPoint(x: x, y: node.kind == .internet ? internetY : machineRowY)
+    }
+
+    private func spreadX(_ column: Double, step: Double) -> Double {
+        let x = left + (column - minColumn) * step
+        guard let skipAfter, x > skipAfter + 1e-9 else { return x }
+        return x + skipBy
     }
 
     public func tileHalf(of id: String) -> Double {
@@ -260,5 +305,142 @@ public struct NetworkMapGeometry: Sendable {
         let link = NetworkMap.Link(kind: .site, from: site.door, to: site.target, row: site.row)
         let points = route(of: link)
         return site.door == site.target ? points[points.count - 1] : points[points.count - 2]
+    }
+}
+
+extension NetworkMapGeometry {
+    /// Between the clock's band and anything drawn near it.
+    public static let clearGap = 14.0
+    /// Room beside a machine's tile for its name and the line under it.
+    static let labelHalfWidth = 64.0
+    /// Room above a lane for its tag ("https", "ssh").
+    static let tagHeight = 12.0
+
+    /// The map spread over `size` around a band it must leave empty
+    /// (`keepClear`, the clock and its date): the internet high, the
+    /// machines low and across the whole width, the lanes above the band
+    /// when no machine stands under it, else between the band and the
+    /// machines with the internet moved beside the band, so no line runs
+    /// through it. Nil when the band leaves no room; the caller then draws
+    /// the ordinary layout. Same inputs, same layout.
+    public static func spread(
+        map: NetworkMap, size: CGSize, keepClear: CGRect, maximumScale: Double, siteRow: Double
+    ) -> NetworkMapGeometry? {
+        guard !map.nodes.isEmpty, size.width > 0, size.height > 0 else { return nil }
+        let machineColumns = map.machineNodes.map(\.column)
+        let minColumn = machineColumns.min() ?? 0
+        let span = (machineColumns.max() ?? 0) - minColumn
+        let hasInternet = map.nodes.contains { $0.kind == .internet }
+        let kinds = Set(map.links.map(\.kind))
+        let otherLanes = [NetworkMap.LinkKind.ssh, .tailnet].filter { kinds.contains($0) }
+        let laneBlock = (hasInternet ? laneGap : 0)
+            + Double(map.sites.count + (map.hiddenSites > 0 ? 1 : 0)) * siteRow + laneGap
+            + Double(otherLanes.count) * laneGap
+        let above = keepClear.minY - clearGap
+        let below = keepClear.maxY + clearGap
+
+        func layout(scale: Double, allowCrossing: Bool, requireSides: Bool) -> NetworkMapGeometry? {
+            let side = max(edge + halfWidth(tileHalf) * scale, labelHalfWidth)
+            let usable = size.width - 2 * side
+            guard usable >= 0 else { return nil }
+            let minimumStep = 2 * halfWidth(tileHalf) * scale + laneGap
+            // The machines take the two sides of the band, so their lines
+            // never rise through it; too little room there, and they take
+            // the whole width.
+            let leftRun = max(0, keepClear.minX - clearGap - side)
+            let rightStart = max(side, keepClear.maxX + clearGap)
+            let rightRun = max(0, size.width - side - rightStart)
+            let sidesStep = span > 0 ? (leftRun + rightRun) / span : 0
+            let skips = span > 0 && sidesStep >= minimumStep
+            if requireSides, span > 0, !skips { return nil }
+            let step = skips ? sidesStep : (span > 0 ? usable / span : 0)
+            if span > 0, step < minimumStep { return nil }
+            let left = span > 0 ? side : size.width / 2
+            let skipAfter = skips ? side + leftRun : nil
+            let skipBy = skips ? rightStart - (side + leftRun) : 0
+            let columnX = { (column: Double) -> Double in
+                let x = left + (column - minColumn) * step
+                guard let skipAfter, x > skipAfter + 1e-9 else { return x }
+                return x + skipBy
+            }
+
+            let internetY = edge + top(internetHalf) * scale
+            let internetBottom = hasInternet ? internetY + bottom(internetHalf) * scale : edge
+            let machineRowY = size.height - (bottom(tileHalf) * scale + labelHeight + zoneFooter + bottomEdge)
+            let zoneTop = machineRowY - top(tileHalf) * scale - zoneHeadroom * 0.6
+            guard zoneTop >= below, internetBottom <= above || !hasInternet else { return nil }
+
+            let crossesBand = map.machineNodes.contains { node in
+                let x = columnX(node.column)
+                return x >= keepClear.minX - clearGap && x <= keepClear.maxX + clearGap
+            }
+            let lanesAbove = internetBottom + laneGap + laneBlock <= above
+            let lanesBelow = below + tagHeight + laneBlock <= zoneTop
+            let laneStart: Double
+            var internetX: Double?
+            let movedInternet = hasInternet
+                ? besideBand(columnX(map.node(NetworkMap.internetID)?.column ?? minColumn), scale: scale) : nil
+            if lanesAbove, !crossesBand {
+                laneStart = internetBottom + laneGap
+            } else if lanesBelow, allowCrossing || movedInternet?.isClear != false {
+                laneStart = below + tagHeight
+                internetX = movedInternet?.x
+            } else if lanesAbove, allowCrossing {
+                laneStart = internetBottom + laneGap
+            } else {
+                return nil
+            }
+
+            var y = laneStart
+            var lanes: [NetworkMap.LinkKind: Double] = [:]
+            if hasInternet {
+                lanes[.https] = y
+                y += laneGap
+            }
+            let siteLaneTop = y
+            y += Double(map.sites.count + (map.hiddenSites > 0 ? 1 : 0)) * siteRow + laneGap
+            for kind in otherLanes {
+                lanes[kind] = y
+                y += laneGap
+            }
+            return NetworkMapGeometry(
+                map: map, scale: scale, size: size, left: left, minColumn: minColumn, columnStep: step,
+                skipAfter: skipAfter, skipBy: skipBy, internetX: internetX, internetY: internetY, lanes: lanes, siteLaneTop: siteLaneTop,
+                siteRow: siteRow, machineRowY: machineRowY)
+        }
+
+        /// The internet's x moved off the band, to the nearer side that has
+        /// room for its tile and its "internet" label; where neither side has
+        /// room, its line has to cross.
+        func besideBand(_ x: Double, scale: Double) -> (x: Double, isClear: Bool) {
+            let reach = halfWidth(internetHalf) * scale
+            let label = labelHalfWidth
+            guard x + reach + label > keepClear.minX - clearGap, x - reach < keepClear.maxX + clearGap else {
+                return (x, true)
+            }
+            let leftX = keepClear.minX - clearGap - reach - label
+            let rightX = keepClear.maxX + clearGap + reach
+            let leftFits = leftX - reach >= edge
+            let rightFits = rightX + reach + label <= size.width - edge
+            switch (leftFits, rightFits) {
+            case (true, true): return (x - leftX <= rightX - x ? leftX : rightX, true)
+            case (true, false): return (leftX, true)
+            case (false, true): return (rightX, true)
+            case (false, false): return (x, false)
+            }
+        }
+
+        // A smaller map with the machines beside the band and nothing through
+        // it beats a bigger one with a machine under it or a line across it.
+        for (requireSides, allowCrossing) in [(true, false), (false, false), (false, true)] {
+            var scale = maximumScale
+            while scale >= minimumScale {
+                if let geometry = layout(scale: scale, allowCrossing: allowCrossing, requireSides: requireSides) {
+                    return geometry
+                }
+                scale -= 0.05
+            }
+        }
+        return nil
     }
 }

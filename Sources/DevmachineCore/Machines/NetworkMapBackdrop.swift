@@ -64,6 +64,9 @@ public struct NetworkMapBackdrop: Sendable {
         /// only limits are the area itself and a scale where a tile still
         /// looks like one.
         public static let large = Fit(marginFraction: 0, minimumMargin: 0, maximumScale: 5)
+        /// The largest scale of the large map spread around the clock: its
+        /// tiles sit apart, so they need not be as big to read as a map.
+        public static let spreadMaximumScale = 3.5
     }
 
     public let map: NetworkMap
@@ -77,6 +80,8 @@ public struct NetworkMapBackdrop: Sendable {
     /// The whole container in the map's points, for the ground grid.
     public let ground: CGRect
     private let availableWidth: Double
+    /// Laid out around a band it leaves empty (`NetworkMapGeometry.spread`).
+    public let isSpread: Bool
 
     /// `minimumMargin` is smaller for a thumbnail, where 48 points would leave no room.
     public init(
@@ -88,9 +93,24 @@ public struct NetworkMapBackdrop: Sendable {
             fit: Fit(marginFraction: Self.marginFraction, minimumMargin: minimumMargin, maximumScale: Self.maximumScale))
     }
 
-    public init(map: NetworkMap, size: CGSize, area: CGRect? = nil, fit: Fit) {
+    /// `keepClear`, in the container's points, spreads the map around that
+    /// band when there is room (the large wallpaper around the clock).
+    public init(map: NetworkMap, size: CGSize, area: CGRect? = nil, fit: Fit, keepClear: CGRect? = nil) {
         self.map = map
         let area = area ?? CGRect(origin: .zero, size: size)
+        if let keepClear, let spread = NetworkMapGeometry.spread(
+            map: map, size: area.size, keepClear: keepClear.offsetBy(dx: -area.minX, dy: -area.minY),
+            maximumScale: min(fit.maximumScale, Fit.spreadMaximumScale), siteRow: Self.siteRow) {
+            margins = .zero
+            geometry = spread
+            zoom = 1
+            origin = area.origin
+            ground = CGRect(x: -area.minX, y: -area.minY, width: size.width, height: size.height)
+            availableWidth = area.width
+            isSpread = true
+            return
+        }
+        isSpread = false
         let margins = CGSize(
             width: max(fit.minimumMargin, area.width * fit.marginFraction),
             height: max(fit.minimumMargin, area.height * fit.marginFraction))
@@ -118,6 +138,20 @@ public struct NetworkMapBackdrop: Sendable {
         CGRect(
             x: origin.x + (availableWidth - geometry.contentWidth) / 2 * zoom, y: origin.y,
             width: geometry.contentWidth * zoom, height: geometry.height * zoom)
+    }
+
+    /// The compact map centred on `centreX` (the clock's middle) inside the
+    /// free area, the area narrowed the same on both sides so it keeps
+    /// clear of the cards; where that leaves the map too small to read, or
+    /// there is no clock, centred in the free area instead.
+    public static func compact(
+        map: NetworkMap, size: CGSize, area: CGRect, centreX: Double?, minimumMargin: Double
+    ) -> NetworkMapBackdrop {
+        if let centreX, let around = HomeMapArea.centred(area, onX: centreX) {
+            let backdrop = NetworkMapBackdrop(map: map, size: size, area: around, minimumMargin: minimumMargin)
+            if backdrop.showsMap { return backdrop }
+        }
+        return NetworkMapBackdrop(map: map, size: size, area: area, minimumMargin: minimumMargin)
     }
 
     /// Whether the machines are drawn at all, or only the ground.
@@ -156,6 +190,14 @@ public enum HomeMapArea {
 }
 
 extension HomeMapArea {
+    /// `area` narrowed the same on both sides so its middle is `x`; nil when
+    /// `x` is not inside it.
+    public static func centred(_ area: CGRect, onX x: Double) -> CGRect? {
+        guard x > area.minX, x < area.maxX else { return nil }
+        let half = min(x - area.minX, area.maxX - x)
+        return CGRect(x: x - half, y: area.minY, width: half * 2, height: area.height)
+    }
+
     /// The large map's share of Home's width.
     public static let largeWidthFraction = 0.7
 
