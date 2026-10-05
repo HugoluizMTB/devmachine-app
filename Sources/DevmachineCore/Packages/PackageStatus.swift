@@ -37,7 +37,6 @@ public enum PackageStatusCheck {
                 queue.append(need)
             }
         }
-        for (name, _) in parents { included.insert(name) }
 
         var out: [String: PackageStatus] = [:]
         for entry in entries {
