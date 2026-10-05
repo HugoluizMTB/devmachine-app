@@ -120,6 +120,7 @@ public struct NetworkMapGeometry: Sendable {
     static let laneGap = 16.0
     static let edge = 18.0
     static let siteRow = 17.0
+    static let bottomEdge = 30.0
 
     public let map: NetworkMap
     public let scale: Double
@@ -167,7 +168,10 @@ public struct NetworkMapGeometry: Sendable {
         self.lanes = lanes
         y += Self.zoneHeadroom + Self.top(Self.tileHalf) * scale
         machineRowY = y
-        height = y + Self.bottom(Self.tileHalf) * scale + Self.labelHeight + Self.zoneFooter + Self.edge
+        // The internet tile's top sits `edge` under the map's top, but its
+        // tier draws a little lower; the zones' outlines end flush, so the
+        // bottom gets the difference back to look as open as the top.
+        height = y + Self.bottom(Self.tileHalf) * scale + Self.labelHeight + Self.zoneFooter + Self.bottomEdge
     }
 
     static func halfWidth(_ half: Double) -> Double { 2 * half * IsoCamera.cosine }
