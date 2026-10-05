@@ -376,14 +376,17 @@ final class PreviewPage: NSObject, ObservableObject, WKNavigationDelegate, WKUID
 
     // MARK: Dialogs
 
-    nonisolated func webView(
+    // The async form, for the same reason as `confirm` below: the handler
+    // form stopped matching WKUIDelegate on a CI runner's WebKit.
+    func webView(
         _ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
-        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable () -> Void
-    ) {
+        initiatedByFrame frame: WKFrameInfo
+    ) async {
         let origin = Self.origin(of: frame)
-        MainActor.assumeIsolated {
-            prompts.alert(title: PreviewDialogText.says(origin), message: message, in: dialogWindow,
-                          done: completionHandler)
+        await withCheckedContinuation { continuation in
+            prompts.alert(title: PreviewDialogText.says(origin), message: message, in: dialogWindow) {
+                continuation.resume()
+            }
         }
     }
 
