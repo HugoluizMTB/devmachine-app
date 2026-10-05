@@ -63,7 +63,7 @@ enum CommandRegistry {
                 isAvailable: { _ in operatorSession != nil }),
             Entry(command: PaletteCommand(
                 id: "go.workspaces", title: "Workspaces…", subtitle: "", category: .goTo,
-                systemImage: "square.grid.2x2", keywords: workspaceKeywords, action: .showPage(.workspaces))),
+                systemImage: "square.grid.2x2", keywords: workspaceKeywords, action: .openSettings(.workspaces))),
             Entry(command: PaletteCommand(
                 id: "action.new-workspace", title: "New workspace…", subtitle: "", category: .action,
                 systemImage: "person.crop.square.badge.plus", keywords: workspaceKeywords + ["create", "add"],

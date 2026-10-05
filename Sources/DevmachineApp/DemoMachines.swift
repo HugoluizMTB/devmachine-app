@@ -83,14 +83,17 @@ extension DemoData {
     static let workspacesSnapshot = WorkspacesSnapshot(
         workspaces: [
             WorkspaceSummary(
-                name: "acme", machine: "main", user: "acme", packages: ["dev", "zsh", "mise", "claude-code"],
+                name: "acme", machine: "main", user: "acme",
+                packages: ["dev", "zsh", "mise", "claude-code", "pi", "glab"],
                 settings: ["zsh.theme": "robbyrussell"], credentials: ["claude": "own"]),
             WorkspaceSummary(name: "globex", machine: "main", user: "globex", packages: ["dev", "zsh", "mise", "opencode"]),
             WorkspaceSummary(name: "initech", machine: "main", user: "initech", packages: ["dev", "zsh", "claude-code"]),
             WorkspaceSummary(name: "umbrella", machine: "staging", user: "umbrella", packages: ["zsh"]),
         ],
         lock: PackagesLock(machines: [:], workspaces: [
-            "acme": ["workspace", "mise", "dev", "zsh", "claude-code"].map { PackagesLock.Entry(name: $0) },
+            "acme": ["workspace", "mise", "dev", "zsh", "claude-code", "pi", "glab"].map {
+                PackagesLock.Entry(name: $0)
+            },
             "globex": ["workspace", "mise", "dev", "zsh", "opencode"].map { PackagesLock.Entry(name: $0) },
             "initech": ["workspace", "mise", "dev", "zsh"].map { PackagesLock.Entry(name: $0) },
         ]),

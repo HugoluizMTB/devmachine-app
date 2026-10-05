@@ -417,12 +417,14 @@ final class AppModel: ObservableObject {
     @Published var pendingPublishWorkspace: String?
     /// Asks the Subdomains page to open its Add subdomain sheet once shown.
     @Published var pendingAddSubdomain = false
-    /// The Workspaces page should open its New workspace form.
+    /// Settings → Workspaces should open its New workspace form.
     @Published var pendingNewWorkspace = false
     /// The Settings pane to open on, read once by the Settings page.
     @Published var requestedSettingsSection: SettingsSection?
     /// Settings → Packages should open with its Machine dropdown on this one.
     @Published var requestedPackagesMachine: String?
+    /// Settings → Packages should open with its Workspace dropdown on this one.
+    @Published var requestedPackagesWorkspace: String?
     /// The machine whose host key review is open, as a sheet over whatever
     /// screen asked for it.
     @Published var hostKeyMachine: String?
@@ -1107,6 +1109,25 @@ final class AppModel: ObservableObject {
         openSettings(.packages)
     }
 
+    /// "Packages for this workspace": Settings → Packages, filtered to it.
+    func openPackages(workspace: String) {
+        requestedPackagesWorkspace = workspace
+        openSettings(.packages)
+    }
+
+    /// A switch in Settings → Workspaces takes effect at once, with no Save:
+    /// only the hidden list is written, so nothing else typed in Settings is.
+    func setHiddenWorkspaces(_ hidden: [String], in store: SettingsStore = .shared) {
+        guard var current = store.settings, current.hiddenWorkspaces != hidden else { return }
+        current.hiddenWorkspaces = hidden
+        store.settings = current
+        settings?.hiddenWorkspaces = hidden
+        // Before reloading: the panes of a workspace just turned off have to
+        // go now, and the reload must not bring their poll back.
+        applyHiddenWorkspaces()
+        loadWorkspaces()
+    }
+
     /// The wizard opened from Settings → Machines goes back there, so Settings
     /// and the wizard read as one place; from anywhere else it just closes.
     private var addMachineOpenedFromSettings = false
@@ -1124,11 +1145,11 @@ final class AppModel: ObservableObject {
         pendingPublishWorkspace = workspace
     }
 
-    /// The Workspaces page opens on its New workspace form
-    /// (`WorkspacesPage` takes the request).
+    /// Settings → Workspaces opens on its New workspace form
+    /// (`WorkspacesSettingsView` takes the request).
     func requestNewWorkspace() {
-        activePage = .workspaces
         pendingNewWorkspace = true
+        openSettings(.workspaces)
     }
 
     func requestAddSubdomain() {

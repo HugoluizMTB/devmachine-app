@@ -21,8 +21,9 @@ private struct SetupPageLocator: ExecutableLocating {
 }
 
 final class SetupPageTests: XCTestCase {
-    func testThePackagesSectionHasNoSaveFooter() {
+    func testThePackagesAndWorkspacesSectionsHaveNoSaveFooter() {
         XCTAssertFalse(SetupPage.showsFooter(for: .packages))
+        XCTAssertFalse(SetupPage.showsFooter(for: .workspaces), "its switches save at once, its flows have buttons")
         XCTAssertTrue(SetupPage.showsFooter(for: .general))
     }
 

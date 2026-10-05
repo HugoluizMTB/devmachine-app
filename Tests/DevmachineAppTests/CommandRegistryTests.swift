@@ -71,7 +71,7 @@ final class CommandRegistryTests: XCTestCase {
         let all = commands(context())
         let page = try XCTUnwrap(all.first { $0.id == "go.workspaces" })
         XCTAssertEqual(page.title, "Workspaces…")
-        XCTAssertEqual(page.action, .showPage(.workspaces))
+        XCTAssertEqual(page.action, .openSettings(.workspaces))
         let new = try XCTUnwrap(all.first { $0.id == "action.new-workspace" })
         XCTAssertEqual(new.title, "New workspace…")
         XCTAssertEqual(new.action, .newWorkspace)

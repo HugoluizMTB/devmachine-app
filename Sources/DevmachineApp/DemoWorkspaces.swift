@@ -2,8 +2,9 @@
 import DevmachineCore
 import Foundation
 
-/// Debug builds only. The Workspaces page for `DEVMACHINE_DEMO_WALK=workspaces`:
-/// the list, every flow's form and review, and a run in each state. The run
+/// Debug builds only. Settings → Workspaces for `DEVMACHINE_DEMO_WALK=workspaces`:
+/// the list by machine with one workspace off, every flow's form and review,
+/// a run in each state, and the list again after an edit was left. The run
 /// screens are seeded states: no CLI runs.
 @MainActor
 enum DemoWorkspaces {
@@ -21,7 +22,7 @@ enum DemoWorkspaces {
         .init(id: "workspaces-forget-refused", fileName: "140-workspaces-forget-refused.png",
               settleNanoseconds: 600_000_000),
         .init(id: "workspaces-destroy", fileName: "141-workspaces-destroy.png", settleNanoseconds: 400_000_000),
-        .init(id: "workspaces-settings", fileName: "142-workspaces-settings.png", settleNanoseconds: 500_000_000),
+        .init(id: "workspaces-reopened", fileName: "142-workspaces-reopened.png", settleNanoseconds: 600_000_000),
         .init(id: "workspaces-new-no-agents", fileName: "143-workspaces-new-no-agents.png",
               settleNanoseconds: 400_000_000),
         .init(id: "workspaces-harnesses", fileName: "144-workspaces-harnesses.png", settleNanoseconds: 500_000_000),
@@ -37,6 +38,9 @@ enum DemoWorkspaces {
         screens.contains { $0.id == id }
     }
 
+    /// The list shows umbrella switched off.
+    static let hiddenOnList = ["umbrella-devmachine"]
+
     static func prepare(_ id: String, model: AppModel) async {
         let store = WorkspacesStore.shared
         store.machines.seedDemo(DemoData.machinesSnapshot)
@@ -44,15 +48,21 @@ enum DemoWorkspaces {
         store.runner.reset()
         store.close()
         SettingsStore.shared.settings?.enabledHarnesses = id == "workspaces-new-no-agents" ? [] : harnessesOn
-        if id == "workspaces-settings" || id == "workspaces-harnesses" {
-            DemoSnapshots.setupInitialSection = id == "workspaces-settings" ? .workspaces : .harnesses
-            model.showPage(.setup)
-            return
-        }
-        model.showPage(.workspaces)
+        let hidden = id == "workspaces-list" || id == "workspaces-reopened" ? hiddenOnList : []
+        SettingsStore.shared.settings?.hiddenWorkspaces = hidden
+        model.settings?.hiddenWorkspaces = hidden
+        DemoSnapshots.setupInitialSection = id == "workspaces-harnesses" ? .harnesses : .workspaces
+        model.showPage(.setup)
+        if id == "workspaces-harnesses" { return }
         await store.load()
         try? await Task.sleep(nanoseconds: 150_000_000)
         switch id {
+        case "workspaces-reopened":
+            store.startEdit("acme")
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            model.openSettings(.harnesses)
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            model.openSettings(.workspaces)
         case "workspaces-new", "workspaces-new-no-agents":
             await startNew(store, name: "beta")
             if id == "workspaces-new" { store.flow?.togglePackage("claude-code") }
@@ -70,8 +80,6 @@ enum DemoWorkspaces {
             seedNewRun(store, id: id)
         case "workspaces-edit", "workspaces-edit-review":
             store.startEdit("acme")
-            store.flow?.togglePackage("pi")
-            store.flow?.togglePackage("glab")
             store.flow?.setSetting("zsh.plugins", "[git, docker]")
             store.flow?.setSetting("claude-code.auto_update", "false")
             store.flow?.setSharing("claude", nil)
