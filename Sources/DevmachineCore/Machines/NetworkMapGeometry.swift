@@ -112,13 +112,14 @@ public struct NetworkMapGeometry: Sendable {
     public static let tierHeight = 6.0
     /// Columns apart, in world units along the screen's width.
     static let pitch = 46.0
-    static let labelHeight = 36.0
+    static let labelHeight = 40.0
     /// Under the labels: the zone's name.
-    public static let zoneFooter = 16.0
+    public static let zoneFooter = 20.0
     /// Between the last lane and the tiles' tops: a zone's outline.
-    static let zoneHeadroom = 10.0
-    static let laneGap = 12.0
-    static let edge = 10.0
+    static let zoneHeadroom = 24.0
+    static let laneGap = 16.0
+    static let edge = 18.0
+    static let siteRow = 17.0
 
     public let map: NetworkMap
     public let scale: Double
@@ -157,11 +158,11 @@ public struct NetworkMapGeometry: Sendable {
             internetY = y
         }
         siteLaneTop = y
-        y += Double(map.sites.count + (map.hiddenSites > 0 ? 1 : 0)) * (Self.laneGap + 2)
+        y += Double(map.sites.count + (map.hiddenSites > 0 ? 1 : 0)) * Self.siteRow + Self.laneGap
         let kinds = Set(map.links.map(\.kind))
         for kind in [NetworkMap.LinkKind.ssh, .tailnet] where kinds.contains(kind) {
             lanes[kind] = y
-            y += Self.laneGap * 0.75
+            y += Self.laneGap
         }
         self.lanes = lanes
         y += Self.zoneHeadroom + Self.top(Self.tileHalf) * scale
@@ -222,7 +223,7 @@ public struct NetworkMapGeometry: Sendable {
     /// The lane a site in `row` would take: the one under the last site
     /// shown carries the count of the hidden ones.
     public func siteLane(row: Int) -> Double {
-        siteLaneTop + Double(row) * (Self.laneGap + 2)
+        siteLaneTop + Double(row) * Self.siteRow
     }
 
     public func lane(of link: NetworkMap.Link) -> Double {
