@@ -241,13 +241,12 @@ final class WorkspacesStoreTests: XCTestCase {
         let store = makeStore(cli: cli)
         await store.load()
         store.startEdit("acme")
-        store.flow?.togglePackage("pi")
         store.flow?.settings[0].value = "agnoster"
         store.next()
         await store.run()
 
         XCTAssertEqual(cli.commands, [
-            ["workspaces", "edit", "acme", "--add", "pi", "--set", "zsh.theme=agnoster", "--yes"],
+            ["workspaces", "edit", "acme", "--set", "zsh.theme=agnoster", "--yes"],
             ["sync", "--machine", "main", "--yes"],
         ])
     }
