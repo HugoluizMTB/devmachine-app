@@ -8,6 +8,7 @@ import DevmachineCore
 /// asked again only past their TTL and never for DNS. Before any data, and
 /// with no machine at all, only the ground shows.
 struct NetworkMapWallpaper: View {
+    var placement = NetworkMapPlacement.whole
     var minimumMargin = NetworkMapBackdrop.minimumMargin
     @ObservedObject private var machines = MachinesStore.shared
     @EnvironmentObject private var caddy: CaddyStore
@@ -16,7 +17,7 @@ struct NetworkMapWallpaper: View {
         NetworkMapView(
             decorative: NetworkMap.build(
                 NetworkMapSource.input(machines: machines.machines, sites: caddy.sitesByMachine)),
-            minimumMargin: minimumMargin)
+            placement: placement, minimumMargin: minimumMargin)
             .background(NetworkMapGround())
             .task {
                 if machines.snapshot == nil { await machines.load() }

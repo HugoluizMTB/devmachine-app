@@ -66,6 +66,14 @@ enum HomeLayout {
     }
 }
 
+/// Where Home's parts were laid out, for the network map wallpaper's free area.
+private struct HomeFrames: Equatable {
+    var size: CGSize = .zero
+    var clock: CGRect?
+    var pill: CGRect?
+    var stackedContent: CGRect?
+}
+
 struct HomeView: View {
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
@@ -73,6 +81,7 @@ struct HomeView: View {
     @EnvironmentObject var stats: StatsStore
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @ObservedObject private var readiness = MachineReadinessStore.shared
+    @State private var frames = HomeFrames()
 
     private var totalSessions: Int {
         model.sessionCount
@@ -99,12 +108,18 @@ struct HomeView: View {
                     Spacer()
                     compactStatCluster
                         .fixedSize()
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
+                            frames.pill = $0
+                        }
                 }
             }
             .padding(m.pt(HomeLayout.padding))
+            .onAppear { frames.size = proxy.size }
+            .onChange(of: proxy.size) { _, size in frames.size = size }
         }
+        .coordinateSpace(.named(Self.space))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WallpaperBackground())
+        .background(WallpaperBackground(mapPlacement: mapPlacement))
         .clipped()
         .onAppear {
             usage.beginObserving()
@@ -112,6 +127,26 @@ struct HomeView: View {
             stats.start()
         }
         .onDisappear { usage.endObserving() }
+    }
+
+    private static let space = "home"
+
+    /// Home's free area for the network map wallpaper, from the plan and
+    /// where the clock, the stacked content and the pill were laid out.
+    private var mapPlacement: NetworkMapPlacement {
+        guard let pill = frames.pill, frames.size.width > 0 else { return .none }
+        let plan = HomeLayout.plan(width: frames.size.width, harnessCount: usage.states.count, metrics: m)
+        let padding = m.pt(HomeLayout.padding), gap = m.pt(HomeLayout.gap)
+        let layout: HomeMapArea.Layout
+        if plan.stacked {
+            guard let content = frames.stackedContent else { return .none }
+            layout = .stacked(contentMaxY: content.maxY)
+        } else {
+            guard let clock = frames.clock else { return .none }
+            layout = .sideBySide(cardsMaxX: padding + plan.cardsWidth, clockMaxY: clock.maxY)
+        }
+        let area = HomeMapArea.rect(size: frames.size, padding: padding, gap: gap, pillMinY: pill.minY, layout: layout)
+        return area.map(NetworkMapPlacement.area) ?? .none
     }
 
     private func sideBySideLayout(_ plan: HomeLayout.Plan) -> some View {
@@ -139,6 +174,9 @@ struct HomeView: View {
                     .padding(.vertical, m.space.lg)
                 usageGrid(columns: plan.usageColumns)
             }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
+                frames.stackedContent = $0
+            }
         }
         .scrollIndicators(.hidden)
         .frame(maxHeight: .infinity)
@@ -159,6 +197,9 @@ struct HomeView: View {
                 Text(verbatim: Self.macName())
                     .font(.dm(13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.6))
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: {
+                frames.clock = $0
             }
         }
     }

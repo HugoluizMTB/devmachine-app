@@ -24,6 +24,8 @@ struct WallpaperBackground: View {
     var style: WallpaperStyle = .photo
     /// Overrides the saved choice, so Setup can preview its draft live.
     var choice: WallpaperChoice?
+    /// Where Home has room for the network map; the map wallpaper only.
+    var mapPlacement = NetworkMapPlacement.whole
 
     @EnvironmentObject private var wallpapers: WallpaperStore
 
@@ -51,6 +53,10 @@ struct WallpaperBackground: View {
     /// The black laid over the wallpaper, top and bottom, so Home's text
     /// reads on any photo. The map is already dark and quiet; it needs only
     /// the bottom darkened, under the stats pill.
+    /// Home's free area is already clear of the cards, the clock and the
+    /// pill by a gap; 48 more points each side would leave a smudge.
+    static let mapMinimumMargin = 16.0
+
     static func dimming(style: WallpaperStyle, choice: WallpaperChoice) -> [Double] {
         switch (style, choice) {
         case (.photo, .networkMap): return [0, 0.35]
@@ -63,7 +69,7 @@ struct WallpaperBackground: View {
     private var wallpaper: some View {
         if active == .networkMap {
             switch style {
-            case .photo: NetworkMapWallpaper()
+            case .photo: NetworkMapWallpaper(placement: mapPlacement, minimumMargin: Self.mapMinimumMargin)
             case .ambient: NetworkMapGround()
             }
         } else if let image = baked {

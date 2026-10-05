@@ -1071,10 +1071,17 @@ once may fail there.
   Network map, `WallpaperChoice.networkMap`, saved as `{"kind":"networkMap"}`;
   an older build reads it as the bundled photo): no hit testing, no
   selection or hover, ink at 45%, no site hosts (they ran under the clock's
-  digits) and no "+N more". `NetworkMapBackdrop` centres it in the whole
-  Home area inside 12% margins (48 pt at least), at most scale 2, and
-  shrinks it whole when the window is short; the grid covers everything.
-  The usage cards hide whatever falls under them, as with a photo.
+  digits) and no "+N more", and its site lanes sit closer
+  (`NetworkMapBackdrop.siteRow`). The grid covers all of Home; the map goes
+  only in Home's free area (`HomeMapArea`, Core): right of the cards
+  column and under the clock and date when they sit side by side, under
+  everything when Home is stacked, always above the stats pill. HomeView
+  measures the clock, the stacked content and the pill in its `home`
+  coordinate space and the plan gives the cards column. `NetworkMapBackdrop`
+  centres the map in that area inside 12% margins (16 pt at least there),
+  at most scale 2, shrunk whole to fit; no area, or a map that would draw
+  below scale 0.5, leaves the grid alone. The cards once hid half the map
+  and the clock sat on its middle: that is why it does not fill Home.
 - **The wallpaper reads no data of its own** (`NetworkMapWallpaper`): on
   appear it loads `MachinesStore` only if nobody has, and asks
   `CaddyStore.appearForMap` for the sites (cache first, read again only past

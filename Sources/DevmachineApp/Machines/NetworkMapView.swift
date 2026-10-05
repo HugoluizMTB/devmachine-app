@@ -13,6 +13,7 @@ struct NetworkMapView: View {
     var selected: String?
     var select: (String) -> Void = { _ in }
     var minimumMargin = NetworkMapBackdrop.minimumMargin
+    var placement = NetworkMapPlacement.whole
 
     init(map: NetworkMap, selected: String?, select: @escaping (String) -> Void) {
         self.map = map
@@ -21,9 +22,13 @@ struct NetworkMapView: View {
         self.select = select
     }
 
-    init(decorative map: NetworkMap, minimumMargin: Double = NetworkMapBackdrop.minimumMargin) {
+    init(
+        decorative map: NetworkMap, placement: NetworkMapPlacement = .whole,
+        minimumMargin: Double = NetworkMapBackdrop.minimumMargin
+    ) {
         self.map = map
         presentation = .decorative
+        self.placement = placement
         self.minimumMargin = minimumMargin
     }
 
@@ -31,7 +36,8 @@ struct NetworkMapView: View {
         if presentation.isInteractive {
             InteractiveNetworkMap(map: map, selected: selected, select: select)
         } else {
-            DecorativeNetworkMap(map: map, presentation: presentation, minimumMargin: minimumMargin)
+            DecorativeNetworkMap(
+                map: map, presentation: presentation, placement: placement, minimumMargin: minimumMargin)
         }
     }
 }
@@ -73,6 +79,14 @@ private struct InteractiveNetworkMap: View {
     }
 }
 
+/// Where a decorative map goes in its container: centred in all of it, in
+/// one part of it (Home's free area), or nowhere, leaving the ground alone.
+enum NetworkMapPlacement: Equatable {
+    case whole
+    case area(CGRect)
+    case none
+}
+
 /// The map as a background: the ground always, the machines over it once
 /// there are any. Two canvases so the machines can fade in over a ground
 /// that is already there, and each is `Equatable` so a Home redraw (a stats
@@ -82,15 +96,18 @@ private struct DecorativeNetworkMap: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let map: NetworkMap
     let presentation: NetworkMapPresentation
+    let placement: NetworkMapPlacement
     let minimumMargin: Double
 
     var body: some View {
-        let shows = !map.nodes.isEmpty
+        let shows = !map.nodes.isEmpty && placement != .none
         ZStack {
-            DecorativeLayer(map: map, layer: .ground, fontScale: m.scale, minimumMargin: minimumMargin)
+            DecorativeLayer(
+                map: map, layer: .ground, placement: placement, fontScale: m.scale, minimumMargin: minimumMargin)
                 .equatable()
                 .opacity(presentation.groundOpacity)
-            DecorativeLayer(map: map, layer: .ink, fontScale: m.scale, minimumMargin: minimumMargin)
+            DecorativeLayer(
+                map: map, layer: .ink, placement: placement, fontScale: m.scale, minimumMargin: minimumMargin)
                 .equatable()
                 .opacity(shows ? presentation.inkOpacity : 0)
                 .animation(reduceMotion ? nil : .easeIn(duration: 0.9), value: shows)
@@ -103,12 +120,19 @@ private struct DecorativeNetworkMap: View {
 private struct DecorativeLayer: View, Equatable {
     let map: NetworkMap
     let layer: NetworkMapPainter.Layer
+    let placement: NetworkMapPlacement
     let fontScale: CGFloat
     let minimumMargin: Double
 
     var body: some View {
         Canvas { context, size in
-            let backdrop = NetworkMapBackdrop(map: map, size: size, minimumMargin: minimumMargin)
+            let area: CGRect?
+            switch placement {
+            case .whole, .none: area = nil
+            case let .area(rect): area = rect
+            }
+            let backdrop = NetworkMapBackdrop(map: map, size: size, area: area, minimumMargin: minimumMargin)
+            if layer == .ink, !backdrop.showsMap { return }
             context.translateBy(x: backdrop.origin.x, y: backdrop.origin.y)
             context.scaleBy(x: backdrop.zoom, y: backdrop.zoom)
             NetworkMapPainter(
