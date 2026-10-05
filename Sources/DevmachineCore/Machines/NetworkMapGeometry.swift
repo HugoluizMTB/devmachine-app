@@ -133,14 +133,14 @@ public struct NetworkMapGeometry: Sendable {
     let lanes: [NetworkMap.LinkKind: Double]
     let siteLaneTop: Double
 
-    public init(map: NetworkMap, width: Double) {
+    public init(map: NetworkMap, width: Double, maximumScale: Double = NetworkMapGeometry.maximumScale) {
         self.map = map
         let columns = map.nodes.map(\.column)
         let minColumn = columns.min() ?? 0
         let span = (columns.max() ?? 0) - minColumn
         let half = Self.halfWidth(Self.tileHalf)
         let unitsWide = span * Self.pitch * IsoCamera.cosine * 2 + 2 * (half + Self.edge)
-        let scale = min(Self.maximumScale, max(Self.minimumScale, width / unitsWide))
+        let scale = min(maximumScale, max(Self.minimumScale, width / unitsWide))
         self.scale = scale
         self.minColumn = minColumn
         contentWidth = unitsWide * scale
