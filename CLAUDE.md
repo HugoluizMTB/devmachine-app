@@ -1036,6 +1036,48 @@ once may fail there.
   DNS sync, Packages sync) each refuse before reaching a terminal or the CLI
   (`DemoRefusalTests`).
 
+## Machine location and the network map
+- **A machine's location is the CLI's** (`machines[].location`, CLI
+  0.7.30+, `MachineLocation` in Core): trimmed, lower-cased,
+  `[a-z0-9][a-z0-9 ._-]{0,39}`. A CLI that leaves the field out reads as
+  `local` for this Mac and a Lima machine (only host `127.0.0.1`), else
+  `external`; an empty value is `external`. The wizard always asks
+  (`MachineLocationField`: free text plus chips; default `external` for a
+  server, `local` for Lima) and passes `--location` to `machines add` /
+  `create-local --add` only on 0.7.30+; older, it says the location is kept
+  once the CLI is updated. "Edit location" runs `machines edit <m>
+  --location <v> --yes` on Save (config only); an older CLI gets "Update the
+  CLI" instead.
+- **Settings → Machines opens on a network map** (`NetworkMap`,
+  `NetworkMapGeometry` in Core; `NetworkMapView` draws it in a `Canvas`
+  after the website hero's hairline plates, creases and coins). One row of
+  tiles, zones by location (this Mac's first, then zones with a door, then
+  by name), columns fixed by sorting, so the same configuration always
+  draws the same map; the scale fits the width (0.9–3 pt per unit).
+  Links are only what the configuration proves: internet → every non-self,
+  non-Lima machine with caddy/essentials (`https`); each site from Caddy's
+  listing (`CaddyStore.sitesByMachine`) from its door to the machine whose
+  `workspaces` holds it (`expose --via` shows as a lane to another
+  machine); this Mac → every machine (`ssh`, drawn even without a self
+  machine, then not selectable); a dashed chain between machines with a
+  tailnet host (`100.64.0.0/10` or `tailscale:`). This Mac is never put on
+  the tailnet: nothing says it is. Lines rise straight up from a tile and
+  run along a lane above the row, so nothing crosses on the ground; at most
+  6 sites are drawn, the rest counted. A click on a tile selects its card.
+- **Per machine**: Check (`doctor --machine`, `machine doctor` for this
+  Mac), Addresses (`resolve`), Credentials (`credentials list`) open inline
+  and are read only when opened (two of them log in); Sync asks
+  `PackagesStore.syncPending` (disabled with nothing waiting), Full sync a
+  full `SyncRequest`; a Lima machine gets Start / Stop and Delete the VM
+  (`delete-local --yes` behind a confirm that it destroys the VM, apart
+  from Remove which only forgets). All runs are machine jobs; their PATH
+  has `~/.local/bin` first for an app-installed Lima. "Packages on this
+  machine" opens Settings → Packages through `AppModel.openPackages`.
+- `DEVMACHINE_DEMO_WALK=machines-map` (`DemoMachinesMap`) captures
+  `160`–`170`: the fleet, a selection, each panel, a Lima start in the
+  corner, one and eight machines, the location editor, and the wizard's
+  field on a current and an older CLI. Nothing runs.
+
 ## Machine jobs
 - **Every `devmachine` run against a machine is a machine job** (`MachineJobCenter`,
   `MachineJobToast` in the corner stack): Prepare, the DNS provider sync and the
