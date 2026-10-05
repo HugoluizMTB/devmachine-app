@@ -57,8 +57,56 @@ final class AppModel: ObservableObject {
         WorkspaceVisibility.visible(workspaces, hidden: settings?.hiddenWorkspaces ?? [])
     }
 
-    /// The sidebar list: the ssh workspaces, then this Mac, always last.
-    var sidebarWorkspaces: [Workspace] { visibleWorkspaces + [.local] }
+    /// The sidebar list in the order the person dragged it into. Without a
+    /// saved order: the ssh workspaces, then this Mac.
+    var sidebarWorkspaces: [Workspace] {
+        sidebarOrder.workspaces(visibleWorkspaces + [.local], id: \.alias)
+    }
+
+    /// Drag-and-drop order of workspaces and of the sessions inside each one.
+    /// A demo never saves it: its workspaces are made up.
+    @Published private(set) var sidebarOrder = SidebarOrder() {
+        didSet {
+            guard !DemoMode.isActive, let data = try? JSONEncoder().encode(sidebarOrder) else { return }
+            defaults.set(data, forKey: AppModel.sidebarOrderKey)
+        }
+    }
+
+    private static let sidebarOrderKey = "sidebarOrder"
+
+    /// The 5s polls call this with nothing to change most of the time, and
+    /// every write to a @Published re-renders the whole tree.
+    private func updateSidebarOrder(_ change: (inout SidebarOrder) -> Void) {
+        var next = sidebarOrder
+        change(&next)
+        if next != sidebarOrder { sidebarOrder = next }
+    }
+
+    /// A remote workspace's sessions in sidebar order.
+    func sessions(in alias: String) -> [TmuxSession] {
+        sidebarOrder.sessions(sessionsByAlias[alias] ?? [], in: alias, id: \.name)
+    }
+
+    /// One step of a sidebar drag. A session only ever moves inside its own
+    /// workspace; anything else is refused.
+    @discardableResult
+    func moveInSidebar(_ dragging: SidebarDragItem, over target: SidebarDragItem) -> SidebarDrop.Action {
+        let action = SidebarDrop.action(dragging: dragging, over: target)
+        switch action {
+        case let .moveWorkspace(alias, target):
+            updateSidebarOrder {
+                $0.moveWorkspace(alias, onto: target, live: sidebarWorkspaces.map(\.alias))
+            }
+        case let .moveSession(id, target, alias):
+            let live = alias == Workspace.local.alias
+                ? localSessions.map(\.handle)
+                : sessions(in: alias).map(\.name)
+            updateSidebarOrder { $0.moveSession(id, onto: target, in: alias, live: live) }
+        case .stay, .refuse:
+            break
+        }
+        return action
+    }
 
     /// Sessions of the local workspace: the Operator shell plus whatever
     /// folders you added. The list is remembered, the shells are not — without
@@ -91,10 +139,11 @@ final class AppModel: ObservableObject {
             + addedLocalSessions
         let all = LocalSessionScan.merge(
             stored: remembered, live: liveLocalSessions, fallbackPath: NSHomeDirectory())
-        return all.map { session in
+        let named = all.map { session in
             guard let shown = localSessionNames[session.handle] else { return session }
             return LocalSession(handle: session.handle, name: shown, path: session.path)
         }
+        return sidebarOrder.sessions(named, in: Workspace.local.alias, id: \.handle)
     }
 
     /// The context users behind the workspaces still on: what Stats and the
@@ -182,6 +231,8 @@ final class AppModel: ObservableObject {
                 guard let snapshot else { return }
                 if self.liveLocalSessions != snapshot.sessions {
                     self.liveLocalSessions = snapshot.sessions
+                    let present = self.localSessions.map(\.handle)
+                    self.updateSidebarOrder { $0.keepSessions(present, in: Workspace.local.alias) }
                 }
                 if self.localSessionHarnesses != snapshot.harnesses {
                     self.localSessionHarnesses = snapshot.harnesses
@@ -273,6 +324,7 @@ final class AppModel: ObservableObject {
         liveLocalSessions.removeAll { $0.name == multiplexerName }
         localSessionHarnesses[multiplexerName] = nil
         localSessionNames[handle] = nil
+        updateSidebarOrder { $0.removeSession(handle, in: Workspace.local.alias) }
         if selection == .localSession(name: s.handle, path: s.path) { selection = nil }
     }
 
@@ -534,6 +586,10 @@ final class AppModel: ObservableObject {
         self.defaults = defaults
         self.addedLocalSessions = AppModel.readLocalSessions(from: defaults)
         self.localSessionNames = defaults.dictionary(forKey: AppModel.localNamesKey) as? [String: String] ?? [:]
+        if let data = defaults.data(forKey: AppModel.sidebarOrderKey),
+           let saved = try? JSONDecoder().decode(SidebarOrder.self, from: data) {
+            self.sidebarOrder = saved
+        }
         let services = services ?? DevmachineServices(sessionSource: CommandSessionSource(
             store: store, localRunner: localRunner, zmxPath: zmxPath,
             facade: SessionHarnessFacade(registry: harnessSettingsFacade.registry)))
@@ -567,6 +623,7 @@ final class AppModel: ObservableObject {
             }
             TerminalRegistry.shared.closeWorkspace(alias: alias)
             PreviewStore.shared.closeWorkspace(alias: alias)
+            updateSidebarOrder { $0.removeWorkspace(alias) }
             sessionsByAlias[alias] = nil
             offlineAliases.remove(alias)
             if selectionPollAlias == alias {
@@ -616,8 +673,21 @@ final class AppModel: ObservableObject {
 
     /// Sessions this app still shows for a workspace that the workspace itself
     /// no longer has: killed from another client, or ended with `exit`.
+    /// New names from renames made through the app, and when. A poll that
+    /// lands before tmux has renamed lists neither name; without this it would
+    /// forget the place the rename just moved over.
+    private var renamesInFlight: [SessionRef: Date] = [:]
+    private static let renameGrace: TimeInterval = 30
+
     private func dropMissingSessions(alias: String, present: [TmuxSession]) {
         let names = Set(present.map(\.name))
+        let now = Date()
+        renamesInFlight = renamesInFlight.filter { ref, started in
+            !(ref.alias == alias && names.contains(ref.name))
+                && now.timeIntervalSince(started) < Self.renameGrace
+        }
+        let renaming = renamesInFlight.keys.filter { $0.alias == alias }.map(\.name)
+        updateSidebarOrder { $0.keepSessions(names.union(renaming), in: alias) }
         var refs: [SessionRef] = []
         if case let .stack(stacked) = activePage {
             refs += stacked.filter { $0.alias == alias && !names.contains($0.name) }
@@ -799,7 +869,7 @@ final class AppModel: ObservableObject {
     func stackWorkspace(_ alias: String) {
         let refs = alias == Workspace.local.alias
             ? localSessions.map { SessionRef(alias: alias, name: $0.handle) }
-            : (sessionsByAlias[alias] ?? []).map { SessionRef(alias: alias, name: $0.name) }
+            : sessions(in: alias).map { SessionRef(alias: alias, name: $0.name) }
         stackSessions(refs)
     }
 
@@ -915,21 +985,20 @@ final class AppModel: ObservableObject {
     }
 
     func flattenedSessions() -> [SessionRef] {
-        visibleWorkspaces.flatMap { ws in
-            (sessionsByAlias[ws.alias] ?? []).map { SessionRef(alias: ws.alias, name: $0.name) }
+        sidebarWorkspaces.filter { !$0.isLocal }.flatMap { ws in
+            sessions(in: ws.alias).map { SessionRef(alias: ws.alias, name: $0.name) }
         }
     }
 
     private var sessionNavigationItems: [SidebarItem] {
-        let remote = visibleWorkspaces.flatMap { workspace in
-            (sessionsByAlias[workspace.alias] ?? []).map {
+        sidebarWorkspaces.flatMap { workspace -> [SidebarItem] in
+            guard !workspace.isLocal else {
+                return localSessions.map { SidebarItem.localSession(name: $0.handle, path: $0.path) }
+            }
+            return sessions(in: workspace.alias).map {
                 SidebarItem.session(alias: workspace.alias, name: $0.name)
             }
         }
-        let local = localSessions.map {
-            SidebarItem.localSession(name: $0.handle, path: $0.path)
-        }
-        return remote + local
     }
 
     func moveToNextSession() {
@@ -1061,8 +1130,19 @@ final class AppModel: ObservableObject {
     }
 
     func paletteItems() -> [PaletteItem] {
-        var items = visibleWorkspaces.flatMap { ws in
-            (sessionsByAlias[ws.alias] ?? []).map { s in
+        sidebarWorkspaces.flatMap { ws -> [PaletteItem] in
+            guard !ws.isLocal else {
+                return localSessions.map { s in
+                    PaletteItem(
+                        id: "local/\(s.handle)",
+                        title: s.name,
+                        subtitle: Workspace.local.name,
+                        target: .localSession(name: s.handle, path: s.path),
+                        badges: badges(for: s)
+                    )
+                }
+            }
+            return sessions(in: ws.alias).map { s in
                 PaletteItem(
                     id: "\(ws.alias)/\(s.name)",
                     title: s.name,
@@ -1072,16 +1152,6 @@ final class AppModel: ObservableObject {
                 )
             }
         }
-        for s in localSessions {
-            items.append(PaletteItem(
-                id: "local/\(s.handle)",
-                title: s.name,
-                subtitle: Workspace.local.name,
-                target: .localSession(name: s.handle, path: s.path),
-                badges: badges(for: s)
-            ))
-        }
-        return items
     }
 
     func openPalette(_ item: PaletteItem) {
@@ -1256,6 +1326,9 @@ final class AppModel: ObservableObject {
     func deleteSessions(_ refs: [SessionRef]) {
         pendingBulkDelete = nil
         guard !refs.isEmpty else { return }
+        updateSidebarOrder { order in
+            for ref in refs { order.removeSession(ref.name, in: ref.alias) }
+        }
         let taskId = beginTask(label: "Deleting sessions", total: refs.count)
         Task.detached { [store] in
             for ref in refs {
@@ -1288,6 +1361,8 @@ final class AppModel: ObservableObject {
             return
         }
         pendingRename = nil
+        updateSidebarOrder { $0.renameSession(old, to: clean, in: alias) }
+        renamesInFlight[SessionRef(alias: alias, name: clean)] = Date()
         let taskId = beginTask(label: "Renaming \(old)", total: 1)
         Task.detached { [store] in
             _ = try? store.run(alias: alias, command: RemoteCommands.rename(session: old, to: clean))
@@ -1310,6 +1385,7 @@ final class AppModel: ObservableObject {
 
     func deleteSession(alias: String, name: String) {
         pendingDelete = nil
+        updateSidebarOrder { $0.removeSession(name, in: alias) }
         let taskId = beginTask(label: "Deleting \(name)", total: 1)
         Task.detached { [store] in
             _ = try? store.run(alias: alias, command: RemoteCommands.killSession(name: name))
@@ -1498,6 +1574,10 @@ final class AppModel: ObservableObject {
         hasLoadedWorkspaces = true
     }
 
+    private func forgetOrderOfRemovedWorkspaces(present: [Workspace]) {
+        updateSidebarOrder { $0.keepWorkspaces(present.map(\.alias) + [Workspace.local.alias]) }
+    }
+
     func loadWorkspaces(detected known: CLIDetectedSettings? = nil) {
         guard let settings else { return }
         let detected = known ?? detectSettings()
@@ -1505,8 +1585,12 @@ final class AppModel: ObservableObject {
         var settingsWithAliases = settings
         settingsWithAliases.workspaceAliases = detected.workspaceAliases
         self.settings = settingsWithAliases
-        workspaces = (try? services.workspaceSource.workspaces(
-            resolveAlias: { settingsWithAliases.hostAlias(forWorkspace: $0) })) ?? []
+        let loaded = try? services.workspaceSource.workspaces(
+            resolveAlias: { settingsWithAliases.hostAlias(forWorkspace: $0) })
+        workspaces = loaded ?? []
+        // Only a list that was read can say a workspace is gone; a failed read
+        // must not wipe the order.
+        if let loaded { forgetOrderOfRemovedWorkspaces(present: loaded) }
         hasLoadedWorkspaces = true
         showCachedSessions()
         refreshAll()
@@ -1556,6 +1640,7 @@ final class AppModel: ObservableObject {
             if !next.isEmpty, next != self.workspaces {
                 let known = Set(self.workspaces.map(\.alias))
                 self.workspaces = next
+                self.forgetOrderOfRemovedWorkspaces(present: next)
                 for workspace in next where !known.contains(workspace.alias) {
                     self.awaitingFirstLogin.insert(workspace.alias)
                     self.sessionProblems[workspace.alias] = nil

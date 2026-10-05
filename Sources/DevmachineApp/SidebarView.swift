@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import DevmachineCore
 
 struct SidebarView: View {
@@ -12,6 +13,7 @@ struct SidebarView: View {
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @ObservedObject private var readiness = MachineReadinessStore.shared
     @ObservedObject private var machines = MachinesStore.shared
+    @State private var dragging: SidebarDragItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -50,6 +52,7 @@ struct SidebarView: View {
                     filesButton: !ws.isLocal,
                     extraTopSpacing: index > 0
                 )
+                .sidebarDraggable(.workspace(ws.alias), dragging: $dragging, model: model)
                 if let machine = readinessCardMachine(for: ws) {
                     MachineReadinessCard(store: readiness, machine: machine, compact: true)
                         .dmSurface(Color.dmBand, radius: DMRadius.panel)
@@ -78,7 +81,7 @@ struct SidebarView: View {
                     SidebarSkeleton.sessionRows(count: 2, seed: index)
                         .transition(.opacity)
                 } else {
-                    ForEach(model.sessionsByAlias[ws.alias] ?? []) { s in
+                    ForEach(model.sessions(in: ws.alias)) { s in
                         sessionRow(alias: ws.alias, session: s)
                     }
                 }
@@ -299,6 +302,7 @@ struct SidebarView: View {
             .contentShape(Rectangle())
             .onTapGesture { model.clickLocalSession(item) }
             .help(live ? s.path : "\(s.path) — not started")
+            .sidebarDraggable(.session(s.handle, in: Workspace.local.alias), dragging: $dragging, model: model)
             .contextMenu {
                 Button("Rename…") {
                     model.pendingLocalRename = (handle: s.handle, current: s.name)
@@ -347,6 +351,7 @@ struct SidebarView: View {
                 model.clickSession(ref)
             }
         }
+        .sidebarDraggable(.session(s.name, in: alias), dragging: $dragging, model: model)
         .contextMenu {
             if model.selectedSessions.count > 1 && model.selectedSessions.contains(ref) {
                 Button("Stack to Home") {
@@ -470,5 +475,51 @@ struct SidebarSkeleton: View {
                 }
             }
         }
+    }
+}
+
+private extension View {
+    /// Makes a sidebar header or row both a drag source and a drop target.
+    /// The order changes while the pointer moves, so the rows open up under
+    /// it; the drop itself only ends the drag.
+    func sidebarDraggable(
+        _ item: SidebarDragItem, dragging: Binding<SidebarDragItem?>, model: AppModel
+    ) -> some View {
+        onDrag {
+            dragging.wrappedValue = item
+            return NSItemProvider(object: item.token as NSString)
+        }
+        .onDrop(of: [.plainText], delegate: SidebarDropDelegate(target: item, dragging: dragging, model: model))
+    }
+}
+
+private struct SidebarDropDelegate: DropDelegate {
+    let target: SidebarDragItem
+    @Binding var dragging: SidebarDragItem?
+    let model: AppModel
+
+    private var action: SidebarDrop.Action? {
+        dragging.map { SidebarDrop.action(dragging: $0, over: target) }
+    }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        action != nil
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            _ = model.moveInSidebar(dragging, over: target)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard let action else { return nil }
+        return DropProposal(operation: action == .refuse ? .forbidden : .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        defer { dragging = nil }
+        return action.map { $0 != .refuse } ?? false
     }
 }
