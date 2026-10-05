@@ -1,11 +1,42 @@
 import SwiftUI
 import DevmachineCore
 
-/// Settings → Machines' map: every machine as an isometric tile on a faint
-/// ground grid, grouped by location, with the links the configuration
-/// proves. Drawn natively after the website's hero (hairline's plates,
-/// creases and coins). A click on a machine selects it in the list below.
+/// The network map: every machine as an isometric tile on a faint ground
+/// grid, grouped by location, with the links the configuration proves.
+/// Drawn natively after the website's hero (hairline's plates, creases and
+/// coins). `.interactive` is Settings → Machines' map, where a click on a
+/// machine selects it in the list below; `.decorative` is Home's wallpaper,
+/// which fills its container, takes no click and fades in once data arrives.
 struct NetworkMapView: View {
+    let map: NetworkMap
+    let presentation: NetworkMapPresentation
+    var selected: String?
+    var select: (String) -> Void = { _ in }
+    var minimumMargin = NetworkMapBackdrop.minimumMargin
+
+    init(map: NetworkMap, selected: String?, select: @escaping (String) -> Void) {
+        self.map = map
+        presentation = .interactive
+        self.selected = selected
+        self.select = select
+    }
+
+    init(decorative map: NetworkMap, minimumMargin: Double = NetworkMapBackdrop.minimumMargin) {
+        self.map = map
+        presentation = .decorative
+        self.minimumMargin = minimumMargin
+    }
+
+    var body: some View {
+        if presentation.isInteractive {
+            InteractiveNetworkMap(map: map, selected: selected, select: select)
+        } else {
+            DecorativeNetworkMap(map: map, presentation: presentation, minimumMargin: minimumMargin)
+        }
+    }
+}
+
+private struct InteractiveNetworkMap: View {
     @Environment(\.dmMetrics) private var m
     let map: NetworkMap
     let selected: String?
@@ -17,7 +48,8 @@ struct NetworkMapView: View {
         let geometry = NetworkMapGeometry(map: map, width: width)
         Canvas { context, size in
             NetworkMapPainter(
-                geometry: geometry, selected: selected, hovered: hovered, fontScale: m.scale
+                geometry: geometry, presentation: .interactive, selected: selected, hovered: hovered,
+                fontScale: m.scale
             ).draw(in: &context, size: size)
         }
         .frame(maxWidth: .infinity)
@@ -41,6 +73,52 @@ struct NetworkMapView: View {
     }
 }
 
+/// The map as a background: the ground always, the machines over it once
+/// there are any. Two canvases so the machines can fade in over a ground
+/// that is already there, and each is `Equatable` so a Home redraw (a stats
+/// tick, a usage refresh) does not repaint them.
+private struct DecorativeNetworkMap: View {
+    @Environment(\.dmMetrics) private var m
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let map: NetworkMap
+    let presentation: NetworkMapPresentation
+    let minimumMargin: Double
+
+    var body: some View {
+        let shows = !map.nodes.isEmpty
+        ZStack {
+            DecorativeLayer(map: map, layer: .ground, fontScale: m.scale, minimumMargin: minimumMargin)
+                .equatable()
+                .opacity(presentation.groundOpacity)
+            DecorativeLayer(map: map, layer: .ink, fontScale: m.scale, minimumMargin: minimumMargin)
+                .equatable()
+                .opacity(shows ? presentation.inkOpacity : 0)
+                .animation(reduceMotion ? nil : .easeIn(duration: 0.9), value: shows)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct DecorativeLayer: View, Equatable {
+    let map: NetworkMap
+    let layer: NetworkMapPainter.Layer
+    let fontScale: CGFloat
+    let minimumMargin: Double
+
+    var body: some View {
+        Canvas { context, size in
+            let backdrop = NetworkMapBackdrop(map: map, size: size, minimumMargin: minimumMargin)
+            context.translateBy(x: backdrop.origin.x, y: backdrop.origin.y)
+            context.scaleBy(x: backdrop.zoom, y: backdrop.zoom)
+            NetworkMapPainter(
+                geometry: backdrop.geometry, presentation: .decorative, selected: nil, hovered: nil,
+                fontScale: fontScale, layers: [layer], ground: backdrop.ground
+            ).draw(in: &context, size: backdrop.ground.size)
+        }
+    }
+}
+
 /// The map's own palette: hairline's dark theme, set against the app's
 /// content background.
 enum MapInk {
@@ -58,10 +136,34 @@ enum MapInk {
 }
 
 struct NetworkMapPainter {
+    enum Layer: Hashable {
+        /// The grid the tiles stand on.
+        case ground
+        /// Everything on it: zones, links, tiles, labels.
+        case ink
+    }
+
     let geometry: NetworkMapGeometry
+    let presentation: NetworkMapPresentation
     let selected: String?
     let hovered: String?
     let fontScale: CGFloat
+    var layers: Set<Layer> = [.ground, .ink]
+    /// The area the ground covers, in the map's points; the canvas when nil.
+    var ground: CGRect?
+
+    init(
+        geometry: NetworkMapGeometry, presentation: NetworkMapPresentation, selected: String?, hovered: String?,
+        fontScale: CGFloat, layers: Set<Layer> = [.ground, .ink], ground: CGRect? = nil
+    ) {
+        self.geometry = geometry
+        self.presentation = presentation
+        self.selected = presentation.highlighted(selected)
+        self.hovered = presentation.highlighted(hovered)
+        self.fontScale = fontScale
+        self.layers = layers
+        self.ground = ground
+    }
 
     private var map: NetworkMap { geometry.map }
     private var scale: Double { geometry.scale }
@@ -73,28 +175,33 @@ struct NetworkMapPainter {
     }
 
     func draw(in context: inout GraphicsContext, size: CGSize) {
-        drawGrid(in: &context, size: size)
+        if layers.contains(.ground) { drawGrid(in: &context, bounds: ground ?? CGRect(origin: .zero, size: size)) }
+        guard layers.contains(.ink) else { return }
         for zone in map.zones { drawZone(zone, in: &context) }
         for link in map.links { drawLink(link, in: &context) }
         drawTags(in: &context)
         for node in map.nodes { drawTile(node, in: &context) }
         for site in map.sites { drawSite(site, in: &context) }
         for node in map.nodes { drawLabel(node, in: &context) }
-        if map.hiddenSites > 0 { drawHiddenSites(in: &context) }
+        if map.hiddenSites > 0, presentation.showsHiddenSiteCount { drawHiddenSites(in: &context) }
     }
 
     // MARK: - Ground
 
     /// The world's ground grid, so every tile stands on it; it fades out
-    /// toward the edges like the hero's.
-    private func drawGrid(in context: inout GraphicsContext, size: CGSize) {
-        guard let anchor = map.machineNodes.first else { return }
-        let camera = geometry.camera(for: anchor.id)
+    /// toward the edges like the hero's. With no machine yet it is centred
+    /// in `bounds`, the ground a background shows before its data.
+    private func drawGrid(in context: inout GraphicsContext, bounds: CGRect) {
+        let anchor = map.machineNodes.first
+        let camera = anchor.map { geometry.camera(for: $0.id) }
+            ?? IsoCamera(scale: geometry.scale, originX: bounds.midX, originY: bounds.midY)
         let step = NetworkMapGeometry.tileHalf
-        let bounds = CGRect(origin: .zero, size: size)
+        let reach = ground == nil
+            ? Double(Int(bounds.width / max(step * geometry.scale, 1)) + 20)
+            : Self.gridReach(camera: camera, bounds: bounds, step: step * geometry.scale)
+        let center = CGPoint(x: bounds.midX, y: anchor == nil ? bounds.midY : geometry.machineRowY)
         context.drawLayer { layer in
             var path = Path()
-            let reach = Double(Int(size.width / max(step * geometry.scale, 1)) + 20)
             for k in stride(from: -reach, through: reach, by: 1) {
                 let offset = k * step
                 path.move(to: camera.project(offset, -reach * step, 0))
@@ -111,9 +218,18 @@ struct NetworkMapPainter {
                         .init(color: .black, location: 0), .init(color: .black.opacity(0.4), location: 0.6),
                         .init(color: .clear, location: 1),
                     ]),
-                    center: CGPoint(x: bounds.midX, y: geometry.machineRowY),
+                    center: center,
                     startRadius: 0, endRadius: max(bounds.width * 0.55, geometry.height)))
         }
+    }
+
+    /// Lines each way from the anchor for a background's ground, which can
+    /// be far taller than its map and reach the anchor's far side in any
+    /// direction; the page's map is a strip, where its width decides.
+    static func gridReach(camera: IsoCamera, bounds: CGRect, step: Double) -> Double {
+        let farthest = max(abs(camera.originX - bounds.minX), abs(bounds.maxX - camera.originX),
+                           abs(camera.originY - bounds.minY), abs(bounds.maxY - camera.originY))
+        return Double(Int(2 * farthest / max(step, 1)) + 4)
     }
 
     private func drawZone(_ zone: NetworkMap.Zone, in context: inout GraphicsContext) {
@@ -168,6 +284,7 @@ struct NetworkMapPainter {
         let point = geometry.marker(of: site)
         let dot = Path(ellipseIn: CGRect(x: point.x - 2.6, y: point.y - 2.6, width: 5.2, height: 5.2))
         context.fill(dot, with: .color(site.door == selected || site.target == selected ? MapInk.hi : MapInk.edge))
+        guard presentation.showsSiteLabels else { return }
         let label = site.workspace.map { "\(site.host) → \($0)" } ?? site.host
         let text = Text(verbatim: label)
             .font(.system(size: 9.5 * fontScale, design: .monospaced))
