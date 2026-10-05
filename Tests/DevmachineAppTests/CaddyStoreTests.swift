@@ -6,6 +6,13 @@ private final class ScriptedCaddyRunner: CommandRunner, @unchecked Sendable {
     private let lock = NSLock()
     private var failing: Set<String> = []
     private var storedDomain: String
+    private var recorded: [String] = []
+
+    var calls: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
 
     init(domain: String = "example.com", failing: Set<String> = []) {
         self.storedDomain = domain
@@ -27,8 +34,9 @@ private final class ScriptedCaddyRunner: CommandRunner, @unchecked Sendable {
         lock.lock()
         let failing = self.failing
         let domain = storedDomain
-        lock.unlock()
         let joined = args.joined(separator: " ")
+        recorded.append(joined)
+        lock.unlock()
         if let failed = failing.first(where: { joined.contains($0) }) {
             return ("", "\(failed): connection refused", 1)
         }
@@ -104,6 +112,18 @@ final class CaddyStoreTests: XCTestCase {
 
         XCTAssertFalse(store.showsSitesSkeleton)
         XCTAssertEqual(store.rows.count, 1)
+    }
+
+    func testTheMapWallpaperReadsTheSitesButNeverTheDNSProviders() async throws {
+        let runner = ScriptedCaddyRunner()
+        let store = makeStore(runner)
+
+        store.appearForMap()
+        try await waitUntil { store.sitesByMachine["box"]?.rows.count == 1 }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertTrue(runner.calls.contains { $0.contains("expose list") })
+        XCTAssertFalse(runner.calls.contains { $0.contains("dns") })
     }
 
     func testAFailedFirstListShowsTheErrorNotTheSkeleton() async throws {
