@@ -195,6 +195,29 @@ final class DemoSnapshotsTests: XCTestCase {
         ])
     }
 
+    func testTheHostKeyWalkIsItsOwnSetOfPanelsPickedByTheEnvironment() {
+        let screens = DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "host-key"])
+        XCTAssertEqual(screens.map(\.id), ["hostkey-review", "hostkey-matching", "hostkey-older-cli", "hostkey-failed"])
+        XCTAssertTrue(Set(screens.map(\.fileName)).isDisjoint(with: DemoSnapshots.screens.map(\.fileName)))
+        for screen in screens {
+            XCTAssertEqual(DemoSnapshots.chrome(for: screen.id), .panel, screen.id)
+        }
+    }
+
+    func testEveryHostKeyDemoScreenEndsInTheStateItIsNamedFor() async {
+        let expected: [String: (HostKeyPhase?) -> Bool] = [
+            "hostkey-review": { if case .review = $0 { return true } else { return false } },
+            "hostkey-matching": { $0 == .matching },
+            "hostkey-older-cli": { $0 == .needsNewerCLI },
+            "hostkey-failed": { if case .failed = $0 { return true } else { return false } },
+        ]
+        for screen in DemoHostKey.screens {
+            let output = DemoHostKey.output(for: screen.id)
+            let phase = HostKeyStore.phase(afterCheck: output, machine: DemoHostKey.machine)
+            XCTAssertEqual(expected[screen.id]?(phase), true, screen.id)
+        }
+    }
+
     func testTheWorktreeWalkIsItsOwnSetAndPickedByTheEnvironment() {
         let names = DemoSnapshots.worktreeScreens.map(\.fileName)
         XCTAssertEqual(names, [

@@ -68,7 +68,7 @@ struct MachinesSettingsView: View {
                         MachineSettingsRow(
                             machine: machine,
                             isRemoving: store.removing == machine.name,
-                            checkHostKey: { model.showPage(.hostKey(machine.name)) },
+                            checkHostKey: { model.showHostKey(machine.name) },
                             remove: { confirmingRemoval = machine })
                     }
                 }
