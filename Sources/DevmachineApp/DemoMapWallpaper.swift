@@ -8,7 +8,8 @@ import DevmachineCore
 /// over a five-machine fleet, with no machine (the ground alone), then the
 /// large map over both, and Settings → Appearance's Background picker on
 /// the large map, a photo theme and the gradients; last, Home with the
-/// sidebar collapsed, where the clock centres in the whole window.
+/// sidebar collapsed, where the clock centres in the whole window, with the
+/// compact map and with the large one over both configurations.
 /// `DEVMACHINE_DEMO_WINDOW` checks other window sizes. Nothing runs.
 @MainActor
 enum DemoMapWallpaper {
@@ -27,11 +28,17 @@ enum DemoMapWallpaper {
               settleNanoseconds: 1_200_000_000),
         .init(id: "map-wallpaper-sidebar-collapsed", fileName: "188-home-sidebar-collapsed.png",
               settleNanoseconds: 1_500_000_000),
+        .init(id: "map-wallpaper-large-collapsed", fileName: "189-home-network-map-large-collapsed.png",
+              settleNanoseconds: 1_500_000_000),
+        .init(id: "map-wallpaper-large-fleet-collapsed", fileName: "190-home-network-map-large-fleet-collapsed.png",
+              settleNanoseconds: 1_500_000_000),
     ]
 
     static func choice(for id: String) -> WallpaperChoice {
         switch id {
-        case "map-wallpaper-large", "map-wallpaper-large-fleet", "map-wallpaper-appearance": return .networkMap(.large)
+        case "map-wallpaper-large", "map-wallpaper-large-fleet", "map-wallpaper-appearance",
+             "map-wallpaper-large-collapsed", "map-wallpaper-large-fleet-collapsed":
+            return .networkMap(.large)
         case "map-wallpaper-appearance-photo": return .bundled
         case "map-wallpaper-appearance-gradient": return .gradient(name: "peaks")
         default: return .networkMap(.compact)
@@ -45,7 +52,7 @@ enum DemoMapWallpaper {
         value.wallpaper = choice(for: id)
         settings.settings = value
         model.settings = value
-        model.sidebarCollapsed = id == "map-wallpaper-sidebar-collapsed"
+        model.sidebarCollapsed = id.hasSuffix("collapsed")
 
         if id.hasPrefix("map-wallpaper-appearance") {
             DemoSnapshots.setupInitialSection = .appearance
@@ -55,7 +62,7 @@ enum DemoMapWallpaper {
         }
         try? await Task.sleep(nanoseconds: 300_000_000)
         switch id {
-        case "map-wallpaper-fleet", "map-wallpaper-large-fleet":
+        case "map-wallpaper-fleet", "map-wallpaper-large-fleet", "map-wallpaper-large-fleet-collapsed":
             seed(DemoMachinesMap.fleet, sites: DemoMachinesMap.sites(for: "map-fleet"), caddy: caddy)
         case "map-wallpaper-empty":
             seed(DemoData.noMachinesSnapshot, sites: [:], caddy: caddy)

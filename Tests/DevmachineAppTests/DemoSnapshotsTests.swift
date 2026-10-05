@@ -200,7 +200,9 @@ final class DemoSnapshotsTests: XCTestCase {
             "map-wallpaper-home", "map-wallpaper-fleet", "map-wallpaper-empty", "map-wallpaper-appearance",
             "map-wallpaper-large", "map-wallpaper-large-fleet", "map-wallpaper-appearance-photo",
             "map-wallpaper-appearance-gradient", "map-wallpaper-sidebar-collapsed",
+            "map-wallpaper-large-collapsed", "map-wallpaper-large-fleet-collapsed",
         ])
+        XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-large-fleet-collapsed"), .networkMap(.large))
         XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-home"), .networkMap(.compact))
         XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-large"), .networkMap(.large))
         XCTAssertEqual(DemoMapWallpaper.choice(for: "map-wallpaper-appearance"), .networkMap(.large))

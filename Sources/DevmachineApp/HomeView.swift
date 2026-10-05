@@ -154,15 +154,16 @@ struct HomeView: View {
             button: button, contentMinX: padding, contentMinY: padding, gap: m.space.md)
     }
 
-    /// The large map is centred in all of Home and clears the stats pill;
-    /// the compact one keeps to Home's free area.
+    /// The large map is centred in all of Home, clears the stats pill and
+    /// spreads around the clock; the compact one keeps to Home's free area,
+    /// centred under the clock.
     private func mapPlacement(_ size: NetworkMapSize) -> NetworkMapPlacement {
         switch size {
         case .large:
             guard frames.size.width > 0 else { return .none }
             return .filling(HomeMapArea.large(
                 size: frames.size, padding: m.pt(HomeLayout.padding), gap: m.pt(HomeLayout.gap),
-                pillMinY: frames.pill.map { Double($0.minY) }))
+                pillMinY: frames.pill.map { Double($0.minY) }), keepClear: frames.clock)
         case .compact:
             return compactMapPlacement
         }
@@ -183,7 +184,7 @@ struct HomeView: View {
             layout = .sideBySide(cardsMaxX: padding + plan.cardsWidth, clockMaxY: clock.maxY)
         }
         let area = HomeMapArea.rect(size: frames.size, padding: padding, gap: gap, pillMinY: pill.minY, layout: layout)
-        return area.map(NetworkMapPlacement.area) ?? .none
+        return area.map { .area($0, centreX: frames.clock.map { Double($0.midX) }) } ?? .none
     }
 
     private func sideBySideLayout(_ plan: HomeLayout.Plan) -> some View {

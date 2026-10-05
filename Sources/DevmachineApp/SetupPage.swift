@@ -1299,54 +1299,66 @@ struct SetupPage: View {
 private struct HomeSketch: View {
     let map: NetworkMapSize
 
-    private static let home = CGSize(width: 860, height: 540)
+    /// A laptop Home's height; the width follows the card's shape.
+    private static let height = 760.0
     private static let padding = 24.0
     private static let gap = 24.0
-    private static let cardsWidth = 220.0
-    private static let pillMinY = home.height - 60
-    private static let clock = CGRect(x: 0, y: 110, width: 0, height: 110)
+    private static let cardsWidth = 300.0
+    private static let pillMinY = height - 60
+    private static let clockSize = CGSize(width: 290, height: 110)
 
-    private var placement: NetworkMapPlacement {
+    /// The "12:00" drawn at 100 points, centred across the sketch, a little above the middle.
+    private static func clock(width: Double) -> CGRect {
+        CGRect(
+            x: width / 2 - clockSize.width / 2, y: height / 2 - clockSize.height, width: clockSize.width,
+            height: clockSize.height)
+    }
+
+    private func placement(width: Double) -> NetworkMapPlacement {
+        let home = CGSize(width: width, height: Self.height)
+        let clock = Self.clock(width: width)
         switch map {
         case .large:
             return .filling(HomeMapArea.large(
-                size: Self.home, padding: Self.padding, gap: Self.gap, pillMinY: Self.pillMinY))
+                size: home, padding: Self.padding, gap: Self.gap, pillMinY: Self.pillMinY), keepClear: clock)
         case .compact:
             let area = HomeMapArea.rect(
-                size: Self.home, padding: Self.padding, gap: Self.gap, pillMinY: Self.pillMinY,
-                layout: .sideBySide(cardsMaxX: Self.padding + Self.cardsWidth, clockMaxY: Self.clock.maxY))
-            return area.map(NetworkMapPlacement.area) ?? .none
+                size: home, padding: Self.padding, gap: Self.gap, pillMinY: Self.pillMinY,
+                layout: .sideBySide(cardsMaxX: Self.padding + Self.cardsWidth, clockMaxY: clock.maxY))
+            return area.map { .area($0, centreX: clock.midX) } ?? .none
         }
     }
 
     var body: some View {
         GeometryReader { proxy in
-            let scale = proxy.size.width / Self.home.width
-            let height = proxy.size.height / max(scale, 0.01)
+            let scale = proxy.size.height / Self.height
+            let width = proxy.size.width / max(scale, 0.01)
             ZStack(alignment: .topLeading) {
-                NetworkMapWallpaper(placement: placement, minimumMargin: WallpaperBackground.mapMinimumMargin)
-                blocks(height: height)
+                NetworkMapWallpaper(
+                    placement: placement(width: width), minimumMargin: WallpaperBackground.mapMinimumMargin)
+                blocks(width: width)
             }
-            .frame(width: Self.home.width, height: height, alignment: .topLeading)
+            .frame(width: width, height: Self.height, alignment: .topLeading)
             .scaleEffect(scale, anchor: .topLeading)
         }
         .allowsHitTesting(false)
     }
 
-    private func blocks(height: CGFloat) -> some View {
+    private func blocks(width: Double) -> some View {
         let card = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        let clock = Self.clock(width: width)
         return ZStack(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 16) {
-                card.fill(.white.opacity(0.13)).frame(width: Self.cardsWidth, height: 110)
-                card.fill(.white.opacity(0.13)).frame(width: Self.cardsWidth, height: 220)
+                card.fill(.white.opacity(0.13)).frame(width: Self.cardsWidth, height: 150)
+                card.fill(.white.opacity(0.13)).frame(width: Self.cardsWidth, height: 300)
             }
             .offset(x: Self.padding, y: Self.padding + 20)
             Text(verbatim: "12:00")
                 .font(.system(size: 100, weight: .thin, design: .rounded))
                 .foregroundStyle(.white.opacity(0.85))
                 .fixedSize()
-                .position(x: Self.home.width / 2, y: Self.clock.midY)
+                .position(x: clock.midX, y: clock.midY)
         }
-        .frame(width: Self.home.width, height: height, alignment: .topLeading)
+        .frame(width: width, height: Self.height, alignment: .topLeading)
     }
 }

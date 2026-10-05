@@ -85,8 +85,11 @@ private struct InteractiveNetworkMap: View {
 /// leaving the ground alone.
 enum NetworkMapPlacement: Equatable {
     case whole
-    case area(CGRect)
-    case filling(CGRect)
+    /// In the free area, centred on `centreX` (the clock's middle) when
+    /// that leaves a readable map (`NetworkMapBackdrop.compact`).
+    case area(CGRect, centreX: Double? = nil)
+    /// Spread around `keepClear` (the clock and its date) when there is room.
+    case filling(CGRect, keepClear: CGRect? = nil)
     case none
 }
 
@@ -133,10 +136,11 @@ private struct DecorativeLayer: View, Equatable {
             switch placement {
             case .whole, .none:
                 backdrop = NetworkMapBackdrop(map: map, size: size, minimumMargin: minimumMargin)
-            case let .area(rect):
-                backdrop = NetworkMapBackdrop(map: map, size: size, area: rect, minimumMargin: minimumMargin)
-            case let .filling(rect):
-                backdrop = NetworkMapBackdrop(map: map, size: size, area: rect, fit: .large)
+            case let .area(rect, centreX):
+                backdrop = NetworkMapBackdrop.compact(
+                    map: map, size: size, area: rect, centreX: centreX, minimumMargin: minimumMargin)
+            case let .filling(rect, keepClear):
+                backdrop = NetworkMapBackdrop(map: map, size: size, area: rect, fit: .large, keepClear: keepClear)
             }
             if layer == .ink, !backdrop.showsMap { return }
             context.translateBy(x: backdrop.origin.x, y: backdrop.origin.y)
