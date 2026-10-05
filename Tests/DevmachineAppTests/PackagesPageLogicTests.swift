@@ -94,7 +94,20 @@ final class PackagesPageLogicTests: XCTestCase {
         XCTAssertTrue(page.selection.names.isEmpty)
     }
 
-    func testAReloadWithoutTheTargetGoesBackToEveryMachine() {
+    func testThePageOpensOnTheFirstMachineSoItsRowsCanBeTicked() {
+        var page = PackagesPageState()
+        page.keep(targets: [acme, main])
+        XCTAssertEqual(page.target, main)
+    }
+
+    func testAllMachinesStaysWhenThePersonPicksIt() {
+        var page = PackagesPageState(target: main)
+        page.choose(nil)
+        page.keep(targets: [main, acme])
+        XCTAssertNil(page.target)
+    }
+
+    func testAReloadWithoutTheTargetGoesBackToTheFirstMachine() {
         var page = PackagesPageState(target: acme)
         page.selection.toggle("gh")
         page.keep(targets: [main, acme])
@@ -102,7 +115,7 @@ final class PackagesPageLogicTests: XCTestCase {
         XCTAssertEqual(page.selection.names, ["gh"])
 
         page.keep(targets: [main])
-        XCTAssertNil(page.target)
+        XCTAssertEqual(page.target, main)
         XCTAssertTrue(page.selection.names.isEmpty)
     }
 }

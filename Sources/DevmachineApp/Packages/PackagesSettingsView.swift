@@ -2,9 +2,12 @@ import SwiftUI
 import DevmachineCore
 
 /// The target the page acts on and the rows ticked for it. A selection
-/// belongs to one target, so choosing another one empties it.
+/// belongs to one target, so choosing another one empties it. The page opens
+/// on the first machine, so its rows can be ticked at once; "All machines"
+/// only lists, and stays only when the person picks it.
 struct PackagesPageState: Equatable {
     private(set) var target: PackageTarget?
+    private var showsEveryMachine = false
     var selection = PackageSelection()
 
     init(target: PackageTarget? = nil) {
@@ -12,14 +15,19 @@ struct PackagesPageState: Equatable {
     }
 
     mutating func choose(_ next: PackageTarget?) {
+        showsEveryMachine = next == nil
         guard next != target else { return }
         target = next
         selection.clear()
     }
 
-    /// A reload that no longer lists the target goes back to every machine.
     mutating func keep(targets: [PackageTarget]) {
-        if let target, !targets.contains(target) { choose(nil) }
+        if let target, targets.contains(target) { return }
+        if target == nil, showsEveryMachine { return }
+        let firstMachine = targets.first { if case .machine = $0 { return true } else { return false } }
+        guard firstMachine != target else { return }
+        target = firstMachine
+        selection.clear()
     }
 }
 
@@ -48,7 +56,10 @@ struct PackagesSettingsView: View {
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { store.requestLoad() }
+        .onAppear {
+            store.requestLoad()
+            page.keep(targets: store.snapshot?.targets ?? [])
+        }
         .onChange(of: store.snapshot?.targets) { _, targets in page.keep(targets: targets ?? []) }
         .confirmationDialog(
             "Change packages on \(target?.title ?? "")?",
