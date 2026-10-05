@@ -689,6 +689,17 @@ final class UpdateControllerTests: XCTestCase {
         XCTAssertTrue(state.cause?.contains("v32") ?? false, state.cause ?? "")
     }
 
+    func testAnUpdateThatReportsNothingIsAFailureNotADone() async {
+        cliUpdater.stdout = Data()
+        let updates = await packagesNoticeFor()
+
+        await updates.updatePackages()
+
+        guard case .failed(let state) = updates.packagesPhase else { return XCTFail("\(updates.packagesPhase)") }
+        XCTAssertEqual(state.cause, "The CLI did not report what it pinned.")
+        XCTAssertNotNil(updates.packagesNotice)
+    }
+
     func testPackagesLaterIsSavedAndHidesTheCardUntilANewerRelease() async {
         let updates = await packagesNoticeFor()
         updates.packagesLater()

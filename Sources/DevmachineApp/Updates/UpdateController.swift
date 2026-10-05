@@ -375,10 +375,11 @@ final class UpdateController: ObservableObject {
             let stdout = try await dependencies.cliUpdater.run(.packagesOnly, output: sink.receive)
             packagesOutput = sink.snapshot
             let report = CLIUpdateReport.parse(stdout)
-            if let report, !PackagesUpdateToast.isCovered(latest: notice.latest, by: report) {
+            guard let report, PackagesUpdateToast.isCovered(latest: notice.latest, by: report) else {
                 packagesPhase = .failed(DMErrorState(
                     title: "The packages pin did not move",
-                    cause: "The CLI pinned \(report.packagesTo ?? "nothing"), not \(notice.latest).",
+                    cause: report.map { "The CLI pinned \($0.packagesTo ?? "nothing"), not \(notice.latest)." }
+                        ?? "The CLI did not report what it pinned.",
                     details: details(packagesOutput, fallback: String(decoding: stdout, as: UTF8.self))))
                 return
             }
