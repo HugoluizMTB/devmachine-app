@@ -24,6 +24,13 @@ public final class UpdatePreferences: @unchecked Sendable {
         set { defaults.set(newValue, forKey: "updates.cliLaterVersion") }
     }
 
+    /// A packages release tag such as `v33`. `string(forKey:)` also reads a
+    /// number written by hand, so an odd value still hides that release.
+    public var packagesLaterVersion: String? {
+        get { defaults.string(forKey: "updates.packagesLaterVersion") }
+        set { defaults.set(newValue, forKey: "updates.packagesLaterVersion") }
+    }
+
     public func cache(for feed: URL) -> CachedRelease? {
         defaults.data(forKey: cacheKey(feed)).flatMap { try? JSONDecoder().decode(CachedRelease.self, from: $0) }
     }

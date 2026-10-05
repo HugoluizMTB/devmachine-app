@@ -38,6 +38,22 @@ final class UpdatePreferencesTests: XCTestCase {
         XCTAssertNil(preferences.skippedVersion)
     }
 
+    func testRemembersThePackagesReleasePutOffWithLater() {
+        let preferences = UpdatePreferences(defaults: defaults)
+        XCTAssertNil(preferences.packagesLaterVersion)
+        preferences.packagesLaterVersion = "v33"
+        XCTAssertEqual(UpdatePreferences(defaults: defaults).packagesLaterVersion, "v33")
+        XCTAssertNil(preferences.cliLaterVersion)
+    }
+
+    func testPreferencesSavedBeforeThePackagesCardStillRead() {
+        defaults.set("0.8.0", forKey: "updates.cliLaterVersion")
+        defaults.set(33, forKey: "updates.packagesLaterVersion")
+        let preferences = UpdatePreferences(defaults: defaults)
+        XCTAssertEqual(preferences.cliLaterVersion, "0.8.0")
+        XCTAssertEqual(preferences.packagesLaterVersion, "33")
+    }
+
     func testKeepsOneCachedAnswerPerFeed() {
         let preferences = UpdatePreferences(defaults: defaults)
         let app = CachedRelease(etag: "\"a\"", body: Data("{}".utf8))
