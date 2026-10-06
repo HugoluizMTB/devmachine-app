@@ -658,7 +658,7 @@ enum DemoSnapshots {
         case "ready-home":
             DemoMachineReady.seed(MachineReadinessStore.shared, model: model)
         case "ready-first-sync":
-            DemoMachineReady.seed(MachineReadinessStore.shared, model: model)
+            DemoMachineReady.seed(MachineReadinessStore.shared, model: model, declared: true)
             model.seedDemoSessionProblem(
                 .awaitingSync(detail: "umbrella@203.0.113.7: Permission denied (publickey)."),
                 alias: "umbrella-devmachine")

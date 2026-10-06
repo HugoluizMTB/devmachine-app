@@ -48,11 +48,12 @@ enum SessionProblem: Equatable {
     static let writeAliasesCommand = "devmachine aliases --write"
     static let syncCommand = "devmachine sync"
 
-    /// A new workspace on a machine that has never synced the app's package:
-    /// one sync fixes both, while Prepare would fix only the package, so the
-    /// sidebar shows one card.
+    /// A new workspace on a machine whose configuration asks for the app's
+    /// package but has never synced it: one sync fixes both, while Prepare
+    /// would fix only the package, so the sidebar shows one card. A package
+    /// not declared at all is not merged: a sync would not add it.
     static func mergesIntoFirstSync(state: MachineReadiness, status: PrepareStatus?, problem: SessionProblem?) -> Bool {
-        state.needsPrepare && status == nil && problem?.isAwaitingSync == true
+        state == .notApplied && status == nil && problem?.isAwaitingSync == true
     }
 
     func firstSyncPresentation(workspace: String, machine: String) -> SessionProblemPresentation {

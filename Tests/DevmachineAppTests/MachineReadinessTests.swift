@@ -498,10 +498,10 @@ final class SessionProblemTests: XCTestCase {
         XCTAssertTrue(shown.cause?.contains("beta") == true)
     }
 
-    func testOnlyAMachineWithoutTheAppPackageAndANewWorkspaceShareACard() {
+    func testOnlyADeclaredButUnsyncedPackageAndANewWorkspaceShareACard() {
         let awaiting = SessionProblem.awaitingSync(detail: "")
         XCTAssertTrue(SessionProblem.mergesIntoFirstSync(state: .notApplied, status: nil, problem: awaiting))
-        XCTAssertTrue(SessionProblem.mergesIntoFirstSync(state: .notDeclared, status: nil, problem: awaiting))
+        XCTAssertFalse(SessionProblem.mergesIntoFirstSync(state: .notDeclared, status: nil, problem: awaiting))
         XCTAssertFalse(SessionProblem.mergesIntoFirstSync(state: .notApplied, status: nil, problem: nil))
         XCTAssertFalse(SessionProblem.mergesIntoFirstSync(
             state: .notApplied, status: nil, problem: .unreachable(detail: "")))

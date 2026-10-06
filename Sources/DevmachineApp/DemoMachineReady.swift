@@ -13,7 +13,8 @@ enum DemoMachineReady {
         "acme": "main", "globex": "main", "initech": "backup", "umbrella": "staging",
     ]
 
-    static func snapshot(cliVersion: String = "0.7.24", applied: Bool = false) -> ReadinessSnapshot {
+    static func snapshot(cliVersion: String = "0.7.24", applied: Bool = false, declared: Bool = false)
+        -> ReadinessSnapshot {
         var snapshot = ReadinessSnapshot()
         snapshot.machines = ["main", "backup", "staging"]
         snapshot.declared = ["main": true, "backup": true, "staging": false]
@@ -22,7 +23,7 @@ enum DemoMachineReady {
             "backup": [PackagesLock.Entry(name: MachinePrepare.package)],
             "staging": applied ? [PackagesLock.Entry(name: MachinePrepare.package)] : [],
         ])
-        if applied { snapshot.declared?["staging"] = true }
+        if applied || declared { snapshot.declared?["staging"] = true }
         snapshot.workspaceMachines = workspaceMachines
         snapshot.cliVersion = SemanticVersion(cliVersion)
         snapshot.sshAliasesWritten = true
@@ -30,10 +31,10 @@ enum DemoMachineReady {
     }
 
     static func seed(_ store: MachineReadinessStore, model: AppModel, prepare: MachineJobPhase? = nil,
-                     cliVersion: String = "0.7.24", outdated: Bool = false) {
+                     cliVersion: String = "0.7.24", outdated: Bool = false, declared: Bool = false) {
         let done = prepare.map { if case .succeeded = $0 { return true } else { return false } } ?? false
         store.seedDemo(
-            snapshot: snapshot(cliVersion: cliVersion, applied: done),
+            snapshot: snapshot(cliVersion: cliVersion, applied: done, declared: declared),
             observed: outdated
                 ? ["backup": .outdated(detail: #"error: devmachine-app does not accept "stats". It accepts context"#)]
                 : [:])
