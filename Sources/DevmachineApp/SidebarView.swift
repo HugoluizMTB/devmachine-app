@@ -53,7 +53,11 @@ struct SidebarView: View {
                     extraTopSpacing: index > 0
                 )
                 .sidebarDraggable(.workspace(ws.alias), dragging: $dragging, model: model)
-                if let machine = readinessCardMachine(for: ws) {
+                if let machine = firstSyncMachine(for: ws), let problem = model.sessionProblems[ws.alias] {
+                    SessionProblemView(
+                        presentation: problem.firstSyncPresentation(workspace: ws.name, machine: machine),
+                        retry: { model.retry(alias: ws.alias) })
+                } else if let machine = readinessCardMachine(for: ws) {
                     MachineReadinessCard(store: readiness, machine: machine, compact: true)
                         .dmSurface(Color.dmBand, radius: DMRadius.panel)
                         .padding(.horizontal, m.space.md)
@@ -69,6 +73,8 @@ struct SidebarView: View {
                     ForEach(model.localSessions) { s in
                         localSessionRow(session: s)
                     }
+                } else if firstSyncMachine(for: ws) != nil {
+                    EmptyView()
                 } else if let problem = model.sessionProblems[ws.alias],
                           !(problem.isHostKeyRejected && hostKeyMachine(for: ws) != nil),
                           (model.sessionsByAlias[ws.alias] ?? []).isEmpty {
@@ -98,6 +104,18 @@ struct SidebarView: View {
         else { return nil }
         let first = model.visibleWorkspaces.first { readiness.machine(forWorkspace: $0.name) == machine }
         return first?.alias == workspace.alias ? machine : nil
+    }
+
+    /// The machine whose readiness card would sit under `workspace`, when
+    /// that workspace's account and the machine's package both wait for the
+    /// first sync: the two become one card.
+    private func firstSyncMachine(for workspace: Workspace) -> String? {
+        guard let machine = readinessCardMachine(for: workspace),
+              SessionProblem.mergesIntoFirstSync(
+                  state: readiness.state(for: machine), status: readiness.prepareStatus(machine),
+                  problem: model.sessionProblems[workspace.alias])
+        else { return nil }
+        return machine
     }
 
     /// A machine whose host key ssh refused gets one card, under the first

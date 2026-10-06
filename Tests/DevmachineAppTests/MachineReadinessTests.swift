@@ -489,6 +489,28 @@ final class SessionProblemTests: XCTestCase {
         XCTAssertEqual(shown.details, "beta@203.0.113.7: Permission denied (publickey).")
     }
 
+    func testAWorkspaceAndItsMachineAwaitingTheFirstSyncAreOneCard() {
+        let problem = SessionProblem.awaitingSync(detail: "beta@203.0.113.7: Permission denied (publickey).")
+        let shown = problem.firstSyncPresentation(workspace: "beta", machine: "main")
+        XCTAssertEqual(shown.title, "main needs its first sync")
+        XCTAssertEqual(shown.commands, ["devmachine sync --machine main"])
+        XCTAssertEqual(shown.details, "beta@203.0.113.7: Permission denied (publickey).")
+        XCTAssertTrue(shown.cause?.contains("beta") == true)
+    }
+
+    func testOnlyAMachineWithoutTheAppPackageAndANewWorkspaceShareACard() {
+        let awaiting = SessionProblem.awaitingSync(detail: "")
+        XCTAssertTrue(SessionProblem.mergesIntoFirstSync(state: .notApplied, status: nil, problem: awaiting))
+        XCTAssertTrue(SessionProblem.mergesIntoFirstSync(state: .notDeclared, status: nil, problem: awaiting))
+        XCTAssertFalse(SessionProblem.mergesIntoFirstSync(state: .notApplied, status: nil, problem: nil))
+        XCTAssertFalse(SessionProblem.mergesIntoFirstSync(
+            state: .notApplied, status: nil, problem: .unreachable(detail: "")))
+        XCTAssertFalse(SessionProblem.mergesIntoFirstSync(
+            state: .outdated(detail: ""), status: nil, problem: awaiting))
+        XCTAssertFalse(SessionProblem.mergesIntoFirstSync(state: .ready, status: nil, problem: awaiting))
+        XCTAssertFalse(SessionProblem.mergesIntoFirstSync(state: .notApplied, status: .running, problem: awaiting))
+    }
+
     func testSSHFailuresKeepTheirExactText() {
         let refused = SessionProblem(SessionStoreError(failure: .authDenied, stderr: "Permission denied (publickey)."))
         XCTAssertEqual(refused.presentation(workspace: "acme").details, "Permission denied (publickey).")

@@ -278,12 +278,14 @@ enum DemoSnapshots {
     /// The machine readiness walk (`DEVMACHINE_DEMO_WALK=machine-ready`): a
     /// machine without devmachine-app on Home and in the sidebar, Prepare
     /// running, failed and done on fake scripts, the old-CLI and outdated
-    /// cards, a workspace with no SSH alias, and onboarding's Install CLI.
+    /// cards, a workspace with no SSH alias, a new workspace on that machine
+    /// sharing one first-sync card with it, and onboarding's Install CLI.
     static let machineReadyScreens: [Screen] = [
         Screen(id: "ready-home", fileName: "70-ready-home.png", settleNanoseconds: 700_000_000),
         Screen(id: "ready-running", fileName: "71-ready-running.png", settleNanoseconds: 1_500_000_000),
         Screen(id: "ready-failed", fileName: "72-ready-failed.png", settleNanoseconds: 500_000_000),
         Screen(id: "ready-done", fileName: "73-ready-done.png", settleNanoseconds: 500_000_000),
+        Screen(id: "ready-first-sync", fileName: "79-ready-first-sync.png", settleNanoseconds: 700_000_000),
         Screen(id: "ready-old-cli", fileName: "74-ready-old-cli.png", settleNanoseconds: 300_000_000),
         Screen(id: "ready-outdated", fileName: "75-ready-outdated.png", settleNanoseconds: 300_000_000),
         Screen(id: "install-cli", fileName: "76-install-cli.png", settleNanoseconds: 300_000_000),
@@ -655,6 +657,11 @@ enum DemoSnapshots {
             await DemoDNSWalk.prepare(screen.id, store: environment.caddyStore, model: model)
         case "ready-home":
             DemoMachineReady.seed(MachineReadinessStore.shared, model: model)
+        case "ready-first-sync":
+            DemoMachineReady.seed(MachineReadinessStore.shared, model: model)
+            model.seedDemoSessionProblem(
+                .awaitingSync(detail: "umbrella@203.0.113.7: Permission denied (publickey)."),
+                alias: "umbrella-devmachine")
         case "ready-running":
             DemoMachineReady.seed(MachineReadinessStore.shared, model: model, prepare: .running(step: 1))
         case "ready-failed":

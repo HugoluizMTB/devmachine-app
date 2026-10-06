@@ -48,6 +48,27 @@ enum SessionProblem: Equatable {
     static let writeAliasesCommand = "devmachine aliases --write"
     static let syncCommand = "devmachine sync"
 
+    /// A new workspace on a machine that has never synced the app's package:
+    /// one sync fixes both, while Prepare would fix only the package, so the
+    /// sidebar shows one card.
+    static func mergesIntoFirstSync(state: MachineReadiness, status: PrepareStatus?, problem: SessionProblem?) -> Bool {
+        state.needsPrepare && status == nil && problem?.isAwaitingSync == true
+    }
+
+    func firstSyncPresentation(workspace: String, machine: String) -> SessionProblemPresentation {
+        SessionProblemPresentation(
+            title: "\(machine) needs its first sync",
+            cause: "\(workspace) has no account on \(machine) yet, and the machine doesn't have the "
+                + "devmachine-app package either. One sync sets up both, and the app connects again when it finishes.",
+            commands: ["devmachine sync --machine \(machine)"],
+            details: awaitingSyncDetail)
+    }
+
+    private var awaitingSyncDetail: String {
+        if case let .awaitingSync(detail) = self { return detail }
+        return ""
+    }
+
     func presentation(workspace: String) -> SessionProblemPresentation {
         switch self {
         case let .aliasMissing(alias):
