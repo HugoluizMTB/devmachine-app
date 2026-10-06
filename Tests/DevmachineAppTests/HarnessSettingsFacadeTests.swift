@@ -46,7 +46,7 @@ final class HarnessSettingsFacadeTests: XCTestCase {
         let packages = Dictionary(uniqueKeysWithValues: registry.adapters.map { ($0.id, $0.descriptor.packageName) })
         XCTAssertEqual(packages, [
             .claude: "claude-code", .codex: "codex", .pi: "pi", .antigravity: "antigravity",
-            .opencode: "opencode", .kimi: "kimi-code", .cline: "cline",
+            .opencode: "opencode", .kimi: "kimi-code", .cline: "cline", .herdr: nil,
         ])
     }
 

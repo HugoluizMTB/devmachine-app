@@ -1,0 +1,8 @@
+herdr.svg and herdr-color.svg are drawn from the Herdr logo
+(https://github.com/herdrdev/herdr, commit 3d9d2b18dab139ba226ebc5a1c9a9f2c9c3ee4df, assets/logo.svg).
+The path is unchanged; the view box is cropped to the head, herdr.svg fills
+it with currentColor, and herdr-color.svg keeps the logo's two colors on a
+rounded square.
+
+Herdr is licensed under the Apache License, Version 2.0:
+https://www.apache.org/licenses/LICENSE-2.0

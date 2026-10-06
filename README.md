@@ -34,7 +34,7 @@ Code, OpenAI Codex, Pi, Antigravity CLI, opencode, Kimi Code and Cline. Each
 local or remote workspace chooses one default launch program, while remote
 choices remain declarative: the app does not install, inspect, or repair tools
 on the host. A session running any of them gets its badge and the Context
-panel.
+panel. A session running Herdr gets its icon too.
 
 Enabled harnesses that report usage (Claude Code, Codex) receive usage cards on Home and
 in the menu bar. With Claude Code and OpenAI Codex enabled, Home stacks both

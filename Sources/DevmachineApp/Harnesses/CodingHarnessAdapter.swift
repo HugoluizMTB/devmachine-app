@@ -209,4 +209,9 @@ struct BasicHarnessAdapter: CodingHarnessAdapter {
     static let cline = BasicHarnessAdapter(
         id: .cline, title: "Cline", shortTitle: "Cline", color: .teal,
         executableName: "cline", processNames: ["cline", ".cline"], packageName: "cline")
+    /// Herdr holds terminals open for the agents it runs, so a session that
+    /// started it is known by it; no package installs it.
+    static let herdr = BasicHarnessAdapter(
+        id: .herdr, title: "Herdr", shortTitle: "Herdr", color: .gray,
+        executableName: "herdr", processNames: ["herdr"], packageName: nil)
 }

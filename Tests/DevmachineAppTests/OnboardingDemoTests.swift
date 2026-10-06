@@ -43,10 +43,11 @@ final class OnboardingDemoTests: XCTestCase {
         XCTAssertEqual(wizard.wizard.draft.packages, ["docker"])
     }
 
-    func testTheFirstRunOffersTheSkillsToEveryHarnessTheAppKnows() async {
+    func testTheFirstRunOffersTheSkillsToEveryCodingAgentTheAppKnows() async {
         let wizard = AddMachineModel.forOnboarding()
         await wizard.prepareFirstRun()
-        XCTAssertEqual(wizard.wizard.skillAgentOptions.map(\.harness), HarnessRegistry.builtIn.adapters.map(\.id))
+        XCTAssertEqual(wizard.wizard.skillAgentOptions.map(\.harness),
+                       HarnessRegistry.builtIn.adapters.map(\.id).filter { $0 != .herdr })
         XCTAssertEqual(wizard.wizard.skillAgentOptions.map(\.id),
                        ["claude", "codex", "pi", "antigravity", "opencode", "kimi", "cline"])
     }

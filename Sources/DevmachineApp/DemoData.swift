@@ -40,6 +40,7 @@ enum DemoData {
             TmuxSession(name: "opencode — api", windows: 1, harnesses: [.opencode]),
             TmuxSession(name: "kimi — tests", windows: 1, harnesses: [.kimi]),
             TmuxSession(name: "cline — cleanup", windows: 1, harnesses: [.cline]),
+            TmuxSession(name: "herdr — agents", windows: 1, harnesses: [.herdr]),
         ],
     ]
 

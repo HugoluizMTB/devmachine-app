@@ -79,22 +79,26 @@ final class HarnessIconLibrary {
 
 /// What a sidebar session row draws for its harnesses: with icons on, the
 /// first harness that has an icon moves before the name and leaves the hover
-/// dots; every row then keeps the same leading slot so names line up.
+/// dots, and a session with no harness shows a terminal; every row then keeps
+/// the same leading slot so names line up.
 struct SessionRowGlyph {
     let icon: HarnessID?
     let reservesLeadingSlot: Bool
+    let showsTerminal: Bool
     let hoverBadges: [HarnessBadgePresentation]
 
     init(showsHarnessIcons: Bool, badges: [HarnessBadgePresentation], hasIcon: (HarnessID) -> Bool) {
         guard showsHarnessIcons else {
             icon = nil
             reservesLeadingSlot = false
+            showsTerminal = false
             hoverBadges = badges
             return
         }
         let shown = badges.first { hasIcon($0.id) }?.id
         icon = shown
         reservesLeadingSlot = true
+        showsTerminal = badges.isEmpty
         hoverBadges = badges.filter { $0.id != shown }
     }
 }

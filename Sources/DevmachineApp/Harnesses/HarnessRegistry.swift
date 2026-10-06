@@ -23,6 +23,7 @@ struct HarnessRegistry: Sendable {
         BasicHarnessAdapter.antigravity,
         BasicHarnessAdapter.opencode,
         BasicHarnessAdapter.kimi,
-        BasicHarnessAdapter.cline
+        BasicHarnessAdapter.cline,
+        BasicHarnessAdapter.herdr
     ])
 }

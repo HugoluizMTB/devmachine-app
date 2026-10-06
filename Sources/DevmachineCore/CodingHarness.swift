@@ -14,6 +14,7 @@ public struct HarnessID: RawRepresentable, Codable, Hashable, Sendable {
     public static let opencode = HarnessID(rawValue: "opencode")
     public static let kimi = HarnessID(rawValue: "kimi")
     public static let cline = HarnessID(rawValue: "cline")
+    public static let herdr = HarnessID(rawValue: "herdr")
 }
 
 /// How a harness icon is drawn: its `<id>-color.svg` in brand colors when

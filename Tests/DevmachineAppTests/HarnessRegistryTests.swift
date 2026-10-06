@@ -6,7 +6,7 @@ final class HarnessRegistryTests: XCTestCase {
     func testBuiltInAdaptersAreRegisteredInPresentationOrder() {
         let registry = HarnessRegistry.builtIn
 
-        XCTAssertEqual(registry.adapters.map(\.id), [.claude, .codex, .pi, .antigravity, .opencode, .kimi, .cline])
+        XCTAssertEqual(registry.adapters.map(\.id), [.claude, .codex, .pi, .antigravity, .opencode, .kimi, .cline, .herdr])
         XCTAssertNil(registry.adapter(for: HarnessID(rawValue: "unknown")))
     }
 
@@ -43,6 +43,7 @@ final class HarnessRegistryTests: XCTestCase {
             (.opencode, "opencode", "opencode", "opencode", ["opencode"]),
             (.kimi, "Kimi Code", "Kimi", "kimi", ["kimi", "kimi-code"]),
             (.cline, "Cline", "Cline", "cline", ["cline", ".cline"]),
+            (.herdr, "Herdr", "Herdr", "herdr", ["herdr"]),
         ]
         for (id, title, shortTitle, executable, programs) in expected {
             let adapter = try XCTUnwrap(HarnessRegistry.builtIn.adapter(for: id), id.rawValue)
@@ -89,6 +90,20 @@ final class HarnessRegistryTests: XCTestCase {
             sessions: sessions, entries: entries)
 
         XCTAssertEqual(detected, ["a": [.cline], "b": [.kimi], "c": []])
+    }
+
+    func testASessionRunningHerdrIsDetectedAsHerdr() {
+        let sessions = [ZmxSession(name: "a", pid: 10, clients: 1, directory: nil)]
+        let entries = [ProcessTree.Entry(pid: 11, parent: 10, command: "/Users/alice/.local/bin/herdr")]
+
+        let detected = SessionHarnessFacade(registry: .builtIn).detect(sessions: sessions, entries: entries)
+
+        XCTAssertEqual(detected, ["a": [.herdr]])
+    }
+
+    func testHerdrCannotBeTurnedOnAsACodingAgent() throws {
+        let herdr = try XCTUnwrap(HarnessRegistry.builtIn.adapter(for: .herdr))
+        XCTAssertNil(herdr.descriptor.packageName)
     }
 
     func testUploadPolicyUsesRegistryOrderAndFallsBackToAppStorage() {
