@@ -394,6 +394,7 @@ struct SidebarView: View {
                     icon: glyph.icon.flatMap {
                         icons.icon(for: $0, style: settingsStore.settings?.harnessIconStyle ?? .color)
                     },
+                    showsTerminal: glyph.showsTerminal,
                     help: badges.first { $0.id == glyph.icon }?.helpText)
             ) : nil,
             title: title,
@@ -415,11 +416,12 @@ struct SidebarView: View {
     }
 }
 
-/// The 14-point slot before a session's name. Empty for a terminal session,
-/// so every name in the list starts at the same place.
+/// The 14-point slot before a session's name, a terminal when no harness
+/// runs in it, so every name in the list starts at the same place.
 private struct SidebarHarnessIcon: View {
     @Environment(\.dmMetrics) private var m
     let icon: HarnessIcon?
+    let showsTerminal: Bool
     let help: String?
 
     var body: some View {
@@ -432,6 +434,12 @@ private struct SidebarHarnessIcon: View {
                     .scaledToFit()
                     .foregroundStyle(Color.dmRowText)
                     .help(help ?? "")
+            } else if showsTerminal {
+                Image(systemName: "apple.terminal")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(Color.dmRowText)
+                    .help("A terminal session")
             } else {
                 Color.clear
             }

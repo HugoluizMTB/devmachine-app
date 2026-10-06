@@ -610,11 +610,18 @@ Rules:
   (`AppSettings.harnessIconStyle`, `.color` by default) picks it: Original
   colors uses `-color` when it exists, else the monochrome file; Monochrome
   never reads `-color`. A `-color` name is never a harness id. No monochrome
-  file → no icon, the hover dot stays. Brand colors exist for Claude, Codex,
-  Antigravity and Kimi; Pi, opencode and Cline are black and white anyway.
+  file → no icon, the hover dot stays. A session with no harness at all shows
+  the `apple.terminal` symbol in the same slot. Brand colors exist for Claude,
+  Codex, Antigravity, Kimi and Herdr; Pi, opencode and Cline are black and
+  white anyway.
   Claude, Codex and Pi come from Orca (MIT, `LICENSE-orca.txt`); codex-color,
   Antigravity, opencode, Kimi and Cline from lobe-icons (MIT,
-  `LICENSE-lobe-icons.txt`). A new icon names its source in one of those files.
+  `LICENSE-lobe-icons.txt`); Herdr from its own repo (Apache-2.0,
+  `LICENSE-herdr.txt`). A new icon names its source in one of those files.
+- **Herdr is a harness with no package.** It is the runtime agents run in,
+  not an agent: a session that started `herdr` is known by it and gets its
+  icon, but it has no Settings switch (`packageName` nil), no skills option
+  and no Context reader.
   `DEVMACHINE_DEMO_ICON_STYLE=monochrome` switches the `harness-icons` demo walk.
 - The Context / Files / Git panel belongs to every selected session. Unsupported
   provider context shows an empty state while Files and Git remain available.

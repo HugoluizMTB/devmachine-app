@@ -100,13 +100,13 @@ final class HarnessIconLibraryTests: XCTestCase {
 
     func testTheCheckoutShipsTheBrandColorsItHas() throws {
         let library = HarnessIconLibrary(directory: checkoutIcons)
-        for id in [HarnessID.claude, .codex, .antigravity, .kimi] {
+        for id in [HarnessID.claude, .codex, .antigravity, .kimi, .herdr] {
             XCTAssertFalse(try XCTUnwrap(library.icon(for: id, style: .color)).isTemplate, id.rawValue)
         }
         for id in [HarnessID.pi, .opencode, .cline] {
             XCTAssertTrue(try XCTUnwrap(library.icon(for: id, style: .color)).isTemplate, id.rawValue)
         }
-        for license in ["LICENSE-orca.txt", "LICENSE-lobe-icons.txt"] {
+        for license in ["LICENSE-orca.txt", "LICENSE-lobe-icons.txt", "LICENSE-herdr.txt"] {
             XCTAssertTrue(FileManager.default.fileExists(
                 atPath: checkoutIcons.appendingPathComponent(license).path), license)
         }
@@ -121,6 +121,7 @@ final class SessionRowGlyphTests: XCTestCase {
         let glyph = SessionRowGlyph(showsHarnessIcons: false, badges: badges, hasIcon: { _ in true })
         XCTAssertNil(glyph.icon)
         XCTAssertFalse(glyph.reservesLeadingSlot)
+        XCTAssertFalse(glyph.showsTerminal)
         XCTAssertEqual(glyph.hoverBadges.map(\.id), [.claude])
     }
 
@@ -129,6 +130,7 @@ final class SessionRowGlyphTests: XCTestCase {
         let glyph = SessionRowGlyph(showsHarnessIcons: true, badges: badges, hasIcon: { _ in true })
         XCTAssertEqual(glyph.icon, .claude)
         XCTAssertTrue(glyph.reservesLeadingSlot)
+        XCTAssertFalse(glyph.showsTerminal)
         XCTAssertTrue(glyph.hoverBadges.isEmpty)
     }
 
@@ -144,13 +146,15 @@ final class SessionRowGlyphTests: XCTestCase {
         let glyph = SessionRowGlyph(showsHarnessIcons: true, badges: badges, hasIcon: { $0 != .codex })
         XCTAssertNil(glyph.icon)
         XCTAssertTrue(glyph.reservesLeadingSlot)
+        XCTAssertFalse(glyph.showsTerminal)
         XCTAssertEqual(glyph.hoverBadges.map(\.id), [.codex])
     }
 
-    func testATerminalSessionKeepsItsPlaceSoNamesStayAligned() {
+    func testATerminalSessionShowsTheTerminalIconInTheSameSlot() {
         let glyph = SessionRowGlyph(showsHarnessIcons: true, badges: [], hasIcon: { _ in true })
         XCTAssertNil(glyph.icon)
         XCTAssertTrue(glyph.reservesLeadingSlot)
+        XCTAssertTrue(glyph.showsTerminal)
         XCTAssertTrue(glyph.hoverBadges.isEmpty)
     }
 }
