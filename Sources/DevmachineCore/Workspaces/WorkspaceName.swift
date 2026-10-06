@@ -25,7 +25,7 @@ public enum WorkspaceName {
             return "Start with a letter, then use lower-case letters, digits, - and _."
         }
         if name.count > maxLength {
-            return "Use \(maxLength) characters or fewer: it becomes a Linux account name."
+            return "Use \(maxLength) characters or fewer: it becomes an account name on the machine."
         }
         if systemAccounts.contains(name) || name == adminUser {
             return "\(name) is already an account on the machine. Pick another, like \(example)."

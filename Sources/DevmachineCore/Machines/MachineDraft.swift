@@ -195,7 +195,7 @@ public struct MachineDraft: Equatable, Sendable {
             problems.append(.init(field: .address, message: "Type an IP, a hostname, or tailscale:<name>."))
         }
         if !Self.matches(trimmedUser, Self.userPattern) {
-            problems.append(.init(field: .user, message: "Type a Linux account, like root."))
+            problems.append(.init(field: .user, message: "Type an account on the machine, like root."))
         }
         let validPort = Int(trimmedPort).map { (1...65535).contains($0) && String($0) == trimmedPort } ?? false
         if !validPort {
