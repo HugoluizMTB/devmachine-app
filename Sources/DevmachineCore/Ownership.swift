@@ -4,11 +4,12 @@ import Foundation
 /// belongs to a workspace you turned off, and for that it has to know the
 /// owner of each row, which neither `docker stats` nor the Caddyfile says.
 public enum Ownership {
-    /// `/home/<user>/…` is how this host lays out context users, so the folder
-    /// a container was started from names its owner.
-    public static func user(fromHome path: String) -> String? {
-        guard path.hasPrefix("/home/") else { return nil }
-        let rest = path.dropFirst("/home/".count)
+    /// `/home/<user>/…` (`/Users/<user>/…` on a Mac) is how a machine lays out
+    /// context users, so the folder a container was started from names its owner.
+    public static func user(fromHome path: String, system: String? = nil) -> String? {
+        let root = MachineHome.root(system: system) + "/"
+        guard path.hasPrefix(root) else { return nil }
+        let rest = path.dropFirst(root.count)
         let name = rest.prefix { $0 != "/" }
         return name.isEmpty ? nil : String(name)
     }

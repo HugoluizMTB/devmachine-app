@@ -202,8 +202,7 @@ final class FileTreeStore: ObservableObject {
         inFlight.insert(path)
         loading.insert(path)
         let host = self.host
-        // `find -printf` is GNU only, so this Mac gets the `ls` form.
-        let command = target.isLocal
+        let command = target.listsPortably()
             ? RemoteCommands.listDirectoryPortable(path: path)
             : RemoteCommands.listDirectory(path: path)
         Task.detached {
@@ -228,7 +227,7 @@ final class FileTreeStore: ObservableObject {
             setError("Could not read the folder")
             return
         }
-        let entries = target.isLocal
+        let entries = target.listsPortably()
             ? FileTreeParser.parseNames(result.stdout)
             : FileTreeParser.parse(result.stdout)
         if children[path] != entries { children[path] = entries }

@@ -240,4 +240,87 @@ final class WorktreeOwnershipTests: XCTestCase {
         let localSteps = WorktreeAdminRemoval.manualSteps(path: path, mainWorktree: main, isLocalSession: true)
         XCTAssertEqual(localSteps.asAdmin, "sudo rm -rf -- '/home/alice/dev/dash/.worktrees/old'")
     }
+
+    // MARK: A remote Mac
+
+    private let macPath = "/Users/alice/dev/dash/.worktrees/old"
+    private let macMain = "/Users/alice/dev/dash"
+    private let studio = WorktreeAdminRemoval.Machine(name: "studio", isSelf: false, system: "Darwin")
+
+    func testOnARemoteMacTheHomeIsUnderUsers() {
+        XCTAssertEqual(
+            WorktreeAdminRemoval.route(
+                isLocalSession: false, machine: studio, user: "alice", path: macPath, mainWorktree: macMain),
+            .admin(machine: "studio"))
+        XCTAssertEqual(
+            WorktreeAdminRemoval.route(isLocalSession: false, machine: studio, user: "alice", path: path, mainWorktree: main),
+            .manual(.outsideHome))
+        XCTAssertEqual(
+            WorktreeAdminRemoval.route(isLocalSession: false, machine: remote, user: "alice", path: macPath, mainWorktree: macMain),
+            .manual(.outsideHome))
+        XCTAssertTrue(WorktreeAdminRemoval.isInsideHome(macPath, user: "alice", homeRoot: "/Users"))
+    }
+
+    func testTheMacScriptUsesTheMacsHomeAndTools() throws {
+        let command = try XCTUnwrap(
+            WorktreeAdminRemoval.script(path: macPath, mainWorktree: macMain, user: "alice", system: "Darwin"))
+        for fragment in ["base64 -D", "h='\\''/Users'\\''/$u", "pwd -P", "stat -f %d", "rm -rf -x --", "sudo -n"] {
+            XCTAssertTrue(command.contains(fragment), fragment)
+        }
+        for gnuOnly in ["realpath -e", "mountpoint", "--one-file-system", "base64 -d"] {
+            XCTAssertFalse(command.contains(gnuOnly), gnuOnly)
+        }
+        XCTAssertNil(WorktreeAdminRemoval.script(path: path, mainWorktree: main, user: "alice", system: "Darwin"))
+    }
+
+    func testTheManualStepsOnARemoteMacUseItsRm() {
+        let steps = WorktreeAdminRemoval.manualSteps(
+            path: macPath, mainWorktree: macMain, isLocalSession: false, system: "Darwin")
+        XCTAssertEqual(steps.asAdmin, "sudo rm -rf -- '/Users/alice/dev/dash/.worktrees/old'")
+    }
+
+    func testLinuxKeepsItsScript() throws {
+        let linux = try XCTUnwrap(WorktreeAdminRemoval.script(path: path, mainWorktree: main, user: "alice", system: "Linux"))
+        XCTAssertEqual(linux, WorktreeAdminRemoval.script(path: path, mainWorktree: main, user: "alice"))
+    }
+
+    /// The BSD script, run for real with this Mac's own tools, on a home made
+    /// in a temporary folder; `sudo` is a stand-in that runs the command as is.
+    func testTheMacScriptRemovesAWorktreeWithThisMacsTools() throws {
+        let user = NSUserName()
+        try XCTSkipUnless(user.range(of: #"^[a-z_][a-z0-9_-]{0,31}$"#, options: .regularExpression) != nil)
+        let fm = FileManager.default
+        let temp = fm.temporaryDirectory.appendingPathComponent("dm-home-\(UUID().uuidString)")
+        try fm.createDirectory(at: temp, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: temp) }
+        let root = try XCTUnwrap(realpath(temp.path, nil).map { String(cString: $0) })
+        let main = "\(root)/\(user)/dev/dash"
+        let worktree = "\(main)/.worktrees/old"
+        try fm.createDirectory(atPath: "\(main)/.git/worktrees/old", withIntermediateDirectories: true)
+        try fm.createDirectory(atPath: "\(worktree)/build", withIntermediateDirectories: true)
+        try "gitdir: \(main)/.git/worktrees/old\n".write(toFile: "\(worktree)/.git", atomically: true, encoding: .utf8)
+        let bin = "\(root)/bin"
+        try fm.createDirectory(atPath: bin, withIntermediateDirectories: true)
+        try "#!/bin/sh\n[ \"$1\" = -n ] && shift\nexec \"$@\"\n".write(toFile: "\(bin)/sudo", atomically: true, encoding: .utf8)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: "\(bin)/sudo")
+
+        let script = try XCTUnwrap(WorktreeAdminRemoval.script(
+            path: worktree, mainWorktree: main, user: user, homeRoot: root, tools: .bsd))
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", script]
+        process.environment = ["PATH": "\(bin):/usr/bin:/bin:/usr/sbin:/sbin"]
+        let out = Pipe()
+        let err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        try process.run()
+        process.waitUntilExit()
+        let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0, stderr)
+        XCTAssertEqual(String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self),
+                       "removed: \(worktree)\n")
+        XCTAssertFalse(fm.fileExists(atPath: worktree))
+        XCTAssertTrue(fm.fileExists(atPath: "\(main)/.git"))
+    }
 }

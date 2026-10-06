@@ -120,7 +120,17 @@ final class WorkspacesStore: ObservableObject {
     var packageCards: [MachinePackageCard] {
         WorkspacePackageCatalog.cards(
             from: (machines.snapshot?.packages ?? []).map(\.info), keeping: flow?.current?.packages ?? [],
-            hiding: codingAgents(machines.workspacePackageNames).hidden, defaults: defaults)
+            hiding: codingAgents(machines.workspacePackageNames).hidden, defaults: defaults,
+            platform: platform(ofMachine: flow?.machine))
+    }
+
+    /// The system the workspace's machine runs; Linux before one is chosen,
+    /// nil (any package) for a machine the CLI never read.
+    private func platform(ofMachine machine: String?) -> String? {
+        guard let machine, !machine.isEmpty, let snapshot = machines.snapshot else {
+            return MachinePackageCatalog.linux
+        }
+        return snapshot.platforms.platform(ofMachine: machine)?.rawValue
     }
 
     /// The configured `defaults.workspace` on CLI 0.7.29+, else the setup's.

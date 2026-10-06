@@ -37,6 +37,7 @@ struct MachineSettingsRow: View {
                     .foregroundStyle(.white.opacity(0.55))
                     .textSelection(.enabled)
             }
+            systemLine
             locationLine
             line("Workspaces", machine.workspaces)
             sitesLine
@@ -135,6 +136,26 @@ struct MachineSettingsRow: View {
                         details: details, done: { editingLocation = false })
                 }
         }
+    }
+
+    @ViewBuilder
+    private var systemLine: some View {
+        if let system = Self.system(machine) {
+            HStack(alignment: .firstTextBaseline, spacing: m.space.sm) {
+                label("System")
+                Text(verbatim: system)
+                    .font(.dm(11.5))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    /// "Arch Linux · x86_64": what the CLI last read. Nothing while unknown.
+    static func system(_ machine: ConfiguredMachine) -> String? {
+        guard let name = machine.systemName else { return nil }
+        let architecture = machine.observed?.architecture ?? ""
+        return architecture.isEmpty ? name : "\(name) · \(architecture)"
     }
 
     @ViewBuilder

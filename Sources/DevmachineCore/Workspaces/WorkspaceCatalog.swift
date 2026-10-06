@@ -94,11 +94,13 @@ public enum WorkspacePackageCatalog {
     /// the workspace already has them.
     public static func cards(
         from packages: [PackageInfo], keeping: [String] = [], hiding: Set<String> = [],
-        defaults: [String] = cliDefaults, platform: String = MachinePackageCatalog.linux
+        defaults: [String] = cliDefaults, platform: String? = MachinePackageCatalog.linux
     ) -> [MachinePackageCard] {
         let hidden = hiding.subtracting(keeping)
         var cards = packages
-            .filter { $0.scope == "workspace" && MachinePackageCatalog.runs($0, on: platform) }
+            .filter { package in
+                package.scope == "workspace" && (platform.map { MachinePackageCatalog.runs(package, on: $0) } ?? true)
+            }
             .filter { !hidden.contains($0.name) && hidden.isDisjoint(with: $0.needs) }
             .map { package in
                 let summary = package.summary.trimmingCharacters(in: .whitespacesAndNewlines)

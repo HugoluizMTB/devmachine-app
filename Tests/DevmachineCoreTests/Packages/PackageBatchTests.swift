@@ -55,3 +55,29 @@ final class PackageBatchTests: XCTestCase {
         XCTAssertTrue(PackageBatch.fits(entry("nodejs", scope: "workspace"), on: acme))
     }
 }
+
+final class PackageBatchSystemTests: XCTestCase {
+    private func entry(_ name: String, platforms: [String]) -> PackageEntry {
+        PackageEntry(name: name, scope: "machine", source: "release", summary: "", category: nil,
+                     platforms: platforms, needs: [], credentialNames: [], installedOn: [])
+    }
+
+    private let studio = PackageTarget.machine("studio", isSelf: false)
+    private let platforms = MachinePlatforms(known: ["studio": .macos])
+
+    func testALinuxPackageIsNotInstalledOnARemoteMac() {
+        let batch = PackageBatch.plan(
+            packages: ["docker"], targets: [studio], action: .install,
+            entries: [entry("docker", platforms: ["linux"])], statuses: { _ in [:] }, platforms: platforms)
+        XCTAssertTrue(batch.isEmpty)
+        XCTAssertEqual(batch.skips, [PackageSkip(package: "docker", target: studio, reason: "Linux only.")])
+    }
+
+    func testOneAlreadyThereCanStillBeTakenOff() {
+        let batch = PackageBatch.plan(
+            packages: ["docker"], targets: [studio], action: .remove,
+            entries: [entry("docker", platforms: ["linux"])], statuses: { _ in ["docker": .applied] },
+            platforms: platforms)
+        XCTAssertEqual(batch.edits.map(\.target), [studio])
+    }
+}

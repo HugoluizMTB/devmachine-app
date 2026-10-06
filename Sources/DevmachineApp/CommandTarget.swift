@@ -15,6 +15,14 @@ enum CommandTarget: Equatable, Sendable {
         }
     }
 
+    /// `find -printf` is GNU only: this Mac and a remote Mac get the `ls` form.
+    func listsPortably(hosts: RemoteHosts = .shared) -> Bool {
+        switch self {
+        case let .remote(alias, _): return hosts.isMac(alias: alias)
+        case .local: return true
+        }
+    }
+
     /// A workspace with no session behind it: the Files window browses a host,
     /// not a pane.
     static func host(alias: String) -> CommandTarget { .remote(alias: alias, session: "") }

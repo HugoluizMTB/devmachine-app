@@ -711,6 +711,24 @@ final class AppModel: ObservableObject {
         TerminalRegistry.shared.onSessionEnded = { [weak self] kind in
             self?.sessionEnded(kind)
         }
+        remoteHostsWatch = $workspaces.combineLatest(MachineReadinessStore.shared.$snapshot)
+            .sink { workspaces, snapshot in
+                RemoteHosts.shared.update(Self.remoteHosts(workspaces: workspaces, snapshot: snapshot))
+            }
+    }
+
+    private var remoteHostsWatch: AnyCancellable?
+
+    /// What each workspace alias's machine runs, from the readiness check's
+    /// read of the CLI: the ssh that starts tmux or mosh-server on a Mac needs
+    /// its package manager on PATH.
+    nonisolated static func remoteHosts(
+        workspaces: [Workspace], snapshot: ReadinessSnapshot?
+    ) -> [String: RemoteHosts.Host] {
+        guard let snapshot else { return [:] }
+        let aliases = Dictionary(
+            workspaces.filter { !$0.isLocal }.map { ($0.name, $0.alias) }, uniquingKeysWith: { first, _ in first })
+        return snapshot.remoteHosts(aliases: aliases)
     }
 
     /// Hiding a workspace has to cost nothing at once, not at the next restart:

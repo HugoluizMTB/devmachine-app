@@ -13,6 +13,17 @@ struct ReadinessSnapshot: Equatable, Sendable {
     var cliVersion: SemanticVersion?
     var sshAliasesWritten: Bool?
     var configDirectory: String?
+    /// What the CLI last read from each machine (0.8.0+).
+    var observed: [String: MachineObserved] = [:]
+
+    /// Each workspace alias's machine system and PATH prefix, for the ssh
+    /// that runs tmux and mosh-server there.
+    func remoteHosts(aliases: [String: String]) -> [String: RemoteHosts.Host] {
+        aliases.reduce(into: [:]) { result, item in
+            guard let machine = workspaceMachines[item.key], let fact = observed[machine] else { return }
+            result[item.value] = RemoteHosts.Host(system: fact.system, pathPrefix: fact.pathPrefix)
+        }
+    }
 
     func applied(_ machine: String) -> Bool? {
         lock.map { $0.has(MachinePrepare.package, onMachine: machine) }
@@ -60,6 +71,7 @@ enum ReadinessReader {
             }
         }
         snapshot.cliVersion = (try? instance.version()).flatMap { SemanticVersion.first(in: $0) }
+        snapshot.observed = instance.observed(machines: snapshot.machines, cliVersion: snapshot.cliVersion)
         snapshot.sshAliasesWritten = (try? instance.aliasListing())?.sshAliases
         return snapshot
     }

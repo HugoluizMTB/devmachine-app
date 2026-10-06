@@ -17,7 +17,8 @@ struct CLIWorktreeAdmin: WorktreeAdmin {
               let name = try? cli.listWorkspaces().first(where: { $0.name == workspace })?.machine,
               let machine = try? cli.listConfigMachines().first(where: { $0.name == name })
         else { return nil }
-        return WorktreeAdminRemoval.Machine(name: machine.name, isSelf: machine.isSelf)
+        let observed = machine.isSelf ? nil : (try? cli.observed(machine: machine.name)) ?? nil
+        return WorktreeAdminRemoval.Machine(name: machine.name, isSelf: machine.isSelf, system: observed?.system)
     }
 
     func run(machine: String, script: String) throws -> (stdout: String, stderr: String, exitCode: Int32) {
@@ -52,6 +53,8 @@ struct WorktreeRemovalRequest: Identifiable, Equatable {
     var leftover: WorktreeLeftover?
     /// Who can delete what the user cannot; nil until it is known.
     var route: WorktreeAdminRemoval.Route?
+    /// The system the admin's machine runs (`Darwin` on a Mac), for its script.
+    var adminSystem: String?
     var isLocalSession = false
     var mainWorktree: String?
 
@@ -240,6 +243,7 @@ final class GitStore: ObservableObject {
             let machine = workspace.flatMap { admin.machine(forWorkspace: $0) }
             await MainActor.run {
                 guard self.current == target, self.removal?.id == path else { return }
+                self.removal?.adminSystem = machine?.system
                 self.removal?.route = WorktreeAdminRemoval.route(
                     isLocalSession: false, machine: machine, user: user, path: path, mainWorktree: main)
             }
@@ -294,7 +298,8 @@ final class GitStore: ObservableObject {
             guard let check = request.check,
                   WorktreeAdminRemoval.canRemove(check, options: options, route: route) else { return }
         }
-        guard let script = WorktreeAdminRemoval.script(path: request.id, mainWorktree: main, user: user) else { return }
+        guard let script = WorktreeAdminRemoval.script(
+            path: request.id, mainWorktree: main, user: user, system: request.adminSystem) else { return }
         let branch = request.check.flatMap { check -> String? in
             guard options.deleteBranch, WorktreeRemoval.canDeleteBranch(check) else { return nil }
             return check.branch

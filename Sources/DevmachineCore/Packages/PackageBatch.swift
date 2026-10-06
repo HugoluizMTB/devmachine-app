@@ -38,7 +38,8 @@ public struct PackageBatch: Equatable, Sendable {
 
     public static func plan(
         packages: [String], targets: [PackageTarget], action: PackageAction,
-        entries: [PackageEntry], statuses: (PackageTarget) -> [String: PackageStatus]
+        entries: [PackageEntry], statuses: (PackageTarget) -> [String: PackageStatus],
+        platforms: MachinePlatforms = .legacy
     ) -> PackageBatch {
         let byName = Dictionary(entries.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         var edits: [(PackageTarget, PackageChanges)] = []
@@ -49,7 +50,8 @@ public struct PackageBatch: Equatable, Sendable {
             for package in packages.sorted() {
                 guard let entry = byName[package] else { continue }
                 let status = current[package] ?? .available
-                if let reason = skipReason(entry: entry, status: status, target: target, action: action) {
+                if let reason = skipReason(
+                    entry: entry, status: status, target: target, action: action, platforms: platforms) {
                     skips.append(PackageSkip(package: package, target: target, reason: reason))
                 } else {
                     names.append(package)
@@ -65,10 +67,13 @@ public struct PackageBatch: Equatable, Sendable {
     }
 
     private static func skipReason(
-        entry: PackageEntry, status: PackageStatus, target: PackageTarget, action: PackageAction
+        entry: PackageEntry, status: PackageStatus, target: PackageTarget, action: PackageAction,
+        platforms: MachinePlatforms
     ) -> String? {
-        if let block = PackageAvailability.block(entry: entry, status: status, target: target) {
-            return block.message
+        switch PackageAvailability.block(entry: entry, status: status, target: target, platforms: platforms) {
+        case .otherSystem where action == .remove: break
+        case let block?: return block.message
+        case nil: break
         }
         switch (action, status) {
         case (.install, .applied), (.install, .pendingInstall): return "Already there."
@@ -79,9 +84,11 @@ public struct PackageBatch: Equatable, Sendable {
     }
 
     /// The targets a package can go on at all, before what each one has.
-    public static func fits(_ entry: PackageEntry, on target: PackageTarget) -> Bool {
-        switch PackageAvailability.block(entry: entry, status: .available, target: target) {
-        case .noRecipe, .wrongScope, .macOnly, .serverOnly, .account: return false
+    public static func fits(
+        _ entry: PackageEntry, on target: PackageTarget, platforms: MachinePlatforms = .legacy
+    ) -> Bool {
+        switch PackageAvailability.block(entry: entry, status: .available, target: target, platforms: platforms) {
+        case .noRecipe, .wrongScope, .otherSystem, .account: return false
         default: return true
         }
     }

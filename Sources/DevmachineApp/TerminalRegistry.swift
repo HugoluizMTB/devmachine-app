@@ -409,7 +409,7 @@ final class TerminalRegistry: NSObject {
     nonisolated static func runCheckOverSSH(alias: String, command: String, customSocket: String?) -> SSHFailure? {
         guard let result = try? ProcessRunner().runCapturing(
             executable: "/usr/bin/ssh",
-            args: RemoteCommands.sshBaseArgs(alias: alias) + [command],
+            args: RemoteCommands.sshBaseArgs(alias: alias) + [RemoteCommands.forHost(command, alias: alias)],
             environment: RemoteCommands.sshEnvironment(customSocket: customSocket))
         else { return nil }
         return SSHFailure.classify(exitCode: result.exitCode, stderr: result.stderr)
@@ -429,7 +429,7 @@ final class TerminalRegistry: NSObject {
     nonisolated private static func runOverSSH(alias: String, command: String, customSocket: String?) {
         _ = try? ProcessRunner().run(
             executable: "/usr/bin/ssh",
-            args: RemoteCommands.sshBaseArgs(alias: alias) + [command],
+            args: RemoteCommands.sshBaseArgs(alias: alias) + [RemoteCommands.forHost(command, alias: alias)],
             environment: RemoteCommands.sshEnvironment(customSocket: customSocket))
     }
 
@@ -738,7 +738,9 @@ extension TerminalRegistry {
         term.startProcess(
             executable: "/usr/bin/ssh",
             args: [launch.alias, "-t",
-                   MoshBootstrap.sshFallbackCommand(session: launch.session, strayServerPID: launch.strayServerPID)],
+                   RemoteCommands.forHost(
+                       MoshBootstrap.sshFallbackCommand(session: launch.session, strayServerPID: launch.strayServerPID),
+                       alias: launch.alias)],
             environment: RemoteCommands.terminalEnvironment(
                 term: RemoteCommands.remoteTerm, customSocket: customSocket))
         RemoteTransportStore.shared.usingSSH(

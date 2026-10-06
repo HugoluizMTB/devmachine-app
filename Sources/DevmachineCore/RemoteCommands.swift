@@ -1,5 +1,52 @@
 import Foundation
 
+/// What the CLI last read from the machine behind each workspace alias: its
+/// system and `path_prefix`. The app keeps it current; every ssh that runs
+/// tmux or mosh-server reads it, including Core code that cannot see the
+/// app's stores. A lock guards it because those calls run off the main actor.
+/// An alias it does not know is a Linux machine, as before macOS support.
+public final class RemoteHosts: @unchecked Sendable {
+    public struct Host: Equatable, Sendable {
+        public let system: String
+        public let pathPrefix: [String]
+
+        public init(system: String, pathPrefix: [String]) {
+            self.system = system
+            self.pathPrefix = pathPrefix
+        }
+    }
+
+    public static let shared = RemoteHosts()
+
+    private let lock = NSLock()
+    private var byAlias: [String: Host] = [:]
+
+    public init(_ byAlias: [String: Host] = [:]) {
+        self.byAlias = byAlias
+    }
+
+    public func prefix(forAlias alias: String) -> [String] {
+        host(alias)?.pathPrefix ?? []
+    }
+
+    /// A Mac's `find` has no `-printf`, among other GNU-only flags.
+    public func isMac(alias: String) -> Bool {
+        host(alias)?.system == "Darwin"
+    }
+
+    public func update(_ next: [String: Host]) {
+        lock.lock()
+        defer { lock.unlock() }
+        byAlias = next
+    }
+
+    private func host(_ alias: String) -> Host? {
+        lock.lock()
+        defer { lock.unlock() }
+        return byAlias[alias]
+    }
+}
+
 public enum RemoteCommands {
     public static let paneSentinel = "@@PANES@@"
     public static let processSentinel = "@@PROCS@@"
@@ -231,6 +278,25 @@ public enum RemoteCommands {
     public static func sendKeys(session: String, text: String) -> String {
         let target = shellSingleQuoted(session)
         return "tmux send-keys -t \(target) -l -- \(shellSingleQuoted(text)) \\; send-keys -t \(target) Enter"
+    }
+
+    /// A plain SSH command on a Mac gets `/usr/bin:/bin:/usr/sbin:/sbin`,
+    /// so tmux and mosh-server from MacPorts or Homebrew are not found. The
+    /// machine's `path_prefix` goes first; `sh -c` because the login shell
+    /// may be fish, which has no `export PATH=…; …`. An empty prefix (every
+    /// Linux machine) leaves the command exactly as it was.
+    public static func withPathPrefix(_ prefix: [String], _ command: String) -> String {
+        let folders = prefix.filter { !$0.isEmpty }
+        guard !folders.isEmpty else { return command }
+        let path = "export PATH=" + shellSingleQuoted(folders.joined(separator: ":")) + ":\"$PATH\"; "
+        return "sh -c " + shellSingleQuoted(path + command)
+    }
+
+    /// `command` as it should run on the machine behind `alias`.
+    public static func forHost(
+        _ command: String, alias: String, hosts: RemoteHosts = .shared
+    ) -> String {
+        withPathPrefix(hosts.prefix(forAlias: alias), command)
     }
 
     public static func shellSingleQuoted(_ value: String) -> String {

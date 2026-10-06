@@ -105,10 +105,13 @@ extension DemoData {
             ConfiguredMachine(
                 name: "main", hosts: ["100.64.0.10", "203.0.113.10"], adminUser: "root", port: 22,
                 workspaces: ["acme", "globex", "initech"],
-                packages: ["essentials", "docker", "fail2ban"], isSelf: false),
+                packages: ["essentials", "docker", "fail2ban"], isSelf: false,
+                observed: MachineObserved(
+                    system: "Linux", distribution: "Ubuntu", distributionVersion: "24.04", architecture: "x86_64")),
             ConfiguredMachine(
                 name: "staging", hosts: ["203.0.113.12"], adminUser: "deploy", port: 2222,
-                workspaces: ["umbrella"], packages: ["essentials"], isSelf: false),
+                workspaces: ["umbrella"], packages: ["essentials"], isSelf: false,
+                observed: MachineObserved(system: "Linux", distribution: "Archlinux", architecture: "aarch64")),
             ConfiguredMachine(
                 name: "laptop", hosts: [], adminUser: "", port: 0,
                 workspaces: [], packages: [], isSelf: true),

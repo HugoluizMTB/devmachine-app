@@ -45,8 +45,9 @@ public enum MoshBootstrapOutcome: Equatable, Sendable {
 /// over ssh, read its answer, and hand the key to `mosh-client`.
 public enum MoshBootstrap {
     /// Only used when the server's own locale is not UTF-8 (mosh-server tries
-    /// the one ssh forwarded first). C.UTF-8 ships with every Debian and
-    /// Ubuntu, where en_US.UTF-8 exists only if someone generated it.
+    /// the one ssh forwarded first). C.UTF-8 ships with every Debian,
+    /// Ubuntu, Arch Linux and macOS, where en_US.UTF-8 exists on Linux only
+    /// if someone generated it.
     public static let localeFallback = "LANG=C.UTF-8"
 
     public static func serverCommand(session: String) -> String {
@@ -57,8 +58,11 @@ public enum MoshBootstrap {
     /// No terminal on purpose: mosh-server detaches from its output once it
     /// has printed the key, so ssh returns at once and nothing echoes into
     /// the lines this reads.
-    public static func sshArguments(alias: String, session: String) -> [String] {
-        RemoteCommands.sshBaseArgs(alias: alias) + ["-n", "-T", "--", serverCommand(session: session)]
+    public static func sshArguments(
+        alias: String, session: String, hosts: RemoteHosts = .shared
+    ) -> [String] {
+        RemoteCommands.sshBaseArgs(alias: alias)
+            + ["-n", "-T", "--", RemoteCommands.forHost(serverCommand(session: session), alias: alias, hosts: hosts)]
     }
 
     public static func parse(stdout: String, stderr: String, exitCode: Int32) -> MoshBootstrapOutcome {

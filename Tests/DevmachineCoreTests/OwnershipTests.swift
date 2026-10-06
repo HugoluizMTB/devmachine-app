@@ -10,6 +10,12 @@ final class OwnershipTests: XCTestCase {
         XCTAssertNil(Ownership.user(fromHome: ""))
     }
 
+    func testOnAMacTheHomeIsUnderUsers() {
+        XCTAssertEqual(Ownership.user(fromHome: "/Users/acme/dev/site", system: "Darwin"), "acme")
+        XCTAssertNil(Ownership.user(fromHome: "/home/acme/dev/site", system: "Darwin"))
+        XCTAssertNil(Ownership.user(fromHome: "/Users/acme/dev/site", system: "Linux"))
+    }
+
     func testAContainerNamedAfterAUserCountsAsTheirs() {
         let users: Set<String> = ["acme", "globex"]
         XCTAssertEqual(

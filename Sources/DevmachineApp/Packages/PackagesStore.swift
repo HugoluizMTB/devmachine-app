@@ -9,9 +9,21 @@ struct PackagesSnapshot: Equatable, Sendable {
     var lock: PackagesLock?
     var cliVersion: SemanticVersion?
     var configDirectory: String?
+    /// The system each machine runs, as the packages' `platforms` name it.
+    var platforms: MachinePlatforms = .legacy
+    /// "Arch Linux", "macOS 15.7" per machine the CLI has read.
+    var systemNames: [String: String] = [:]
 
     func statuses(for target: PackageTarget) -> [String: PackageStatus] {
         PackageStatusCheck.evaluate(entries: entries, target: target, lock: lock)
+    }
+
+    /// Why `entry` cannot go on any of `focus`, said in a few words; nil when
+    /// it runs there or the system is unknown.
+    func unsupported(_ entry: PackageEntry, on focus: [PackageTarget]) -> String? {
+        let blocks = focus.compactMap { PackageAvailability.systemBlock(entry, on: platforms.platform(of: $0)) }
+        guard !focus.isEmpty, blocks.count == focus.count else { return nil }
+        return blocks.first?.label
     }
 }
 
@@ -32,8 +44,14 @@ enum PackagesReader {
         }
         let targets = show.machines.map { PackageTarget.machine($0.name, isSelf: $0.isSelf) }
             + show.workspaces.map { PackageTarget.workspace($0.name, machine: $0.machine) }
-        return PackagesSnapshot(
+        let observed = cli.observed(machines: show.machines.map(\.name), cliVersion: version)
+        var snapshot = PackagesSnapshot(
             entries: entries, targets: targets, lock: lock, cliVersion: version, configDirectory: directory)
+        snapshot.platforms = MachinePlatforms.resolve(
+            machines: show.machines.map { .init(name: $0.name, isSelf: $0.isSelf) }, observed: observed,
+            cliVersion: version)
+        snapshot.systemNames = observed.mapValues(\.displayName)
+        return snapshot
     }
 
     static let liveRead: @Sendable () async throws -> PackagesSnapshot = {

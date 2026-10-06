@@ -275,3 +275,54 @@ extension RemoteCommandsTests {
                 + RemoteCommands.leaveIdleCopyMode(session: "main"))
     }
 }
+
+final class RemotePathPrefixTests: XCTestCase {
+    private let macPorts = ["/opt/local/bin", "/opt/local/sbin"]
+
+    func testLinuxCommandsAreSentAsTheyWere() {
+        let command = RemoteCommands.newSession(name: "dev")
+        XCTAssertEqual(RemoteCommands.withPathPrefix([], command), command)
+        XCTAssertEqual(RemoteCommands.withPathPrefix([""], command), command)
+        XCTAssertEqual(RemoteCommands.forHost(command, alias: "acme-devmachine", hosts: RemoteHosts()), command)
+    }
+
+    func testAMacGetsItsPackageManagerFirstOnPath() {
+        XCTAssertEqual(
+            RemoteCommands.withPathPrefix(macPorts, "tmux ls"),
+            #"sh -c 'export PATH='\''/opt/local/bin:/opt/local/sbin'\'':"$PATH"; tmux ls'"#)
+    }
+
+    func testTheAliasPicksItsMachinesPrefix() {
+        let hosts = RemoteHosts(["studio-devmachine": .init(system: "Darwin", pathPrefix: macPorts)])
+        XCTAssertTrue(RemoteCommands.forHost("tmux ls", alias: "studio-devmachine", hosts: hosts).hasPrefix("sh -c "))
+        XCTAssertEqual(RemoteCommands.forHost("tmux ls", alias: "acme-devmachine", hosts: hosts), "tmux ls")
+        XCTAssertTrue(hosts.isMac(alias: "studio-devmachine"))
+        XCTAssertFalse(hosts.isMac(alias: "acme-devmachine"))
+    }
+
+    /// The wrapped command, run by a real shell: the folders come first, the
+    /// old PATH stays, and quotes in the command and the folders survive.
+    func testAShellRunsItWithThePrefixAndKeepsQuotes() throws {
+        let odd = ["/opt/it's here/bin", "/opt/local/bin"]
+        let command = RemoteCommands.withPathPrefix(odd, #"printf '%s|%s' "$PATH" 'a'\''b'"#)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", command]
+        process.environment = ["PATH": "/usr/bin:/bin"]
+        let out = Pipe()
+        process.standardOutput = out
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertEqual(String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self),
+                       "/opt/it's here/bin:/opt/local/bin:/usr/bin:/bin|a'b")
+    }
+
+    func testMoshServerOnAMacIsFoundThroughThePrefix() {
+        let hosts = RemoteHosts(["studio-devmachine": .init(system: "Darwin", pathPrefix: macPorts)])
+        let mac = MoshBootstrap.sshArguments(alias: "studio-devmachine", session: "dev", hosts: hosts)
+        XCTAssertEqual(mac.last, RemoteCommands.withPathPrefix(macPorts, MoshBootstrap.serverCommand(session: "dev")))
+        let linux = MoshBootstrap.sshArguments(alias: "acme-devmachine", session: "dev", hosts: hosts)
+        XCTAssertEqual(linux.last, MoshBootstrap.serverCommand(session: "dev"))
+    }
+}

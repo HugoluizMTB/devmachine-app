@@ -2,9 +2,11 @@ import Foundation
 
 public struct SessionStore: Sendable {
     private let runner: CommandRunner
+    private let hosts: RemoteHosts
 
-    public init(runner: CommandRunner) {
+    public init(runner: CommandRunner, hosts: RemoteHosts = .shared) {
         self.runner = runner
+        self.hosts = hosts
     }
 
     public func sessions(
@@ -13,7 +15,8 @@ public struct SessionStore: Sendable {
     ) throws -> [TmuxSession] {
         let result = try runner.runCapturing(
             executable: "/usr/bin/ssh",
-            args: RemoteCommands.sshBaseArgs(alias: workspace.alias) + [RemoteCommands.listSessions],
+            args: RemoteCommands.sshBaseArgs(alias: workspace.alias)
+                + [RemoteCommands.forHost(RemoteCommands.listSessions, alias: workspace.alias, hosts: hosts)],
             environment: RemoteCommands.sshEnvironment()
         )
         if let problem = SessionListProblem.classify(
@@ -29,7 +32,7 @@ public struct SessionStore: Sendable {
     public func run(alias: String, command: String) throws -> String {
         try runner.run(
             executable: "/usr/bin/ssh",
-            args: RemoteCommands.sshBaseArgs(alias: alias) + [command],
+            args: RemoteCommands.sshBaseArgs(alias: alias) + [RemoteCommands.forHost(command, alias: alias, hosts: hosts)],
             environment: RemoteCommands.sshEnvironment()
         )
     }

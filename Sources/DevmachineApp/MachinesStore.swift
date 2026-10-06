@@ -12,8 +12,16 @@ struct ConfiguredMachine: Equatable, Identifiable, Sendable {
     let isSelf: Bool
     /// What the CLI reported (0.7.30+); nil from an older one.
     var reportedLocation: String?
+    /// What the CLI last read from it (0.8.0+); nil when never read.
+    var observed: MachineObserved?
 
     var id: String { name }
+
+    /// "Arch Linux", "macOS 15.7"; nil while the system is unknown.
+    var systemName: String? {
+        if let observed { return observed.displayName }
+        return isSelf ? "macOS" : nil
+    }
 
     var isLocalVM: Bool { MachineLocation.isLocalVM(hosts: hosts, isSelf: isSelf) }
 
@@ -48,6 +56,12 @@ struct MachinesSnapshot: Equatable, Sendable {
     var addsWithoutTerminal: Bool { MachineUnattendedAdd.isSupported(cliVersion: cliVersion) }
 
     var takesLocation: Bool { MachineLocation.isSupported(cliVersion: cliVersion) }
+
+    var platforms: MachinePlatforms {
+        MachinePlatforms.resolve(
+            machines: machines.map { .init(name: $0.name, isSelf: $0.isSelf) },
+            observed: machines.reduce(into: [:]) { $0[$1.name] = $1.observed }, cliVersion: cliVersion)
+    }
 }
 
 enum MachinesReader {
@@ -67,13 +81,15 @@ enum MachinesReader {
             return MachinesSnapshot(hasConfiguration: false, machines: [], packages: packages, cliVersion: version)
         }
         let packages = try cli.packages()
-        let machines = try cli.listConfigMachines().map { machine in
+        let listed = try cli.listConfigMachines()
+        let observed = cli.observed(machines: listed.map(\.name), cliVersion: version)
+        let machines = listed.map { machine in
             ConfiguredMachine(
                 name: machine.name, hosts: machine.hosts, adminUser: machine.adminUser, port: machine.port,
                 workspaces: machine.workspaces,
                 packages: machine.packages
                     ?? packages.filter { $0.isInstalled(onMachine: machine.name) }.map(\.name),
-                isSelf: machine.isSelf, reportedLocation: machine.location)
+                isSelf: machine.isSelf, reportedLocation: machine.location, observed: observed[machine.name])
         }
         return MachinesSnapshot(hasConfiguration: true, machines: machines, packages: packages, cliVersion: version)
     }

@@ -9,6 +9,9 @@ struct PackageRow: View {
     let placements: [PackagePlacement]
     let isSelected: Bool
     let isExpanded: Bool
+    /// "Linux only" when the package cannot run on the machine or
+    /// workspace the page looks at; nil when it can or nobody knows.
+    var unsupported: String? = nil
     let toggleSelected: () -> Void
     let toggleExpanded: () -> Void
     @Environment(\.dmMetrics) private var m
@@ -18,15 +21,21 @@ struct PackageRow: View {
             Toggle("", isOn: Binding(get: { isSelected }, set: { _ in toggleSelected() }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-                .help(Text(verbatim: "Select to act on several packages at once"))
+                .disabled(unsupported != nil && !isSelected)
+                .help(Text(verbatim: unsupported.map { "\($0): it does not run on this machine" }
+                    ?? "Select to act on several packages at once"))
             VStack(alignment: .leading, spacing: m.space.xs) {
                 HStack(spacing: m.space.sm) {
                     Text(verbatim: entry.name)
                         .font(.dm(13, weight: .semibold))
-                        .foregroundStyle(Color.dmRowText)
+                        .foregroundStyle(unsupported == nil ? Color.dmRowText : Color.dmMuted)
                     DMKindLabel(text: entry.categoryTitle)
                     DMKindLabel(text: entry.scope)
                     if entry.isLocal { DMKindLabel(text: "local") }
+                    if let unsupported {
+                        DMPill(text: unsupported, color: .orange)
+                            .help(Text(verbatim: "Its platforms leave out this machine's system, so it is not offered here."))
+                    }
                 }
                 if !entry.summary.isEmpty {
                     Text(verbatim: entry.summary)

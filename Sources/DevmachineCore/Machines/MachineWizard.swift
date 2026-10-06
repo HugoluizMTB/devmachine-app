@@ -248,7 +248,8 @@ public enum MachinePackageCatalog {
     public static func suggested(from cards: [MachinePackageCard]) -> [String] {
         suggestedPackages.filter { name in cards.contains { $0.name == name } }
     }
-    /// A server is always Linux, and so is a Lima machine on this Mac.
+    /// The wizard adds Linux servers and Lima machines; a Mac is added with
+    /// the CLI's own questions.
     public static let linux = "linux"
 
     /// Machine packages only (a workspace package goes on a workspace) that

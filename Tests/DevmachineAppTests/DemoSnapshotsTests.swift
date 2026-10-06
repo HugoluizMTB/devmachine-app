@@ -318,9 +318,9 @@ final class DemoSnapshotsTests: XCTestCase {
     func testThePackagesWalkIsItsOwnSet() {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "packages"]).map(\.id), [
             "packages-all", "packages-selected", "packages-confirm", "packages-pending", "packages-running",
-            "packages-succeeded", "packages-failed",
+            "packages-succeeded", "packages-failed", "packages-mac",
         ])
-        XCTAssertEqual(Set(DemoSnapshots.packagesScreens.map(\.fileName)).count, 7)
+        XCTAssertEqual(Set(DemoSnapshots.packagesScreens.map(\.fileName)).count, 8)
     }
 
     func testThePackagesWalkOpensPostgresAndSendsTwoPackagesToAMachineAndAWorkspace() {
