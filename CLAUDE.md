@@ -459,6 +459,18 @@ Rules:
   mosh and is not remembered.
 - Only a started mosh that could not get through shows the pane notice. A
   machine without mosh-server is a choice; the badge's tooltip says why.
+- **A remote Mac needs its package manager on PATH.** A plain ssh command
+  there gets `/usr/bin:/bin:/usr/sbin:/sbin`, so tmux and mosh-server from
+  MacPorts or Homebrew are not found. Every ssh that runs a command goes
+  through `RemoteCommands.forHost`, which puts the machine's observed
+  `path_prefix` (`machines show`, CLI 0.8.0+) in front, inside `sh -c` (the
+  login shell may be fish). `RemoteHosts.shared` maps each workspace alias to
+  its machine's system and prefix, from the readiness check's read; an alias
+  it does not know, and every Linux machine, sends the command unchanged. The
+  Files tree lists a Mac with `ls`, since its `find` has no `-printf`.
+- **A remote Mac's homes are under `/Users`** (`MachineHome`): the admin
+  worktree removal checks and deletes there with BSD tools (`base64 -D`,
+  `cd -P` for `realpath -e`, `stat -f %d` for `mountpoint`, `rm -x`).
 
 ## Previews
 - The context panel's Preview tab lists the selected workspace's published
@@ -1040,8 +1052,9 @@ once may fail there.
   `linuxUserName` rule, at most 32 characters, not a system account or
   the admin login, not a workspace the configuration has
   (`WorkspaceName.problem`, shared with Settings → Workspaces). Package cards are machine packages whose `platforms` hold `linux`
-  or are empty (any): a server and a Lima machine are both Linux, so a
-  `[macos]` package is never offered. Essentials is always installed
+  or are empty (any): the wizard adds Linux servers and Lima machines, so a
+  `[macos]` package is never offered. A remote Mac is added with `devmachine
+  machines add` in a terminal, which asks before installing what it lacks. Essentials is always installed
   (locked, its `needs` listed as included and not offered again on their
   own); docker is suggested and checked (`MachinePackageCatalog.suggested`).
 - **The column beside the form is never empty.** Before the run it holds
@@ -1261,9 +1274,21 @@ once may fail there.
   still offered ("Sync now") after a relaunch.
 - Apply runs `packages add|rm … --yes` one by one; the first failure stops it and
   asks for no sync. Removing never uninstalls: the row and the confirm say so.
+- **A package shows whether it runs on the machine in view**
+  (`MachinePlatforms`, Core). Its `platforms` (empty is any) are checked
+  against the system `machines show` reports under `observed` (Darwin is
+  `macos`, Linux `linux`; the self machine is always `macos`). With a machine
+  or workspace picked, a package for another system says "Linux only" or
+  "macOS only" and cannot be ticked, and no install plan sends it there;
+  one already there can still be removed. A machine never read is unknown
+  and blocks nothing (the CLI's sync refuses later, naming both systems); a
+  CLI before 0.8.0 cannot read one, so its servers count as Linux, as before.
+  Settings → Machines and the machine dropdown show the system ("Arch
+  Linux", "macOS 15.7") once it is known.
 - `DEVMACHINE_DEMO_WALK=packages` (`DemoPackages`) seeds the store and the
   corner at each moment (every machine, `main` with two ticks, the confirm,
-  the sync pending, running, done, failed); nothing runs.
+  the sync pending, running, done, failed, and `packages-mac`: a remote Mac
+  in view); nothing runs.
 
 ## Settings → Workspaces
 - **Settings → Workspaces lists every workspace under its machine**

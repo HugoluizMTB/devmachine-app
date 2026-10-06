@@ -208,7 +208,7 @@ private struct AddMachineKindView: View {
             HStack(alignment: .top, spacing: m.space.lg) {
                 DMChoiceCard(
                     title: wizard.firstRun ? "Yes, I have a server" : "A server I have", systemImage: "server.rack",
-                    detail: "A VPS or any Debian or Ubuntu server you reach by IP or hostname.",
+                    detail: AddMachineContent.serverChoiceDetail,
                     selected: wizard.draft.kind == .server && wizard.stage != .kind
                 ) { state.wizard.choose(.server) }
                 DMChoiceCard(
@@ -836,6 +836,12 @@ enum AddMachineContent {
 
     static let defaultSizeNote = "This devmachine CLI makes the machine at its own size: 2 CPUs, 4 GiB of "
         + "memory, a 20 GiB disk. Version \(LocalMachineSizing.minimumCLIVersion) or newer lets you choose it here."
+
+    /// The wizard offers Linux packages only, so a Mac goes through the CLI's
+    /// own questions, which ask before installing what the Mac lacks.
+    static let serverChoiceDetail = "A VPS or any Debian, Ubuntu or Arch Linux server you reach by IP or "
+        + "hostname. A Mac (Remote Login on, an admin with passwordless sudo) is added with devmachine "
+        + "machines add in a terminal."
 
     static let workspaceHint = "A workspace is a Linux account on the machine where your sessions run. "
         + "Name it after your project, like acme. It gets the default workspace packages."

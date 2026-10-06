@@ -1,7 +1,8 @@
 # Devmachine
 
-A native macOS app (Swift 6, SwiftUI + AppKit) that operates one Linux dev host
-over ssh: tmux sessions per context user as floating terminals, stack grids per
+A native macOS app (Swift 6, SwiftUI + AppKit) that operates devmachine hosts
+(Debian, Ubuntu, Arch Linux or a Mac) over ssh: tmux sessions per context user
+as floating terminals, stack grids per
 workspace, a context panel fed by the host, Caddy subdomains, host stats, PRs,
 and coding-harness usage in the menu bar.
 

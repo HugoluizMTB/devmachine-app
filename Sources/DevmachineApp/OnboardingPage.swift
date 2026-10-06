@@ -92,9 +92,9 @@ struct OnboardingPage: View {
 
     private var startCard: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
-            Text("First it installs the devmachine CLI (no Homebrew or Xcode needed). Then it asks whether you "
-                + "already have a server. No server? It makes a machine on this Mac instead. You see every "
-                + "command before it runs.")
+            Text("First it installs the devmachine CLI, which needs no Homebrew or Xcode. Then it asks whether you "
+                + "already have a server (Debian, Ubuntu or Arch Linux). No server? It makes a machine on this Mac "
+                + "instead. You see every command before it runs.")
                 .font(.dm(12))
                 .foregroundStyle(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
