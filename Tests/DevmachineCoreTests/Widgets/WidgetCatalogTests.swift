@@ -227,4 +227,28 @@ final class WidgetCatalogTests: XCTestCase {
             WidgetResolution.resolve(entry("ssh_hardening/status"), in: CatalogFixtures.catalog([status])),
             .needsPackage(package: "ssh_hardening", reason: ""))
     }
+
+    private func fixture(_ name: String) throws -> Data {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/\(name)")
+        return try Data(contentsOf: url)
+    }
+
+    func testDecodesEveryEngine11Source() throws {
+        let catalog = try WidgetCatalog.decode(fixture("widgets-list-engine-1.1.json"))
+        XCTAssertEqual(catalog.widgets.map(\.source.kind), ["command", "command", "url", "prompt", "session"])
+        let disk = try XCTUnwrap(catalog.widget(named: "mine/disk"))
+        XCTAssertEqual(disk.source.name, "")
+        XCTAssertEqual(disk.source.raw["run"], .string("df"))
+        XCTAssertEqual(disk.view, .object(["kind": .string("text"), "tail": .int(20)]))
+        XCTAssertEqual(disk.viewKind, "text")
+        XCTAssertEqual(disk.packagePath, "/Users/alice/.config/devmachine/packages/mine")
+    }
+
+    func testTheEngine10CatalogStillDecodes() throws {
+        let catalog = try WidgetCatalog.decode(fixture("widgets-list-cli-0.9.0.json"))
+        XCTAssertFalse(catalog.widgets.isEmpty)
+        XCTAssertTrue(catalog.widgets.allSatisfy { $0.source.kind == "provider" && !$0.source.name.isEmpty })
+    }
 }

@@ -67,27 +67,40 @@ public struct CatalogInput: Decodable, Equatable, Sendable {
     }
 }
 
+/// `raw` is the whole source as the CLI printed it; the four provider
+/// fields stay for the engine 1.0 code that reads them.
 public struct CatalogSource: Decodable, Equatable, Sendable {
     public var kind: String
     public var name: String
     public var with: [String: String]
     public var every: String
+    public var raw: WidgetValue
 
     public init(kind: String = "provider", name: String, with: [String: String] = [:], every: String) {
         self.kind = kind
         self.name = name
         self.with = with
         self.every = every
+        raw = .object([
+            "kind": .string(kind), "name": .string(name),
+            "with": .object(with.mapValues(WidgetValue.string)), "every": .string(every),
+        ])
     }
 
-    enum CodingKeys: String, CodingKey { case kind, name, with, every }
+    public init(raw: WidgetValue) {
+        self.raw = raw
+        kind = raw["kind"]?.string ?? ""
+        name = raw["name"]?.string ?? ""
+        with = raw["with"]?.object?.mapValues(\.text) ?? [:]
+        every = raw["every"]?.text ?? ""
+    }
 
     public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        kind = try c.decode(String.self, forKey: .kind)
-        name = try c.decode(String.self, forKey: .name)
-        with = (try c.decodeIfPresent([String: BoardScalar].self, forKey: .with) ?? [:]).mapValues(\.text)
-        every = try c.decodeIfPresent(String.self, forKey: .every) ?? ""
+        let value = try WidgetValue(from: decoder)
+        guard value["kind"]?.string != nil else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "source.kind is missing"))
+        }
+        self.init(raw: value)
     }
 }
 
@@ -107,6 +120,8 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
     public var inputs: [String: CatalogInput]
     public var source: CatalogSource
     public var viewKind: String
+    public var view: WidgetValue
+    public var packagePath: String
     public var sizes: [String]
     public var defaultSize: String
     public var places: [String]
@@ -120,7 +135,8 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         inputs: [String: CatalogInput] = [:], source: CatalogSource, viewKind: String,
         sizes: [String], defaultSize: String, places: [String] = ["home"], surfaces: [String] = ["home"],
         available: Bool = true, unavailableReason: String = "",
-        origin: String = "release", version: String = "", path: String = ""
+        origin: String = "release", version: String = "", path: String = "",
+        view: WidgetValue? = nil, packagePath: String = ""
     ) {
         let parts = name.split(separator: "/", maxSplits: 1).map(String.init)
         self.name = name
@@ -142,9 +158,9 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         self.origin = origin
         self.version = version
         self.path = path
+        self.view = view ?? .object(["kind": .string(viewKind)])
+        self.packagePath = packagePath
     }
-
-    private struct View: Decodable { let kind: String }
 
     enum CodingKeys: String, CodingKey {
         case name, package, widget, origin, version, path, summary, fits, context, inputs, source, view
@@ -152,6 +168,7 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         case requiresEngine = "requires_engine"
         case defaultSize = "default_size"
         case unavailableReason = "unavailable_reason"
+        case packagePath = "package_path"
     }
 
     public init(from decoder: Decoder) throws {
@@ -168,7 +185,12 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         context = try c.decodeIfPresent([String: String].self, forKey: .context) ?? [:]
         inputs = try c.decodeIfPresent([String: CatalogInput].self, forKey: .inputs) ?? [:]
         source = try c.decode(CatalogSource.self, forKey: .source)
-        viewKind = try c.decode(View.self, forKey: .view).kind
+        view = try c.decode(WidgetValue.self, forKey: .view)
+        guard let kind = view["kind"]?.string else {
+            throw DecodingError.dataCorruptedError(forKey: .view, in: c, debugDescription: "view.kind is missing")
+        }
+        viewKind = kind
+        packagePath = try c.decodeIfPresent(String.self, forKey: .packagePath) ?? ""
         sizes = try c.decodeIfPresent([String].self, forKey: .sizes) ?? []
         defaultSize = try c.decodeIfPresent(String.self, forKey: .defaultSize) ?? ""
         places = try c.decodeIfPresent([String].self, forKey: .places) ?? []

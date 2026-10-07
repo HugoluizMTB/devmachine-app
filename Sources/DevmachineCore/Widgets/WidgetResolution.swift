@@ -71,6 +71,31 @@ public enum WidgetTemplate {
     }
 }
 
+/// A widget that runs something itself instead of a provider of the app:
+/// its source with templates filled, its view, and the `every` it really uses.
+public struct ResolvedSource: Equatable, Sendable {
+    public let source: WidgetSource
+    public let view: WidgetView
+    public let every: WidgetEvery
+    public let needsApproval: Bool
+    public let approvalHash: String?
+    public let package: String?
+    public let packagePath: String?
+
+    public init(
+        source: WidgetSource, view: WidgetView, every: WidgetEvery, needsApproval: Bool, approvalHash: String?,
+        package: String?, packagePath: String?
+    ) {
+        self.source = source
+        self.view = view
+        self.every = every
+        self.needsApproval = needsApproval
+        self.approvalHash = approvalHash
+        self.package = package
+        self.packagePath = packagePath
+    }
+}
+
 public struct ResolvedWidget: Equatable, Sendable {
     public let widget: CatalogWidget
     public let provider: String
@@ -78,6 +103,8 @@ public struct ResolvedWidget: Equatable, Sendable {
     public let arguments: [String: String]
     public let every: TimeInterval
     public let minimum: CanvasSize
+    public var source: ResolvedSource? = nil
+    public var title: String? = nil
 }
 
 /// What a board entry becomes: something to draw, or a placeholder that
@@ -100,6 +127,9 @@ public enum WidgetResolution: Equatable, Sendable {
                     type: widget.name, reason: "it needs engine \(widget.requiresEngine); this app implements \(contract.engine)")
             }
         }
+        if widget.source.kind != "provider" {
+            return resolveSource(instance, widget: widget, contract: contract)
+        }
         let provider = widget.source.name
         guard contract.sourceKinds.contains(widget.source.kind), let minimum = contract.minimumInterval(for: provider) else {
             return .needsNewerApp(type: widget.name, reason: "this app has no provider \(provider)")
@@ -113,12 +143,56 @@ public enum WidgetResolution: Equatable, Sendable {
             arguments: WidgetTemplate.arguments(of: widget, values: instance.with), every: every,
             minimum: CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract)))
     }
+
+    private static func resolveSource(
+        _ instance: BoardWidget, widget: CatalogWidget, contract: WidgetContract
+    ) -> WidgetResolution {
+        let scope = WidgetScope.package(inputs: Set(widget.inputs.keys), contextKeys: Set(widget.context.keys))
+        let source: WidgetSource
+        let view: WidgetView
+        do {
+            source = try WidgetSourceReader.read(raisingEvery(of: widget.source.raw, contract: contract), scope: scope, contract: contract)
+            view = try WidgetViewReader.read(
+                widget.view, source: source, sourceWritesParse: widget.source.raw["parse"] != nil, scope: scope,
+                contract: contract)
+        } catch let problem as WidgetSpecProblem {
+            return .needsNewerApp(type: widget.name, reason: problem.message)
+        } catch {
+            return .needsNewerApp(type: widget.name, reason: "\(error)")
+        }
+        let inputs = widget.inputs.compactMapValues { $0.defaultValue?.text }
+            .merging(instance.with.mapValues(\.text)) { _, chosen in chosen }
+        let resolved = source.resolved(with: TemplateValues(inputs: inputs, context: [:]))
+        let every = floored(resolved.every, kind: resolved.kind, contract: contract)
+        return .ready(ResolvedWidget(
+            widget: widget, provider: "", viewKind: view.kind, arguments: [:], every: every.seconds ?? 0,
+            minimum: CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract),
+            source: ResolvedSource(
+                source: resolved, view: view, every: every, needsApproval: false, approvalHash: nil,
+                package: widget.package, packagePath: widget.packagePath)))
+    }
+
+    /// The CLI refused a catalog widget under the minimum, so a lower value
+    /// here comes from an older contract and is raised rather than refused.
+    private static func raisingEvery(of raw: WidgetValue, contract: WidgetContract) -> WidgetValue {
+        guard var fields = raw.object, let kind = fields["kind"]?.string, let text = fields["every"]?.string,
+              let seconds = GoDuration.seconds(text), let floor = contract.minimumInterval(forSource: kind),
+              let floorText = contract.sources[kind]?.minEvery, seconds < floor
+        else { return raw }
+        fields["every"] = .string(floorText)
+        return .object(fields)
+    }
+
+    private static func floored(_ every: WidgetEvery, kind: String, contract: WidgetContract) -> WidgetEvery {
+        guard case let .interval(seconds) = every, let floor = contract.minimumInterval(forSource: kind) else { return every }
+        return .interval(max(floor, seconds))
+    }
 }
 
 public enum WidgetResolutionCopy {
     public static func title(_ resolution: WidgetResolution) -> String {
         switch resolution {
-        case let .ready(resolved): return WidgetTitle.make(type: resolved.widget.name)
+        case let .ready(resolved): return resolved.title ?? WidgetTitle.make(type: resolved.widget.name)
         case let .needsPackage(package, _): return "Needs the \(package) package"
         case .notFound: return "Widget not found"
         case .needsNewerApp: return "Needs a newer app"
