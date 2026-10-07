@@ -23,37 +23,7 @@ enum YAMLScalarStyle {
     static func number(_ value: Double) -> String {
         if value.isNaN { return ".nan" }
         if value.isInfinite { return value < 0 ? "-.inf" : ".inf" }
-        let described = String(describing: value)
-        let negative = described.hasPrefix("-")
-        let unsigned = negative ? String(described.dropFirst()) : described
-        let parts = unsigned.split(separator: "e", maxSplits: 1)
-        let mantissa = String(parts[0])
-        let exponent = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
-        let pieces = mantissa.split(separator: ".", omittingEmptySubsequences: false)
-        let whole = String(pieces[0])
-        let fraction = pieces.count > 1 ? String(pieces[1]) : ""
-        var digits = whole + fraction
-        var point = whole.count + exponent
-        while digits.count > 1, digits.first == "0" {
-            digits.removeFirst()
-            point -= 1
-        }
-        while digits.count > 1, digits.last == "0" { digits.removeLast() }
-        if digits == "0" { point = 1 }
-        let sign = negative ? "-" : ""
-        let decimalExponent = point - 1
-        if decimalExponent < -4 || decimalExponent >= 6 {
-            return sign + scientific(digits: digits, exponent: decimalExponent)
-        }
-        if point <= 0 { return sign + "0." + String(repeating: "0", count: -point) + digits }
-        if point >= digits.count { return sign + digits + String(repeating: "0", count: point - digits.count) }
-        return sign + String(digits.prefix(point)) + "." + String(digits.dropFirst(point))
-    }
-
-    private static func scientific(digits: String, exponent: Int) -> String {
-        let mantissa = digits.count == 1 ? digits : String(digits.prefix(1)) + "." + String(digits.dropFirst())
-        let magnitude = abs(exponent)
-        return mantissa + "e" + (exponent < 0 ? "-" : "+") + (magnitude < 10 ? "0" : "") + String(magnitude)
+        return GoFloat.shortest(value, exponentBelow: -4, exponentFrom: 6)
     }
 
     private static let nonTextWords: Set<String> = [

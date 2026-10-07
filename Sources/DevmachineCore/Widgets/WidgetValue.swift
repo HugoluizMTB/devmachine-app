@@ -46,7 +46,7 @@ public indirect enum WidgetValue: Hashable, Sendable {
         switch self {
         case let .string(value): return value
         case let .int(value): return String(value)
-        case let .double(value): return String(value)
+        case let .double(value): return GoFloat.json(value)
         case let .bool(value): return value ? "true" : "false"
         case .null: return ""
         case .list, .object: return canonicalJSON
