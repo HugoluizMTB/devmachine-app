@@ -173,8 +173,14 @@ final class BoardStoreTests: XCTestCase {
         try FileManager.default.removeItem(at: config)
         let store = makeStore()
         store.load()
-        try store.reset()
+        XCTAssertFalse(try store.reset())
         XCTAssertFalse(FileManager.default.fileExists(atPath: config.path))
+    }
+
+    func testResetSaysItReset() throws {
+        let store = makeStore()
+        store.load()
+        XCTAssertTrue(try store.reset())
     }
 
     func testAPendingWriteNeverOverwritesAFileThatTurnedInvalid() throws {

@@ -843,8 +843,8 @@ Rules:
   layout on screen, the banner names the line, and nothing is written until it
   is valid again: someone is fixing it by hand. An edit still waiting when the
   file turns invalid is dropped, and the last good layout comes back. Reset is
-  the one write allowed then: it saves `home.yml.bak` first, and does nothing
-  when the config folder is missing.
+  the one write allowed then: it saves `home.yml.bak` first. With no config
+  folder it writes nothing, keeps the placements and shows an error.
 - **A failed `widget-placements.json` save is not silent.** The placement
   stays in memory, the error goes to the `widgets` log and to
   `HomeBoardController.placementsError`; the next good save clears it. If the

@@ -4,9 +4,15 @@ import os
 
 enum HomeBoardError: LocalizedError, Equatable {
     case noConfiguration
+    case noConfigurationFolder
 
     var errorDescription: String? {
-        "Home has no layout file yet: the devmachine CLI has not said where its configuration lives."
+        switch self {
+        case .noConfiguration:
+            "Home has no layout file yet: the devmachine CLI has not said where its configuration lives."
+        case .noConfigurationFolder:
+            "Home was not reset: the devmachine configuration folder does not exist yet."
+        }
     }
 }
 
@@ -198,11 +204,12 @@ final class HomeBoardController: ObservableObject {
 
     func resetHome() throws {
         guard let store else { throw HomeBoardError.noConfiguration }
-        try store.reset()
+        guard try store.reset() else { throw HomeBoardError.noConfigurationFolder }
         var next = placements
         next.reset(store.surface)
         placements = next
         try placementsFile.save(next)
+        placementsError = nil
     }
 
     func runtimeJobs(isOnScreen: (BoardWidget) -> Bool = { _ in true }) -> [WidgetJob] {

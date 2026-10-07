@@ -137,8 +137,10 @@ public final class BoardStore: ObservableObject {
         }
     }
 
-    public func reset() throws {
-        guard FileManager.default.fileExists(atPath: configDirectory.path) else { return }
+    /// False when the config folder is missing: the app never creates it.
+    @discardableResult
+    public func reset() throws -> Bool {
+        guard FileManager.default.fileExists(atPath: configDirectory.path) else { return false }
         timer.cancel()
         if let existing = try? Data(contentsOf: fileURL) {
             try existing.write(to: backupURL, options: .atomic)
@@ -153,6 +155,7 @@ public final class BoardStore: ObservableObject {
         writeError = nil
         board = fresh
         status = .ready
+        return true
     }
 
     private func useDefault() {

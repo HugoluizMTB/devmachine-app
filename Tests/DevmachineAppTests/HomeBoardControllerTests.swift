@@ -255,6 +255,40 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertEqual(answers.calls, 2)
     }
 
+    func testResetWithoutAConfigurationFolderKeepsThePlacements() throws {
+        let controller = makeController()
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        let placementsURL = root.appendingPathComponent("widget-placements.json")
+        let before = try Data(contentsOf: placementsURL)
+        try FileManager.default.removeItem(at: root.appendingPathComponent("config"))
+        XCTAssertThrowsError(try controller.resetHome()) { error in
+            XCTAssertEqual(error as? HomeBoardError, .noConfigurationFolder)
+        }
+        XCTAssertEqual(try Data(contentsOf: placementsURL), before)
+        XCTAssertTrue(WidgetPlacementsFile(fileURL: placementsURL).load().contains("codex/usage", on: "home"))
+        let codexCount = controller.store?.board?.widgets.filter { $0.type == "codex/usage" }.count
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertEqual(controller.store?.board?.widgets.filter { $0.type == "codex/usage" }.count, codexCount)
+    }
+
+    func testAResetClearsThePlacementsError() throws {
+        let support = root.appendingPathComponent("support")
+        try Data("x".utf8).write(to: support)
+        let catalogStore = WidgetCatalogStore(read: { DemoData.widgetCatalog })
+        catalogStore.seed(DemoData.widgetCatalog)
+        let placementsURL = support.appendingPathComponent("widget-placements.json")
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: placementsURL), catalog: catalogStore)
+        controller.defaultBoard = { DefaultBoard.make(usage: []) }
+        controller.open(configDirectory: root.appendingPathComponent("config").path)
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertNotNil(controller.placementsError)
+        try FileManager.default.removeItem(at: support)
+        try controller.resetHome()
+        XCTAssertNil(controller.placementsError)
+        XCTAssertFalse(WidgetPlacementsFile(fileURL: placementsURL).load().contains("codex/usage", on: "home"))
+    }
+
     func testThePlacementsFileCanBeMoved() {
         XCTAssertEqual(
             HomeBoardController.placementsURL(environment: ["DEVMACHINE_WIDGET_PLACEMENTS": "/tmp/dm/p.json"]).path,
