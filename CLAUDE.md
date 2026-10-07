@@ -862,7 +862,7 @@ Rules:
   `YAMLScalarStyle.swift`, kept compatible with the CLI's `yaml.v3`. Cross-writer
   tests guard that: change the quoting and they fail.
 - **The golden fixture is the CLI's file.**
-  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.2.json` must stay
+  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.3.json` must stay
   byte-identical to `internal/widgets/testdata/contract.json` in the CLI repo.
   Change one, copy it to the other. `widgets schema --json` prints the same
   document re-indented, so the live test compares it as sorted-key JSON.
@@ -906,8 +906,9 @@ Rules:
   the config folder: whoever can write a board must not be able to approve
   it. Any change to what runs asks again; Deny pauses and keeps the widget,
   with "Allow" to change your mind. An unreadable file means everything
-  waits again. A package's widgets need no approval (trust = the package);
-  `url` and `provider` never do.
+  waits again. A package widget asks only when its package is third-party
+  (see Package providers and third-party widgets); `url` and app providers
+  never ask.
 - **A value is never part of a shell line** (`ArgvBuilder`, the one place a
   widget argv or shell line is built; templates are filled once, at run
   time, with the area's real context). `shell: true` takes no templates in `run` and
@@ -922,7 +923,8 @@ Rules:
   with the argv of the CLI plan's Appendix B: `--machine` before `run`,
   `--workspace` after it, `--no-log`, then `--argv -- <words>` (a shell line
   is `--argv -- /usr/bin/env NAME=value … /bin/sh -c <line>`, each pair one
-  word) or `--package <p> --script <s> -- <args>`. `--config` is never passed:
+  word) or `--package <p> --script <s> -- <args>`, or, for a package
+  provider, `--package <p> -- <command> --<key> <value> …`. `--config` is never passed:
   the process inherits `DEVMACHINE_CONFIG`. The app never opens its own ssh
   for a widget. stdin is `/dev/null`; exit 255 is "never ran" with the CLI's
   last `error:` line; exit 1 with `unknown flag` and no stdout asks for a
@@ -1088,6 +1090,57 @@ Rules:
   fixture, and the CLI's `validate`, `move` and `remove` on an app-written
   `context-sidebar.yml` keep an inline entry byte for byte and refuse a
   `frame`.
+
+## Package providers and third-party widgets
+- **A package provider is `<pkg>/<command>`** (`PackageProviderName`; `app/*`
+  stays the app's). It is `WidgetSource.packageProvider`, kind `provider`,
+  output token `json`: any view that takes `json` draws it with
+  `{{json.<path>}}`. App providers keep `.provider` and `AppWidgetProviders`;
+  a package provider runs through `WidgetSourceController` like a command.
+- **It runs only on a machine or workspace, only through `devmachine run`**:
+  `--machine <m> run --no-log` or `run --workspace <w> --no-log`, then
+  `--package <pkg> -- <command> --<key> <value> …`. `target: local` is refused
+  by the reader and again by `PackageProviderRunner`. The CLI's `commands`
+  gate applies (the `Call` path, not `--script`).
+- **`ArgvBuilder.packageProvider` is the only builder.** `with` pairs go in
+  sorted key order; a key must match `[a-z][a-z0-9_-]*`; a value is always one
+  argv item, even empty, starting with `-` or holding shell syntax. A value
+  holding NUL is refused. The name holds no template. Never route it through
+  the shell-line builders, which drop empty words.
+  `ArgvBuilderTests.testAPackageProviderValueIsAlwaysOneWordAfterItsFlag`
+  guards it.
+- **Output is one JSON object** holding every `returns` field without `?`.
+  Anything else (a list, two documents, nothing, a missing field) is an error
+  and the last good value stays. `every` is ≥ the provider's `min_every`
+  (floor 5s) or `manual`; `timeout` defaults to 30s, at most 10m.
+- **A package widget reads only its own package's providers.** A catalog
+  widget of `acme-tools` naming `mine/load` is refused, whatever the CLI let
+  through.
+- **Trust comes from the catalog** (`widgets list` `trust`): `official` and
+  `local` run as before; `third-party` (a package with
+  `.devmachine-source.yml`) asks before any code-running widget (`command`,
+  `prompt`, `session`, package provider) runs. An older catalog without
+  `trust` reads `release` as official, anything else as local; an unknown
+  word reads as third-party. An inline package-provider widget always asks.
+- **A third-party hash carries the package commit** (`package_commit` in the
+  canonical JSON, even when empty), so `packages update` to a new commit asks
+  again for every such widget. That holds for a catalog widget (its
+  `package_source`) and for an inline widget naming a third-party provider
+  (the commit comes from the catalog's top-level `providers` map). Inline
+  widgets of other providers and official/local hashes are unchanged from
+  engine 1.2, so no stored approval was lost.
+- **Never pass a complete provider index into `BoardCodec`.** The board
+  reader checks only shape, target and the 5s floor (`PackageProviderIndex
+  .unknown`); the catalog check runs later, in `WidgetResolution`, and refuses
+  only that one widget. In the reader, a provider the catalog does not know
+  is a `BoardProblem`: the whole board falls back to its last good layout and
+  nothing on it can be written until the provider appears.
+- **The card says where the code comes from**: "From a third-party package:
+  <url>" (selectable) replaces the "written into <surface>.yml" warning, at
+  every density.
+- `DEVMACHINE_WIDGETS_E2E=<binary>` also runs `PackageProviderLiveTests`: the
+  real CLI must take the argv against a temp config (self machine `here`,
+  nothing synced) and answer "not installed", never "unknown flag".
 
 ## Host keys
 - **ssh refusing a host key is its own problem** (`SSHFailure.hostKeyRejected`,
