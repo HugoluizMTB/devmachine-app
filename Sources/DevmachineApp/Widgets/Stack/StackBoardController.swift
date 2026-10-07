@@ -341,8 +341,21 @@ extension StackBoardController: WidgetEditTarget {
         board.entries.first { $0.id == id }.map(EditableEntry.init)
     }
 
+    func problem(with edit: EntryEdit, for id: String) -> String? {
+        guard let index = board.index(of: id) else { return nil }
+        var entry = board.entries[index]
+        guard edit.apply(to: &entry) else { return nil }
+        if let merged = editCatalog, let message = edit.undeclaredInput(for: entry.boardWidget, in: merged) { return message }
+        if entry.isInline { return nil }
+        if case let .refused(_, reason) = WidgetResolution.resolve(entry.boardWidget, in: StackCatalog.merged(catalog.catalog)) {
+            return reason
+        }
+        return nil
+    }
+
     @discardableResult
     func apply(_ edit: EntryEdit, to id: String) -> Bool {
+        guard problem(with: edit, for: id) == nil else { return false }
         guard let store, store.canEdit, let index = board.index(of: id) else { return false }
         var entry = board.entries[index]
         guard edit.apply(to: &entry) else { return false }

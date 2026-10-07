@@ -290,8 +290,18 @@ extension HomeBoardController: WidgetEditTarget {
         store?.board?.widgets.first { $0.id == id }.map(EditableEntry.init)
     }
 
+    func problem(with edit: EntryEdit, for id: String) -> String? {
+        guard let catalog = catalog.catalog, var widget = store?.board?.widgets.first(where: { $0.id == id }),
+              edit.apply(to: &widget)
+        else { return nil }
+        if let message = edit.undeclaredInput(for: widget, in: catalog) { return message }
+        if case let .refused(_, reason) = WidgetResolution.resolve(widget, in: catalog) { return reason }
+        return nil
+    }
+
     @discardableResult
     func apply(_ edit: EntryEdit, to id: String) -> Bool {
+        guard problem(with: edit, for: id) == nil else { return false }
         guard let store, store.canEdit, let board = store.board,
               let index = board.widgets.firstIndex(where: { $0.id == id })
         else { return false }

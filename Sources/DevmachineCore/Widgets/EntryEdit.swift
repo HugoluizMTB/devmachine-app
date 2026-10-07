@@ -30,6 +30,20 @@ public enum EntryEdit: Equatable, Sendable {
         return true
     }
 
+    /// An input the widget does not declare; the shape and `every` rules
+    /// stay in `InputShapes` and `EntryOverrideRules`, which resolution runs.
+    public func undeclaredInput(for widget: BoardWidget, in catalog: WidgetCatalog) -> String? {
+        guard !widget.isInline, let declared = catalog.widget(named: widget.type)?.inputs else { return nil }
+        let names: [String]
+        switch self {
+        case let .input(name, value): names = value == nil ? [] : [name]
+        case let .typed(_, with, _): names = with.keys.sorted()
+        case .inline: names = []
+        }
+        guard let name = names.first(where: { declared[$0] == nil }) else { return nil }
+        return "\(widget.id): \(widget.type) has no input \"\(name)\""
+    }
+
     @discardableResult
     public func apply(to entry: inout StackEntry) -> Bool {
         var widget = entry.boardWidget
@@ -72,10 +86,11 @@ public enum InlineEntryPlacement {
         id: String, inline: InlineWidget, preset: String, on board: Board, canvasWidth: Int,
         contract: WidgetContract = .current
     ) -> BoardWidget {
-        let size = CanvasLayout.presetSize(preset, contract: contract) ?? CanvasSize(w: 320, h: 160)
+        let known = CanvasLayout.presetSize(preset, contract: contract)
+        let size = known ?? CanvasSize(w: 320, h: 160)
         let spot = CanvasLayout.firstFreeSpot(for: size, avoiding: board.widgets.map(\.frame), bandWidth: canvasWidth)
         return BoardWidget(
-            id: id, type: "", frame: spot, size: CanvasLayout.presetSize(preset, contract: contract) == nil ? BoardWidget.customSize : preset,
+            id: id, type: "", frame: spot, size: known == nil ? BoardWidget.customSize : preset,
             z: board.topZ + 1, inline: inline)
     }
 }

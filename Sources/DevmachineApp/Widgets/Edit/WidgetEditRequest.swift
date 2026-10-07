@@ -12,6 +12,7 @@ protocol WidgetEditTarget: AnyObject {
     func editableEntry(_ id: String) -> EditableEntry?
     func choices(for id: String) -> [ChoiceInput]
     func value(of input: String, in id: String) -> BoardScalar?
+    func problem(with edit: EntryEdit, for id: String) -> String?
     @discardableResult func apply(_ edit: EntryEdit, to id: String) -> Bool
     func addInline(_ inline: InlineWidget, title: String, preset: String) -> String?
 }

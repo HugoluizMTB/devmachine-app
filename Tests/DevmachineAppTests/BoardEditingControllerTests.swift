@@ -157,6 +157,7 @@ final class BoardEditingControllerTests: XCTestCase {
 
             """)
         XCTAssertEqual(controller.choices(for: "machines").map(\.name), ["machines"])
+        XCTAssertNil(controller.problem(with: .input(name: "machines", value: .list(["here"])), for: "machines"))
         XCTAssertTrue(controller.apply(.input(name: "machines", value: .list(["here"])), to: "machines"))
         XCTAssertEqual(controller.board.entries[0].with["machines"], .list(["here"]))
         let inline = try BoardCodec.decodeStack("""
@@ -196,5 +197,90 @@ final class BoardEditingControllerTests: XCTestCase {
         let controller = try home("format: 1\nsurface: home\nwidgets: [\n")
         XCTAssertFalse(controller.apply(.input(name: "machines", value: .list(["main"])), to: "machines"))
         XCTAssertFalse(controller.canEdit)
+    }
+
+    func testAnEveryBelowTheFloorIsRefusedAndTheFileStays() throws {
+        let controller = try home(homeBoard)
+        let before = try homeText()
+        let edit = EntryEdit.typed(title: nil, with: [:], every: "1s")
+        XCTAssertEqual(controller.problem(with: edit, for: "machines"), "machines: every 1s is below devmachine-app/machines's minimum of 5s")
+        XCTAssertFalse(controller.apply(edit, to: "machines"))
+        controller.store?.flush()
+        XCTAssertEqual(try homeText(), before)
+    }
+
+    func testAnUndeclaredInputIsRefused() throws {
+        let controller = try home(homeBoard)
+        let before = try homeText()
+        let edit = EntryEdit.input(name: "nope", value: .string("x"))
+        XCTAssertNotNil(controller.problem(with: edit, for: "machines"))
+        XCTAssertFalse(controller.apply(edit, to: "machines"))
+        controller.store?.flush()
+        XCTAssertEqual(try homeText(), before)
+    }
+
+    func testAListForAOneChoiceIsRefused() throws {
+        let one = CatalogWidget(
+            name: "devmachine-app/one", fits: ["canvas", "stack"],
+            inputs: ["machine": CatalogInput(type: "choice", defaultValue: nil, summary: "One.", from: "machines", many: false)],
+            source: CatalogSource(name: "app/machines", with: ["machines": "{{inputs.machine}}"], every: "90s"),
+            viewKind: "app.machines", sizes: ["medium"], defaultSize: "medium", surfaces: ["home"])
+        let catalog = WidgetCatalog(engine: "1.5", packagesRelease: "2026.10.07", widgets: [machines, one])
+        try Data(homeBoard.replacingOccurrences(of: "devmachine-app/machines", with: "devmachine-app/one").utf8)
+            .write(to: root.appendingPathComponent("config/boards/home.yml"))
+        let store = WidgetCatalogStore(read: { catalog })
+        store.seed(catalog)
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
+            catalog: store, configPath: { nil })
+        controller.open(configDirectory: config)
+        let edit = EntryEdit.input(name: "machine", value: .list(["a", "b"]))
+        XCTAssertEqual(controller.problem(with: edit, for: "machines"), "machines: input \"machine\" takes one name, and [a, b] is not one")
+        XCTAssertFalse(controller.apply(edit, to: "machines"))
+        XCTAssertNil(controller.problem(with: .input(name: "machine", value: .string("main")), for: "machines"))
+        XCTAssertTrue(controller.apply(.input(name: "machine", value: .string("main")), to: "machines"))
+    }
+
+    func testAStackEditLeavesOtherEntriesByteForByte() throws {
+        let text = """
+            format: 1
+            surface: sidebar
+            widgets:
+              - id: machines
+                type: devmachine-app/machines
+                size: auto
+              - id: up
+                title: Uptime
+                source: {kind: command, run: uptime, every: 60s}
+                view: {kind: text}
+                size: medium
+
+            """
+        let controller = try stack("sidebar", text)
+        XCTAssertNil(controller.problem(with: .input(name: "machines", value: .list(["here"])), for: "machines"))
+        XCTAssertTrue(controller.apply(.input(name: "machines", value: .list(["here"])), to: "machines"))
+        controller.store?.flush()
+        let after = try String(contentsOf: BoardFiles.url(configDirectory: config, surface: "sidebar"), encoding: .utf8)
+        let tail = "  - id: up\n    title: Uptime\n    source: {kind: command, run: uptime, every: 60s}\n    view: {kind: text}\n    size: medium\n"
+        XCTAssertTrue(after.contains(tail), after)
+        XCTAssertNotEqual(after, text)
+    }
+
+    func testAnInlineSourceEditWritesNoApproval() throws {
+        let controller = try home(homeBoard)
+        let inline = try BoardCodec.decodeStack("""
+            format: 1
+            surface: sidebar
+            widgets:
+              - id: x
+                title: Disk
+                source: {kind: command, run: uptime, every: 60s}
+                view: {kind: text}
+
+            """).entries[0].inline!
+        XCTAssertNotEqual(inline.source, controller.editableEntry("disk")?.inline?.source)
+        XCTAssertTrue(controller.apply(.inline(inline), to: "disk"))
+        controller.store?.flush()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("approvals.json").path))
     }
 }
