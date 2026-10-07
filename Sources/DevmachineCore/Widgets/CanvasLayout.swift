@@ -149,10 +149,7 @@ public enum CanvasLayout {
         return !apart
     }
 
-    /// How high a widget draws. The canvas keeps its views in the file's
-    /// order and stacks them with this instead: reordering the views while a
-    /// drag is held moves the gesture's view, and SwiftUI cancels the gesture
-    /// without `onEnded`.
+    /// The dragged widget draws above all others without changing the board's order.
     public static func stackLevel(of widget: BoardWidget, in board: Board, lifting dragged: String?) -> Double {
         widget.id == dragged ? Double(board.topZ + 1) : Double(widget.z)
     }

@@ -194,6 +194,10 @@ Rules:
   `Color.dmHover`); tables have no outer border and no line between rows
   (`DMTableRow`); tab rows are pills, never underlined. A line is the last
   resort, drawn with `DMHairline`, and at most one per area.
+- **A gesture lives only as long as the view it is attached to.** While a drag
+  is held, never reorder views (`ForEach` order) or remove the view that holds
+  it. Lift the dragged item with `.zIndex` and keep drag chrome alive with
+  `@GestureState` (the Home canvas does this).
 - **Never put a `Divider` inside a `ZStack`** — it becomes horizontal and greedy.
   Use `Rectangle().frame(width:1)` / `.frame(height:1)`.
 - Numbers shown to the user go through `Text(verbatim:)` with explicit formatting.
