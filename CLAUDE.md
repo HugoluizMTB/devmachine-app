@@ -1045,7 +1045,9 @@ Rules:
 - **Placements are saved per surface** (`WidgetPlacementsFile.save(_:surface:)`):
   Home and each sidebar rewrite only their own set. A placements file that
   does not decode moves to `widget-placements.json.broken`, the move is
-  logged, and the save goes on with a fresh file.
+  logged, and the save goes on with a fresh file. If that write then fails,
+  the error itself names where the broken file went
+  (`cannotWriteAfterSettingAside`), so the move is never lost.
 - **Controllers start from `ContentView.onAppear`**
   (`StackBoardController.startAll()`), never from a view a test can render,
   so rendering `ContextPanel` in a test never asks the CLI anything. No test

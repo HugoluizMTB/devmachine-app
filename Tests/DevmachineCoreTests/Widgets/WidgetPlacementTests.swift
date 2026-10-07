@@ -141,6 +141,25 @@ final class WidgetPlacementTests: XCTestCase {
         XCTAssertNil(try file.save(home, surface: "home"))
     }
 
+    func testAWriteThatFailsAfterTheMoveStillNamesWhereTheBrokenFileWent() throws {
+        struct DiskFull: LocalizedError { var errorDescription: String? { "the disk is full" } }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("placements-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent("widget-placements.json")
+        try Data("{not json".utf8).write(to: url)
+        let file = WidgetPlacementsFile(fileURL: url, writeData: { _, _ in throw DiskFull() })
+        XCTAssertThrowsError(try file.save(WidgetPlacements(), surface: "home")) { error in
+            XCTAssertEqual(
+                error as? WidgetPlacementsFileError,
+                .cannotWriteAfterSettingAside(path: url.path, broken: file.brokenFileURL.path, reason: "the disk is full"))
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Cannot write \(url.path): the disk is full. The broken file it replaced was moved to \(file.brokenFileURL.path).")
+        }
+        XCTAssertEqual(try String(contentsOf: file.brokenFileURL, encoding: .utf8), "{not json")
+    }
+
     func testAStackPlacesAWidgetOnceAtTheEnd() {
         var disk = CatalogFixtures.machines
         disk.places = ["context-sidebar"]

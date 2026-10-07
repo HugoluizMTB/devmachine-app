@@ -67,9 +67,15 @@ public struct WidgetPlacementsFile: Sendable {
     private static let version = 1
 
     public let fileURL: URL
+    private let writeData: @Sendable (Data, URL) throws -> Void
 
     public init(fileURL: URL) {
+        self.init(fileURL: fileURL, writeData: { data, url in try data.write(to: url, options: .atomic) })
+    }
+
+    init(fileURL: URL, writeData: @escaping @Sendable (Data, URL) throws -> Void) {
         self.fileURL = fileURL
+        self.writeData = writeData
     }
 
     public static var defaultFileURL: URL {
@@ -100,7 +106,13 @@ public struct WidgetPlacementsFile: Sendable {
         }
         merged.reset(surface)
         for widget in placements.placed[surface] ?? [] { merged.insert(widget, on: surface) }
-        try write(merged)
+        do {
+            try write(merged)
+        } catch {
+            guard let moved else { throw error }
+            throw WidgetPlacementsFileError.cannotWriteAfterSettingAside(
+                path: fileURL.path, broken: moved.path, reason: error.localizedDescription)
+        }
         return moved
     }
 
@@ -133,13 +145,14 @@ public struct WidgetPlacementsFile: Sendable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(File(version: Self.version, placed: placements.placed.mapValues { $0.sorted() }))
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: fileURL, options: .atomic)
+        try writeData(data, fileURL)
     }
 }
 
 public enum WidgetPlacementsFileError: LocalizedError, Equatable {
     case unreadable(path: String, reason: String)
     case cannotSetAside(path: String, reason: String)
+    case cannotWriteAfterSettingAside(path: String, broken: String, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -147,6 +160,8 @@ public enum WidgetPlacementsFileError: LocalizedError, Equatable {
             return "Cannot read \(path): \(reason)"
         case let .cannotSetAside(path, reason):
             return "Cannot move the broken \(path) aside: \(reason)"
+        case let .cannotWriteAfterSettingAside(path, broken, reason):
+            return "Cannot write \(path): \(reason). The broken file it replaced was moved to \(broken)."
         }
     }
 }
