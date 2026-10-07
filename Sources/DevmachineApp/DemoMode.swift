@@ -29,6 +29,16 @@ enum DemoMode {
     /// quietly touching a real machine.
     static let runner: any CommandRunner = DemoCommandRunner()
 
+    /// Home and both sidebars read their board files from this one folder,
+    /// never the real configuration.
+    static let boardsFolder: String = {
+        let folder = ProcessInfo.processInfo.environment["DEVMACHINE_DEMO_BOARDS"].flatMap { $0.isEmpty ? nil : $0 }
+            ?? FileManager.default.temporaryDirectory
+                .appendingPathComponent("devmachine-demo-config-\(UUID().uuidString)").path
+        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        return folder
+    }()
+
     /// `ContextStore`'s source, picked once here so nothing else has to ask
     /// `DemoMode.isActive` before building one.
     static func defaultContextSource() -> any ContextSource {

@@ -6,7 +6,7 @@ final class CopyModeCheckScheduleTests: XCTestCase {
     private let machines = ["acme-devmachine": "main", "beta-devmachine": "main", "gamma-devmachine": "backup"]
 
     private func due(
-        _ schedule: inout CopyModeCheckSchedule, at now: Date, paused: Bool = false, sweeping: Bool = false,
+        _ schedule: inout CopyModeCheckSchedule, at now: Date, paused: Set<String> = [], sweeping: Bool = false,
         panes: [(alias: String, session: String)]? = nil
     ) -> [CopyModeCheck] {
         schedule.due(
@@ -14,7 +14,7 @@ final class CopyModeCheckScheduleTests: XCTestCase {
                 ("beta-devmachine", "main"), ("acme-devmachine", "dash"), ("acme-devmachine", "api"),
                 ("gamma-devmachine", "web"),
             ],
-            machine: { self.machines[$0] }, now: now, paused: paused, sweeping: sweeping)
+            machine: { self.machines[$0] }, now: now, isPaused: { paused.contains($0) }, sweeping: sweeping)
     }
 
     func testEachAccountOnScreenIsCheckedOnceGroupedByMachine() {
@@ -46,19 +46,28 @@ final class CopyModeCheckScheduleTests: XCTestCase {
         XCTAssertEqual(checks.map(\.machine), ["backup"])
     }
 
-    func testNothingRunsWhilePollingIsPausedOrTheSweepRunsAndNothingIsSpent() {
+    func testNothingRunsWhileTheSweepRunsAndNothingIsSpent() {
         var schedule = CopyModeCheckSchedule()
 
-        XCTAssertTrue(due(&schedule, at: start, paused: true).isEmpty)
         XCTAssertTrue(due(&schedule, at: start, sweeping: true).isEmpty)
         XCTAssertEqual(due(&schedule, at: start).count, 3)
+    }
+
+    func testAPausedWorkspaceIsLeftOutAndSpendsNothingForItsMachine() {
+        var schedule = CopyModeCheckSchedule()
+
+        let checks = due(&schedule, at: start, paused: ["acme-devmachine", "gamma-devmachine"])
+        XCTAssertEqual(checks.map(\.alias), ["beta-devmachine"])
+
+        let later = due(&schedule, at: start.addingTimeInterval(10))
+        XCTAssertEqual(later.map(\.alias), ["gamma-devmachine"])
     }
 
     func testAnAliasWithNoKnownMachineCountsAsItsOwn() {
         var schedule = CopyModeCheckSchedule()
 
         let checks = schedule.due(
-            panes: [("delta-devmachine", "x")], machine: { _ in nil }, now: start, paused: false, sweeping: false)
+            panes: [("delta-devmachine", "x")], machine: { _ in nil }, now: start, isPaused: { _ in false }, sweeping: false)
 
         XCTAssertEqual(checks.map(\.machine), ["delta-devmachine"])
     }

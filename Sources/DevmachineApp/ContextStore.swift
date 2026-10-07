@@ -35,6 +35,9 @@ final class ContextStore: ObservableObject {
     private var settings: AppSettings = .empty
     private var inFlight: Set<String> = []
     private var generation = UUID()
+    /// True for a target whose workspace is paused after an ssh failure: the
+    /// automatic reads wait, and the panel's Retry still reads once.
+    var holdsReads: @MainActor (CommandTarget) -> Bool = { _ in false }
 
     init(services: DevmachineServices = DevmachineServices(), cache: DataCache = DataCache()) {
         self.facade = ContextFacade(source: services.contextSource)
@@ -62,10 +65,10 @@ final class ContextStore: ObservableObject {
             clearState()
             setStatus(.loading)
         }
-        poll()
+        pollUnlessHeld()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.poll() }
+            Task { @MainActor in self?.pollUnlessHeld() }
         }
     }
 
@@ -88,6 +91,17 @@ final class ContextStore: ObservableObject {
         }
         poll()
     }
+
+    private func pollUnlessHeld() {
+        guard let target = current else { return }
+        guard !holdsReads(target) else {
+            if status == .loading { setStatus(.failed(Self.pausedMessage)) }
+            return
+        }
+        poll()
+    }
+
+    static let pausedMessage = "Checking this workspace is paused after an SSH failure. Retry reads it once now."
 
     func poll() {
         guard let target = current, !DemoMode.holdsLoading else { return }
@@ -153,6 +167,17 @@ final class ContextStore: ObservableObject {
         if stateReadAt != nil {
             stateReadAt = nil
         }
+    }
+}
+
+/// Session context polls only while someone can see it: the Context tab
+/// open, not collapsed, a session selected, and an expanded widget on its
+/// board reading `app/session-context`, or an expanded source widget reading
+/// `path` or `harness`, which the same poll gives
+/// (`StackBoardController.needsSessionContext`).
+enum ContextPollRule {
+    static func shouldPoll(showsPanel: Bool, collapsed: Bool, tab: ContextTab, hasTarget: Bool, boardNeedsContext: Bool) -> Bool {
+        showsPanel && !collapsed && tab == .context && hasTarget && boardNeedsContext
     }
 }
 

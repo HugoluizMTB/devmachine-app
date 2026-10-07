@@ -152,4 +152,17 @@ final class HarnessUsageStoreTests: XCTestCase {
         XCTAssertEqual(store.state(for: "claude")?.isLoading, true)
         XCTAssertEqual(store.state(for: "claude")?.showsSkeleton, false)
     }
+
+    func testRefreshingOneHarnessLeavesTheOthersAlone() async {
+        let first = FakeHarnessUsageProvider(id: "first", result: .success(snapshot()))
+        let second = FakeHarnessUsageProvider(id: "second", result: .success(snapshot()))
+        let store = HarnessUsageStore(providers: [first, second])
+
+        store.refresh(harnessID: "second", force: true)
+        store.refresh(harnessID: "missing", force: true)
+        await waitUntil { store.state(for: "second")?.refreshedAt != nil }
+
+        XCTAssertEqual(first.calls, 0)
+        XCTAssertEqual(second.calls, 1)
+    }
 }

@@ -1,0 +1,114 @@
+import Foundation
+
+/// The devmachine-app widgets the menu bar draws by default. They resolve
+/// before the catalog is read, so a missing CLI or packages release never
+/// empties the title or the popover; a catalog entry of the same name wins.
+public enum AppMenubarWidgets {
+    public static let package = DefaultStackBoard.package
+
+    private struct Spec {
+        let provider: String
+        let view: WidgetValue
+        let fits: [String]
+        let surfaces: [String]
+        let places: [String]
+        let title: String
+        let summary: String
+    }
+
+    private static let specs: [String: Spec] = [
+        "brand": Spec(
+            provider: "app/brand", view: .object(["kind": .string("app.brand")]), fits: ["slot"],
+            surfaces: [DefaultStackBoard.menubar], places: [DefaultStackBoard.menubar], title: "Devmachine mark", summary: "The ❯_ mark."),
+        "open-pull-requests": Spec(
+            provider: "app/open-pull-requests",
+            view: .object(["kind": .string("number"), "hide_zero": .bool(true)]), fits: ["slot"],
+            surfaces: [DefaultStackBoard.menubar], places: [DefaultStackBoard.menubar], title: "Open pull requests",
+            summary: "How many of your pull requests are open; hidden at 0."),
+        "pull-requests-panel": Spec(
+            provider: "app/pull-requests-panel", view: .object(["kind": .string("app.pull-requests-panel")]),
+            fits: ["tabs", "canvas", "stack"],
+            surfaces: [DefaultStackBoard.menubarPanel, DefaultStackBoard.sidebar, DefaultStackBoard.contextSidebar],
+            places: [DefaultStackBoard.menubarPanel], title: "Pull Requests",
+            summary: "Your open pull requests, by organisation."),
+        "usage-panel": Spec(
+            provider: "app/usage-panel", view: .object(["kind": .string("app.usage-panel")]), fits: ["tabs"],
+            surfaces: [DefaultStackBoard.menubarPanel], places: [DefaultStackBoard.menubarPanel], title: "Usage",
+            summary: "Coding harness usage, one column per harness."),
+    ]
+
+    public static var providers: [String: String] { specs.mapValues(\.provider) }
+    public static let viewKinds: Set<String> = ["app.brand", "app.pull-requests-panel", "app.usage-panel"]
+    /// The app's title for each of its views; a tab drawn by one takes it.
+    public static let viewTitles: [String: String] = [
+        "app.brand": "Devmachine mark", "app.pull-requests-panel": "Pull Requests", "app.usage-panel": "Usage",
+    ]
+
+    /// On Home and in a sidebar the panel reads like any other widget title.
+    public static let boardTitles: [String: String] = ["app.pull-requests-panel": "Pull requests"]
+
+    public static func title(_ widget: String) -> String? { specs[widget]?.title }
+
+    public static func catalogWidget(_ widget: String) -> CatalogWidget? {
+        guard let spec = specs[widget], let kind = spec.view["kind"]?.string else { return nil }
+        return CatalogWidget(
+            name: "\(package)/\(widget)", summary: spec.summary, requiresEngine: ">= 1.4", fits: spec.fits,
+            source: CatalogSource(name: spec.provider, every: "60s"), viewKind: kind, sizes: [], defaultSize: "",
+            places: spec.places, surfaces: spec.surfaces, origin: "app", view: spec.view, single: true)
+    }
+
+    public static var all: [CatalogWidget] { specs.keys.sorted().compactMap(catalogWidget) }
+}
+
+/// What the menu bar title adds to the shared rules: a short list of views,
+/// no streams, and a 30 s floor, because its widgets run with no window open.
+public enum MenubarSlotRules {
+    /// The CLI's `MenubarViewProblem`: the view is named only when there is one.
+    public static func viewProblem(_ kind: String, contract: WidgetContract = .current) -> String? {
+        if contract.slotEntry.views.contains(kind) { return nil }
+        if kind.isEmpty { return "a widget with no view cannot be drawn in the menu bar" }
+        return "the \(kind) view cannot be drawn in the menu bar"
+    }
+
+    public static func refusal(_ resolved: ResolvedWidget, contract: WidgetContract = .current) -> String? {
+        if let problem = viewProblem(resolved.viewKind, contract: contract) { return problem }
+        if resolved.source?.every == .continuous {
+            return "a stream never ends, so it cannot run in the menu bar: use mode: poll"
+        }
+        return nil
+    }
+
+    public static func floored(_ resolved: ResolvedWidget, contract: WidgetContract = .current) -> ResolvedWidget {
+        let floor = contract.slotFloor
+        var source = resolved.source
+        if let current = source, case let .interval(seconds) = current.every, seconds < floor {
+            source = current.withEvery(.interval(floor))
+        }
+        let every = resolved.every > 0 ? max(floor, resolved.every) : resolved.every
+        var result = ResolvedWidget(
+            widget: resolved.widget, provider: resolved.provider, viewKind: resolved.viewKind,
+            arguments: resolved.arguments, every: every, minimum: resolved.minimum, source: source, title: resolved.title)
+        result.listArguments = resolved.listArguments
+        return result
+    }
+}
+
+/// A tab's or a slot's name in the popover: the built-in title, the inline
+/// title, the catalog's, or the placeholder's.
+public enum MenubarTitles {
+    public static func title(_ entry: StackEntry, resolution: WidgetResolution?, catalog: WidgetCatalog?) -> String {
+        if let title = entry.titleOverride { return title }
+        if let inline = entry.inline { return inline.title }
+        if case let .ready(resolved)? = resolution, let title = AppMenubarWidgets.viewTitles[resolved.viewKind] {
+            return title
+        }
+        if entry.package == AppMenubarWidgets.package,
+           let title = AppMenubarWidgets.title(String(entry.type.dropFirst(entry.package.count + 1))) {
+            return title
+        }
+        switch resolution {
+        case .ready?, nil: return WidgetTitle.make(type: entry.type, in: catalog)
+        case let .some(other): return WidgetResolutionCopy.title(other)
+        }
+    }
+}

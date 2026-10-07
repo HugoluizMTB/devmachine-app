@@ -33,6 +33,15 @@ public struct SessionStore: Sendable {
             environment: RemoteCommands.sshEnvironment()
         )
     }
+
+    public func runCapturing(alias: String, command: String) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        try runner.runCapturing(
+            executable: "/usr/bin/ssh",
+            args: RemoteCommands.sshBaseArgs(alias: alias) + [command],
+            environment: RemoteCommands.sshEnvironment()
+        )
+    }
 }
 
 /// ssh itself failing (exit 255), as opposed to the remote command: the host

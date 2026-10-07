@@ -1,5 +1,5 @@
 {
-  "originHash" : "80ce9b461f229439ae18292aac540b7d5b2089eeaf1870605e42390b6dc6e871",
+  "originHash" : "0850ae35a1bfdb122b16da4036ff63ccffe1c2b325b1879f2174356f0c335bb2",
   "pins" : [
     {
       "identity" : "h",
@@ -61,6 +61,15 @@
       "location" : "https://github.com/migueldeicaza/SwiftTerm.git",
       "state" : {
         "revision" : "9fc2d2fc627f291727e82d5449ec22df76320671"
+      }
+    },
+    {
+      "identity" : "yams",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jpsim/Yams.git",
+      "state" : {
+        "revision" : "3d6871d5b4a5cd519adf233fbb576e0a2af71c17",
+        "version" : "5.4.0"
       }
     }
   ],

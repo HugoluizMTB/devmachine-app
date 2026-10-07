@@ -64,6 +64,37 @@ final class CommandTargetTests: XCTestCase {
         XCTAssertEqual(call.1.last, "cd '/Users/alice/dev/acme' && git status")
     }
 
+    func testALocalFolderReachesTheShellAsAnArgument() throws {
+        let local = CapturingRunner()
+        let host = HostRunner(remote: RemoteService(runner: CapturingRunner()), local: local)
+
+        _ = try host.runCapturingWithFolderArgument(.local(session: "notes", path: "/Users/alice/it's $(x)"), "git status")
+
+        let call = try XCTUnwrap(local.recorded.first)
+        XCTAssertEqual(call.0, "/bin/sh")
+        XCTAssertEqual(call.1, ["-c", "cd -- \"$1\" && git status", "sh", "/Users/alice/it's $(x)"])
+    }
+
+    func testAFolderThatLooksLikeAnOptionIsNeverReadAsOne() throws {
+        let host = HostRunner(remote: RemoteService(runner: CapturingRunner()), local: ProcessRunner())
+
+        let result = try host.runCapturingWithFolderArgument(.local(session: "notes", path: "-P"), "pwd")
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertEqual(result.stdout, "")
+    }
+
+    func testARemoteFolderArgumentReadIsTheSessionFolderRead() throws {
+        let ssh = CapturingRunner()
+        let host = HostRunner(remote: RemoteService(runner: ssh), local: CapturingRunner())
+
+        _ = try host.runCapturingWithFolderArgument(.remote(alias: "alice-dev-devmachine", session: "api"), "git status")
+
+        let command = try XCTUnwrap(ssh.recorded.first?.1.last)
+        XCTAssertTrue(command.contains("tmux display -p -t 'api'"))
+        XCTAssertTrue(command.hasSuffix("&& git status"))
+    }
+
     func testACommandThatCarriesItsOwnPathIsNotWrapped() throws {
         let local = CapturingRunner()
         let host = HostRunner(remote: RemoteService(runner: CapturingRunner()), local: local)

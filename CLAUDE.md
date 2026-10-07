@@ -64,11 +64,67 @@ When the owner asks for a feature or "a page", he wants something that loads
   persisted by `PaletteRecentsStore`.
 
 ## Menubar
-`MenuBarExtra` uses `.menuBarExtraStyle(.window)` — an interactive popover with a
-tab bar (`MenuBarTab`), mouse-navigable like pr-menubar. Tabs render inline
-(Pull Requests, Usage, …); no separate PR window. The popover should size itself
-to the active tab. Tab styling should be elegant/custom, not the raw native
-segmented control.
+`MenuBarExtra` uses `.menuBarExtraStyle(.window)`: an interactive popover. The
+title and the popover are widget boards (engine 1.4), owned by one
+app-scoped `MenubarController.shared`:
+
+- **Two files.** `<config>/boards/menubar.yml` (surface `menubar`, layout
+  `slot`) and `<config>/boards/menubar-panel.yml` (surface `menubar-panel`,
+  layout `tabs`). Same envelope and store rules as the sidebars
+  (`StackBoardStore`, `StackBoardController`): disk wins, 300 ms write, an
+  invalid file is never written over (the popover shows the banner), reset
+  keeps `.bak`. A slot entry has no `frame`, `size`, `collapsed`, `z` or
+  `minimized`; at most 3, left to right. A tab has no `frame`, `z`,
+  `minimized` or `collapsed`; its `size` is kept on write and ignored.
+- **Defaults are today** (`DefaultStackBoard`): `[brand, open-pull-requests]`
+  and `[pull-requests-panel, usage-panel]`, no `size`. They resolve built in
+  (`AppMenubarWidgets`), so a missing CLI or packages release never changes
+  the title or the tabs. `MenuBarLabelTests` pins today's label pixels; keep
+  it green.
+- **The title is text plus one SF Symbol per slot** (`MenubarLabelModel`),
+  so macOS can template it. A slot draws `text` (first non-empty line, cut
+  at 24 characters counting the "…"), `number`, `status` (a symbol per
+  level: colour is lost in the menu bar) or `app.brand` ("❯_"). Any other
+  view is refused. A `number` view with `hide_zero: true` draws nothing at 0
+  (the built-in open pull request count sets it); without it, 0 shows. With
+  nothing to draw, the title shows "❯_", so the item never vanishes.
+- **Who runs when.** The title's widgets run from launch, window or not
+  (`DevmachineApp.init` starts the controller; never a view, never a test).
+  A slot source's `every` is raised to 30 s, and a stream is refused. The
+  popover's widgets run only while it is open, and only the selected tab
+  (`StackBoardController.setVisibleEntries`); Edit mode shows no tab, so
+  none runs. Open and close come from `onAppear`/`onDisappear` and also
+  from the menu bar window's `didBecomeKey`/`didResignKey`
+  (`MenubarPanelWindowWatch`), because a `MenuBarExtra` window kept alive
+  between opens may skip them. `MenubarPanelPresence` lets only the first
+  signal of an open or a close act; a window that gives up key but stays
+  on screen stays open. The title's ticks never redraw the popover: the
+  controller publishes only what the popover reads (`approvals`).
+  `PRStore` and `HarnessUsageStore` keep their own schedules; the providers
+  `app/open-pull-requests`, `app/pull-requests-panel` and `app/usage-panel`
+  only read them. The 30 s floor and the 24-character cut are the app's;
+  the CLI only carries the numbers in the contract.
+- **Wrap, never rewrite.** The Pull Requests tab is `PRsView` as it is; the
+  Usage tab is `MenuBarUsageColumns`, the old block moved as it was. Width
+  776 and height 640 for every tab (`MenuBarSizing`, `UsageLayoutTests`).
+- **Approval.** A title widget waiting for approval draws "!" in its slot;
+  a denied one draws nothing. Both are listed, as their `SourceWidgetCard`,
+  in an "Approvals" tab that comes first and is selected when the popover
+  opens. An answer given on any surface (Home, a sidebar, the popover)
+  reaches the title at once: see "A widget written in the board runs only
+  after Allow" for how every area shares the approvals file.
+- **Edit mode** (pencil in the footer) lists both boards with up, down and
+  remove, and "Add widget" opens `WidgetGalleryView` in place, filtered to
+  that surface. A full menu bar disables "Add widget" and says why ("The
+  menu bar holds 3 widgets", `StackGallery.fullReason`), and a placed
+  widget never makes a fourth slot.
+- **Settings → Appearance** resets "menubar" and "menubar panel" under
+  their own "Menu bar" heading, after "Sidebars"
+  (`StackBoardController.reset()`, `.bak` kept).
+- Test hook: `DEVMACHINE_WIDGETS_E2E=<binary>` runs `MenubarBoardLiveTests`
+  against a temp config: the CLI validates the app's default boards,
+  refuses a fourth slot and a slot `size`, and moves a tab keeping an
+  inline entry byte for byte. No test reads `MenubarController.shared`.
 
 The footer's eyedropper and ⌘K's "Pick a color from the screen" share
 `ScreenColorPicker` (the system `NSColorSampler`); the clipboard text is
@@ -194,6 +250,10 @@ Rules:
   `Color.dmHover`); tables have no outer border and no line between rows
   (`DMTableRow`); tab rows are pills, never underlined. A line is the last
   resort, drawn with `DMHairline`, and at most one per area.
+- **A gesture lives only as long as the view it is attached to.** While a drag
+  is held, never reorder views (`ForEach` order) or remove the view that holds
+  it. Lift the dragged item with `.zIndex` and keep drag chrome alive with
+  `@GestureState` (the Home canvas does this).
 - **Never put a `Divider` inside a `ZStack`** — it becomes horizontal and greedy.
   Use `Rectangle().frame(width:1)` / `.frame(height:1)`.
 - Numbers shown to the user go through `Text(verbatim:)` with explicit formatting.
@@ -214,7 +274,8 @@ Rules:
   `dropTask` so it does not blink a finished card. The small
   `ProgressView().controlSize(.small)` inside a panel stays what it is: that
   panel loading its own content, not a job. A `devmachine` run against a
-  machine is a machine job instead (see Machine jobs).
+  machine is a machine job instead (see Machine jobs). A widget's own poll is the
+  exception: it is the widget's content (see Home widgets).
 - **`.clipped()` / `.clipShape` do NOT clip hit-testing.** A `scaledToFill` image
   overflows its container and its invisible overflow still swallows clicks over
   neighboring views (this once killed the sidebar's right edge for a whole day).
@@ -284,9 +345,9 @@ Rules:
   workspace alias with a pane on screen needs its own login (one login per
   machine cannot reach another account's tmux without root); what is
   limited is when. One ssh at a time, aliases grouped by machine, each
-  machine at most once per 5 minutes, nothing while polling is paused or
-  the sweep runs, and the first ssh-level failure ends the round and pauses
-  polling through `AppModel.noteSSHFailure`, the sweep's own backoff.
+  machine at most once per 5 minutes, never a paused workspace, nothing
+  while the sweep runs, and an ssh-level failure pauses through
+  `AppModel.noteSSHFailure`, the sweep's own rule (see Performance rules).
 - **A process starts only after its pane has the size it will be drawn at**
   (`viewDidSize`). Started earlier it learns a placeholder geometry, and a program
   that repaints only what changed never corrects it.
@@ -539,6 +600,20 @@ Rules:
   inside its field. WebKit's "Open Link in New Window" reads "New Tab".
 
 ## Home layout
+- **The default Home board is laid out for the canvas it opens on**
+  (`DefaultBoard.make(harnesses:canvasWidth:machines:)`). `HomeCanvasView`
+  opens the board only once the canvas has a width, so a missing `home.yml`
+  is written for the real window; 1280 is the fallback. Every machine sits
+  side by side in one row at the top (sized from `MachineStatsCard.width` and
+  `MachinesWidgetView`'s spacing, for the machine count `StatsStore` knows, 3
+  when none), one `devmachine-app/usage` per enabled harness under it (two
+  across from two harnesses, 336-480 wide, 600 tall: the full card with a
+  typical snapshot measures 591, at any width, so it never scrolls), and on
+  the right edge a 336-416 column with the clock and the summary pill under
+  it. The pill sits at the top of its widget so it reads as part of the
+  clock. `DefaultHomeBoardTests` pins the frames; `DefaultHomeBoardFitTests`
+  draws the real cards at those frames. The `HomeLayout` notes below describe
+  the pre-widget view.
 - **`HomeLayout.plan` decides from Home's width alone**; showing or hiding
   the sidebar only changes that width. The clock sits in the middle of all of
   Home when, there, it still clears the cards column by the gap
@@ -692,9 +767,23 @@ Rules:
   and cache with a cap. The network map wallpaper is drawn, not baked: its
   canvases are `Equatable` views, repainted only when the map or the size changes. Hidden `.opacity(0)` views still cost a full-window drawable —
   render only what is shown. No `.shadow` on full-window cards.
-- Session polling is a sequential sweep that stops at the first ssh-level failure and
-  pauses (5 min on `Permission denied`, 1 min unreachable): parallel auths against a
-  locked agent got this Mac banned by fail2ban. Keep it that way.
+- Session polling is a sequential sweep, one ssh at a time: parallel auths against a
+  locked agent got this Mac banned by fail2ban. Keep it that way. A failure pauses
+  only what it is about (`PollPause`, `AppModel.pollPauses`), so one broken workspace
+  never stalls the others: a refused login pauses that workspace for 5 min (fail2ban
+  counts failed logins per source IP on each machine; another account's working login
+  adds nothing); a second workspace refused on the same machine inside that pause
+  pauses the whole machine for 5 min, so a locked agent costs at most two refused
+  logins per machine per pause. An unreachable machine pauses its own workspaces for
+  1 min (only that workspace when the machine is unknown), a refused host key pauses
+  nothing. A paused
+  workspace gets no automatic login at all: sweep, selection poll, context, Git, copy
+  mode check, the mosh watchdog's ssh. Try again and opening a session try once; a
+  refusal pauses again (a refused mosh-server login skips the ssh fallback, which would
+  be a second refusal). The sidebar shows each pause under the workspace
+  (`PollPauseSidebarCard`, one per machine when the machine is paused) and it clears on
+  the next answer; a corner toast says it once, when the pause starts, not again while
+  it only goes on.
 
 - Machine stats are the one app-wide poll, because Home shows them: `StatsStore`
   reads every non-self machine every 90s, staggered, one run per machine, backing
@@ -829,6 +918,425 @@ Rules:
   with the fix.
 - The CLI's config folder is watched (`ConfigDirectoryWatcher`), so a machine
   or workspace added in a terminal shows up without a restart.
+
+## Home widgets
+- **Home is `<config>/boards/home.yml`, nothing else.** `<config>` is what
+  `devmachine --format json config path` answers (`DevmachineCLI.configPath()`,
+  called by `HomeBoardController.start()` off the main thread; it honours
+  `DEVMACHINE_CONFIG`), never `AppSettings.opsRepoPath`.
+  The app, `devmachine widgets add/remove` and agents edit the same file.
+  `BoardStore` reloads it on every change. The app never creates the config
+  folder: with no folder, nothing is written.
+- **The CLI writes by rename, so `BoardFileWatcher` watches the `boards/`
+  folder.** A watch on the file alone goes blind after the first CLI write,
+  because the rename swaps the inode. The file is watched too, for editors that
+  write in place. Bursts settle for 150 ms, so one save is one reload.
+- **What is on disk wins.** A write waits 300 ms (`BoardStore.writeDelay`) and
+  is dropped when the file changed since the store last read it: the CLI's
+  edit replaces the app's pending one. An invalid file keeps the last good
+  layout on screen, the banner names the line, and nothing is written until it
+  is valid again: someone is fixing it by hand. An edit still waiting when the
+  file turns invalid is dropped, and the last good layout comes back. Reset is
+  the one write allowed then: it saves `home.yml.bak` first. With no config
+  folder it writes nothing, keeps the placements and shows an error.
+- **A failed `widget-placements.json` save is not silent.** The placement
+  stays in memory, the error goes to the `widgets` log and to
+  `HomeBoardController.placementsError`; the next good save clears it. If the
+  CLI's config path is unknown at launch, the next reload asks again.
+- **Yams reads, our code writes.** Three writers produce the file (the app, the
+  CLI, a person or agent), so the reader must accept any YAML style. A
+  hand-made parser would call valid files invalid, and that blocks every write.
+  The writer (`BoardCodec.encode`) stays ours because the spec fixes the key
+  order and the flow-style `frame`. It quotes text with the rules in
+  `YAMLScalarStyle.swift`, kept compatible with the CLI's `yaml.v3`. Cross-writer
+  tests guard that: change the quoting and they fail.
+- **The golden fixture is the CLI's file.**
+  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.6.json` must stay
+  byte-identical to `internal/widgets/testdata/contract.json` in the CLI repo.
+  Change one, copy it to the other. `widgets schema --json` prints the same
+  document re-indented, so the live test compares it as sorted-key JSON.
+- **Frames are points at 100% text size** (`CanvasLayout`). The canvas
+  multiplies by the text scale to draw and divides to store, so the file reads
+  the same at any setting. A window smaller than the layout moves widgets in on
+  screen only.
+- **A widget's meaning comes from the CLI catalog** (`widgets list --format
+  json`, `WidgetCatalogStore`). The app ships no `widget.yml`. An entry the
+  catalog cannot resolve keeps its place as a placeholder, so a missing
+  package never loses a layout. `DemoData.widgetCatalog` is for demo
+  screenshots only.
+- **`places` adds a widget once.** `widget-placements.json` in Application
+  Support (`WidgetPlacementsFile`) remembers it, so a removed widget does not
+  come back. Placement is generic (`WidgetPlacer.place`): a widget that
+  places itself and has one single-value `choice` input is placed once per
+  option of its source, and the placements file keys each copy
+  `<type>#<option>` (for usage: `devmachine-app/usage#claude`). A usage
+  widget is placed only for a harness turned on in Settings, and never for a
+  harness the board already shows (the default board's `devmachine-app/usage`
+  entries, or an older `claude-code/usage` or `codex/usage` entry).
+- **Stats keep their own schedule.** A widget never starts its own `stats`
+  ssh; it reads `StatsStore`. Usage refreshes per harness on the widget's
+  interval. A minimized widget, or one scrolled out of sight, refreshes
+  nothing.
+- **Compatibility fails open.** `WidgetAppManifest.current` names the CLI and
+  packages release this build needs. The corner card shows only when one is
+  readable and older. A `dev` CLI is never "behind". Newer releases are the
+  update toasts' job, not this card's.
+- Test hooks: `DEVMACHINE_CLI=<binary>` runs another CLI,
+  `DEVMACHINE_WIDGET_PLACEMENTS=<file>` moves the placements file, and
+  `DEVMACHINE_DEMO_BOARDS=<folder>` keeps a demo board across restarts.
+- **A widget written in the board runs only after "Allow".** An inline
+  `command`, `prompt` or `session` widget (the contract's `approval: true`)
+  shows `WidgetApprovalCard` until the owner allows it. The decision is kept
+  by SHA-256 (hex) of the canonical JSON (keys sorted, no spaces) of what
+  runs, taken at run time with the area's real context
+  (`ApprovalSubject.hash(for:context:)`): kind, run/script/args, shell,
+  target, harness, prompt, permission mode (only when set, so older approvals stay valid), session, and for `shell: true` the `DM_` values it
+  reads (only the `$DM_CONTEXT_<KEY>` the line names is exported and hashed) — never `every`, `timeout`, `mode`, `keep` or `parse`. The card and
+  the stored summary read `ApprovalPrompt`, built from that same filled
+  source and `DM_` values, so the owner approves exactly what the hash
+  covers, never the raw templates. The runner
+  checks the hash again right before every run (`SourceApprovalGate`). It
+  lives in `Application Support/Devmachine/widget-approvals.json`, never in
+  the config folder: whoever can write a board must not be able to approve
+  it. Any change to what runs asks again; Deny pauses and keeps the widget,
+  with "Allow" to change your mind. Every area keeps its own copy of the
+  decisions, so a decision is merged onto what the file holds now
+  (`WidgetApprovalsFile.record`, read, change, atomic write), never saved
+  from the stale copy, and then announced (`WidgetApprovalsFile.didChange`,
+  object = the file URL); every `WidgetSourceController` on that file
+  reloads and runs what was allowed. An unreadable file means everything
+  waits again. A package widget asks only when its package is third-party
+  (see Package providers and third-party widgets); `url` and app providers
+  never ask.
+- **A value is never part of a shell line** (`ArgvBuilder`, the one place a
+  widget argv or shell line is built; templates are filled once, at run
+  time, with the area's real context). `shell: true` takes no templates in `run` and
+  no `args`: the line reads its values as `$DM_INPUT_<NAME>` and
+  `$DM_CONTEXT_<KEY>` environment variables. Without `shell`, templates go
+  only in `args`, never in `run`: the program is named in `run`, found on the
+  PATH here and started directly — never through `/usr/bin/env` or a shell,
+  which would read a value-like word as an option or as code. Prompts run
+  `claude -p -- <prompt>` and `codex exec --skip-git-repo-check -- <prompt>`
+  (the `--` keeps a prompt that starts with `-` from being a flag).
+- **A widget on a machine or workspace runs only through `devmachine run`**,
+  with the argv of the CLI plan's Appendix B: `--machine` before `run`,
+  `--workspace` after it, `--no-log`, then `--argv -- <words>` (a shell line
+  is `--argv -- /usr/bin/env NAME=value … /bin/sh -c <line>`, each pair one
+  word) or `--package <p> --script <s> -- <args>`, or, for a package
+  provider, `--package <p> -- <command> --<key> <value> …`. `--config` is never passed:
+  the process inherits `DEVMACHINE_CONFIG`. The app never opens its own ssh
+  for a widget. stdin is `/dev/null`; exit 255 is "never ran" with the CLI's
+  last `error:` line; exit 1 with `unknown flag` and no stdout asks for a
+  newer CLI. `target: local` runs on this Mac in the home folder, with the
+  known tool folders added to PATH (`LocalPATH`), `/bin/sh -c` for
+  `shell: true`.
+- **One run in flight per widget; polls only while Home is on screen.**
+  `SourceSchedule` runs a poll on its interval (floors: command and url 5s,
+  session 2s, prompt 15m; prompt defaults to manual), a manual widget only on
+  ▶, and a stream only while it is on screen and not minimized. Hiding,
+  minimizing or removing it, or leaving Home (`onDisappear` →
+  `WidgetSourceController.stop()`), sends SIGTERM, and that exit is never
+  shown. A stream that ends on its own waits for ▶. A timeout or more than
+  1 MB of output ends the process; the last good value stays with the error
+  beside it. Demo mode never runs a source.
+- **A widget poll is not a machine job.** It draws in its own card and never
+  registers a `BGTask` or a `MachineJobCenter` job (unlike sync, Prepare and
+  the other runs against a machine).
+- **Session widgets read, never type.** A remote session is
+  `tmux capture-pane -p -e`, a local one `zmx history <session> --vt`; the
+  terminal view is a parsed `AttributedString`, not a SwiftTerm view. A click
+  selects the session (workspace or local); a machine's admin session is not
+  clickable.
+- **Web widgets** share one non-persistent `WKWebsiteDataStore` for the app
+  run (not the preview browser's), allow http(s) in the main frame only, open
+  no popups, and reload on `every` only while the view exists. The address
+  comes from `URLSourceRunner.address(of:context:)`, the fill a `url` fetch
+  uses; one that is not http(s) shows its error in the card, never a blank page.
+- **Inline entries are written back as they were read** (`YAMLTree`: flow or
+  block, quoting kept), in the order `id, title, source, view, sizes, fits,
+  frame, size, minimized, z`, byte-identical to the CLI's writer; a
+  cross-writer test (`testAnInlineWidgetSurvivesARewriteByteForByte`) guards it.
+- **Unit tests never run a widget for real**: no real CLI, no ssh, no
+  network, no real config folder, Application Support or keychain — fakes
+  and temp folders. The one exception is opt-in:
+  `DEVMACHINE_WIDGETS_E2E=<binary>` runs `WidgetSourceLiveTests` through that
+  CLI against a temp config whose only machine is `here` (`self: true`, this
+  Mac), with `DEVMACHINE_KEYCHAIN=off`. It never targets a remote machine.
+  The same variable runs `StackBoardLiveTests`, `MenubarBoardLiveTests` and
+  `WidgetEditLiveTests`.
+
+## Sidebar widget stacks
+- **The sidebar and the Context tab are boards.** `<config>/boards/sidebar.yml`
+  and `<config>/boards/context-sidebar.yml`, same envelope and store rules as
+  `home.yml` (`StackBoardStore` = `BoardFileStore<StackBoard>`: disk wins,
+  300 ms write, an invalid file is never written over, reset keeps `.bak`).
+  `surface:` must match the file. A stack entry has no `frame` and no `z`;
+  its place is its index. Optional `size` is a preset (its rows × `stack_row`
+  40 pt) or `auto` for a view that grows; with no `size` it draws `auto` when
+  the view grows, else the widget's `default_size`, its first size, or
+  `medium` (`StackLayout.effectiveSize`). A widget the app adds (gallery or
+  placement, `StackPlacer.newEntry`) is written with that size, `auto` or
+  the preset, as `devmachine widgets add --board` writes it, so the YAML is
+  the same whoever added it. `collapsed: true` draws the header
+  only and runs nothing. Key order on write: typed `id, type, with, size,
+  collapsed`; inline `id, title, source, view, sizes, fits, size, collapsed`;
+  `size` only when set, `collapsed` only when true. Inline `source` and
+  `view` are written back as they were read, byte for byte.
+- **The default boards are today's UI** (`DefaultStackBoard`): `[workspaces]`
+  and `[shortcuts, publish-port, monitors, shells, sub-agents, todo,
+  pull-requests, links]`, every entry `type: devmachine-app/<id>`,
+  `size: auto`. The CLI starts from the same boards when a file is missing.
+- **Wrap, never rewrite.** The nine app views (`WorkspacesWidgetView`,
+  `PublishPortWidgetView`, `ContextSectionWidgets`, `StackAppWidgetView`) hold the old SidebarView and ContextPanel code,
+  moved as it was. Change them as you would have changed the old code; never
+  "clean them up" into new layouts: selection, ⌘/⇧-click, `SidebarOrder`
+  drag, host-key and readiness cards, row menus and the add-machine button
+  live there. Shortcuts and Publish a port scroll with the rest; at offset 0
+  the panel looks as it did.
+- **The sidebar never empties.** The nine `devmachine-app/*` widgets resolve
+  built in (`AppStackWidgets`) when the catalog lacks them; a catalog entry of
+  the same name wins, and the stack gallery lists them even while the
+  catalog loads or failed (`WidgetGalleryContent`, failure line above the
+  list). With no config path the default board draws in memory,
+  read-only. An invalid file on first read draws the default read-only under
+  a `DMBanner` naming the file and line (the last good layout once one was
+  read); nothing is written until it is valid.
+- **The chrome stays out of the way** (`StackRowModel.showsControls`). A
+  widget with its own section header (shortcuts, monitors, shells,
+  sub-agents, todo, pull-requests, links) shows grip, chevron and ⋯ in that
+  header's trailing slot (`StackHeaderControls()`) on hover. The workspace
+  list and Publish a port have no header, and a pill there would cover the
+  first workspace's buttons, so their pill shows only while the pointer is
+  over them **and ⌥ is held**. Any other widget gets a `StackTitleHeader` with
+  the controls always shown. The "Add widget" row is always in the layout, at
+  the end, drawn (and hit-testable) only while the pointer is over the panel.
+  An app widget with nothing to show (no pull requests, no links, a section
+  before the first read, Shortcuts with no session, Publish a port with no
+  Caddy) takes no space at rest or on a plain hover, as before; only while
+  ⌥ is held over the panel (the `.bare` rule) does it draw
+  `StackEmptyWidgetHeader`, its title row with the controls, so it can still
+  be collapsed, moved or removed (`StackRowModel.showsEmptyHeader`).
+- **One session-context section leads** (`ContextSectionLead`): before the
+  first read, the board's first expanded one draws the status view; after
+  it, the first that draws something carries the age label.
+- **A header drag freezes the list.** While the grip's drag is held the rows
+  come from a snapshot (`StackBoardView`'s `StackDrag`), the dragged row
+  lifted by `.zIndex` and offset; it lands by the neighbour it crossed
+  (`StackDragMath`, `StackDropTarget`) and the order is written once, on
+  release. Never reorder or remove the view holding a live drag.
+- **Context keys, every one set, empty when unknown.** Sidebar: `selected`
+  (the selected workspace, `SidebarContext`). Context sidebar: `machine,
+  session, workspace, path, repo, branch, harness` (`SessionContextFacts`,
+  built by `ContextBridge` from the selection, `ContextState`, readiness and
+  the self machine). `session` is the tmux session or the local session's
+  name; `machine` is the workspace's machine, or the self machine for a local
+  session; `path` is `ContextState.cwd`, else the local session's folder.
+- **`repo` and `branch` cost a probe, so they run only when read.**
+  `ContextGitProbe` (`git rev-parse --abbrev-ref HEAD` and
+  `remote.origin.url`) runs through `HostRunner.runCapturingWithFolderArgument`
+  (the folder is `$1` after `cd --`, never spliced into the line), only
+  while an expanded widget reads `repo` or `branch`
+  (`StackBoardController.needsGitContext`). It probes on a new session or
+  folder, on each new session-context read (`ContextState.updatedAt`, so a
+  `git checkout` shows), and when the Context tab appears, keeping the last
+  answer meanwhile. A new read probes at most once per 30 s for the same
+  session and folder (`GitProbeThrottle`); a new session or folder, or the
+  tab appearing, probes at once. A failure is retried on the first read
+  30 s later, not sooner. No timer of its own (`ContextGitStatusStore`).
+- **A session switch hands over its context once per widget**
+  (`ContextPushGate`). While the new session's first context read is out,
+  the board keeps the old keys. While only the git probe is out (judged by
+  the key about to be probed, not the store's last one), every other key
+  goes at once with `repo`/`branch` pending
+  (`WidgetSourceController.setContext(_:pending:)`): a widget that reads a
+  pending key (`ResolvedSource.reads`) keeps its last context and output and
+  does not run until the probe answers; the rest run at once. So no widget
+  runs on an empty `path` or `branch` first, no approval card flashes, and a
+  hung ssh holds only the widgets that need git.
+- **A context change stops what it touches.** A widget whose read values
+  change is stopped, what it showed is cleared (it belonged to the other
+  session; sparkline history stays) and its approval hash is taken again: an
+  inline widget asks again for each new set of resolved values, by design. A
+  widget reads only the keys its templates or `$DM_CONTEXT_<KEY>` variables
+  name (`ResolvedSource.reads(contextKey:)`); an inline `shell: true` line
+  gets and hashes only the `DM_CONTEXT_` values it names; an inline `script`,
+  whose text the app never sees, reads them all. A package widget reads the
+  keys it declares.
+- **Allow and Deny count only for the hash the card showed**
+  (`WidgetSourceController.approve(_:hash:)`): if the context moved on, the
+  card redraws with the new values and asks again. A source widget waiting
+  for approval or denied takes at least `StackLayout.approvalRows` (5) rows so
+  the card's buttons fit.
+- **Who runs when.** Sidebar widgets run while the sidebar is open
+  (`isVisible: !sidebarCollapsed`; SidebarView stays mounted at width 0);
+  the context board's while the Context tab is on screen. A collapsed widget
+  runs nothing. `ContextStore` keeps its 5 s poll only under
+  `ContextPollRule` (panel shown, not collapsed, Context tab, a target, and
+  an expanded widget reading `app/session-context`, or an expanded source
+  widget reading `path` or `harness`, which come from the same poll:
+  `StackBoardController.needsSessionContext`).
+- **Placements are saved per surface** (`WidgetPlacementsFile.save(_:surface:)`):
+  Home and each sidebar rewrite only their own set. A placements file that
+  does not decode moves to `widget-placements.json.broken`, the move is
+  logged, and the save goes on with a fresh file. If that write then fails,
+  the error itself names where the broken file went
+  (`cannotWriteAfterSettingAside`), so the move is never lost.
+- **Controllers start from `ContentView.onAppear`**
+  (`StackBoardController.startAll()`), never from a view a test can render,
+  so rendering `ContextPanel` in a test never asks the CLI anything. No test
+  reads `StackBoardController.sidebar` or `.contextSidebar`.
+- Test hook: `DEVMACHINE_WIDGETS_E2E=<binary>` runs `StackBoardLiveTests`
+  against a temp config the test makes itself: the schema equals the
+  fixture, and the CLI's `validate`, `move` and `remove` on an app-written
+  `context-sidebar.yml` keep an inline entry byte for byte and refuse a
+  `frame`.
+
+## Choosing and editing widgets
+Engine 1.6. One mechanism for every widget, on Home, the sidebars and the
+menu bar; the app has no code for a particular widget's choices.
+
+- **A `choice` input declares its list.** `inputs.<name>: {type: choice,
+  from: machines|workspaces|harnesses, many: bool}`. The widget menu shows
+  "Choose ..." for each one (`ChoiceInput.all(of:)`, title from its summary),
+  and `WidgetChoiceView` draws a checklist (many) or a picker (one). Options
+  come from `WidgetOptionSources` (`StatsStore.machines`,
+  `AppModel.visibleWorkspaces`, `HarnessUsageStore.states`), the one place
+  that knows the sources; tests hand it closures. Never add a menu item or
+  a view that names a widget or an input.
+- **Saving a choice.** `WidgetChoiceModel.save` returns a
+  `WidgetChoiceOutcome`: `.saved` closes the chooser, `.refused(message)`
+  keeps it open and shows the message. It asks the board first
+  (`WidgetEditTarget.problem(with:for:)`), then applies.
+- **Many: empty means all.** No value, `[]` or every option ticked writes
+  no `with` key, so a machine added later shows too. A chosen name the
+  source no longer has stays in the chooser as "(not found)" to untick; the
+  widget just draws nothing for it. One: no value means the first option,
+  decided by the view (`UsageHarnessChoice`).
+- **Lists in `with`.** `BoardScalar.list`, written flow (`[main, here]`). A
+  template reads it joined with commas; an app provider gets the list in
+  `ResolvedWidget.listArguments`. The codec reads the shape; resolution
+  refuses a list for a single input and a scalar for a many input, with the
+  CLI's words (`InputShapes`).
+- **Overrides.** A typed entry may carry `title` and `every`
+  (`EntryOverrideRules`): `every` never goes below the provider's, source
+  kind's or package provider floor, a stream takes none, and a widget that
+  reads an app provider takes no `manual` (it runs on a schedule). Inline
+  entries own their title and source, so `every` there is refused. Key
+  order: `id, type, title, with, every`.
+- **Every edit replaces one entry.** The chooser and the editor build an
+  `EntryEdit` and hand it to the board's controller (`WidgetEditTarget`:
+  Home and every `StackBoardController`), which writes through the store:
+  the 300 ms rule, disk wins, nothing while the file is invalid. Other
+  entries stay byte for byte, and an inline source or view the edit did not
+  change keeps its YAML tree.
+- **An edit is refused only for a problem it adds.**
+  `problem(with:for:)` compares the entry's resolution before and after the
+  edit. A widget that was already refused (a missing package, say) can still
+  change its title; the edit is blocked only when it makes the entry worse
+  or names an input the widget does not declare.
+- **The editor writes YAML and reads it back.** `InlineWidgetForm` (Command,
+  URL status, Web page, Prompt, Session; only Command and URL status in the
+  menu bar) writes a one-entry board with one field per line, reads it with
+  `BoardCodec` and the area's resolver, and puts each problem under its
+  field. An inline widget the templates cannot show edits its title only.
+  `TypedEntryForm` edits a package widget's title, inputs and `every`.
+- **Approval is unchanged.** An edit that changes what runs (command,
+  arguments, target, prompt, session) asks again; title and `every` never
+  do (`WidgetEditApprovalTests`).
+- **A prompt's permission mode comes from the contract.**
+  `PromptSource.permissionMode` holds the harness's own name, nil for its
+  default; `PermissionModes` is the only code that reads the contract's
+  `permission_mode` field (names per harness, the `dangerous` list, the
+  CLI's two messages). `ArgvBuilder.prompt` turns it into the harness's
+  flag (Claude `--permission-mode <m>`; Codex `--sandbox <m>`, or
+  `--approve-for-me` / `--dangerously-bypass-approvals-and-sandbox`), and
+  no mode keeps the old argv byte for byte. The mode is in the approval
+  hash, the card names it, and a mode with no checks shows a red line.
+  Such a mode never runs on a timer: the reader refuses it, an `every`
+  override refuses it, and the Prompt form sets Every to manual and
+  locks it. Never write a mode list in Swift: the picker reads
+  `InlineWidgetForm.permissionModes()`.
+- **Sheets on Home and in the sidebars, in place in the menu bar.** A
+  sheet or nested popover from the `MenuBarExtra` window is not reliable, so
+  the menubar Edit mode swaps its body for the chooser or the editor.
+
+## Package providers and third-party widgets
+- **A package provider is `<pkg>/<command>`** (`PackageProviderName`; `app/*`
+  stays the app's). It is `WidgetSource.packageProvider`, kind `provider`,
+  output token `json`: any view that takes `json` draws it with
+  `{{json.<path>}}`. App providers keep `.provider` and `AppWidgetProviders`;
+  a package provider runs through `WidgetSourceController` like a command.
+- **It runs only on a machine or workspace, only through `devmachine run`**:
+  `--machine <m> run --no-log` or `run --workspace <w> --no-log`, then
+  `--package <pkg> -- <command> --<key> <value> …`. `target: local` is refused
+  by the reader and again by `PackageProviderRunner`. The CLI's `commands`
+  gate applies (the `Call` path, not `--script`).
+- **`ArgvBuilder.packageProvider` is the only builder.** `with` pairs go in
+  sorted key order; a key must match `[a-z][a-z0-9_-]*`; a value is always one
+  argv item, even empty, starting with `-` or holding shell syntax. A value
+  holding NUL is refused. The name holds no template. Never route it through
+  the shell-line builders, which drop empty words.
+  `ArgvBuilderTests.testAPackageProviderValueIsAlwaysOneWordAfterItsFlag`
+  guards it.
+- **Output is one JSON object** holding every `returns` field without `?`.
+  Anything else (a list, two documents, nothing, a missing field) is an error
+  and the last good value stays. `every` is ≥ the provider's `min_every`
+  (floor 5s) or `manual`; `timeout` defaults to 30s, at most 10m.
+- **A package widget reads only its own package's providers.** A catalog
+  widget of `acme-tools` naming `mine/load` is refused, whatever the CLI let
+  through.
+- **Trust comes from the catalog** (`widgets list` `trust`): `official` and
+  `local` run as before; `third-party` (a package with
+  `.devmachine-source.yml`) asks before any code-running widget (`command`,
+  `prompt`, `session`, package provider) runs. An older catalog without
+  `trust` reads `release` as official, anything else as local. Each of these
+  reads as third-party: an unknown or unreadable `trust` word, a
+  `package_source` with no `trust`, and a widget `provider` key that does not
+  read as a provider spec. An inline package-provider widget always asks.
+- **No package-provider widget written in a board runs before a catalog
+  loads.** Until then it resolves to `.waitingForCatalog` ("Waiting for the
+  widget catalog…"): no job and no Allow button, so no approval without the
+  package commit can be stored. Once the catalog loads it gets its trust and
+  commit from the top-level `providers` map.
+- **A failed catalog reload marks the kept catalog stale** (`isStale`).
+  Third-party catalog widgets that run code, and every inline package-provider
+  widget whatever its trust (a stale catalog cannot vouch for it), then wait
+  as above until a read works, as the commits it holds may be older than what
+  `packages update` installed. Official and local catalog widgets and `url`
+  widgets keep running.
+  While it is stale, the shared `WidgetCatalogStore` reads `widgets list`
+  again on `CatalogRetrySchedule` (30s, 60s, 120s, then every 5 min): one
+  pending retry for Home and both sidebars, stopped by a good read, a seed
+  or app quit (`stopForQuit` also drops the quit observer, as `deinit` does;
+  nothing retries after it). A failed first read (no catalog yet) is retried
+  the same way, but only while some board holds a `.waitingForCatalog` widget:
+  each controller reports it (`setWaitsForCatalog`) when it syncs its jobs, and
+  the retry stops once no board does. Only with no catalog does a board report
+  start a retry, so a board sync during a stale spell never moves the backoff
+  ahead. With no CLI it settles at every 5 min.
+- **The provider index is complete only when a packages release was read**
+  and `providers` is there, as `widgets validate` decides it. Without a
+  release an unknown package is left to `devmachine run`; a package the
+  catalog lists still refuses a provider it does not declare.
+- **A third-party hash carries the package commit** (`package_commit` in the
+  canonical JSON, even when empty), so `packages update` to a new commit asks
+  again for every such widget. That holds for a catalog widget (its
+  `package_source`) and for an inline widget naming a third-party provider
+  (the commit comes from the catalog's top-level `providers` map). Inline
+  widgets of other providers and official/local hashes are unchanged from
+  engine 1.2, so no stored approval was lost.
+- **Never pass a complete provider index into `BoardCodec`.** The board
+  reader checks only shape, target and the 5s floor (`PackageProviderIndex
+  .unknown`); the catalog check runs later, in `WidgetResolution`, and refuses
+  only that one widget. In the reader, a provider the catalog does not know
+  is a `BoardProblem`: the whole board falls back to its last good layout and
+  nothing on it can be written until the provider appears.
+- **The card says where the code comes from**: "From a third-party package:
+  <url>" (selectable) replaces the "written into <surface>.yml" warning, at
+  every density.
+- `DEVMACHINE_WIDGETS_E2E=<binary>` also runs `PackageProviderLiveTests`: the
+  real CLI must take the argv against a temp config (self machine `here`,
+  nothing synced) and answer "not installed", never "unknown flag".
 
 ## Host keys
 - **ssh refusing a host key is its own problem** (`SSHFailure.hostKeyRejected`,

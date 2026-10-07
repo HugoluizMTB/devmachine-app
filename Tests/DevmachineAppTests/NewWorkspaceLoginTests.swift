@@ -23,7 +23,7 @@ private final class ChangingWorkspaceSource: WorkspaceSource, @unchecked Sendabl
     }
 }
 
-private final class AccountSessionSource: SessionSource, @unchecked Sendable {
+private final class AccountSessionSource: SessionListSource, @unchecked Sendable {
     private let lock = NSLock()
     private var accounts: Set<String>
     private var withoutTmux: Set<String> = []
@@ -105,7 +105,7 @@ final class NewWorkspaceLoginTests: XCTestCase {
         try await waitFor { model.sessionProblems[self.beta.alias] != nil }
 
         XCTAssertEqual(model.sessionProblems[beta.alias]?.isAwaitingSync, true)
-        XCTAssertFalse(model.isPollingPaused)
+        XCTAssertFalse(model.isPollingPaused(alias: beta.alias))
         XCTAssertFalse(model.offlineAliases.contains(beta.alias))
     }
 
@@ -138,7 +138,7 @@ final class NewWorkspaceLoginTests: XCTestCase {
         try await waitFor { model.sessionProblems[self.beta.alias] != nil }
 
         XCTAssertEqual(model.sessionProblems[beta.alias]?.isAwaitingSync, false)
-        XCTAssertTrue(model.isPollingPaused)
+        XCTAssertTrue(model.isPollingPaused(alias: beta.alias))
     }
 
     func testAWorkspaceThatLoggedInWithoutTmuxIsRefusedLikeAnyOther() async throws {
@@ -155,6 +155,6 @@ final class NewWorkspaceLoginTests: XCTestCase {
         try await waitFor { model.sessionProblems[self.beta.alias]?.isAwaitingSync == false
             && model.sessionProblems[self.beta.alias] != .tmuxMissing(detail: "") }
 
-        XCTAssertTrue(model.isPollingPaused)
+        XCTAssertTrue(model.isPollingPaused(alias: beta.alias))
     }
 }

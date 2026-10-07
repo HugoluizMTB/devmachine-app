@@ -458,10 +458,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var answeredAliases: Set<String> = []
 
     /// The sidebar holds a workspace's place with placeholder rows until its
-    /// first read answers. A paused sweep will not read it soon, so a
-    /// workspace waiting on the pause shows as it is instead.
+    /// first read answers. A paused workspace will not be read soon, so it
+    /// shows as it is instead, under its pause card.
     func showsSessionSkeleton(alias: String) -> Bool {
-        !answeredAliases.contains(alias) && !isPollingPaused
+        !answeredAliases.contains(alias) && pollPauses[alias] == nil
     }
 
     private func markAnswered(_ alias: String) {
@@ -558,6 +558,7 @@ final class AppModel: ObservableObject {
     @Published var pendingPublishWorkspace: String?
     /// Asks the Subdomains page to open its Add subdomain sheet once shown.
     @Published var pendingAddSubdomain = false
+    @Published var pendingWidgetGallery = false
     /// Settings → Workspaces should open its New workspace form.
     @Published var pendingNewWorkspace = false
     /// The Settings pane to open on, read once by the Settings page.
@@ -602,6 +603,9 @@ final class AppModel: ObservableObject {
             syncContext()
         }
     }
+    @Published var contextBoardNeedsSessionContext = true {
+        didSet { if oldValue != contextBoardNeedsSessionContext { syncContext() } }
+    }
     let context: ContextStore
     let cache: DataCache
 
@@ -623,7 +627,6 @@ final class AppModel: ObservableObject {
     private var sweepInFlight = false
     private var sweepTimer: Timer? = nil
     private var localScanTimer: Timer? = nil
-    private var pollPausedUntil = Date.distantPast
     // Workspaces that appeared while the app was open and have not logged in
     // yet: the CLI writes the alias before the sync creates the account.
     private var awaitingFirstLogin: Set<String> = []
@@ -693,6 +696,7 @@ final class AppModel: ObservableObject {
         self.cliAvailabilityCheck = cliAvailabilityCheck
         self.detectSettings = detectSettings
         AppModel.shared = self
+        context.holdsReads = { [weak self] target in self?.holdsAutomaticLogin(target) ?? false }
         observeWake()
         TerminalRegistry.shared.onSessionEnded = { [weak self] kind in
             self?.sessionEnded(kind)
@@ -767,14 +771,64 @@ final class AppModel: ObservableObject {
     /// forget the place the rename just moved over.
     private var renamesInFlight: [SessionRef: Date] = [:]
     private static let renameGrace: TimeInterval = 30
+    /// Sessions this app killed or renamed away, and when. A list that left
+    /// before tmux answered still holds the name; showing it again would let a
+    /// click attach with `new-session -A` and start the session over.
+    private var justDeleted: [SessionRef: Date] = [:]
+    private static let deleteGrace: TimeInterval = 30
+    /// Sessions this app created, and when. tmux has them the moment the
+    /// create returns; a list that left before that, or no list at all while
+    /// polling is paused, must not hide them.
+    private var justCreated: [SessionRef: Date] = [:]
+    private static let createGrace: TimeInterval = 30
+    /// Workspaces asked to refresh while a read of them was running.
+    private var refreshAgainAliases: Set<String> = []
 
-    private func dropMissingSessions(alias: String, present: [TmuxSession]) {
-        let names = Set(present.map(\.name))
+    private func withJustCreated(_ listed: [TmuxSession], alias: String) -> [TmuxSession] {
+        let names = Set(listed.map(\.name))
+        let now = Date()
+        justCreated = justCreated.filter { ref, created in
+            !(ref.alias == alias && names.contains(ref.name))
+                && now.timeIntervalSince(created) < Self.createGrace
+        }
+        let missing = justCreated.keys.filter { $0.alias == alias }.map(\.name).sorted()
+        guard !missing.isEmpty else { return listed }
+        let shown = sessionsByAlias[alias] ?? []
+        return listed + missing.map { name in
+            shown.first { $0.name == name } ?? TmuxSession(name: name, windows: 1, harnesses: [])
+        }
+    }
+
+    private func showCreatedSession(_ ref: SessionRef) {
+        justCreated[ref] = Date()
+        guard sessionsByAlias[ref.alias]?.contains(where: { $0.name == ref.name }) != true else { return }
+        sessionsByAlias[ref.alias, default: []].append(TmuxSession(name: ref.name, windows: 1, harnesses: []))
+    }
+
+    private func withoutJustDeleted(_ listed: [TmuxSession], alias: String) -> [TmuxSession] {
+        let names = Set(listed.map(\.name))
+        let now = Date()
+        justDeleted = justDeleted.filter { ref, deleted in
+            !(ref.alias == alias && !names.contains(ref.name))
+                && now.timeIntervalSince(deleted) < Self.deleteGrace
+        }
+        let hidden = Set(justDeleted.keys.filter { $0.alias == alias }.map(\.name))
+        return hidden.isEmpty ? listed : listed.filter { !hidden.contains($0.name) }
+    }
+
+    /// Only a list read from tmux settles a rename: the app's own copy already
+    /// holds the new name the moment tmux answers.
+    private func settleRenames(alias: String, listed: [TmuxSession]) {
+        let names = Set(listed.map(\.name))
         let now = Date()
         renamesInFlight = renamesInFlight.filter { ref, started in
             !(ref.alias == alias && names.contains(ref.name))
                 && now.timeIntervalSince(started) < Self.renameGrace
         }
+    }
+
+    private func dropMissingSessions(alias: String, present: [TmuxSession]) {
+        let names = Set(present.map(\.name))
         let renaming = renamesInFlight.keys.filter { $0.alias == alias }.map(\.name)
         updateSidebarOrder { $0.keepSessions(names.union(renaming), in: alias) }
         var refs: [SessionRef] = []
@@ -1322,6 +1376,12 @@ final class AppModel: ObservableObject {
         pendingAddSubdomain = true
     }
 
+    /// Home opens its widget gallery (`HomeCanvasView` takes the request).
+    func requestWidgetGallery() {
+        goHome()
+        pendingWidgetGallery = true
+    }
+
     /// Opens the host key review over the current screen, which stays as it is.
     func showHostKey(_ machine: String) {
         hostKeyMachine = machine
@@ -1421,29 +1481,68 @@ final class AppModel: ObservableObject {
     func deleteSessions(_ refs: [SessionRef]) {
         pendingBulkDelete = nil
         guard !refs.isEmpty else { return }
-        updateSidebarOrder { order in
-            for ref in refs { order.removeSession(ref.name, in: ref.alias) }
-        }
         let taskId = beginTask(label: "Deleting sessions", total: refs.count)
         Task.detached { [store] in
+            var failed: [(ref: SessionRef, reason: String)] = []
             for ref in refs {
-                _ = try? store.run(alias: ref.alias, command: RemoteCommands.killSession(name: ref.name))
+                if let reason = AppModel.killFailure({
+                    try store.runCapturing(alias: ref.alias, command: RemoteCommands.killSession(name: ref.name))
+                }) {
+                    failed.append((ref, reason))
+                }
                 await MainActor.run { self.bumpTask(taskId) }
             }
-            let affectedAliases = Set(refs.map(\.alias))
+            let failures = failed
             await MainActor.run {
-                for alias in affectedAliases { self.refresh(alias: alias) }
-                for ref in refs {
-                    self.selectedSessions.remove(ref)
-                    TerminalRegistry.shared.close(alias: ref.alias, session: ref.name)
-                    PreviewStore.shared.closeSession(ref)
-                    let item = SidebarItem.session(alias: ref.alias, name: ref.name)
-                    if self.selection == item {
-                        self.selection = nil
-                    }
-                }
-                self.finishTask(taskId)
+                let gone = refs.filter { ref in !failures.contains { $0.ref == ref } }
+                for ref in gone { self.forgetDeletedSession(ref) }
+                for alias in Set(gone.map(\.alias)) { self.refresh(alias: alias) }
+                guard let first = failures.first else { return self.finishTask(taskId) }
+                self.dropTask(taskId)
+                self.flashToast(failures.count == 1
+                    ? "Couldn't delete \(first.ref.name): \(first.reason)"
+                    : "Couldn't delete \(failures.count) sessions: \(first.reason)")
             }
+        }
+    }
+
+    /// The kill's own answer, not a later list, says the session is gone.
+    private func forgetDeletedSession(_ ref: SessionRef) {
+        justDeleted[ref] = Date()
+        justCreated[ref] = nil
+        updateSidebarOrder { $0.removeSession(ref.name, in: ref.alias) }
+        if sessionsByAlias[ref.alias]?.contains(where: { $0.name == ref.name }) == true {
+            sessionsByAlias[ref.alias]?.removeAll { $0.name == ref.name }
+            dropMissingSessions(alias: ref.alias, present: sessionsByAlias[ref.alias] ?? [])
+        }
+        selectedSessions.remove(ref)
+        TerminalRegistry.shared.close(alias: ref.alias, session: ref.name)
+        PreviewStore.shared.closeSession(ref)
+        if selection == .session(alias: ref.alias, name: ref.name) {
+            selection = nil
+        }
+    }
+
+    /// A kill of a session tmux no longer has already got what it asked for.
+    nonisolated private static func killFailure(
+        _ run: () throws -> (stdout: String, stderr: String, exitCode: Int32)
+    ) -> String? {
+        guard let reason = remoteFailure(run) else { return nil }
+        let gone = reason.contains("can't find session") || reason.contains("no server running")
+        return gone ? nil : reason
+    }
+
+    /// Why a remote command failed, or nil when it exited 0.
+    nonisolated private static func remoteFailure(
+        _ run: () throws -> (stdout: String, stderr: String, exitCode: Int32)
+    ) -> String? {
+        do {
+            let result = try run()
+            guard result.exitCode != 0 else { return nil }
+            let reason = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            return reason.isEmpty ? "exit \(result.exitCode)" : reason
+        } catch {
+            return error.localizedDescription
         }
     }
 
@@ -1456,13 +1555,31 @@ final class AppModel: ObservableObject {
             return
         }
         pendingRename = nil
+        let renamed = SessionRef(alias: alias, name: clean)
+        justDeleted[renamed] = nil
         updateSidebarOrder { $0.renameSession(old, to: clean, in: alias) }
-        renamesInFlight[SessionRef(alias: alias, name: clean)] = Date()
+        renamesInFlight[renamed] = Date()
         let taskId = beginTask(label: "Renaming \(old)", total: 1)
         Task.detached { [store] in
-            _ = try? store.run(alias: alias, command: RemoteCommands.rename(session: old, to: clean))
+            let failure = AppModel.remoteFailure {
+                try store.runCapturing(alias: alias, command: RemoteCommands.rename(session: old, to: clean))
+            }
             await MainActor.run {
+                if let failure {
+                    self.renamesInFlight[renamed] = nil
+                    self.updateSidebarOrder { $0.renameSession(clean, to: old, in: alias) }
+                    self.dropTask(taskId)
+                    self.flashToast("Couldn't rename \(old): \(failure)")
+                    return
+                }
                 self.bumpTask(taskId)
+                self.justDeleted[SessionRef(alias: alias, name: old)] = Date()
+                self.justCreated[SessionRef(alias: alias, name: old)] = nil
+                if let i = self.sessionsByAlias[alias]?.firstIndex(where: { $0.name == old }),
+                   let session = self.sessionsByAlias[alias]?[i] {
+                    self.sessionsByAlias[alias]?[i] = TmuxSession(
+                        name: clean, windows: session.windows, harnesses: session.harnesses)
+                }
                 self.refresh(alias: alias)
                 // The old client is still attached to the renamed tmux session;
                 // drop it so the new name mounts as the only client.
@@ -1473,25 +1590,27 @@ final class AppModel: ObservableObject {
                 if self.selection == oldItem {
                     self.selection = .session(alias: alias, name: clean)
                 }
+                self.dropMissingSessions(alias: alias, present: self.sessionsByAlias[alias] ?? [])
                 self.finishTask(taskId)
             }
         }
     }
 
     func deleteSession(alias: String, name: String) {
-        updateSidebarOrder { $0.removeSession(name, in: alias) }
         let taskId = beginTask(label: "Deleting \(name)", total: 1)
         Task.detached { [store] in
-            _ = try? store.run(alias: alias, command: RemoteCommands.killSession(name: name))
+            let failure = AppModel.killFailure {
+                try store.runCapturing(alias: alias, command: RemoteCommands.killSession(name: name))
+            }
             await MainActor.run {
-                self.bumpTask(taskId)
-                self.refresh(alias: alias)
-                TerminalRegistry.shared.close(alias: alias, session: name)
-                PreviewStore.shared.closeSession(SessionRef(alias: alias, name: name))
-                let item = SidebarItem.session(alias: alias, name: name)
-                if self.selection == item {
-                    self.selection = nil
+                if let failure {
+                    self.dropTask(taskId)
+                    self.flashToast("Couldn't delete \(name): \(failure)")
+                    return
                 }
+                self.bumpTask(taskId)
+                self.forgetDeletedSession(SessionRef(alias: alias, name: name))
+                self.refresh(alias: alias)
                 self.finishTask(taskId)
             }
         }
@@ -1524,16 +1643,20 @@ final class AppModel: ObservableObject {
         // Created here rather than left to the terminal's own `new-session -A`,
         // because only a session created up front can be told which directory to
         // start in, and harnesses resolve project files from that location.
+        justDeleted[SessionRef(alias: alias, name: name)] = nil
         let store = self.store
         let startup = startupLine(startup, for: .remote(alias: alias, session: name))
         let sender = sessionCommandSender
         Task.detached {
-            _ = try? store.run(
-                alias: alias, command: RemoteCommands.createSession(name: name, directory: directory))
+            let failure = AppModel.remoteFailure {
+                try store.runCapturing(
+                    alias: alias, command: RemoteCommands.createSession(name: name, directory: directory))
+            }
             if let startup {
                 try? sender.send(startup, into: .remote(alias: alias, session: name))
             }
             await MainActor.run {
+                if failure == nil { self.showCreatedSession(SessionRef(alias: alias, name: name)) }
                 self.selection = .session(alias: alias, name: name)
                 if let taskID {
                     self.bumpTask(taskID)
@@ -1770,9 +1893,17 @@ final class AppModel: ObservableObject {
 
     /// Clears a refused host key for one workspace and reads it again: the
     /// sidebar's Try again, when no machine card covers it.
+    /// Also the paused workspace's Try again: the pause is lifted and the
+    /// list read once, and a refusal pauses it again from there.
     func retry(alias: String) {
         if sessionProblems[alias]?.isHostKeyRejected == true || sessionProblems[alias]?.isAwaitingSync == true {
             sessionProblems[alias] = nil
+        }
+        if let pause = pollPauses[alias] {
+            if pause.reason.coversMachine, let machine = pause.machine {
+                clearMachinePauses(onMachine: machine)
+            }
+            pollPauses[alias] = nil
         }
         refresh(alias: alias)
     }
@@ -1809,13 +1940,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // One ssh at a time, and the sweep stops at the first ssh-level failure:
-    // nine parallel auths against a locked agent are nine denied logins in
-    // one second, which is a fail2ban ban of this Mac.
+    // One ssh at a time: nine parallel auths against a locked agent are nine
+    // denied logins in one second, which is a fail2ban ban of this Mac. A
+    // failure pauses only the workspaces it is about (`PollPause`); the sweep
+    // goes on to the others and never logs into a paused one.
     func refreshAll() {
-        guard !DemoMode.isActive, Date() >= pollPausedUntil, !sweepInFlight else { return }
+        guard !DemoMode.isActive, !sweepInFlight else { return }
         let targets = visibleWorkspaces.filter {
             !refreshingAliases.contains($0.alias) && sessionProblems[$0.alias]?.isAwaitingSync != true
+                && !isPollingPaused(alias: $0.alias)
         }
         guard !targets.isEmpty else { return }
         sweepInFlight = true
@@ -1825,45 +1958,28 @@ final class AppModel: ObservableObject {
         let source = services.sessionSource
         let settings = settings ?? .empty
         Task.detached {
-            var remaining = targets[...]
-            var stopped: SSHFailure?
-            while let ws = remaining.first {
-                remaining = remaining.dropFirst()
-                let outcome = Result {
-                    try source.sessions(for: ws, settings: settings)
-                }
-                let stop = await MainActor.run { () -> SSHFailure? in
-                    let stop = self.apply(outcome, alias: ws.alias)
+            for ws in targets {
+                // An unreachable machine met earlier in this sweep paused
+                // the rest of its workspaces.
+                let paused = await MainActor.run { self.isPollingPaused(alias: ws.alias) }
+                let outcome = paused ? nil : Result { try source.sessions(for: ws, settings: settings) }
+                await MainActor.run {
+                    if let outcome { self.apply(outcome, alias: ws.alias) }
                     self.bumpTask(sweepTask)
-                    return stop
                 }
-                if let stop { stopped = stop; break }
             }
-            // The aliases the stopped sweep never reached share the same host,
-            // so an unreachable host takes them with it. A refused login says
-            // nothing about the host, so it leaves them as they were.
-            let unreached = Array(remaining)
             await MainActor.run {
-                if stopped == .unreachable {
-                    for ws in unreached where !self.offlineAliases.contains(ws.alias) {
-                        self.offlineAliases.insert(ws.alias)
-                    }
-                    for ws in unreached where self.sessionProblems[ws.alias] == nil {
-                        self.sessionProblems[ws.alias] = .unreachable(
-                            detail: "Not asked: an earlier workspace on the same host could not be reached.")
-                    }
-                }
-                for ws in unreached { self.markAnswered(ws.alias) }
                 for ws in targets { self.refreshingAliases.remove(ws.alias) }
                 self.sweepInFlight = false
                 self.sweepTaskID = nil
                 self.dropTask(sweepTask)
+                for ws in targets { self.refreshAgainIfAsked(ws.alias) }
             }
         }
     }
 
     func refresh(alias: String) {
-        guard !DemoMode.isActive, Date() >= pollPausedUntil,
+        guard !DemoMode.isActive, !isPollingPaused(alias: alias),
               let ws = visibleWorkspaces.first(where: { $0.alias == alias }) else { return }
         // A refused host key fails the same way until someone reviews it: the
         // 5s selection poll leaves it to the 60s sweep instead of a handshake
@@ -1873,9 +1989,13 @@ final class AppModel: ObservableObject {
         // only a configuration change or Try again asks again.
         guard sessionProblems[alias]?.isAwaitingSync != true else { return }
         // A tick that arrives while the previous ssh for this alias is still
-        // running is dropped: a slow host would otherwise stack one blocked
-        // process per 5s tick.
-        guard !refreshingAliases.contains(alias) else { return }
+        // running waits for it and runs once after: a slow host would
+        // otherwise stack one blocked process per 5s tick, and dropping it
+        // would lose the read a delete or rename asked for.
+        guard !refreshingAliases.contains(alias) else {
+            refreshAgainAliases.insert(alias)
+            return
+        }
         refreshingAliases.insert(alias)
         let source = services.sessionSource
         let settings = settings ?? .empty
@@ -1885,17 +2005,29 @@ final class AppModel: ObservableObject {
             }
             await MainActor.run {
                 self.refreshingAliases.remove(alias)
-                _ = self.apply(outcome, alias: alias)
+                self.apply(outcome, alias: alias)
+                self.refreshAgainIfAsked(alias)
             }
         }
     }
 
-    // Returns the failure that must pause polling: the host or the ssh agent is
-    // down. Nil means the sweep goes on.
-    private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) -> SSHFailure? {
+    private func refreshAgainIfAsked(_ alias: String) {
+        guard refreshAgainAliases.remove(alias) != nil else { return }
+        refresh(alias: alias)
+    }
+
+    // Any answer ends the workspace's pause; a refused login or an
+    // unreachable host starts a new one. The old one stays until then, so a
+    // pause that only goes on is not announced again.
+    private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) {
         markAnswered(alias)
+        var pausesAgain = false
+        defer { if !pausesAgain, pollPauses[alias] != nil { pollPauses[alias] = nil } }
         switch outcome {
-        case .success(let result):
+        case .success(let listed):
+            let visible = withoutJustDeleted(listed, alias: alias)
+            settleRenames(alias: alias, listed: visible)
+            let result = withJustCreated(visible, alias: alias)
             // Assign only on a real change: every write to a @Published
             // re-renders the whole tree, and the 5s poll usually returns
             // exactly what is already on screen.
@@ -1909,8 +2041,8 @@ final class AppModel: ObservableObject {
                 offlineAliases.remove(alias)
             }
             if sessionProblems[alias] != nil { sessionProblems[alias] = nil }
+            if let machine = machine(forAlias: alias) { clearMachinePauses(onMachine: machine) }
             syncContext()
-            return nil
         case .failure(let error):
             let failure = (error as? SessionStoreError)?.failure
             // A refused login on a workspace that never logged in is its
@@ -1920,7 +2052,7 @@ final class AppModel: ObservableObject {
                 if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
                 offlineAliases.remove(alias)
                 syncContext()
-                return nil
+                return
             }
             let problem = SessionProblem(error)
             if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
@@ -1932,7 +2064,7 @@ final class AppModel: ObservableObject {
             if error is SessionListError {
                 offlineAliases.remove(alias)
                 syncContext()
-                return nil
+                return
             }
             // The host answered with a key this Mac does not trust. No login
             // was tried, so nothing counts toward a ban, and other machines
@@ -1941,7 +2073,7 @@ final class AppModel: ObservableObject {
             if failure == .hostKeyRejected {
                 offlineAliases.remove(alias)
                 syncContext()
-                return nil
+                return
             }
             // Red means the host does not answer. A login this Mac cannot sign
             // — a locked agent after waking — says nothing about the host, and
@@ -1953,15 +2085,38 @@ final class AppModel: ObservableObject {
             } else if !offlineAliases.contains(alias) {
                 offlineAliases.insert(alias)
             }
+            if let failure, failure != .hostKeyRejected {
+                pausesAgain = true
+                pausePolling(alias: alias, after: failure)
+            }
             syncContext()
-            guard let failure else { return nil }
-            pausePolling(after: failure)
-            return failure
         }
     }
 
-    /// True while a failure is holding the sweep back.
-    var isPollingPaused: Bool { Date() < pollPausedUntil }
+    /// Workspaces held back from automatic logins, and why: the sidebar
+    /// shows each one with Try again.
+    @Published private(set) var pollPauses: [String: PollPause] = [:]
+
+    /// When a pause ends is measured against this; tests move it.
+    var pauseClock: @MainActor () -> Date = { Date() }
+
+    /// The configuration's machine for a workspace name; tests stand in.
+    var machineForWorkspace: @MainActor (String) -> String? = {
+        MachineReadinessStore.shared.machine(forWorkspace: $0)
+    }
+
+    /// True while a failure holds this workspace back from every automatic
+    /// login: the sweep, the selection poll, the context and the copy mode
+    /// check. Try again and opening a session still log in once.
+    func isPollingPaused(alias: String) -> Bool {
+        guard let pause = pollPauses[alias] else { return false }
+        return pauseClock() < pause.until
+    }
+
+    func holdsAutomaticLogin(_ target: CommandTarget) -> Bool {
+        guard case let .remote(alias, _) = target else { return false }
+        return isPollingPaused(alias: alias)
+    }
 
     /// True while the sweep logs into each workspace in turn.
     var isSweeping: Bool { sweepInFlight }
@@ -1969,15 +2124,14 @@ final class AppModel: ObservableObject {
     /// The machine a workspace alias lives on, as the configuration says.
     func machine(forAlias alias: String) -> String? {
         guard let workspace = workspaces.first(where: { $0.alias == alias }) else { return nil }
-        return MachineReadinessStore.shared.machine(forWorkspace: workspace.name)
+        return machineForWorkspace(workspace.name)
     }
 
     /// An ssh made outside the sweep (the copy mode check) failed the way
-    /// that pauses polling: the same backoff applies, so nothing else logs
-    /// in again at once.
-    func noteSSHFailure(_ failure: SSHFailure) {
-        guard failure != .hostKeyRejected else { return }
-        pausePolling(after: failure)
+    /// that pauses polling: the same pause applies, so nothing else logs
+    /// into that workspace again at once.
+    func noteSSHFailure(alias: String, _ failure: SSHFailure) {
+        pausePolling(alias: alias, after: failure)
     }
 
     /// Sleeping made every ssh fail at once, which paused the sweep and turned
@@ -1985,7 +2139,7 @@ final class AppModel: ObservableObject {
     /// applies, so it is lifted and the sweep runs at once instead of leaving
     /// the sidebar wrong for up to two minutes.
     func resumePollingAfterWake() {
-        pollPausedUntil = .distantPast
+        if !pollPauses.isEmpty { pollPauses = [:] }
         sweepInFlight = false
         refreshingAliases.removeAll()
         refreshAll()
@@ -2000,19 +2154,76 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func pausePolling(after failure: SSHFailure) {
-        let seconds: TimeInterval = failure == .authDenied ? 300 : 60
-        pollPausedUntil = Date().addingTimeInterval(seconds)
-        let label = failure == .authDenied
-            ? "SSH auth denied — polling paused 5 min (unlock the ssh agent)"
-            : "Host unreachable — polling paused 1 min"
-        let id = beginTask(label: label, total: 1)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.finishTask(id) }
+    /// A refused login pauses that workspace alone: fail2ban counts each
+    /// account's failed logins against this Mac's IP, and another account's
+    /// working login adds nothing. A machine that does not answer pauses
+    /// every workspace on it; with no known machine, only this one.
+    private func pausePolling(alias: String, after failure: SSHFailure) {
+        let machine = machine(forAlias: alias)
+        let entering = pollPauses[alias] == nil
+        switch failure {
+        case .hostKeyRejected:
+            return
+        case .authDenied:
+            if let machine, workspaces(onMachine: machine).contains(where: {
+                $0.alias != alias && isPollingPaused(alias: $0.alias) && pollPauses[$0.alias]?.reason != .unreachable
+            }) {
+                let pause = PollPause(.machineLoginsRefused, machine: machine, from: pauseClock())
+                for ws in workspaces(onMachine: machine) { setPause(pause, alias: ws.alias) }
+                announce(pause, alias: alias)
+                return
+            }
+            let pause = PollPause(.loginRefused, machine: machine, from: pauseClock())
+            setPause(pause, alias: alias)
+            if entering { announce(pause, alias: alias) }
+        case .unreachable:
+            let pause = PollPause(.unreachable, machine: machine, from: pauseClock())
+            setPause(pause, alias: alias)
+            if entering { announce(pause, alias: alias) }
+            guard let machine else { return }
+            for ws in workspaces(onMachine: machine) where ws.alias != alias {
+                setPause(pause, alias: ws.alias)
+                if !offlineAliases.contains(ws.alias) { offlineAliases.insert(ws.alias) }
+                if sessionProblems[ws.alias] == nil {
+                    sessionProblems[ws.alias] = .unreachable(
+                        detail: "Not asked: another workspace on \(machine) could not be reached.")
+                }
+                markAnswered(ws.alias)
+            }
+        }
+    }
+
+    /// A shorter pause never cuts a longer one short: a refused login stays
+    /// paused for its 5 minutes when its machine then stops answering.
+    private func setPause(_ pause: PollPause, alias: String) {
+        if let current = pollPauses[alias], current.until >= pause.until { return }
+        pollPauses[alias] = pause
+    }
+
+    /// The machine answered: its other workspaces are free again, and the
+    /// next sweep or selection poll reads them.
+    private func clearMachinePauses(onMachine machine: String) {
+        for (alias, pause) in pollPauses where pause.reason.coversMachine && pause.machine == machine {
+            pollPauses[alias] = nil
+        }
+    }
+
+    private func workspaces(onMachine machine: String) -> [Workspace] {
+        visibleWorkspaces.filter { self.machine(forAlias: $0.alias) == machine }
+    }
+
+    /// Once, when a workspace or machine starts a pause: the sidebar card
+    /// stays, and this reaches someone whose sidebar is closed.
+    private func announce(_ pause: PollPause, alias: String) {
+        let name = visibleWorkspaces.first { $0.alias == alias }?.name ?? alias
+        flashToast(pause.notice(workspace: name))
     }
 
     /// Provider context polls only while its tab is actually on screen.
     func syncContext() {
-        guard showsContextPanel, !contextCollapsed, contextTab == .context,
+        guard ContextPollRule.shouldPoll(
+            showsPanel: showsContextPanel, collapsed: contextCollapsed, tab: contextTab,
+            hasTarget: selectedSessionTarget != nil, boardNeedsContext: contextBoardNeedsSessionContext),
               let target = selectedSessionTarget else {
             context.stop()
             updateSelectionPoll()

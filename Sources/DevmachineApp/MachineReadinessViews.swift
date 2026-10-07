@@ -178,6 +178,32 @@ struct MachineReadinessCard: View {
     }
 }
 
+/// A workspace paused after an ssh failure, in the sidebar under its name:
+/// one line that says why nothing is checked, and Try again.
+struct PollPauseSidebarCard: View {
+    @Environment(\.dmMetrics) private var m
+    let notice: String
+    let reason: PollPause.Reason
+    let retry: () -> Void
+
+    static let retryTitle = "Try again"
+
+    var body: some View {
+        HStack(spacing: m.space.sm) {
+            Image(systemName: reason == .unreachable ? "wifi.exclamationmark" : "pause.circle")
+                .foregroundStyle(.orange)
+            Text(verbatim: notice)
+                .font(.dm(11.5, weight: .semibold))
+                .foregroundStyle(Color.dmRowText)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            DMButton(Self.retryTitle, variant: .outline, size: .small, action: retry)
+        }
+        .padding(m.space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// A workspace whose sessions could not be listed: the reason and the fix,
 /// where the list would otherwise be empty.
 struct SessionProblemView: View {

@@ -11,7 +11,7 @@ public struct CopyModeCheck: Equatable, Sendable {
 /// When coming back to the app may check panes for a stray copy mode. tmux
 /// runs one server per account, so each workspace alias needs its own
 /// login; what is limited is how often: each machine at most once per
-/// `interval`, and never while polling is paused after an ssh failure or
+/// `interval`, never for a workspace paused after an ssh failure, and never
 /// while the sweep is logging in, since stacked logins against a locked
 /// agent are what fail2ban bans.
 public struct CopyModeCheckSchedule: Sendable {
@@ -25,14 +25,15 @@ public struct CopyModeCheckSchedule: Sendable {
     }
 
     /// The checks due now, by machine then alias, and marks those machines
-    /// checked. An alias with no known machine counts as its own.
+    /// checked. An alias with no known machine counts as its own; a paused
+    /// alias is left out and spends nothing.
     public mutating func due(
         panes: [(alias: String, session: String)], machine: (String) -> String?, now: Date,
-        paused: Bool, sweeping: Bool
+        isPaused: (String) -> Bool, sweeping: Bool
     ) -> [CopyModeCheck] {
-        guard !paused, !sweeping else { return [] }
+        guard !sweeping else { return [] }
         var sessions: [String: Set<String>] = [:]
-        for pane in panes { sessions[pane.alias, default: []].insert(pane.session) }
+        for pane in panes where !isPaused(pane.alias) { sessions[pane.alias, default: []].insert(pane.session) }
         var checks: [CopyModeCheck] = []
         var checkedMachines: Set<String> = []
         let byMachine = Dictionary(grouping: sessions.keys) { machine($0) ?? $0 }

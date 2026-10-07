@@ -345,8 +345,15 @@ struct DevmachineCLI: Sendable {
         self.processEnvironment = processEnvironment
     }
 
+    /// `DEVMACHINE_CLI` runs another CLI binary than the installed one, the
+    /// way the CLI's own `DEVMACHINE_CONFIG` picks another configuration.
+    static func overridePath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
+        guard let path = environment["DEVMACHINE_CLI"], !path.isEmpty else { return nil }
+        return path
+    }
+
     static func resolve(
-        injected: String? = nil,
+        injected: String? = DevmachineCLI.overridePath(),
         runner: any CommandRunner = ProcessRunner(),
         customSocket: String? = RemoteCommands.SSHAgentSocketPreference.shared.current(),
         exists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
@@ -655,6 +662,18 @@ struct DevmachineCLI: Sendable {
     func packagesOutdated() throws -> Data {
         let result = try runner.runCapturing(
             executable: executable, args: ["packages", "outdated", "--format", "json"], environment: environment())
+        try requireSuccess(result)
+        return Data(result.stdout.utf8)
+    }
+
+    /// `widgets list --format json`: the widgets this machine's packages
+    /// offer. One bad widget is reported in `problems`, never a failure.
+    func widgetsList() throws -> Data {
+        let result = try runner.runCapturing(
+            executable: executable, args: ["widgets", "list", "--format", "json"], environment: environment())
+        if result.exitCode != 0, result.stderr.contains("unknown command \"widgets\"") {
+            throw DevmachineCLIError.needsNewerCLI("widgets")
+        }
         try requireSuccess(result)
         return Data(result.stdout.utf8)
     }

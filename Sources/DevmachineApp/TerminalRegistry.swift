@@ -336,23 +336,23 @@ final class TerminalRegistry: NSObject {
 
     /// What the copy mode check asks of the rest of the app; tests stand in.
     struct CopyModeContext {
-        var isPollingPaused: () -> Bool
+        var isPaused: (String) -> Bool
         var isSweeping: () -> Bool
         var machine: (String) -> String?
         var now: () -> Date
-        /// An ssh-level failure feeds the sweep's own backoff.
-        var report: (SSHFailure) -> Void
+        /// An ssh-level failure pauses that workspace like the sweep's own.
+        var report: (String, SSHFailure) -> Void
         /// Runs one check over ssh and says how it failed, if it did.
         var run: @Sendable (_ alias: String, _ command: String) -> SSHFailure?
 
         @MainActor static var live: CopyModeContext {
             let customSocket = SettingsStore.shared.settings?.sshAgentSocket
             return CopyModeContext(
-                isPollingPaused: { AppModel.shared?.isPollingPaused ?? false },
+                isPaused: { AppModel.shared?.isPollingPaused(alias: $0) ?? false },
                 isSweeping: { AppModel.shared?.isSweeping ?? false },
                 machine: { AppModel.shared?.machine(forAlias: $0) },
                 now: { Date() },
-                report: { AppModel.shared?.noteSSHFailure($0) },
+                report: { AppModel.shared?.noteSSHFailure(alias: $0, $1) },
                 run: { alias, command in
                     TerminalRegistry.runCheckOverSSH(alias: alias, command: command, customSocket: customSocket)
                 })
@@ -366,9 +366,9 @@ final class TerminalRegistry: NSObject {
     /// would keep eating your keys. Each account with a pane on screen needs
     /// its own login (tmux runs a server per account), so how often is what
     /// is limited (`CopyModeCheckSchedule`): one ssh at a time, at most once
-    /// per machine every 5 minutes, never while polling is paused or the
-    /// sweep runs, and the first ssh-level failure stops the round and
-    /// pauses polling like the sweep's own.
+    /// per machine every 5 minutes, never for a paused workspace or while the
+    /// sweep runs. A refused login pauses that workspace and an unreachable
+    /// machine ends its own checks, both like the sweep's own.
     func leaveIdleCopyModeOnScreen() {
         guard !DemoMode.isActive, !checkingCopyMode else { return }
         let context = copyModeContext ?? .live
@@ -380,28 +380,32 @@ final class TerminalRegistry: NSObject {
         guard !panes.isEmpty else { return }
         let checks = copyModeSchedule.due(
             panes: panes, machine: context.machine, now: context.now(),
-            paused: context.isPollingPaused(), sweeping: context.isSweeping())
+            isPaused: context.isPaused, sweeping: context.isSweeping())
         guard !checks.isEmpty else { return }
         PaneLog.log("copy mode check aliases=\(checks.map(\.alias))")
         checkingCopyMode = true
         let run = context.run
         let report = context.report
         Task { @MainActor in
-            let failure = await Task.detached { () -> SSHFailure? in
+            let failures = await Task.detached { () -> [(alias: String, failure: SSHFailure)] in
                 var skipped: Set<String> = []
+                var failures: [(alias: String, failure: SSHFailure)] = []
                 for check in checks where !skipped.contains(check.machine) {
                     switch run(check.alias, check.command) {
                     case nil:
                         continue
                     case .hostKeyRejected?:
                         skipped.insert(check.machine)
-                    case let failure?:
-                        return failure
+                    case .authDenied?:
+                        failures.append((check.alias, .authDenied))
+                    case .unreachable?:
+                        skipped.insert(check.machine)
+                        failures.append((check.alias, .unreachable))
                     }
                 }
-                return nil
+                return failures
             }.value
-            if let failure { report(failure) }
+            for entry in failures { report(entry.alias, entry.failure) }
             checkingCopyMode = false
         }
     }
@@ -678,6 +682,18 @@ extension TerminalRegistry {
                 }
             }
         case let .ssh(reason, detail, stray):
+            // The person's one try was refused: the workspace's pause starts
+            // again, and the ssh fallback would be a second refused login.
+            // Coming back to the pane tries again.
+            if case let .remote(alias, _) = kind, result.isRefusedLogin {
+                AppModel.shared?.noteSSHFailure(alias: alias, .authDenied)
+                remoteLaunches[kind] = nil
+                RemoteTransportStore.shared.forget(kind)
+                term.feed(text: "\u{1b}[2mLogin refused for \(alias). Paused checking it so the machine "
+                    + "doesn't block this Mac's IP.\u{1b}[0m\r\n")
+                dead.insert(kind)
+                return
+            }
             launch.strayServerPID = stray
             remoteLaunches[kind] = launch
             startSSH(kind, in: term, reason: reason, detail: detail, fresh: fresh)
@@ -695,6 +711,12 @@ extension TerminalRegistry {
         remoteLaunches[kind] = launch
         guard term.searchMatchSummary(MoshClientProbe.connectingMarker).total > 0 else {
             RemoteTransportStore.shared.moshConfirmed(machine: launch.machine)
+            return
+        }
+        // The timer started this ssh, not the person: a paused workspace
+        // waits for Try again instead of one more login.
+        if case let .remote(alias, _) = kind, AppModel.shared?.isPollingPaused(alias: alias) == true {
+            PaneLog.log("mosh silent pane=\(kind), ssh held while the workspace is paused")
             return
         }
         PaneLog.log("mosh silent pane=\(kind), switching to ssh")

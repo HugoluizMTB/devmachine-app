@@ -24,6 +24,7 @@ struct ShortcutsSection: View {
                     SkillsEditorView()
                         .environmentObject(skillsStore)
                 }
+                StackHeaderControls()
             }
         ) {
             FlowLayout(spacing: 4, rowSpacing: 4) {

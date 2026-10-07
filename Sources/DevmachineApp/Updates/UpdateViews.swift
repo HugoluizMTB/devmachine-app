@@ -106,7 +106,7 @@ private func revealInFinder(_ url: URL) {
     NSWorkspace.shared.activateFileViewerSelecting([url])
 }
 
-private struct UpdateProgressView: View {
+struct UpdateProgressView: View {
     @Environment(\.dmMetrics) private var m
     let label: String
     let done: Int

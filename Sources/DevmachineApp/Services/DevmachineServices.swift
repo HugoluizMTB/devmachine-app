@@ -1,11 +1,11 @@
 struct DevmachineServices: Sendable {
     let workspaceSource: any WorkspaceSource
-    let sessionSource: any SessionSource
+    let sessionSource: any SessionListSource
     let contextSource: any ContextSource
 
     init(
         workspaceSource: any WorkspaceSource = CLIWorkspaceSource(),
-        sessionSource: any SessionSource = CommandSessionSource(),
+        sessionSource: any SessionListSource = CommandSessionSource(),
         contextSource: any ContextSource = DemoMode.defaultContextSource()
     ) {
         self.workspaceSource = workspaceSource

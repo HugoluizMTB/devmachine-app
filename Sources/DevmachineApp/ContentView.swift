@@ -18,6 +18,7 @@ struct ContentView: View {
     @StateObject private var quickPublish = QuickPublishState()
     @ObservedObject private var previews = PreviewStore.shared
     @ObservedObject private var split = DocumentSplitState.shared
+    @ObservedObject private var compat = WidgetCompatibilityStore.shared
     @State private var sidebarButtonFrame: CGRect?
 
     var body: some View {
@@ -82,6 +83,10 @@ struct ContentView: View {
                     PackagesUpdateBanner()
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+                if compat.gap != nil {
+                    WidgetCompatBanner(store: compat)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
                 MachineJobStack()
                 ForEach(caddy.jobs) { job in
                     PublishJobCard(
@@ -102,12 +107,15 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.2), value: updates.showsBanner)
             .animation(.easeInOut(duration: 0.2), value: updates.showsCLIBanner)
             .animation(.easeInOut(duration: 0.2), value: updates.showsPackagesBanner)
+            .animation(.easeInOut(duration: 0.2), value: compat.gap != nil)
             .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.id))
             .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.phase))
         }
         .onAppear {
             model.settings = settingsStore.settings
             model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
+            Task { await compat.check() }
+            StackBoardController.startAll()
         }
         .onReceive(settingsStore.$settings) { model.settings = $0 }
         .onChange(of: model.pendingPublishWorkspace) { _, workspace in

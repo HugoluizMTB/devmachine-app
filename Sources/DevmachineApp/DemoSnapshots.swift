@@ -726,6 +726,8 @@ enum DemoSnapshots {
             .environmentObject(environment.prStore)
             .environmentObject(environment.usageStore)
             .environmentObject(environment.model)
+            .environmentObject(environment.statsStore)
+            .environmentObject(MenubarController.shared)
             .environment(\.harnessSettingsFacade, environment.harnessSettingsFacade)
     }
 

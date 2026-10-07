@@ -120,6 +120,29 @@ final class SetupPageTests: XCTestCase {
         XCTAssertTrue(body.contains("model.visibleWorkspaces"))
         XCTAssertFalse(body.contains("ForEach(model.workspaces)"))
     }
+
+    func testAppearanceOffersTheHomeResetUnderTheWallpaper() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("Sources/DevmachineApp/SetupPage.swift"),
+            encoding: .utf8)
+        let wallpaper = try XCTUnwrap(source.range(of: "            wallpaperBlock\n"))
+        let home = try XCTUnwrap(source.range(of: "subsection(\"Home\") { homeLayoutBlock }"))
+        XCTAssertLessThan(wallpaper.lowerBound, home.lowerBound)
+        XCTAssertTrue(source.contains("DMButton(\"Reset Home layout\""))
+    }
+
+    func testTheMenuBarResetsSitUnderTheirOwnHeading() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("Sources/DevmachineApp/SetupPage.swift"),
+            encoding: .utf8)
+        let sidebars = try XCTUnwrap(source.range(of: "subsection(\"Sidebars\") {"))
+        let menubar = try XCTUnwrap(source.range(of: "subsection(\"Menu bar\") {"))
+        XCTAssertLessThan(sidebars.lowerBound, menubar.lowerBound)
+        XCTAssertTrue(source.contains("stackResetBlock(DefaultStackBoard.surfaces, hint: StackBoardCopy.resetHint)"))
+        XCTAssertTrue(source.contains("stackResetBlock(DefaultStackBoard.menubarSurfaces, hint: StackBoardCopy.menubarResetHint)"))
+    }
 }
 
 final class SetupPageWallpaperTests: XCTestCase {

@@ -43,6 +43,7 @@ enum PaletteAction: Equatable {
     case hostKey(machine: String)
     case subdomains(machine: String)
     case addSubdomain(machine: String?)
+    case addWidget
     case sendFile(TerminalKind)
     case endSession
     case findFile

@@ -2,7 +2,7 @@ import XCTest
 import DevmachineCore
 @testable import DevmachineApp
 
-private final class ListedSessionSource: SessionSource, @unchecked Sendable {
+private final class ListedSessionSource: SessionListSource, @unchecked Sendable {
     private let lock = NSLock()
     private var listed: [String: [String]]
     private var failing = false
@@ -184,7 +184,7 @@ final class SidebarOrderModelTests: XCTestCase {
 
         source.fail()
         model.refresh(alias: acme.alias)
-        try await waitFor { model.offlineAliases.contains(self.acme.alias) || model.isPollingPaused }
+        try await waitFor { model.offlineAliases.contains(self.acme.alias) || model.isPollingPaused(alias: self.acme.alias) }
 
         XCTAssertEqual(model.sidebarOrder, saved)
     }

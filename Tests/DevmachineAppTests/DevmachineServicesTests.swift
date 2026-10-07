@@ -66,7 +66,7 @@ private final class CLIStagedRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
-struct FixtureSessionSource: SessionSource {
+struct FixtureSessionSource: SessionListSource {
     var remote: [TmuxSession] = []
     var local = LocalSessionSnapshot(sessions: [], harnesses: [:])
     func sessions(for workspace: Workspace, settings: AppSettings) throws -> [TmuxSession] { remote }
