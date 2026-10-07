@@ -22,10 +22,93 @@ public struct TemplateValues: Equatable, Sendable {
     }
 }
 
+/// Why a command source builds no line, so nothing half-safe ever runs.
+public enum WidgetCommandError: Error, Equatable, LocalizedError {
+    case unsafeTemplate(UnsafeTemplate)
+    case nothingToRun
+
+    public var errorDescription: String? {
+        switch self {
+        case let .unsafeTemplate(found): return found.message
+        case .nothingToRun: return "the command source has nothing to run"
+        }
+    }
+}
+
+/// A template of a shell line the shell could unquote. `quoted` is the
+/// CLI's rule; the other places are refused by the app alone.
+public struct UnsafeTemplate: Equatable, Sendable {
+    public var template: String
+    public var quoted: Bool
+
+    public var message: String {
+        if quoted {
+            return "source.run puts \(template) inside quotes; with shell: true every value is quoted for you — remove the quotes around it"
+        }
+        return "source.run puts \(template) in backticks, a comment, a here-document or right after \\ or $; "
+            + "with shell: true every value is quoted for you — write it bare"
+    }
+}
+
+/// A template's value is single-quoted for the shell, which is only safe
+/// where the template sits bare. Inside '…', "…" or `…`, in a comment or a
+/// here-document, or right after \ or $, the value closes the quotes.
+public enum ShellQuoteScan {
+    private enum State { case bare, single, double, backtick, comment, heredoc }
+
+    public static func firstUnsafeTemplate(_ line: String) -> UnsafeTemplate? {
+        var templates: [String.Index: (end: String.Index, text: String)] = [:]
+        for match in line.matches(of: WidgetSourceReader.templatePattern) {
+            templates[match.range.lowerBound] = (match.range.upperBound, String(match.output.0))
+        }
+        guard !templates.isEmpty else { return nil }
+        var state = State.bare
+        var previous: Character?
+        var index = line.startIndex
+        while index < line.endIndex {
+            if let template = templates[index] {
+                switch state {
+                case .single, .double: return UnsafeTemplate(template: template.text, quoted: true)
+                case .backtick, .comment, .heredoc: return UnsafeTemplate(template: template.text, quoted: false)
+                case .bare where previous == "$" || previous == "\\": return UnsafeTemplate(template: template.text, quoted: false)
+                case .bare: break
+                }
+                previous = "}"
+                index = template.end
+                continue
+            }
+            let character = line[index]
+            var next = line.index(after: index)
+            var escaped = false
+            switch (state, character) {
+            case (.bare, "\\"), (.double, "\\"), (.backtick, "\\"):
+                if next < line.endIndex, templates[next] == nil {
+                    next = line.index(after: next)
+                    escaped = true
+                }
+            case (.bare, "'"): state = .single
+            case (.bare, "\""): state = .double
+            case (.bare, "`"): state = .backtick
+            case (.bare, "#") where previous.map { startsAWord(after: $0) } ?? true: state = .comment
+            case (.bare, "<") where line[next...].hasPrefix("<"): state = .heredoc
+            case (.single, "'"), (.double, "\""), (.backtick, "`"), (.comment, "\n"): state = .bare
+            default: break
+            }
+            previous = escaped ? "x" : character
+            index = next
+        }
+        return nil
+    }
+
+    private static func startsAWord(after character: Character) -> Bool {
+        character.isWhitespace || ";&|()<>".contains(character)
+    }
+}
+
 extension WidgetSource {
     /// Every template resolved. In a shell line each value is quoted for
     /// the shell; anywhere else it stays one literal word.
-    public func resolved(with values: TemplateValues) -> WidgetSource {
+    public func resolved(with values: TemplateValues) throws -> WidgetSource {
         func plain(_ text: String) -> String { values.resolve(text) }
         func target(_ target: WidgetTarget) -> WidgetTarget {
             switch target {
@@ -39,6 +122,9 @@ extension WidgetSource {
             source.with = source.with.mapValues(plain)
             return .provider(source)
         case var .command(source):
+            if source.shell, let run = source.run, let found = ShellQuoteScan.firstUnsafeTemplate(run) {
+                throw WidgetCommandError.unsafeTemplate(found)
+            }
             source.run = source.run.map { source.shell ? values.resolve($0, escape: RemoteCommands.shellSingleQuoted) : plain($0) }
             source.args = source.args.map(plain)
             source.target = target(source.target)
@@ -64,7 +150,8 @@ enum GoFloat {
     static func json(_ value: Double) -> String {
         if value.isNaN { return "NaN" }
         if value.isInfinite { return value < 0 ? "-Inf" : "+Inf" }
-        return shortest(value, exponentBelow: -6, exponentFrom: 21)
+        let text = shortest(value, exponentBelow: -6, exponentFrom: 21)
+        return text.replacing(/e-0(\d)$/) { "e-\($0.1)" }
     }
 
     static func shortest(_ value: Double, exponentBelow: Int, exponentFrom: Int) -> String {

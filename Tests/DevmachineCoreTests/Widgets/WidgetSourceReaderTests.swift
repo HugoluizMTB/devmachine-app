@@ -295,6 +295,56 @@ final class WidgetSourceReaderTests: XCTestCase {
             "template {{\u{00A0}context.repo}} in source.args[0] names neither inputs.<name> nor context.<name>")
     }
 
+    func testAShellRunRefusesATemplateInsideQuotes() {
+        let scope = WidgetScope.inline(contextKeys: ["repo"])
+        for run in ["echo '{{context.repo}}'", "echo \"{{context.repo}}\"", "cd {{context.repo}} && echo \"at {{context.repo}}\""] {
+            let fields: [String: WidgetValue] = [
+                "kind": .string("command"), "run": .string(run), "shell": .bool(true), "every": .string("60s"),
+            ]
+            XCTAssertEqual(
+                problem(fields, scope: scope)?.message,
+                "source.run puts {{context.repo}} inside quotes; with shell: true every value is quoted for you — remove the quotes around it",
+                run)
+        }
+        let comment: [String: WidgetValue] = [
+            "kind": .string("command"), "run": .string("echo hi # {{context.repo}}"), "shell": .bool(true),
+            "every": .string("60s"),
+        ]
+        XCTAssertEqual(
+            problem(comment, scope: scope)?.message,
+            "source.run puts {{context.repo}} in backticks, a comment, a here-document or right after \\ or $; "
+                + "with shell: true every value is quoted for you — write it bare")
+        let bare: [String: WidgetValue] = [
+            "kind": .string("command"), "run": .string("cd {{context.repo}} && echo 'done'"), "shell": .bool(true),
+            "every": .string("60s"),
+        ]
+        XCTAssertNil(problem(bare, scope: scope))
+    }
+
+    func testARunWithoutShellRefusesAProgramEnvWouldMisread() {
+        let scope = WidgetScope.inline(contextKeys: ["repo"])
+        let dash: [String: WidgetValue] = ["kind": .string("command"), "run": .string("-i"), "every": .string("60s")]
+        XCTAssertEqual(
+            problem(dash, scope: scope)?.message,
+            "source.run \"-i\" starts with -: the app starts a program through env, which reads it as an option "
+                + "— name the program, and put options in source.args")
+        let equals: [String: WidgetValue] = ["kind": .string("command"), "run": .string("A=b"), "every": .string("60s")]
+        XCTAssertEqual(
+            problem(equals, scope: scope)?.message,
+            "source.run \"A=b\" has =: the app starts a program through env, which reads it as a variable to set "
+                + "— name the program, or set shell: true")
+        for run in ["-i", "A=b", "--{{context.repo}}", "/opt/a=b"] {
+            let fields: [String: WidgetValue] = ["kind": .string("command"), "run": .string(run), "every": .string("60s")]
+            XCTAssertEqual(problem(fields, scope: scope)?.path, ["run"], run)
+            var remote = fields
+            remote["target"] = .object(["machine": .string("main")])
+            XCTAssertEqual(problem(remote, scope: scope)?.path, ["run"], run)
+            var shell = fields
+            shell["shell"] = .bool(true)
+            XCTAssertNil(problem(shell, scope: .inline(contextKeys: ["repo"])), run)
+        }
+    }
+
     func testPackageWidgetsMayUseInputs() {
         let fields: [String: WidgetValue] = [
             "kind": .string("command"), "run": .string("df"), "every": .string("60s"),

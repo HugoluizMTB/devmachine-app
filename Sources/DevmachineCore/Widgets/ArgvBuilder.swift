@@ -50,7 +50,14 @@ public enum ArgvBuilder {
     public static let env = "/usr/bin/env"
     public static let shell = "/bin/sh"
 
-    public static func command(_ source: CommandSource, package: String?, packagePath: String?) -> TargetCommand {
+    /// Resolves the source's templates itself, so a template the shell could
+    /// unquote never reaches a line.
+    public static func command(
+        _ unresolved: CommandSource, values: TemplateValues = .none, package: String?, packagePath: String?
+    ) throws -> TargetCommand {
+        guard case let .command(source) = try WidgetSource.command(unresolved).resolved(with: values) else {
+            throw WidgetCommandError.nothingToRun
+        }
         if let script = source.script {
             guard let package else { return .argv([script] + source.args) }
             if source.target == .local {
@@ -60,15 +67,23 @@ public enum ArgvBuilder {
             }
             return .packageScript(package: package, script: script, args: source.args)
         }
-        let run = source.run ?? ""
+        guard let run = source.run, !run.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw WidgetCommandError.nothingToRun
+        }
         guard source.shell else { return .argv([run] + source.args) }
         return .shellLine(([run] + source.args.map(RemoteCommands.shellSingleQuoted)).joined(separator: " "))
     }
 
+    /// `env` reads a leading - as its own option and a word with = as a
+    /// variable, so such a program name would never run as written.
+    public static func envWouldMisread(_ program: String) -> Bool {
+        !program.contains("/") && (program.hasPrefix("-") || program.contains("="))
+    }
+
     public static func prompt(_ source: PromptSource) -> TargetCommand {
         switch source.harness {
-        case .claude: return .argv(["claude", "-p", source.prompt])
-        case .codex: return .argv(["codex", "exec", "--skip-git-repo-check", source.prompt])
+        case .claude: return .argv(["claude", "-p", "--", source.prompt])
+        case .codex: return .argv(["codex", "exec", "--skip-git-repo-check", "--", source.prompt])
         }
     }
 
@@ -99,11 +114,12 @@ public enum ArgvBuilder {
         variables["PATH"] = LocalPATH.value(inherited: environment["PATH"], home: home)
         switch command {
         case let .argv(words):
-            guard let first = words.first else { return nil }
+            guard let first = words.first, !first.isEmpty else { return nil }
             if first.contains("/") {
                 return ProcessInvocation(
                     executable: first, arguments: Array(words.dropFirst()), environment: variables, currentDirectory: home)
             }
+            if envWouldMisread(first) { return nil }
             return ProcessInvocation(executable: env, arguments: words, environment: variables, currentDirectory: home)
         case let .shellLine(line):
             return ProcessInvocation(executable: shell, arguments: ["-c", line], environment: variables, currentDirectory: home)

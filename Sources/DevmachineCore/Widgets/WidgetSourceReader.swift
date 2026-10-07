@@ -270,6 +270,10 @@ public enum WidgetSourceReader {
                 throw WidgetSpecProblem(
                     ["run"], "source.run \"\(run)\" has spaces: put the arguments in args, or set shell: true")
             }
+            if let run, shell, let found = ShellQuoteScan.firstUnsafeTemplate(run) {
+                throw WidgetSpecProblem(["run"], found.message)
+            }
+            if let run, !shell { try checkProgramWord(run) }
             if let script { try checkScript(script, scope: scope) }
             let mode = CommandMode(rawValue: try choice("mode")) ?? .poll
             let parse = ParseMode(rawValue: try choice("parse")) ?? .text
@@ -302,6 +306,23 @@ public enum WidgetSourceReader {
             return CommandSource(
                 run: run, script: script, args: try list("args"), shell: shell, target: try target(), every: every,
                 timeout: timeout, mode: mode, keep: keep, parse: parse)
+        }
+
+        private func checkProgramWord(_ run: String) throws {
+            let program = run.replacing(WidgetSourceReader.templatePattern, with: "x")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if program.hasPrefix("-") {
+                throw WidgetSpecProblem(
+                    ["run"],
+                    "source.run \"\(run)\" starts with -: the app starts a program through env, which reads it as an option "
+                        + "— name the program, and put options in source.args")
+            }
+            if program.contains("=") {
+                throw WidgetSpecProblem(
+                    ["run"],
+                    "source.run \"\(run)\" has =: the app starts a program through env, which reads it as a variable to set "
+                        + "— name the program, or set shell: true")
+            }
         }
 
         private func checkScript(_ script: String, scope: WidgetScope) throws {
