@@ -140,6 +140,12 @@ public enum WorktreeAdminRemoval {
             asUser: "git -C \(quote(mainWorktree)) worktree prune")
     }
 
+    /// Whether the manual steps run on a Mac: this one, the self machine, a
+    /// machine the CLI read as macOS, or a path only a Mac lays out.
+    public static func isOnAMac(reason: ManualReason, isLocalSession: Bool, path: String) -> Bool {
+        isLocalSession || reason == .selfMachine || reason == .macMachine || path.hasPrefix("/Users/")
+    }
+
     private static func quote(_ value: String) -> String {
         RemoteCommands.shellSingleQuoted(value)
     }

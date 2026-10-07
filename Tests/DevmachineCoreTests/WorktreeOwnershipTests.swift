@@ -180,6 +180,16 @@ final class WorktreeOwnershipTests: XCTestCase {
             .admin(machine: "main"))
     }
 
+    func testTheStepsByHandUseTheMacsRmOnEveryMac() {
+        XCTAssertTrue(WorktreeAdminRemoval.isOnAMac(reason: .thisMac, isLocalSession: true, path: path))
+        XCTAssertTrue(WorktreeAdminRemoval.isOnAMac(reason: .selfMachine, isLocalSession: false, path: path))
+        XCTAssertTrue(WorktreeAdminRemoval.isOnAMac(reason: .macMachine, isLocalSession: false, path: path))
+        XCTAssertTrue(WorktreeAdminRemoval.isOnAMac(
+            reason: .outsideHome, isLocalSession: false, path: "/Users/alice/dev/dash/.worktrees/old"))
+        XCTAssertFalse(WorktreeAdminRemoval.isOnAMac(reason: .outsideHome, isLocalSession: false, path: "/srv/dash/old"))
+        XCTAssertFalse(WorktreeAdminRemoval.isOnAMac(reason: .noCLI, isLocalSession: false, path: path))
+    }
+
     func testTheHomeGuardRefusesEveryWayOut() {
         XCTAssertTrue(WorktreeAdminRemoval.isInsideHome(path, user: "alice"))
         for outside in [

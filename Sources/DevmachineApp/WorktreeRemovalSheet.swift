@@ -311,7 +311,8 @@ struct WorktreeRemovalSheet: View {
         case let .manual(reason):
             let steps = WorktreeAdminRemoval.manualSteps(
                 path: request.id, mainWorktree: request.mainWorktree ?? "",
-                onAMac: request.isLocalSession || reason == .macMachine)
+                onAMac: WorktreeAdminRemoval.isOnAMac(
+                    reason: reason, isLocalSession: request.isLocalSession, path: request.id))
             VStack(alignment: .leading, spacing: m.space.sm) {
                 note(reason.text + " To remove it by hand:")
                 Text(verbatim: request.isLocalSession ? "In a terminal on this Mac:" : "On the machine, as its admin:")
