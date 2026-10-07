@@ -138,6 +138,26 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         public let collapsed: String
     }
 
+    /// How a package's own command feeds a widget: its name, what its
+    /// package.yml may declare, where it runs and when its widgets ask.
+    public struct PackageProviderRules: Decodable, Equatable, Sendable {
+        public let name: String
+        public let reserved: [String]
+        public let minEvery: String
+        public let returns: [String]
+        public let optional: String
+        public let targets: [String]
+        public let output: String
+        public let with: String
+        public let approval: String
+        public let trust: [String]
+
+        enum CodingKeys: String, CodingKey {
+            case name, reserved, returns, optional, targets, output, with, approval, trust
+            case minEvery = "min_every"
+        }
+    }
+
     public struct Formats: Decodable, Equatable, Sendable {
         public let widget: Int
         public let board: Int
@@ -153,6 +173,7 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
     public let surfaces: [String: Surface]
     public let contextTypes: [String: [String: String]]
     public let providers: [String: Provider]
+    public let packageProvider: PackageProviderRules
     public let views: [String: ViewSpec]
     public let sourceKinds: [String]
     public let sources: [String: SourceSpec]
@@ -164,6 +185,7 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         case sourceKinds = "source_kinds"
         case stackRow = "stack_row"
         case stackEntry = "stack_entry"
+        case packageProvider = "package_provider"
     }
 
     public static let presetOrder = ["small", "medium", "large", "wide", "tall"]
@@ -175,6 +197,10 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
 
     public func minimumInterval(for provider: String) -> TimeInterval? {
         providers[provider].flatMap { GoDuration.seconds($0.minEvery) }
+    }
+
+    public var packageProviderFloor: TimeInterval {
+        GoDuration.seconds(packageProvider.minEvery) ?? 5
     }
 
     public func viewGrows(_ kind: String) -> Bool {
@@ -207,13 +233,13 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
 }
 
 extension WidgetContract {
-    public static let current = engine12
+    public static let current = engine13
 
     private static let target = FieldSpec(type: "target", defaultValue: .string("local"))
     private static let timeout = FieldSpec(type: "duration", defaultValue: .string("30s"), max: .string("10m"))
 
-    public static let engine12 = WidgetContract(
-        engine: "1.2",
+    public static let engine13 = WidgetContract(
+        engine: "1.3",
         layouts: ["canvas", "stack", "slot"],
         unit: 80,
         snap: 8,
@@ -267,6 +293,11 @@ extension WidgetContract {
                 args: [:], minEvery: "5s", returns: ["shortcuts": "list"], context: ["session": "required"]),
             "app/publish-port": Provider(args: [:], minEvery: "5s", returns: ["available": "bool"]),
         ],
+        packageProvider: PackageProviderRules(
+            name: "<package>/<command>", reserved: ["app"], minEvery: "5s",
+            returns: ["string", "number", "bool", "list", "object"], optional: "?", targets: ["machine", "workspace"],
+            output: "json", with: "--<key> <value> after the command, keys sorted", approval: "third-party",
+            trust: ["official", "local", "third-party"]),
         views: [
             "app.clock": ViewSpec(accepts: ["app/clock"]),
             "app.summary": ViewSpec(accepts: ["app/summary"]),
@@ -330,7 +361,9 @@ extension WidgetContract {
             "provider": SourceSpec(minEvery: nil, approval: false, fields: [
                 "name": FieldSpec(type: "provider", required: true),
                 "with": FieldSpec(type: "args"),
-                "every": FieldSpec(type: "duration", required: true),
+                "every": FieldSpec(type: "every", required: true),
+                "target": FieldSpec(type: "target"),
+                "timeout": timeout,
             ]),
             "command": SourceSpec(minEvery: "5s", approval: true, fields: [
                 "run": FieldSpec(type: "string"),

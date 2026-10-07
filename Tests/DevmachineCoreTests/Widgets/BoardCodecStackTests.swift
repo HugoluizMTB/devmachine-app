@@ -175,7 +175,7 @@ final class BoardCodecStackTests: XCTestCase {
         return WidgetContract(
             engine: c.engine, layouts: c.layouts, unit: c.unit, snap: c.snap, presets: c.presets, stackRow: c.stackRow,
             stackEntry: c.stackEntry, surfaces: c.surfaces, contextTypes: c.contextTypes, providers: c.providers,
-            views: views, sourceKinds: c.sourceKinds, sources: c.sources, formats: c.formats)
+            packageProvider: c.packageProvider, views: views, sourceKinds: c.sourceKinds, sources: c.sources, formats: c.formats)
     }
 
     func testAnInlineViewDrawnOnlyOnACanvasIsRefused() throws {

@@ -5,15 +5,36 @@ final class WidgetContractTests: XCTestCase {
     private func fixture() throws -> Data {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/widget-contract-1.2.json")
+            .appendingPathComponent("Fixtures/widget-contract-1.3.json")
         return try Data(contentsOf: url)
     }
 
     func testTheGoldenContractIsTheOneThisAppImplements() throws {
         let decoded = try JSONDecoder().decode(WidgetContract.self, from: fixture())
-        XCTAssertEqual(decoded, WidgetContract.engine12)
-        XCTAssertEqual(WidgetContract.current, WidgetContract.engine12)
-        XCTAssertEqual(WidgetContract.current.engine, "1.2")
+        XCTAssertEqual(decoded, WidgetContract.engine13)
+        XCTAssertEqual(WidgetContract.current, WidgetContract.engine13)
+        XCTAssertEqual(WidgetContract.current.engine, "1.3")
+    }
+
+    func testPackageProvidersRunOnAMachineOrWorkspaceAndTakeTargetAndTimeout() {
+        let contract = WidgetContract.current
+        XCTAssertEqual(contract.packageProvider.name, "<package>/<command>")
+        XCTAssertEqual(contract.packageProvider.reserved, ["app"])
+        XCTAssertEqual(contract.packageProvider.targets, ["machine", "workspace"])
+        XCTAssertEqual(contract.packageProvider.minEvery, "5s")
+        XCTAssertEqual(contract.packageProviderFloor, 5)
+        XCTAssertEqual(contract.packageProvider.returns, ["string", "number", "bool", "list", "object"])
+        XCTAssertEqual(contract.packageProvider.optional, "?")
+        XCTAssertEqual(contract.packageProvider.output, "json")
+        XCTAssertEqual(contract.packageProvider.approval, "third-party")
+        XCTAssertEqual(contract.packageProvider.trust, ["official", "local", "third-party"])
+        let fields = contract.sources["provider"]?.fields ?? [:]
+        XCTAssertEqual(Set(fields.keys), ["name", "with", "every", "target", "timeout"])
+        XCTAssertEqual(fields["every"]?.type, "every")
+        XCTAssertNil(fields["target"]?.defaultValue)
+        XCTAssertEqual(fields["timeout"]?.defaultValue, .string("30s"))
+        XCTAssertEqual(fields["timeout"]?.max, .string("10m"))
+        XCTAssertFalse(contract.needsApproval("provider"))
     }
 
     func testBothSidebarsAreAvailableStacks() {

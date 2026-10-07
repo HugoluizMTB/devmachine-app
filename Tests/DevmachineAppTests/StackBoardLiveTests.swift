@@ -61,7 +61,7 @@ final class StackBoardLiveTests: XCTestCase {
         let schema = try run(cli, config, ["widgets", "schema", "--json"])
         XCTAssertEqual(schema.status, 0, schema.stderr)
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("DevmachineCoreTests/Fixtures/widget-contract-1.2.json")
+            .appendingPathComponent("DevmachineCoreTests/Fixtures/widget-contract-1.3.json")
         XCTAssertEqual(try canonical(Data(schema.stdout.utf8)), try canonical(Data(contentsOf: fixture)))
     }
 
