@@ -121,18 +121,11 @@ struct StackBoardView: View {
         let resolution = controller.resolution(of: entry)
         if case let .ready(resolved)? = resolution, let source = resolved.source {
             StackSourcesReader(sources: controller.sources) { sources in
-                rowBody(entry, index: index, resolution: resolution, approval: Self.approval(sources, entry.id, source))
+                rowBody(entry, index: index, resolution: resolution, approval: WidgetApprovalDisplay.state(sources, entry.id, source))
             }
         } else {
             rowBody(entry, index: index, resolution: resolution, approval: nil)
         }
-    }
-
-    /// Matches `SourceWidgetCardMode`: a source that needs approval shows
-    /// the card even before the controller knows its id.
-    private static func approval(_ sources: WidgetSourceController, _ id: String, _ source: ResolvedSource) -> ApprovalState {
-        let state = sources.approvalState(id)
-        return source.needsApproval && state == .notNeeded ? .waiting(hash: "") : state
     }
 
     private func rowBody(_ entry: StackEntry, index: Int, resolution: WidgetResolution?, approval: ApprovalState?) -> some View {

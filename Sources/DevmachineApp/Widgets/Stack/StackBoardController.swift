@@ -39,6 +39,7 @@ final class StackBoardController: ObservableObject {
     @Published private(set) var store: StackBoardStore?
     @Published private(set) var placementsError: String?
     private(set) var isVisible = false
+    private(set) var visibleEntries: Set<String>?
     let surface: String
     let catalog: WidgetCatalogStore
     let runtime = WidgetRuntimeDriver()
@@ -230,13 +231,26 @@ final class StackBoardController: ObservableObject {
         syncSources()
     }
 
+    /// The popover shows one tab at a time; nil means every entry is on screen.
+    func setVisibleEntries(_ ids: Set<String>?) {
+        guard ids != visibleEntries else { return }
+        visibleEntries = ids
+        syncSources()
+    }
+
+    var hasSources: Bool { createdSources != nil }
+
+    private func isOnScreen(_ entry: StackEntry) -> Bool {
+        isVisible && !entry.collapsed && (visibleEntries?.contains(entry.id) ?? true)
+    }
+
     /// Called whenever the board, the catalog or the visibility changes.
     func syncSources() {
         catalog.setWaitsForCatalog(
             board.entries.contains { resolution(of: $0)?.waitsForCatalog == true }, board: surface)
         let entries = board.entries.compactMap { entry -> SourceWidgetEntry? in
             guard case let .ready(resolved)? = resolution(of: entry), let source = resolved.source else { return nil }
-            return SourceWidgetEntry(id: entry.id, source: source, isVisible: isVisible && !entry.collapsed)
+            return SourceWidgetEntry(id: entry.id, source: source, isVisible: isOnScreen(entry))
         }
         guard !entries.isEmpty || createdSources != nil else { return }
         sources.setContext(context, pending: pendingContext)
@@ -247,9 +261,10 @@ final class StackBoardController: ObservableObject {
     func runtimeJobs() -> [WidgetJob] {
         board.entries.compactMap { entry in
             guard case let .ready(resolved)? = resolution(of: entry), resolved.source == nil,
-                  !AppStackWidgets.viewKinds.contains(resolved.viewKind)
+                  !AppStackWidgets.viewKinds.contains(resolved.viewKind),
+                  !AppMenubarWidgets.viewKinds.contains(resolved.viewKind)
             else { return nil }
-            return AppWidgetJobs.job(for: entry.boardWidget, resolved: resolved, isOnScreen: isVisible && !entry.collapsed)
+            return AppWidgetJobs.job(for: entry.boardWidget, resolved: resolved, isOnScreen: isOnScreen(entry))
         }
     }
 

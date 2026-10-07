@@ -447,4 +447,48 @@ final class StackBoardControllerTests: XCTestCase {
         controller.setVisible(true)
         XCTAssertEqual(controller.runtimeJobs().count, 1)
     }
+
+    private func tab(_ name: String) -> CatalogWidget {
+        var widget = CatalogWidget(
+            name: name, fits: ["tabs"],
+            source: CatalogSource(raw: .object([
+                "kind": .string("command"), "run": .string("uptime"), "every": .string("60s"),
+            ])),
+            viewKind: "text", sizes: [], defaultSize: "", places: [], surfaces: ["menubar-panel"])
+        widget.view = .object(["kind": .string("text")])
+        return widget
+    }
+
+    func testOnlyTheEntriesOnScreenRun() async throws {
+        try write("""
+            format: 1
+            surface: menubar-panel
+            widgets:
+              - id: first
+                type: acme/first
+              - id: second
+                type: acme/second
+
+            """, "menubar-panel")
+        let controller = makeController("menubar-panel", catalog: catalog([tab("acme/first"), tab("acme/second")]))
+        controller.setVisibleEntries(["second"])
+        controller.setVisible(true)
+        await waitUntil { self.command.calls == 1 }
+        XCTAssertEqual(command.requests[0].instanceID, "second")
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 1)
+        controller.setVisibleEntries(["first"])
+        await waitUntil { self.command.calls == 2 }
+        XCTAssertEqual(command.requests[1].instanceID, "first")
+        controller.setVisibleEntries(nil)
+        XCTAssertTrue(controller.hasSources)
+    }
+
+    func testRuntimeJobsLeaveOutTheMenubarAppViews() throws {
+        let controller = makeController("menubar-panel")
+        XCTAssertEqual(controller.board.entries.map(\.id), ["pull-requests-panel", "usage-panel"])
+        XCTAssertEqual(controller.runtimeJobs(), [])
+        let slots = makeController("menubar")
+        XCTAssertEqual(slots.runtimeJobs().map(\.key.provider), ["app/open-pull-requests"])
+    }
 }

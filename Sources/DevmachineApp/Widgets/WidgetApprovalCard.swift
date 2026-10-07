@@ -16,6 +16,16 @@ enum SessionOpening {
     }
 }
 
+/// Matches `SourceWidgetCardMode`: a source that needs approval shows the
+/// card even before the controller knows its id.
+@MainActor
+enum WidgetApprovalDisplay {
+    static func state(_ sources: WidgetSourceController, _ id: String, _ source: ResolvedSource) -> ApprovalState {
+        let state = sources.approvalState(id)
+        return source.needsApproval && state == .notNeeded ? .waiting(hash: "") : state
+    }
+}
+
 enum SourceWidgetCardMode: Equatable {
     case approval
     case demo

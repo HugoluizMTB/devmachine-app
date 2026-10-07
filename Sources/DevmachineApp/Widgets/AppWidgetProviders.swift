@@ -9,9 +9,12 @@ import HarnessUsageKit
 struct AppWidgetProviders {
     let usage: HarnessUsageStore
     let stats: StatsStore
+    var prs: PRStore? = nil
 
     func refresh(_ key: WidgetRefreshKey, force: Bool) {
         switch key.provider {
+        case "app/open-pull-requests", "app/pull-requests-panel":
+            if force { prs?.refresh() }
         case "app/harness-usage":
             usage.refresh(harnessID: key.args["harness"] ?? "", force: true)
         case "app/machines":
