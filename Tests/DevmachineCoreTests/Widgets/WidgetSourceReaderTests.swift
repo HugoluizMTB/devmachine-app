@@ -508,4 +508,56 @@ final class WidgetSourceReaderTests: XCTestCase {
             name: "acme-tools/load", with: ["path": "{{context.machine}}"], target: .machine("main"),
             every: .interval(30), timeout: 30)))
     }
+
+    private func prompt(_ extra: [String: WidgetValue]) -> [String: WidgetValue] {
+        ["kind": .string("prompt"), "harness": .string("claude"), "prompt": .string("Search the web.")].merging(extra) { $1 }
+    }
+
+    func testAPermissionModeIsItsHarnesssOwnName() throws {
+        for harness in ["claude", "codex"] {
+            for mode in PermissionModes.names(for: harness) {
+                let read = try WidgetSourceReader.read(
+                    .object(prompt(["harness": .string(harness), "permission_mode": .string(mode)])), scope: inline)
+                guard case let .prompt(source) = read else { return XCTFail("\(read)") }
+                XCTAssertEqual(source.permissionMode, mode)
+            }
+        }
+        guard case let .prompt(plain) = try WidgetSourceReader.read(.object(prompt([:])), scope: inline) else { return XCTFail() }
+        XCTAssertNil(plain.permissionMode)
+        guard case let .prompt(empty) = try WidgetSourceReader.read(.object(prompt(["permission_mode": .string("")])), scope: inline)
+        else { return XCTFail() }
+        XCTAssertNil(empty.permissionMode)
+        XCTAssertEqual(
+            problem(prompt(["permission_mode": .string("read-only")])),
+            WidgetSpecProblem(["permission_mode"],
+                              "source.permission_mode \"read-only\": a claude prompt takes manual, dontAsk, plan, acceptEdits, auto, bypassPermissions"))
+        XCTAssertEqual(
+            problem(prompt(["harness": .string("codex"), "permission_mode": .string("auto")]))?.message,
+            "source.permission_mode \"auto\": a codex prompt takes read-only, workspace-write, danger-full-access, approve-for-me, "
+                + "dangerously-bypass-approvals-and-sandbox")
+        XCTAssertEqual(problem(prompt(["harness": .string("gemini"), "permission_mode": .string("auto")]))?.path, ["harness"])
+        XCTAssertEqual(
+            problem(["kind": .string("command"), "run": .string("df"), "every": .string("60s"), "permission_mode": .string("auto")])?.path,
+            ["permission_mode"])
+    }
+
+    func testAModeWithNoChecksRunsOnlyByHand() throws {
+        let timer = "permission_mode bypassPermissions runs without any check, so it runs only when you press refresh: write every: manual"
+        XCTAssertEqual(problem(prompt(["permission_mode": .string("bypassPermissions"), "every": .string("30m")])),
+                       WidgetSpecProblem(["permission_mode"], timer))
+        XCTAssertEqual(
+            problem(prompt(["harness": .string("codex"), "permission_mode": .string("dangerously-bypass-approvals-and-sandbox"),
+                            "every": .string("1h")]))?.message,
+            "permission_mode dangerously-bypass-approvals-and-sandbox runs without any check, so it runs only when you press refresh: "
+                + "write every: manual")
+        XCTAssertNil(problem(prompt(["permission_mode": .string("bypassPermissions")])))
+        XCTAssertNil(problem(prompt(["permission_mode": .string("bypassPermissions"), "every": .string("manual")])))
+        XCTAssertNil(problem(prompt(["permission_mode": .string("auto"), "every": .string("30m")])))
+        XCTAssertEqual(problem(prompt(["permission_mode": .string("bypassPermissions"), "every": .string("1m")]))?.path, ["every"])
+        XCTAssertTrue(PermissionModes.isDangerous("danger-full-access"))
+        XCTAssertFalse(PermissionModes.isDangerous("approve-for-me"))
+        XCTAssertFalse(PermissionModes.isDangerous(nil))
+        XCTAssertEqual(PermissionModes.warning("bypassPermissions", harness: .claude),
+                       "bypassPermissions runs without any check: Claude can change files and run commands without asking you.")
+    }
 }

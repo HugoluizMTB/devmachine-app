@@ -86,19 +86,25 @@ public struct URLSource: Hashable, Sendable {
     }
 }
 
+/// `permissionMode` is the harness's own mode name, nil for its default.
 public struct PromptSource: Hashable, Sendable {
     public var harness: PromptHarness
     public var prompt: String
     public var target: WidgetTarget
     public var every: WidgetEvery
     public var timeout: TimeInterval
+    public var permissionMode: String?
 
-    public init(harness: PromptHarness, prompt: String, target: WidgetTarget, every: WidgetEvery, timeout: TimeInterval) {
+    public init(
+        harness: PromptHarness, prompt: String, target: WidgetTarget, every: WidgetEvery, timeout: TimeInterval,
+        permissionMode: String? = nil
+    ) {
         self.harness = harness
         self.prompt = prompt
         self.target = target
         self.every = every
         self.timeout = timeout
+        self.permissionMode = permissionMode
     }
 }
 

@@ -116,4 +116,29 @@ final class BoardCodecEditTests: XCTestCase {
         XCTAssertEqual(String(decoding: data, as: UTF8.self), "[\"main\"]")
         XCTAssertEqual(try JSONDecoder().decode(BoardScalar.self, from: data), .list(["main"]))
     }
+
+    func testAPermissionModeSurvivesARewriteByteForByte() throws {
+        let text = """
+            format: 1
+            surface: home
+            widgets:
+              - id: ask
+                title: Go news
+                source:
+                  kind: prompt
+                  harness: claude
+                  permission_mode: auto
+                  prompt: Search the web for this week's Go release notes.
+                view: {kind: markdown}
+                frame: {x: 24, y: 24, w: 320, h: 320}
+                size: large
+                minimized: false
+                z: 1
+
+            """
+        let board = try BoardCodec.decode(text)
+        guard case let .prompt(source)? = board.widgets[0].inline?.source else { return XCTFail() }
+        XCTAssertEqual(source.permissionMode, "auto")
+        XCTAssertEqual(BoardCodec.encode(board), text)
+    }
 }

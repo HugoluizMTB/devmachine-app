@@ -438,9 +438,26 @@ public enum WidgetSourceReader {
         }
 
         func prompt() throws -> PromptSource {
-            PromptSource(
-                harness: PromptHarness(rawValue: try choice("harness")) ?? .claude, prompt: try required("prompt"),
-                target: try target(), every: try every(required: false), timeout: try timeout())
+            let harness = try choice("harness")
+            let question = try required("prompt")
+            let place = try target()
+            let schedule = try every(required: false)
+            let limit = try timeout()
+            return PromptSource(
+                harness: PromptHarness(rawValue: harness) ?? .claude, prompt: question, target: place, every: schedule,
+                timeout: limit, permissionMode: try permissionMode(harness: harness, every: schedule))
+        }
+
+        func permissionMode(harness: String, every: WidgetEvery) throws -> String? {
+            guard let mode = try text("permission_mode") else { return nil }
+            let modes = PermissionModes.names(for: harness, contract: contract)
+            guard modes.contains(mode) else {
+                throw WidgetSpecProblem(["permission_mode"], PermissionModes.listProblem(mode, harness: harness, modes: modes))
+            }
+            if PermissionModes.isDangerous(mode, contract: contract), case .interval = every {
+                throw WidgetSpecProblem(["permission_mode"], PermissionModes.timerProblem(mode))
+            }
+            return mode
         }
 
         func session() throws -> SessionSource {
