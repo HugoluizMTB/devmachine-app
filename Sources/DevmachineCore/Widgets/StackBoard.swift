@@ -40,10 +40,12 @@ public struct StackEntry: Equatable, Sendable, Identifiable {
     public var inline: InlineWidget?
     public var size: StackSize?
     public var collapsed: Bool
+    public var titleOverride: String?
+    public var everyOverride: String?
 
     public init(
         id: String, type: String, with: [String: BoardScalar] = [:], inline: InlineWidget? = nil,
-        size: StackSize? = nil, collapsed: Bool = false
+        size: StackSize? = nil, collapsed: Bool = false, titleOverride: String? = nil, everyOverride: String? = nil
     ) {
         self.id = id
         self.type = type
@@ -51,6 +53,8 @@ public struct StackEntry: Equatable, Sendable, Identifiable {
         self.inline = inline
         self.size = size
         self.collapsed = collapsed
+        self.titleOverride = titleOverride
+        self.everyOverride = everyOverride
     }
 
     public var isInline: Bool { inline != nil }
@@ -61,7 +65,8 @@ public struct StackEntry: Equatable, Sendable, Identifiable {
     public var boardWidget: BoardWidget {
         BoardWidget(
             id: id, type: type, with: with, frame: BoardFrame(x: 0, y: 0, w: 1, h: 1),
-            size: size?.presetName ?? BoardWidget.customSize, z: 0, inline: inline)
+            size: size?.presetName ?? BoardWidget.customSize, z: 0, inline: inline,
+            titleOverride: titleOverride, everyOverride: everyOverride)
     }
 }
 

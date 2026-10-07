@@ -8,6 +8,8 @@ public enum BoardScalar: Hashable, Sendable {
     case int(Int)
     case double(Double)
     case bool(Bool)
+    /// Only for a `many` choice input; a template reads it joined with commas.
+    case list([String])
 
     public var text: String {
         switch self {
@@ -15,7 +17,13 @@ public enum BoardScalar: Hashable, Sendable {
         case let .int(value): return String(value)
         case let .double(value): return GoFloat.json(value)
         case let .bool(value): return value ? "true" : "false"
+        case let .list(values): return values.joined(separator: ",")
         }
+    }
+
+    public var listValue: [String]? {
+        if case let .list(values) = self { return values }
+        return nil
     }
 }
 
@@ -28,6 +36,8 @@ extension BoardScalar: Codable {
             self = .int(value)
         } else if let value = try? container.decode(Double.self) {
             self = .double(value)
+        } else if let value = try? container.decode([String].self) {
+            self = .list(value)
         } else {
             self = .string(try container.decode(String.self))
         }
@@ -40,6 +50,7 @@ extension BoardScalar: Codable {
         case let .int(value): try container.encode(value)
         case let .double(value): try container.encode(value)
         case let .bool(value): try container.encode(value)
+        case let .list(value): try container.encode(value)
         }
     }
 }
@@ -97,10 +108,13 @@ public struct BoardWidget: Equatable, Sendable, Identifiable {
     public var minimized: Bool
     public var z: Int
     public var inline: InlineWidget?
+    public var titleOverride: String?
+    public var everyOverride: String?
 
     public init(
         id: String, type: String, with: [String: BoardScalar] = [:], frame: BoardFrame, size: String,
-        minimized: Bool = false, z: Int, inline: InlineWidget? = nil
+        minimized: Bool = false, z: Int, inline: InlineWidget? = nil, titleOverride: String? = nil,
+        everyOverride: String? = nil
     ) {
         self.id = id
         self.type = type
@@ -110,6 +124,8 @@ public struct BoardWidget: Equatable, Sendable, Identifiable {
         self.minimized = minimized
         self.z = z
         self.inline = inline
+        self.titleOverride = titleOverride
+        self.everyOverride = everyOverride
     }
 
     public var isInline: Bool { inline != nil }

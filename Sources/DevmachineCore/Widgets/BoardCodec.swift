@@ -7,7 +7,7 @@ import Yams
 public enum BoardCodec {
     private static let topKeys: Set<String> = ["format", "surface", "widgets"]
     private static let widgetKeys: Set<String> = [
-        "id", "type", "title", "with", "source", "view", "sizes", "fits", "frame", "size", "minimized", "collapsed", "z",
+        "id", "type", "title", "with", "every", "source", "view", "sizes", "fits", "frame", "size", "minimized", "collapsed", "z",
     ]
     private static let stackLayout = "stack"
     private static let slotLayout = "slot"
@@ -108,6 +108,8 @@ public enum BoardCodec {
         let inline: InlineWidget?
         let fields: [String: Node]
         let keyLines: [String: Int]
+        let titleOverride: String?
+        let everyOverride: String?
     }
 
     /// `placement` runs before the inline widget is read, so a key that does
@@ -143,6 +145,8 @@ public enum BoardCodec {
         }
         var type = ""
         var with: [String: BoardScalar] = [:]
+        var titleOverride: String?
+        var everyOverride: String?
         if inline == nil {
             guard let typeNode = fields["type"], let typeName = string(typeNode) else {
                 throw BoardProblem(line: line(node), message: "widget \"\(id)\" needs a type, such as devmachine-app/clock")
@@ -152,8 +156,32 @@ public enum BoardCodec {
             }
             type = typeName
             with = try fields["with"].map { try scalars($0, owner: id) } ?? [:]
+            titleOverride = try fields["title"].map { try Self.titleOverride($0, id: id) }
+            everyOverride = try fields["every"].map { try Self.everyOverride($0, id: id) }
+        } else if let everyNode = fields["every"] {
+            throw BoardProblem(
+                line: line(everyNode), message: "\(id): a widget written in the board sets how often in source.every, not every")
         }
-        return EntryCore(id: id, type: type, with: with, inline: inline, fields: fields, keyLines: keyLines)
+        return EntryCore(
+            id: id, type: type, with: with, inline: inline, fields: fields, keyLines: keyLines,
+            titleOverride: titleOverride, everyOverride: everyOverride)
+    }
+
+    private static func titleOverride(_ node: Node, id: String) throws -> String {
+        guard let text = string(node), !text.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw BoardProblem(
+                line: line(node), message: "\(id): title is empty: write one, or take the key off to show the widget's own")
+        }
+        return text
+    }
+
+    private static func everyOverride(_ node: Node, id: String) throws -> String {
+        let text = string(node) ?? ""
+        guard text == "manual" || GoDuration.seconds(text) != nil else {
+            throw BoardProblem(
+                line: line(node), message: "\(id): every \"\(text)\" is neither a duration nor manual: write it like 60s, 5m or manual")
+        }
+        return text
     }
 
     private static func decodeWidget(_ node: Node, envelope: Envelope, contract: WidgetContract) throws -> BoardWidget {
@@ -193,7 +221,7 @@ public enum BoardCodec {
         }
         return BoardWidget(
             id: id, type: core.type, with: core.with, frame: frame, size: size, minimized: minimized, z: z,
-            inline: core.inline)
+            inline: core.inline, titleOverride: core.titleOverride, everyOverride: core.everyOverride)
     }
 
     /// Only the rules the file alone shows; what needs the catalog (fit,
@@ -219,7 +247,8 @@ public enum BoardCodec {
             layout == stackLayout
                 ? try stackSize(sizeNode, core: core, contract: contract) : try tabSize(sizeNode, core: core, contract: contract)
         }
-        return StackEntry(id: id, type: core.type, with: core.with, inline: core.inline, size: size, collapsed: collapsed)
+        return StackEntry(id: id, type: core.type, with: core.with, inline: core.inline, size: size, collapsed: collapsed,
+            titleOverride: core.titleOverride, everyOverride: core.everyOverride)
     }
 
     /// The CLI's `DrawnIn`: a slot draws only `slot_entry.views`; elsewhere a
@@ -405,6 +434,15 @@ public enum BoardCodec {
             guard let key = keyNode.scalar?.string else {
                 throw BoardProblem(line: line(keyNode), message: "with of widget \"\(owner)\" has a key that is not text")
             }
+            if let sequence = valueNode.sequence {
+                values[key] = .list(try sequence.map { item in
+                    guard let text = item.scalar?.string else {
+                        throw BoardProblem(line: line(item), message: "\(owner): input \"\(key)\" takes a list of names, written [a, b]")
+                    }
+                    return text
+                })
+                continue
+            }
             guard let scalar = valueNode.scalar else {
                 throw BoardProblem(line: line(valueNode), message: "input \"\(key)\" of widget \"\(owner)\" must be one value")
             }
@@ -490,7 +528,9 @@ public enum BoardCodec {
             lines.append("widgets:")
             for widget in board.widgets {
                 lines.append("  - id: \(text(widget.id))")
-                lines.append(contentsOf: bodyLines(type: widget.type, with: widget.with, inline: widget.inline))
+                lines.append(contentsOf: bodyLines(
+                    type: widget.type, with: widget.with, inline: widget.inline, title: widget.titleOverride,
+                    every: widget.everyOverride))
                 let frame = widget.frame
                 lines.append("    frame: {x: \(frame.x), y: \(frame.y), w: \(frame.w), h: \(frame.h)}")
                 lines.append("    size: \(text(widget.size))")
@@ -509,7 +549,9 @@ public enum BoardCodec {
             lines.append("widgets:")
             for entry in board.entries {
                 lines.append("  - id: \(text(entry.id))")
-                lines.append(contentsOf: bodyLines(type: entry.type, with: entry.with, inline: entry.inline))
+                lines.append(contentsOf: bodyLines(
+                    type: entry.type, with: entry.with, inline: entry.inline, title: entry.titleOverride,
+                    every: entry.everyOverride))
                 if let size = entry.size { lines.append("    size: \(text(size.text))") }
                 if entry.collapsed { lines.append("    collapsed: true") }
             }
@@ -518,7 +560,9 @@ public enum BoardCodec {
     }
 
     /// The keys between id and the placement, the same on a canvas and in a stack.
-    private static func bodyLines(type: String, with: [String: BoardScalar], inline: InlineWidget?) -> [String] {
+    private static func bodyLines(
+        type: String, with: [String: BoardScalar], inline: InlineWidget?, title: String?, every: String?
+    ) -> [String] {
         if let inline {
             var lines = ["    title: \(text(inline.title))"]
             lines.append(contentsOf: inline.sourceTree.emit(key: "source", indent: 4))
@@ -528,11 +572,13 @@ public enum BoardCodec {
             return lines
         }
         var lines = ["    type: \(text(type))"]
+        if let title { lines.append("    title: \(text(title))") }
         if !with.isEmpty {
             let keys = with.keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
             let pairs = keys.map { key in "\(YAMLScalarStyle.text(key, in: .flow)): \(with[key].map(value) ?? "\"\"")" }
             lines.append("    with: {\(pairs.joined(separator: ", "))}")
         }
+        if let every { lines.append("    every: \(text(every))") }
         return lines
     }
 
@@ -548,6 +594,8 @@ public enum BoardCodec {
         case let .int(number): return String(number)
         case let .double(number): return YAMLScalarStyle.number(number)
         case let .bool(flag): return flag ? "true" : "false"
+        case let .list(items):
+            return "[" + items.map { YAMLScalarStyle.text($0, in: .flow, quoteYAML11Words: true) }.joined(separator: ", ") + "]"
         }
     }
 }
