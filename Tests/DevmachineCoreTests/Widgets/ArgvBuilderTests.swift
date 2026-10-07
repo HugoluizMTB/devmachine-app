@@ -387,4 +387,31 @@ final class ArgvBuilderTests: XCTestCase {
             .packageCommand(package: "acme-tools", command: "load", args: []), environment: [:], home: home))
         XCTAssertNil(ArgvBuilder.remote(.packageCommand(package: "acme-tools", command: "load", args: []), target: .local, cli: cli))
     }
+
+    private func asked(_ harness: PromptHarness, _ mode: String?) -> TargetCommand {
+        ArgvBuilder.prompt(PromptSource(harness: harness, prompt: "Hi; id", target: .local, every: .manual, timeout: 300,
+                                        permissionMode: mode))
+    }
+
+    func testWithNoModeTheArgvIsTodaysByteForByte() {
+        XCTAssertEqual(asked(.claude, nil), .argv(["claude", "-p", "--", "Hi; id"]))
+        XCTAssertEqual(asked(.codex, nil), .argv(["codex", "exec", "--skip-git-repo-check", "--", "Hi; id"]))
+    }
+
+    func testEachModeBecomesItsHarnesssOwnFlag() {
+        for mode in PermissionModes.names(for: "claude") {
+            XCTAssertEqual(asked(.claude, mode), .argv(["claude", "-p", "--permission-mode", mode, "--", "Hi; id"]), mode)
+        }
+        let codex: [String: [String]] = [
+            "read-only": ["--sandbox", "read-only"],
+            "workspace-write": ["--sandbox", "workspace-write"],
+            "danger-full-access": ["--sandbox", "danger-full-access"],
+            "approve-for-me": ["--approve-for-me"],
+            "dangerously-bypass-approvals-and-sandbox": ["--dangerously-bypass-approvals-and-sandbox"],
+        ]
+        XCTAssertEqual(Set(codex.keys), Set(PermissionModes.names(for: "codex")))
+        for (mode, flags) in codex {
+            XCTAssertEqual(asked(.codex, mode), .argv(["codex", "exec", "--skip-git-repo-check"] + flags + ["--", "Hi; id"]), mode)
+        }
+    }
 }

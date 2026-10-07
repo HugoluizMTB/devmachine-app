@@ -99,9 +99,23 @@ public enum ArgvBuilder {
     }
 
     public static func prompt(_ source: PromptSource) -> TargetCommand {
+        let flags = permissionFlags(source)
         switch source.harness {
-        case .claude: return .argv(["claude", "-p", "--", source.prompt])
-        case .codex: return .argv(["codex", "exec", "--skip-git-repo-check", "--", source.prompt])
+        case .claude: return .argv(["claude", "-p"] + flags + ["--", source.prompt])
+        case .codex: return .argv(["codex", "exec", "--skip-git-repo-check"] + flags + ["--", source.prompt])
+        }
+    }
+
+    /// The spec's Argv row: Codex writes these two modes as flags, and
+    /// every other Codex mode is a `--sandbox` value.
+    static let codexFlagModes: Set<String> = ["approve-for-me", "dangerously-bypass-approvals-and-sandbox"]
+
+    /// The reader lets only a name from the contract reach here.
+    static func permissionFlags(_ source: PromptSource) -> [String] {
+        guard let mode = source.permissionMode, !mode.isEmpty else { return [] }
+        switch source.harness {
+        case .claude: return ["--permission-mode", mode]
+        case .codex: return codexFlagModes.contains(mode) ? ["--\(mode)"] : ["--sandbox", mode]
         }
     }
 

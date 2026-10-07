@@ -365,8 +365,9 @@ final class SourceRunnerTests: XCTestCase {
     }
 
     private func prompt(_ harness: PromptHarness, _ text: String, _ target: WidgetTarget, needsApproval: Bool = false,
-                        approvals: WidgetApprovals = WidgetApprovals()) -> SourceRunRequest {
-        request(.prompt(PromptSource(harness: harness, prompt: text, target: target, every: .manual, timeout: 300)),
+                        approvals: WidgetApprovals = WidgetApprovals(), mode: String? = nil) -> SourceRunRequest {
+        request(.prompt(PromptSource(harness: harness, prompt: text, target: target, every: .manual, timeout: 300,
+                                     permissionMode: mode)),
                 needsApproval: needsApproval, approvals: approvals)
     }
 
@@ -453,5 +454,21 @@ final class SourceRunnerTests: XCTestCase {
             request(.session(SessionSource(target: .machine("main"), session: "main", every: .interval(2))), needsApproval: true))
         guard case .needsApproval(.waiting) = result else { return XCTFail("\(result)") }
         XCTAssertTrue(launcher.invocations.isEmpty)
+    }
+
+    func testALocalPromptPassesItsModeBeforeThePrompt() async throws {
+        let runner = PromptSourceRunner(launcher: launcher, environment: environment,
+                                        locateHarness: { _ in "/Users/alice/.local/bin/claude" })
+        _ = try await output { try await runner.fetch(prompt(.claude, "--help", .local, mode: "auto")) }
+        XCTAssertEqual(launcher.invocations.first?.executable, "/Users/alice/.local/bin/claude")
+        XCTAssertEqual(launcher.invocations.first?.arguments, ["-p", "--permission-mode", "auto", "--", "--help"])
+    }
+
+    func testACodexPromptOnAWorkspacePassesItsSandbox() async throws {
+        let runner = PromptSourceRunner(launcher: launcher, environment: environment, locateHarness: { _ in nil })
+        _ = try await runner.fetch(prompt(.codex, "Hi", .workspace("alice"), mode: "workspace-write"))
+        XCTAssertEqual(launcher.invocations.first?.arguments,
+                       ["run", "--workspace", "alice", "--no-log", "--argv", "--", "codex", "exec", "--skip-git-repo-check",
+                        "--sandbox", "workspace-write", "--", "Hi"])
     }
 }

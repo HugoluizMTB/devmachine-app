@@ -1,6 +1,6 @@
 import Foundation
 
-/// `claude -p -- <prompt>` / `codex exec --skip-git-repo-check -- <prompt>`,
+/// `claude -p [--permission-mode <m>] -- <prompt>` / `codex exec --skip-git-repo-check [<mode flags>] -- <prompt>`,
 /// one answer as markdown text. On this Mac the harness is found the way
 /// Settings finds it, and its folder goes first on PATH so an npm-installed
 /// CLI finds its `node`.
