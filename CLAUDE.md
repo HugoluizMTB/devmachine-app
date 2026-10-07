@@ -218,7 +218,8 @@ Rules:
   `dropTask` so it does not blink a finished card. The small
   `ProgressView().controlSize(.small)` inside a panel stays what it is: that
   panel loading its own content, not a job. A `devmachine` run against a
-  machine is a machine job instead (see Machine jobs).
+  machine is a machine job instead (see Machine jobs). A widget's own poll is the
+  exception: it is the widget's content (see Home widgets).
 - **`.clipped()` / `.clipShape` do NOT clip hit-testing.** A `scaledToFill` image
   overflows its container and its invisible overflow still swallows clicks over
   neighboring views (this once killed the sidebar's right edge for a whole day).
@@ -861,7 +862,7 @@ Rules:
   `YAMLScalarStyle.swift`, kept compatible with the CLI's `yaml.v3`. Cross-writer
   tests guard that: change the quoting and they fail.
 - **The golden fixture is the CLI's file.**
-  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.0.json` must stay
+  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.1.json` must stay
   byte-identical to `internal/widgets/testdata/contract.json` in the CLI repo.
   Change one, copy it to the other.
 - **Frames are points at 100% text size** (`CanvasLayout`). The canvas
@@ -888,6 +889,72 @@ Rules:
 - Test hooks: `DEVMACHINE_CLI=<binary>` runs another CLI,
   `DEVMACHINE_WIDGET_PLACEMENTS=<file>` moves the placements file, and
   `DEVMACHINE_DEMO_BOARDS=<folder>` keeps a demo board across restarts.
+- **A widget written in the board runs only after "Allow".** An inline
+  `command`, `prompt` or `session` widget (the contract's `approval: true`)
+  shows `WidgetApprovalCard` until the owner allows it. The decision is kept
+  by SHA-256 (hex) of the canonical JSON (keys sorted, no spaces) of what
+  runs, taken at run time with the area's real context
+  (`ApprovalSubject.hash(for:context:)`): kind, run/script/args, shell,
+  target, harness, prompt, session, and for `shell: true` the `DM_` values it
+  reads — never `every`, `timeout`, `mode`, `keep` or `parse`. The runner
+  checks the hash again right before every run (`SourceApprovalGate`). It
+  lives in `Application Support/Devmachine/widget-approvals.json`, never in
+  the config folder: whoever can write a board must not be able to approve
+  it. Any change to what runs asks again; Deny pauses and keeps the widget,
+  with "Allow" to change your mind. An unreadable file means everything
+  waits again. A package's widgets need no approval (trust = the package);
+  `url` and `provider` never do.
+- **A value is never part of a shell line** (`ArgvBuilder`, the one place a
+  widget argv or shell line is built; templates are filled once, at run
+  time, with the area's real context). `shell: true` takes no templates in `run` and
+  no `args`: the line reads its values as `$DM_INPUT_<NAME>` and
+  `$DM_CONTEXT_<KEY>` environment variables. Without `shell`, templates go
+  only in `args`, never in `run`: the program is named in `run`, found on the
+  PATH here and started directly — never through `/usr/bin/env` or a shell,
+  which would read a value-like word as an option or as code. Prompts run
+  `claude -p -- <prompt>` and `codex exec --skip-git-repo-check -- <prompt>`
+  (the `--` keeps a prompt that starts with `-` from being a flag).
+- **A widget on a machine or workspace runs only through `devmachine run`**,
+  with the argv of the CLI plan's Appendix B: `--machine` before `run`,
+  `--workspace` after it, `--no-log`, then `--argv -- <words>` (a shell line
+  is `--argv -- /usr/bin/env NAME=value … /bin/sh -c <line>`, each pair one
+  word) or `--package <p> --script <s> -- <args>`. `--config` is never passed:
+  the process inherits `DEVMACHINE_CONFIG`. The app never opens its own ssh
+  for a widget. stdin is `/dev/null`; exit 255 is "never ran" with the CLI's
+  last `error:` line; exit 1 with `unknown flag` and no stdout asks for a
+  newer CLI. `target: local` runs on this Mac in the home folder, with the
+  known tool folders added to PATH (`LocalPATH`), `/bin/sh -c` for
+  `shell: true`.
+- **One run in flight per widget; polls only while Home is on screen.**
+  `SourceSchedule` runs a poll on its interval (floors: command and url 5s,
+  session 2s, prompt 15m; prompt defaults to manual), a manual widget only on
+  ▶, and a stream only while it is on screen and not minimized. Hiding,
+  minimizing or removing it, or leaving Home (`onDisappear` →
+  `WidgetSourceController.stop()`), sends SIGTERM, and that exit is never
+  shown. A stream that ends on its own waits for ▶. A timeout or more than
+  1 MB of output ends the process; the last good value stays with the error
+  beside it. Demo mode never runs a source.
+- **A widget poll is not a machine job.** It draws in its own card and never
+  registers a `BGTask` or a `MachineJobCenter` job (unlike sync, Prepare and
+  the other runs against a machine).
+- **Session widgets read, never type.** A remote session is
+  `tmux capture-pane -p -e`, a local one `zmx history <session> --vt`; the
+  terminal view is a parsed `AttributedString`, not a SwiftTerm view. A click
+  selects the session (workspace or local); a machine's admin session is not
+  clickable.
+- **Web widgets** share one non-persistent `WKWebsiteDataStore` for the app
+  run (not the preview browser's), allow http(s) in the main frame only, open
+  no popups, and reload on `every` only while the view exists.
+- **Inline entries are written back as they were read** (`YAMLTree`: flow or
+  block, quoting kept), in the order `id, title, source, view, sizes, fits,
+  frame, size, minimized, z`, byte-identical to the CLI's writer; a
+  cross-writer test (`testAnInlineWidgetSurvivesARewriteByteForByte`) guards it.
+- **Unit tests never run a widget for real**: no real CLI, no ssh, no
+  network, no real config folder, Application Support or keychain — fakes
+  and temp folders. The one exception is opt-in:
+  `DEVMACHINE_WIDGETS_E2E=<binary>` runs `WidgetSourceLiveTests` through that
+  CLI against a temp config whose only machine is `here` (`self: true`, this
+  Mac), with `DEVMACHINE_KEYCHAIN=off`. It never targets a remote machine.
 
 ## Host keys
 - **ssh refusing a host key is its own problem** (`SSHFailure.hostKeyRejected`,
