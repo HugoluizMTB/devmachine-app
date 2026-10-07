@@ -89,6 +89,19 @@ final class WidgetViewReaderTests: XCTestCase {
         }
     }
 
+    func testATextStatusSourceRefusesSizeRules() {
+        let prompt = WidgetSource.prompt(PromptSource(harness: .claude, prompt: "x", target: .local, every: .manual, timeout: 300))
+        for rule in ["< 300", "<= 300", "> 300", ">= 300"] {
+            XCTAssertEqual(
+                problem(["kind": .string("status"), "ok": .string(rule)], command(.text))?.message,
+                "view.ok \"\(rule)\" compares by size, and this command source gives text: use == or !=")
+            XCTAssertEqual(problem(["kind": .string("status"), "warn": .string(rule)], prompt)?.path, ["warn"])
+            XCTAssertNil(problem(["kind": .string("status"), "ok": .string(rule)], command(.number)))
+            XCTAssertNil(problem(["kind": .string("status"), "ok": .string(rule)], url, writesParse: false))
+        }
+        XCTAssertNil(problem(["kind": .string("status"), "ok": .string("== \"up\""), "warn": .string("!= 3")], command(.text)))
+    }
+
     func testStatusRules() {
         XCTAssertEqual(StatusRule.parse("<= 2.5"), StatusRule(op: .le, operand: .number(2.5)))
         XCTAssertEqual(StatusRule.parse("== \"ok\""), StatusRule(op: .eq, operand: .text("ok")))

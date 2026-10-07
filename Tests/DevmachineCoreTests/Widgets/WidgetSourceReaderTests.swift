@@ -167,6 +167,16 @@ final class WidgetSourceReaderTests: XCTestCase {
         XCTAssertNil(problem(trailing))
     }
 
+    func testRunRefusesAnyWhitespaceWithoutShell() {
+        for run in ["df\r-h", "df\u{00A0}-h", "df\u{2003}-h", "df\u{3000}-h", "df\u{0B}-h", "{{context.repo}} -h"] {
+            let fields: [String: WidgetValue] = ["kind": .string("command"), "run": .string(run), "every": .string("60s")]
+            XCTAssertEqual(problem(fields, scope: .inline(contextKeys: ["repo"]))?.path, ["run"], run.debugDescription)
+            var shell = fields
+            shell["shell"] = .bool(true)
+            XCTAssertNil(problem(shell, scope: .inline(contextKeys: ["repo"])), run.debugDescription)
+        }
+    }
+
     func testPackageWidgetsMayUseInputs() {
         let fields: [String: WidgetValue] = [
             "kind": .string("command"), "run": .string("df"), "every": .string("60s"),

@@ -33,6 +33,8 @@ public struct StatusRule: Hashable, Sendable {
         return StatusRule(op: op, operand: .number(number))
     }
 
+    public var comparesBySize: Bool { op != .eq && op != .ne }
+
     public func matches(number: Double?, text: String) -> Bool {
         switch operand {
         case let .text(expected):
@@ -154,8 +156,8 @@ public enum WidgetViewReader {
             view.format = parsed
         }
         if kind == "status" {
-            view.okRule = try rule(fields, "ok")
-            view.warnRule = try rule(fields, "warn")
+            view.okRule = try rule(fields, "ok", source: source)
+            view.warnRule = try rule(fields, "warn", source: source)
         } else {
             view.warn = try number(fields, "warn")
             view.crit = try number(fields, "crit")
@@ -196,10 +198,15 @@ public enum WidgetViewReader {
         }
     }
 
-    private static func rule(_ fields: [String: WidgetValue], _ key: String) throws -> StatusRule? {
+    private static func rule(_ fields: [String: WidgetValue], _ key: String, source: WidgetSource) throws -> StatusRule? {
         guard let text = fields[key]?.text else { return nil }
         guard let rule = StatusRule.parse(text) else {
             throw WidgetSpecProblem([key], "view.\(key) \"\(text)\" is not a rule such as < 300 or == \"ok\"")
+        }
+        if source.outputToken == ParseMode.text.rawValue, rule.comparesBySize {
+            let written = text.trimmingCharacters(in: .whitespaces)
+            throw WidgetSpecProblem(
+                [key], "view.\(key) \"\(written)\" compares by size, and this \(source.kind) source gives text: use == or !=")
         }
         return rule
     }
