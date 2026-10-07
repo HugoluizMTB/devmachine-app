@@ -75,19 +75,23 @@ public struct StackPlacementResult: Equatable, Sendable {
     public let placementsChanged: Bool
 }
 
-/// A widget whose `places` names a stack joins its end once; one the person
-/// removed stays removed, because its placement is remembered.
+/// A widget whose `places` names an ordered surface joins its end once; one
+/// the person removed stays removed, because its placement is remembered.
+/// A full menu bar takes none, and the placement is still recorded.
 public enum StackPlacer {
-    public static func place(on board: StackBoard, catalog: WidgetCatalog?, placements: WidgetPlacements) -> StackPlacementResult {
+    public static func place(
+        on board: StackBoard, catalog: WidgetCatalog?, placements: WidgetPlacements, contract: WidgetContract = .current
+    ) -> StackPlacementResult {
         var board = board
         var placements = placements
         var boardChanged = false
         var placementsChanged = false
         let surface = board.surface
-        for widget in StackCatalog.merged(catalog).widgets
-            where widget.placesItself(on: surface, fitting: "stack") && !placements.contains(widget.name, on: surface) {
-            if !board.entries.contains(where: { $0.type == widget.name }) {
-                board.insert(newEntry(of: widget, on: board), at: .end)
+        let layout = contract.layout(of: surface)
+        for widget in StackCatalog.merged(catalog, contract: contract).widgets
+            where widget.placesItself(on: surface, fitting: layout) && !placements.contains(widget.name, on: surface) {
+            if !board.entries.contains(where: { $0.type == widget.name }), !StackGallery.isFull(board, contract: contract) {
+                board.insert(newEntry(of: widget, on: board, contract: contract), at: .end)
                 boardChanged = true
             }
             placements.insert(widget.name, on: surface)
@@ -98,10 +102,16 @@ public enum StackPlacer {
     }
 
     /// The size written is the one `devmachine widgets add --board` writes:
-    /// auto when the view grows, else the widget's default size.
-    public static func newEntry(of widget: CatalogWidget, on board: StackBoard) -> StackEntry {
+    /// on a stack, auto when the view grows, else the default size; a slot
+    /// or a tab takes none.
+    public static func newEntry(
+        of widget: CatalogWidget, on board: StackBoard, contract: WidgetContract = .current
+    ) -> StackEntry {
+        guard contract.layout(of: board.surface) == "stack" else {
+            return StackEntry(id: board.uniqueID(base: widget.widget), type: widget.name)
+        }
         let preset = widget.defaultSize.isEmpty ? widget.sizes.first : widget.defaultSize
-        let size: StackSize? = WidgetContract.current.viewGrows(widget.viewKind) ? .auto : preset.map(StackSize.preset)
+        let size: StackSize? = contract.viewGrows(widget.viewKind) ? .auto : preset.map(StackSize.preset)
         return StackEntry(id: board.uniqueID(base: widget.widget), type: widget.name, size: size)
     }
 }

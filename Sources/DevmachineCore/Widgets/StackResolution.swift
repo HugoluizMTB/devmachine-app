@@ -53,8 +53,8 @@ public enum StackCatalog {
         let names = Set(known.map(\.name))
         var merged = WidgetCatalog(
             engine: catalog?.engine ?? contract.engine, packagesRelease: catalog?.packagesRelease ?? "",
-            widgets: known + AppStackWidgets.all.filter { !names.contains($0.name) }, problems: catalog?.problems ?? [],
-            providers: catalog?.providers)
+            widgets: known + (AppStackWidgets.all + AppMenubarWidgets.all).filter { !names.contains($0.name) },
+            problems: catalog?.problems ?? [], providers: catalog?.providers)
         merged.isStale = catalog?.isStale ?? false
         return merged
     }
@@ -74,6 +74,17 @@ public enum StackResolution {
     public static func resolve(
         _ entry: StackEntry, on board: StackBoard, catalog: WidgetCatalog?, contract: WidgetContract = .current
     ) -> WidgetResolution? {
+        let resolution = layoutFree(entry, on: board, catalog: catalog, contract: contract)
+        guard contract.layout(of: board.surface) == "slot", case let .ready(resolved)? = resolution else { return resolution }
+        if let reason = MenubarSlotRules.refusal(resolved, contract: contract) {
+            return .refused(type: entry.isInline ? entry.id : entry.type, reason: "\(entry.id): \(reason)")
+        }
+        return .ready(MenubarSlotRules.floored(resolved, contract: contract))
+    }
+
+    private static func layoutFree(
+        _ entry: StackEntry, on board: StackBoard, catalog: WidgetCatalog?, contract: WidgetContract
+    ) -> WidgetResolution? {
         if entry.isInline { return WidgetResolution.resolveInline(entry.boardWidget, catalog: catalog, contract: contract) }
         let merged = StackCatalog.merged(catalog, contract: contract)
         if catalog == nil, merged.widget(named: entry.type) == nil { return nil }
@@ -92,17 +103,19 @@ public enum StackResolution {
     ) -> String? {
         let widget = resolved.widget
         let sizes = widget.sizes.isEmpty ? WidgetContract.presetOrder : widget.sizes
-        switch entry.size {
-        case .auto? where !contract.viewGrows(resolved.viewKind):
-            return "size auto follows the content, and the \(resolved.viewKind) view does not grow: use "
-                + sizes.joined(separator: ", ")
-        case let .preset(name)? where !sizes.contains(name):
-            return "size \"\(name)\" in a sidebar is auto or one of \(sizes.joined(separator: ", "))"
-        default:
-            break
+        let layout = contract.layout(of: board.surface)
+        if layout == "stack" {
+            switch entry.size {
+            case .auto? where !contract.viewGrows(resolved.viewKind):
+                return "size auto follows the content, and the \(resolved.viewKind) view does not grow: use "
+                    + sizes.joined(separator: ", ")
+            case let .preset(name)? where !sizes.contains(name):
+                return "size \"\(name)\" in a sidebar is auto or one of \(sizes.joined(separator: ", "))"
+            default:
+                break
+            }
         }
         let surface = contract.surfaces[board.surface]
-        let layout = surface?.layout ?? "stack"
         if !widget.fits.contains(layout) {
             return "\(entry.type) does not fit \(StackArea.name(board.surface)): its fits has no \(layout)"
         }
@@ -119,14 +132,26 @@ public enum StackResolution {
     }
 }
 
-/// What the stack's "Add widget" gallery offers, and why a listed widget
-/// cannot be added again.
+/// What an ordered surface's "Add widget" gallery offers: widgets that fit
+/// its layout (and, in the menu bar, draw one line), and why one is blocked.
 public enum StackGallery {
-    public static func entries(_ catalog: WidgetCatalog?, surface: String) -> [CatalogWidget] {
-        WidgetGallery.entries(StackCatalog.merged(catalog), surface: surface).filter { $0.fits.contains("stack") }
+    public static func entries(
+        _ catalog: WidgetCatalog?, surface: String, contract: WidgetContract = .current
+    ) -> [CatalogWidget] {
+        let layout = contract.layout(of: surface)
+        return WidgetGallery.entries(StackCatalog.merged(catalog, contract: contract), surface: surface).filter { widget in
+            widget.fits.contains(layout) && (layout != "slot" || contract.slotEntry.views.contains(widget.viewKind))
+        }
     }
 
-    public static func blockedReason(for widget: CatalogWidget, on board: StackBoard) -> String? {
+    public static func isFull(_ board: StackBoard, contract: WidgetContract = .current) -> Bool {
+        contract.layout(of: board.surface) == "slot" && board.entries.count >= contract.slotMax
+    }
+
+    public static func blockedReason(
+        for widget: CatalogWidget, on board: StackBoard, contract: WidgetContract = .current
+    ) -> String? {
+        if isFull(board, contract: contract) { return "The menu bar holds \(contract.slotMax) widgets" }
         guard widget.single, board.entries.contains(where: { $0.type == widget.name }) else { return nil }
         return "Already in \(StackArea.name(board.surface))"
     }

@@ -145,6 +145,17 @@ public struct ResolvedWidget: Equatable, Sendable {
     public var title: String? = nil
 }
 
+extension ResolvedSource {
+    /// The same source on another schedule; `every` is not in the approval
+    /// hash, so a decision still counts.
+    public func withEvery(_ every: WidgetEvery) -> ResolvedSource {
+        ResolvedSource(
+            source: source, view: view, every: every, needsApproval: needsApproval, package: package,
+            packagePath: packagePath, inputs: inputs, contextKeys: contextKeys, trust: trust,
+            packageCommit: packageCommit, packageSourceURL: packageSourceURL)
+    }
+}
+
 /// What a board entry becomes: something to draw, or a placeholder that
 /// keeps its place, so a missing package never loses a layout.
 public enum WidgetResolution: Equatable, Sendable {

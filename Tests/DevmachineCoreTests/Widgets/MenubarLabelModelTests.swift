@@ -2,22 +2,11 @@ import XCTest
 @testable import DevmachineCore
 
 final class MenubarLabelModelTests: XCTestCase {
-    private static let brand = CatalogWidget(
-        name: "devmachine-app/brand", fits: ["slot"], source: CatalogSource(name: "app/brand", every: "60s"),
-        viewKind: "app.brand", sizes: [], defaultSize: "", places: [], surfaces: ["menubar"])
-    private static let openPullRequests = CatalogWidget(
-        name: "devmachine-app/open-pull-requests", fits: ["slot"],
-        source: CatalogSource(name: "app/open-pull-requests", every: "60s"), viewKind: "number", sizes: [],
-        defaultSize: "", places: [], surfaces: ["menubar"],
-        view: .object(["kind": .string("number"), "hide_zero": .bool(true)]))
-    private static let catalog = CatalogFixtures.catalog([brand, openPullRequests])
-    private static let defaultBoard = StackBoard(surface: "menubar", entries: [
-        StackEntry(id: "brand", type: brand.name), StackEntry(id: "open-pull-requests", type: openPullRequests.name),
-    ])
+    private static let defaultBoard = DefaultStackBoard.make(surface: "menubar")
 
     private func items(openCount: Int, board: StackBoard = defaultBoard) -> [MenubarSlotItem] {
         MenubarLabelModel.items(MenubarLabelInputs.make(
-            board: board, resolve: { StackResolution.resolve($0, on: board, catalog: Self.catalog) }, openCount: openCount,
+            board: board, resolve: { StackResolution.resolve($0, on: board, catalog: nil) }, openCount: openCount,
             output: { _ in nil }, approval: { _, _ in .notNeeded }))
     }
 
@@ -100,8 +89,8 @@ final class MenubarLabelModelTests: XCTestCase {
             output: { _ in .text("never") }, approval: { _, _ in .notNeeded })), [.brand])
     }
 
-    func testTheViewOfAnAppProviderWidgetIsReadFromItsCatalogEntry() {
-        var widget = Self.openPullRequests
+    func testTheViewOfAnAppProviderWidgetIsReadFromItsCatalogEntry() throws {
+        var widget = try XCTUnwrap(AppMenubarWidgets.catalogWidget("open-pull-requests"))
         widget.view = .object(["kind": .string("number"), "unit": .string("open"), "hide_zero": .bool(true)])
         let entry = StackEntry(id: "prs", type: widget.name)
         let board = StackBoard(surface: "menubar", entries: [entry])
