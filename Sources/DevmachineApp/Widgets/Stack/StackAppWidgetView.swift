@@ -9,6 +9,8 @@ struct StackAppWidgetView: View {
 
     var body: some View {
         switch kind {
+        case .workspaces:
+            WorkspacesWidgetView()
         default:
             WidgetPlaceholderView(
                 icon: "puzzlepiece.extension", title: "Needs a newer app",

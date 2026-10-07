@@ -47,6 +47,17 @@ final class StackRowModelTests: XCTestCase {
         XCTAssertFalse(last.canMoveDown)
     }
 
+    func testTheSidebarIsTheWorkspaceListByDefault() {
+        let sidebar = DefaultStackBoard.make(surface: "sidebar")
+        let row = StackRowModel.make(
+            entry: sidebar.entries[0], index: 0, count: 1,
+            resolution: StackResolution.resolve(sidebar.entries[0], on: sidebar, catalog: nil), approval: nil, catalog: nil)
+        XCTAssertEqual(row.header, .bare)
+        XCTAssertEqual(row.height, .content)
+        XCTAssertEqual(row.title, "WORKSPACES")
+        XCTAssertEqual(StackAppViewKind(rawValue: "workspaces"), .workspaces)
+    }
+
     func testAPlaceholderTakesTwoRows() {
         let entry = StackEntry(id: "todo", type: "devmachine-app/todo")
         let row = model(entry, board: StackBoard(surface: "sidebar", entries: [entry]))
