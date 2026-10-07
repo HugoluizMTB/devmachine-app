@@ -19,4 +19,19 @@ final class StackBoardCopyTests: XCTestCase {
             StackBoardCopy.invalid(file: "sidebar.yml", problem: BoardProblem(line: 4, message: "unknown key \"x\" in a widget")),
             "sidebar.yml has a problem at line 4: unknown key \"x\" in a widget. The default layout shows until it is fixed; nothing is written meanwhile.")
     }
+
+    func testAProblemWithNoLineReadsWithoutAt() {
+        XCTAssertEqual(
+            StackBoardCopy.invalid(
+                file: "sidebar.yml",
+                problem: BoardProblem(line: nil, message: "this file is for the sidebar area but says surface: home")),
+            "sidebar.yml has a problem: this file is for the sidebar area but says surface: home. The default layout shows until it is fixed; nothing is written meanwhile.")
+    }
+
+    func testAfterAGoodReadTheBannerSaysTheLastGoodLayoutShows() {
+        XCTAssertEqual(
+            StackBoardCopy.invalid(
+                file: "context-sidebar.yml", problem: BoardProblem(line: 2, message: "unknown size"), keepsLastGood: true),
+            "context-sidebar.yml has a problem at line 2: unknown size. The last good layout shows until it is fixed; nothing is written meanwhile.")
+    }
 }

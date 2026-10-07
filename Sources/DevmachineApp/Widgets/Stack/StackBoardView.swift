@@ -286,7 +286,10 @@ struct StackBoardView: View {
     private var banner: some View {
         if let problem = controller.problem {
             DMBanner(
-                message: StackBoardCopy.invalid(file: StackArea.fileName(controller.surface), problem: problem), lineLimit: 3
+                message: StackBoardCopy.invalid(
+                    file: StackArea.fileName(controller.surface), problem: problem,
+                    keepsLastGood: controller.store?.board != nil),
+                lineLimit: 3
             ) {
                 DMButton("Read again", variant: .ghost, size: .small) { controller.reload() }
             }
