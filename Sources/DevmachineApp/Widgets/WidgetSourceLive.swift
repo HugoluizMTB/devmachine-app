@@ -21,7 +21,8 @@ enum WidgetSourceLive {
             }),
             session: SessionSourceRunner(launcher: launcher, environment: environment, zmxPath: { LocalTools.zmxPath() }),
             launcher: launcher,
-            environment: environment)
+            environment: environment,
+            packageProvider: PackageProviderRunner(launcher: launcher, environment: environment))
     }
 }
 

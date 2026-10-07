@@ -7,6 +7,7 @@ import XCTest
 final class WidgetSourceControllerTests: XCTestCase {
     private var folder: URL!
     private var command: ScriptedSourceRunner!
+    private var packages: ScriptedSourceRunner!
     private var launcher: AppFakeLauncher!
     private var clock = Date(timeIntervalSince1970: 1_000)
     private var controller: WidgetSourceController!
@@ -16,6 +17,7 @@ final class WidgetSourceControllerTests: XCTestCase {
         folder = FileManager.default.temporaryDirectory.appendingPathComponent("WidgetSourceControllerTests-\(UUID().uuidString)")
         command = ScriptedSourceRunner()
         launcher = AppFakeLauncher()
+        packages = ScriptedSourceRunner([.success(.output(.json(.object(["load": .int(1)]))))])
         controller = makeController()
     }
 
@@ -23,6 +25,7 @@ final class WidgetSourceControllerTests: XCTestCase {
         controller.stop()
         others.forEach { $0.stop() }
         command.release()
+        packages.release()
         launcher.releaseAll()
         try? FileManager.default.removeItem(at: folder)
     }
@@ -35,7 +38,8 @@ final class WidgetSourceControllerTests: XCTestCase {
             localEnvironment: [:], home: "/Users/alice", isExecutable: { _ in true })
         let command: any SourceRunner = runner ?? self.command
         let runners = SourceRunners(
-            command: command, url: command, prompt: command, session: command, launcher: launcher, environment: environment)
+            command: command, url: command, prompt: command, session: command, launcher: launcher, environment: environment,
+            packageProvider: packages)
         let made = WidgetSourceController(
             runners: runners, approvalsFile: WidgetApprovalsFile(fileURL: folder.appendingPathComponent("approvals.json")),
             historyStore: SparklineHistoryStore(directory: folder.appendingPathComponent("history")), surface: surface,
@@ -286,6 +290,60 @@ final class WidgetSourceControllerTests: XCTestCase {
         controller.tick()
         await waitUntil { self.controller.state("disk").error == .timedOut(30) }
         XCTAssertEqual(controller.state("disk").output, .text("good"))
+    }
+
+    private func load(
+        _ id: String = "load", trust: WidgetTrust = .official, commit: String? = nil, every: WidgetEvery = .interval(30)
+    ) -> SourceWidgetEntry {
+        let source = WidgetSource.packageProvider(PackageProviderSource(
+            name: "acme-tools/load", with: ["window": "5m"], target: .machine("main"), every: every, timeout: 30,
+            returns: ["load": "number"]))
+        var view = WidgetView(kind: "number")
+        view.value = "{{json.load}}"
+        return SourceWidgetEntry(id: id, source: ResolvedSource(
+            source: source, view: view, every: every, needsApproval: trust == .thirdParty, package: "acme-tools",
+            packagePath: nil, trust: trust, packageCommit: trust == .thirdParty ? commit ?? "" : nil,
+            packageSourceURL: trust == .thirdParty ? "https://example.com/acme/acme-tools.git" : nil), isVisible: true)
+    }
+
+    func testAPackageProviderRunsThroughItsOwnRunner() async {
+        controller.start()
+        controller.update([load()])
+        await waitUntil { self.controller.state("load").output == .json(.object(["load": .int(1)])) }
+        XCTAssertEqual(packages.calls, 1)
+        XCTAssertEqual(command.calls, 0)
+        XCTAssertEqual(controller.approvalState("load"), .notNeeded)
+    }
+
+    func testANewPackageCommitAsksAgain() async {
+        controller.start()
+        controller.update([load(trust: .thirdParty, commit: "1111")])
+        guard case .waiting = controller.approvalState("load") else { return XCTFail() }
+        XCTAssertEqual(controller.approvalPrompt(for: load(trust: .thirdParty, commit: "1111").source).thirdPartySource,
+                       "https://example.com/acme/acme-tools.git")
+        controller.approve("load", hash: shown(controller, "load"))
+        await waitUntil { self.packages.calls == 1 }
+        XCTAssertEqual(controller.approvalState("load"), .allowed)
+        controller.update([load(trust: .thirdParty, commit: "2222")])
+        guard case .waiting = controller.approvalState("load") else { return XCTFail("a new commit must ask again") }
+        controller.update([load(trust: .thirdParty, commit: "1111")])
+        XCTAssertEqual(controller.approvalState("load"), .allowed)
+    }
+
+    func testAPackageProviderErrorKeepsTheLastGoodValue() async {
+        packages = ScriptedSourceRunner([
+            .success(.output(.json(.object(["load": .int(1)])))),
+            .failure(.unreadable("acme-tools/load printed JSON that is not one object")),
+        ])
+        controller = makeController()
+        controller.start()
+        controller.update([load(every: .manual)])
+        controller.runNow("load")
+        await waitUntil { self.controller.state("load").output != nil }
+        controller.runNow("load")
+        await waitUntil { self.controller.state("load").error != nil }
+        XCTAssertEqual(controller.state("load").output, .json(.object(["load": .int(1)])))
+        XCTAssertEqual(controller.state("load").error, .unreadable("acme-tools/load printed JSON that is not one object"))
     }
 
     func testMinimizingAStreamStopsItAndShowingItStartsItAgain() async {

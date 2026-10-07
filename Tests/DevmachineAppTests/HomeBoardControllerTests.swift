@@ -86,6 +86,33 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), ["disk", "tail"])
     }
 
+    func testAnInlinePackageProviderIsCheckedAgainstTheLoadedCatalog() throws {
+        let before = DemoData.widgetCatalog
+        let catalog = WidgetCatalog(
+            engine: before.engine, packagesRelease: before.packagesRelease, widgets: before.widgets, providers: [])
+        let controller = makeController(catalog: catalog)
+        try """
+            format: 1
+            surface: home
+            widgets:
+              - id: load
+                title: Load
+                source: {kind: provider, name: ghost/load, target: {machine: main}, every: 60s}
+                view: {kind: number, value: "{{json.load}}"}
+                frame: {x: 24, y: 24, w: 320, h: 160}
+                size: medium
+                minimized: false
+                z: 1
+            """.write(to: boardFile, atomically: true, encoding: .utf8)
+        controller.start()
+        controller.reload()
+        let widget = try XCTUnwrap(controller.store?.board?.widgets.first)
+        XCTAssertEqual(
+            controller.resolution(of: widget),
+            .refused(type: "load", reason: "source.name ghost/load: no package ghost in the release or your own packages"))
+        XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), [])
+    }
+
     func testAWidgetChangedWithinOneReleaseRefreshesTheJobs() {
         let before = DemoData.widgetCatalog
         let edited = WidgetCatalog(
@@ -93,6 +120,12 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertNotEqual(
             HomeJobsTrigger(board: nil, catalog: before, visible: .zero),
             HomeJobsTrigger(board: nil, catalog: edited, visible: .zero))
+    }
+
+    func testTheLiveRunnersSendAPackageProviderToItsOwnRunner() {
+        let source = WidgetSource.packageProvider(PackageProviderSource(
+            name: "acme-tools/load", with: [:], target: .machine("main"), every: .interval(30), timeout: 30))
+        XCTAssertTrue(WidgetSourceLive.runners().runner(for: source) is PackageProviderRunner)
     }
 
     func testAnInjectedSourceControllerIsTheOneUsed() {

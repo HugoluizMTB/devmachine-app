@@ -143,7 +143,7 @@ final class HomeBoardController: ObservableObject {
     }
 
     func resolution(of widget: BoardWidget) -> WidgetResolution? {
-        if widget.isInline { return WidgetResolution.resolveInline(widget) }
+        if widget.isInline { return WidgetResolution.resolveInline(widget, catalog: catalog.catalog) }
         return catalog.catalog.map { WidgetResolution.resolve(widget, in: $0) }
     }
 
