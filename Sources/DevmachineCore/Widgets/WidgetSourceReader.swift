@@ -3,11 +3,16 @@ import Foundation
 /// Reads a widget's source with the rules the CLI validator also applies,
 /// so the app never runs something the CLI would have refused.
 public enum WidgetSourceReader {
-    static var templatePattern: Regex<(Substring, Substring)> { /\{\{\s*([^}]*?)\s*\}\}/ }
-    private static var referencePattern: Regex<(Substring, Substring, Substring)> {
-        /(inputs|context)\.([a-z][a-z0-9_-]*)/
+    /// Go's `\s` is ASCII only, and Go matches runes, not grapheme clusters.
+    static var templatePattern: Regex<(Substring, Substring)> {
+        /\{\{[\t\n\f\r ]*([^}]*?)[\t\n\f\r ]*\}\}/.matchingSemantics(.unicodeScalar)
     }
-    private static var listReferencePattern: Regex<Substring> { /item(?:\.[A-Za-z0-9_-]+)*/ }
+    static var referencePattern: Regex<(Substring, Substring, Substring)> {
+        /(inputs|context)\.([a-z][a-z0-9_-]*)/.matchingSemantics(.unicodeScalar)
+    }
+    static var listReferencePattern: Regex<Substring> {
+        /item(?:\.[A-Za-z0-9_-]+)*/.matchingSemantics(.unicodeScalar)
+    }
 
     public static func read(
         _ value: WidgetValue, scope: WidgetScope, contract: WidgetContract = .current
@@ -16,8 +21,8 @@ public enum WidgetSourceReader {
             throw WidgetSpecProblem([], "source must be a mapping with a kind")
         }
         let kinds = contract.sourceKinds.joined(separator: ", ")
-        guard let kind = fields["kind"]?.string else {
-            throw WidgetSpecProblem(["kind"], "source.kind is missing; it is one of \(kinds)")
+        guard let kind = fields["kind"]?.string, !kind.isEmpty else {
+            throw WidgetSpecProblem(["kind"], "every widget needs source.kind: it is one of \(kinds)")
         }
         guard contract.sourceKinds.contains(kind), let spec = contract.sources[kind] else {
             throw WidgetSpecProblem(["kind"], "source.kind \"\(kind)\" is not one of \(kinds)")
@@ -36,6 +41,35 @@ public enum WidgetSourceReader {
         }
     }
 
+    /// The CLI's message for the first template in `text` it refuses, or nil.
+    static func templateProblem(in text: String, label: String, scope: WidgetScope) -> String? {
+        for match in text.matches(of: templatePattern) {
+            let template = String(match.0)
+            if match.1.wholeMatch(of: listReferencePattern) != nil {
+                return "template \(template) in \(label): item only works inside a list view's item"
+            }
+            guard let reference = match.1.wholeMatch(of: referencePattern) else {
+                return "template \(template) in \(label) names neither inputs.<name> nor context.<name>"
+            }
+            let name = String(reference.2)
+            if reference.1 == "inputs" {
+                guard let inputs = scope.inputs else {
+                    return "template \(template) in \(label): a widget written in a board has no inputs"
+                }
+                if !inputs.contains(name) { return "template \(template) in \(label) needs inputs.\(name)" }
+            } else if !scope.contextKeys.contains(name) {
+                return "template \(template) in \(label) needs context.\(name) to be declared"
+            }
+        }
+        return nil
+    }
+
+    private static func label(_ path: [String]) -> String {
+        path.reduce("source") { label, part in
+            Int(part) != nil ? "\(label)[\(part)]" : "\(label).\(part)"
+        }
+    }
+
     private static func checkTemplates(_ fields: [String: WidgetValue], path: [String], scope: WidgetScope) throws {
         for key in fields.keys.sorted() {
             try checkTemplates(in: fields[key] ?? .null, path: path + [key], scope: scope)
@@ -45,26 +79,8 @@ public enum WidgetSourceReader {
     private static func checkTemplates(in value: WidgetValue, path: [String], scope: WidgetScope) throws {
         switch value {
         case let .string(text):
-            for match in text.matches(of: templatePattern) {
-                let template = String(match.0)
-                let field = "source." + path.joined(separator: ".")
-                if match.1.wholeMatch(of: listReferencePattern) != nil {
-                    throw WidgetSpecProblem(
-                        path, "template \(template) in \(field): item only works inside a list view's item")
-                }
-                guard let reference = match.1.wholeMatch(of: referencePattern) else {
-                    throw WidgetSpecProblem(
-                        path, "template \(template) in \(field) names neither inputs.<name> nor context.<name>")
-                }
-                guard case let .inline(keys) = scope else { continue }
-                if reference.1 == "inputs" {
-                    throw WidgetSpecProblem(
-                        path, "template \(template) in \(field): a widget written in a board has no inputs")
-                }
-                if !keys.contains(String(reference.2)) {
-                    throw WidgetSpecProblem(
-                        path, "template \(template) in \(field) needs context.\(reference.2), which this board does not give")
-                }
+            if let problem = templateProblem(in: text, label: label(path), scope: scope) {
+                throw WidgetSpecProblem(path, problem)
             }
         case let .list(items):
             for (index, item) in items.enumerated() {
@@ -83,25 +99,37 @@ public enum WidgetSourceReader {
         let kind: String
         let contract: WidgetContract
 
-        func has(_ key: String) -> Bool { fields[key] != nil }
+        /// The CLI decodes into Go fields, so an empty or null value is the
+        /// same as a field not written.
+        func given(_ key: String) -> WidgetValue? {
+            switch fields[key] {
+            case nil, .null?, .string("")?: return nil
+            case let value?: return value
+            }
+        }
 
         func text(_ key: String) throws -> String? {
-            guard let value = fields[key] else { return nil }
+            guard let value = given(key) else { return nil }
+            guard let text = Self.scalar(value) else { throw WidgetSpecProblem([key], "source.\(key) must be text") }
+            return text
+        }
+
+        static func scalar(_ value: WidgetValue) -> String? {
             switch value {
-            case .string, .int, .double: return value.text
-            default: throw WidgetSpecProblem([key], "source.\(key) must be text")
+            case .string, .int, .double, .bool, .null: return value.text
+            case .list, .object: return nil
             }
         }
 
         func required(_ key: String) throws -> String {
-            guard let value = try text(key), !value.trimmingCharacters(in: .whitespaces).isEmpty else {
+            guard let value = try text(key), !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw WidgetSpecProblem([key], "a \(kind) source needs source.\(key)")
             }
             return value
         }
 
         func bool(_ key: String) throws -> Bool {
-            guard let value = fields[key] else { return spec.fields[key]?.defaultValue?.bool ?? false }
+            guard let value = given(key) else { return spec.fields[key]?.defaultValue?.bool ?? false }
             guard let flag = value.bool else { throw WidgetSpecProblem([key], "source.\(key) must be true or false") }
             return flag
         }
@@ -118,13 +146,13 @@ public enum WidgetSourceReader {
         }
 
         func list(_ key: String) throws -> [String] {
-            guard let value = fields[key] else { return [] }
+            guard let value = given(key) else { return [] }
             guard let items = value.list else { throw WidgetSpecProblem([key], "source.\(key) must be a list") }
             return try items.enumerated().map { index, item in
-                switch item {
-                case .string, .int, .double, .bool: return item.text
-                default: throw WidgetSpecProblem([key, String(index)], "source.\(key)[\(index)] must be one value")
+                guard let text = Self.scalar(item) else {
+                    throw WidgetSpecProblem([key, String(index)], "source.\(key)[\(index)] must be one value")
                 }
+                return text
             }
         }
 
@@ -161,35 +189,79 @@ public enum WidgetSourceReader {
         }
 
         func target() throws -> WidgetTarget {
-            let shape = "source.target is local, {machine: <name>} or {workspace: <name>}"
-            guard let value = fields["target"] else { return .local }
-            if value.string == "local" { return .local }
-            guard let object = value.object, object.count == 1, let (key, name) = object.first,
-                  let text = name.string, !text.isEmpty
-            else { throw WidgetSpecProblem(["target"], shape) }
-            switch key {
-            case "machine": return .machine(text)
-            case "workspace": return .workspace(text)
-            default: throw WidgetSpecProblem(["target"], shape)
+            let help = "write local, {machine: <name>} or {workspace: <name>}"
+            guard let value = fields["target"], value != .null else { return .local }
+            switch value {
+            case .string("local"):
+                return .local
+            case let .object(object):
+                var machine = ""
+                var workspace = ""
+                for key in object.keys.sorted() {
+                    guard let name = object[key].flatMap(Self.scalar) else {
+                        throw WidgetSpecProblem(["target"], "source.target: \(help)")
+                    }
+                    switch key {
+                    case "machine": machine = name
+                    case "workspace": workspace = name
+                    default: throw WidgetSpecProblem(["target"], "source.target has an unknown key \"\(key)\": \(help)")
+                    }
+                }
+                guard machine.isEmpty != workspace.isEmpty else {
+                    throw WidgetSpecProblem(["target"], "source.target names one machine or one workspace: \(help)")
+                }
+                return machine.isEmpty ? .workspace(workspace) : .machine(machine)
+            case .list:
+                throw WidgetSpecProblem(["target"], "source.target: \(help)")
+            default:
+                throw WidgetSpecProblem(["target"], "source.target \"\(value.text)\": \(help)")
             }
         }
 
         func provider() throws -> ProviderSource {
-            let with = fields["with"]?.object?.mapValues(\.text) ?? [:]
+            let name = try text("name") ?? ""
+            guard let provider = contract.providers[name] else {
+                let known = contract.providers.keys.sorted().joined(separator: ", ")
+                throw WidgetSpecProblem(
+                    ["name"], "source.name \"\(name)\" is not a provider engine \(contract.engine) knows: \(known)")
+            }
+            var with: [String: String] = [:]
+            if let value = given("with") {
+                guard let arguments = value.object else {
+                    throw WidgetSpecProblem(["with"], "source.with is a mapping of argument names to values")
+                }
+                for key in arguments.keys.sorted() {
+                    guard provider.args[key] != nil else {
+                        throw WidgetSpecProblem(["with", key], "source.with.\(key) is not an argument of \(name)")
+                    }
+                    guard let text = arguments[key].flatMap(Self.scalar) else {
+                        throw WidgetSpecProblem(["with", key], "source.with.\(key) must be one value")
+                    }
+                    with[key] = text
+                }
+            }
+            for key in provider.args.keys.sorted() where provider.args[key]?.required == true && with[key] == nil {
+                throw WidgetSpecProblem(["with"], "source.with.\(key) is required by \(name)")
+            }
             guard let every = try text("every") else {
-                throw WidgetSpecProblem(["every"], "every widget needs source.every")
+                throw WidgetSpecProblem(
+                    ["every"], "every widget needs source.every, at least \(provider.minEvery) for \(name)")
             }
-            guard GoDuration.seconds(every) != nil else {
-                throw WidgetSpecProblem(["every"], "source.every \"\(every)\" is a duration such as 60s")
+            guard let seconds = GoDuration.seconds(every) else {
+                throw WidgetSpecProblem(["every"], "source.every \"\(every)\" is not a duration: write it like 60s or 5m")
             }
-            return ProviderSource(name: try required("name"), with: with, every: every)
+            if let minimum = GoDuration.seconds(provider.minEvery), seconds < minimum {
+                throw WidgetSpecProblem(
+                    ["every"], "source.every \(every) is below the \(name) minimum of \(provider.minEvery)")
+            }
+            return ProviderSource(name: name, with: with, every: every)
         }
 
         func command(scope: WidgetScope) throws -> CommandSource {
             let run = try text("run")
             let script = try text("script")
             switch (run, script) {
-            case (.some, .some): throw WidgetSpecProblem(["script"], "a command source takes run or script, not both")
+            case (.some, .some): throw WidgetSpecProblem(["script"], "a command source has run or script, not both")
             case (nil, nil): throw WidgetSpecProblem([], "a command source needs run or script")
             default: break
             }
@@ -201,9 +273,8 @@ public enum WidgetSourceReader {
             if let script { try checkScript(script, scope: scope) }
             let mode = CommandMode(rawValue: try choice("mode")) ?? .poll
             let parse = ParseMode(rawValue: try choice("parse")) ?? .text
-            let keepValue = spec.fields["keep"]?.defaultValue?.number.map(Int.init) ?? 200
-            var keep = keepValue
-            if let value = fields["keep"] {
+            var keep = spec.fields["keep"]?.defaultValue?.number.map(Int.init) ?? 200
+            if let value = given("keep"), value.number != 0 {
                 guard mode == .stream else { throw WidgetSpecProblem(["keep"], "source.keep is only for mode: stream") }
                 guard let number = value.number, number == number.rounded(), (1...2000).contains(Int(number)) else {
                     throw WidgetSpecProblem(["keep"], "source.keep \(value.text) is outside 1 to 2000 lines")
@@ -213,10 +284,12 @@ public enum WidgetSourceReader {
             let every: WidgetEvery
             let timeout: TimeInterval
             if mode == .stream {
-                if has("every") {
+                if given("every") != nil {
                     throw WidgetSpecProblem(["every"], "a stream runs while the widget is on screen: remove source.every")
                 }
-                if has("timeout") { throw WidgetSpecProblem(["timeout"], "a stream has no timeout: remove source.timeout") }
+                if given("timeout") != nil {
+                    throw WidgetSpecProblem(["timeout"], "a stream has no timeout: remove source.timeout")
+                }
                 guard [.text, .lines, .ansi].contains(parse) else {
                     throw WidgetSpecProblem(["parse"], "a stream reads text, lines or ansi, not \(parse.rawValue)")
                 }

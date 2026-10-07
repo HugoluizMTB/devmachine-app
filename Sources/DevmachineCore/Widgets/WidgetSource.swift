@@ -163,11 +163,23 @@ public enum WidgetSource: Hashable, Sendable {
     }
 }
 
-/// A package widget may use its inputs; a widget written in a board has
-/// none, and may only name the context keys its board's area gives.
+/// What a widget's templates may name: a package widget its declared inputs
+/// and context; a widget written in a board no inputs, and only the context
+/// keys its board's area gives.
 public enum WidgetScope: Hashable, Sendable {
-    case package
+    case package(inputs: Set<String>, contextKeys: Set<String>)
     case inline(contextKeys: Set<String>)
+
+    var inputs: Set<String>? {
+        if case let .package(inputs, _) = self { return inputs }
+        return nil
+    }
+
+    var contextKeys: Set<String> {
+        switch self {
+        case let .package(_, keys), let .inline(keys): return keys
+        }
+    }
 }
 
 public struct WidgetSpecProblem: Error, Equatable, Sendable, CustomStringConvertible {

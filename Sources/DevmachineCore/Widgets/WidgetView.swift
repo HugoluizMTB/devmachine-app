@@ -20,17 +20,23 @@ public struct StatusRule: Hashable, Sendable {
         self.operand = operand
     }
 
+    private static var numberRule: Regex<(Substring, Substring, Substring)> {
+        /(<=|>=|<|>|==|!=)[\t\n\f\r ]*(-?[0-9]+(?:\.[0-9]+)?)/.matchingSemantics(.unicodeScalar)
+    }
+    private static var textRule: Regex<(Substring, Substring, Substring)> {
+        /(==|!=)[\t\n\f\r ]*"([^"]*)"/.matchingSemantics(.unicodeScalar)
+    }
+
     public static func parse(_ text: String) -> StatusRule? {
-        guard let match = text.trimmingCharacters(in: .whitespaces).wholeMatch(of: /(<=|>=|==|!=|<|>)\s*(.+)/),
-              let op = Op(rawValue: String(match.1))
-        else { return nil }
-        let rest = String(match.2).trimmingCharacters(in: .whitespaces)
-        if rest.count >= 2, rest.hasPrefix("\""), rest.hasSuffix("\"") {
-            guard op == .eq || op == .ne else { return nil }
-            return StatusRule(op: op, operand: .text(String(rest.dropFirst().dropLast())))
+        let rule = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let match = rule.wholeMatch(of: numberRule), let op = Op(rawValue: String(match.1)),
+           let number = Double(match.2) {
+            return StatusRule(op: op, operand: .number(number))
         }
-        guard rest.wholeMatch(of: /-?\d+(?:\.\d+)?/) != nil, let number = Double(rest) else { return nil }
-        return StatusRule(op: op, operand: .number(number))
+        if let match = rule.wholeMatch(of: textRule), let op = Op(rawValue: String(match.1)) {
+            return StatusRule(op: op, operand: .text(String(match.2)))
+        }
+        return nil
     }
 
     public var comparesBySize: Bool { op != .eq && op != .ne }
@@ -92,11 +98,9 @@ public struct WidgetView: Hashable, Sendable {
 /// Reads a view with the contract's accept table and the rules the CLI
 /// also applies.
 public enum WidgetViewReader {
-    private static let valueKinds: Set<String> = ["number", "gauge", "status", "sparkline"]
-    private static var itemPattern: Regex<(Substring, Substring?)> { /\{\{\s*item(?:\.([A-Za-z0-9_.\[\]-]+))?\s*\}\}/ }
-
     public static func read(
-        _ value: WidgetValue, source: WidgetSource, sourceWritesParse: Bool, contract: WidgetContract = .current
+        _ value: WidgetValue, source: WidgetSource, sourceWritesParse: Bool, scope: WidgetScope,
+        contract: WidgetContract = .current
     ) throws -> WidgetView {
         guard let fields = value.object else { throw WidgetSpecProblem([], "view must be a mapping with a kind") }
         let kinds = contract.views.keys.sorted().joined(separator: ", ")
@@ -118,35 +122,21 @@ public enum WidgetViewReader {
         if kind == "web", sourceWritesParse {
             throw WidgetSpecProblem(["kind"], "a web view loads the page itself: remove source.parse")
         }
-        let parsesJSON = source.outputToken == "json"
-        for key in fields.keys.sorted() where key != "item" {
-            if let text = fields[key]?.string, text.contains(itemPattern) {
-                throw WidgetSpecProblem([key], "{{item}} is only for view.item of a list")
-            }
-        }
+        let parsesJSON = source.outputToken == ParseMode.json.rawValue
 
         var view = WidgetView(kind: kind)
         if let wrap = fields["wrap"] {
             guard let flag = wrap.bool else { throw WidgetSpecProblem(["wrap"], "view.wrap must be true or false") }
             view.wrap = flag
         }
-        if let tail = fields["tail"] {
+        if let tail = fields["tail"], tail.number != 0 {
             guard let lines = tail.number, lines == lines.rounded(), (1...2000).contains(Int(lines)) else {
                 throw WidgetSpecProblem(["tail"], "view.tail \(tail.text) is outside 1 to 2000 lines")
             }
             view.tail = Int(lines)
         }
-        let needsValue = parsesJSON && valueKinds.contains(kind)
-        if let template = fields["value"]?.text {
-            guard needsValue else {
-                throw WidgetSpecProblem(["value"], "view.value is only for a source that parses json")
-            }
-            guard JSONPath.isTemplate(template) else {
-                throw WidgetSpecProblem(["value"], "view.value holds one {{json.<path>}}, such as {{json.used}}")
-            }
-            view.value = template
-        } else if needsValue {
-            throw WidgetSpecProblem(["value"], "view.value picks what to show out of the JSON, such as {{json.used}}")
+        if known["value"] != nil {
+            view.value = try valueTemplate(fields["value"], parsesJSON: parsesJSON)
         }
         view.unit = fields["unit"]?.text
         if let format = fields["format"]?.text {
@@ -177,10 +167,9 @@ public enum WidgetViewReader {
                 throw WidgetSpecProblem(["item", key], "view.item.\(key) is not a field of a list item")
             }
             for key in itemFields.keys.sorted() {
-                let text = itemFields[key]?.text ?? ""
-                for match in text.matches(of: itemPattern) where match.1 != nil && !parsesJSON {
-                    throw WidgetSpecProblem(
-                        ["item", key], "{{item.\(match.1 ?? "")}} needs a source that parses json")
+                if let problem = itemProblem(in: itemFields[key]?.text ?? "", label: "view.item.\(key)",
+                                             parsesJSON: parsesJSON, scope: scope) {
+                    throw WidgetSpecProblem(["item", key], problem)
                 }
             }
             view.item = ListItemTemplate(
@@ -188,6 +177,34 @@ public enum WidgetViewReader {
                 status: itemFields["status"]?.text, link: itemFields["link"]?.text)
         }
         return view
+    }
+
+    private static func valueTemplate(_ value: WidgetValue?, parsesJSON: Bool) throws -> String? {
+        let template = value.map(\.text).flatMap { $0.isEmpty ? nil : $0 }
+        switch (template, parsesJSON) {
+        case (nil, true):
+            throw WidgetSpecProblem(["value"], "view.value picks what to show out of the JSON: write it like \"{{json.used}}\"")
+        case (.some, false):
+            throw WidgetSpecProblem(["value"], "view.value only applies when source.parse is json")
+        case let (.some(template), true):
+            if let problem = JSONPath.problem(in: template) { throw WidgetSpecProblem(["value"], problem) }
+            return template
+        case (nil, false):
+            return nil
+        }
+    }
+
+    private static func itemProblem(in text: String, label: String, parsesJSON: Bool, scope: WidgetScope) -> String? {
+        for match in text.matches(of: WidgetSourceReader.templatePattern) where match.1 != "item" {
+            if match.1.wholeMatch(of: WidgetSourceReader.listReferencePattern) != nil {
+                if parsesJSON { continue }
+                return "template \(match.0) in \(label) reads a field, and only JSON items have fields: use {{item}}"
+            }
+            if let problem = WidgetSourceReader.templateProblem(in: String(match.0), label: label, scope: scope) {
+                return problem
+            }
+        }
+        return nil
     }
 
     private static func number(_ fields: [String: WidgetValue], _ key: String) throws -> Double? {
@@ -204,7 +221,7 @@ public enum WidgetViewReader {
             throw WidgetSpecProblem([key], "view.\(key) \"\(text)\" is not a rule such as < 300 or == \"ok\"")
         }
         if source.outputToken == ParseMode.text.rawValue, rule.comparesBySize {
-            let written = text.trimmingCharacters(in: .whitespaces)
+            let written = text.trimmingCharacters(in: .whitespacesAndNewlines)
             throw WidgetSpecProblem(
                 [key], "view.\(key) \"\(written)\" compares by size, and this \(source.kind) source gives text: use == or !=")
         }

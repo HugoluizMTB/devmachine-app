@@ -3,6 +3,7 @@ import XCTest
 
 final class WidgetSourceReaderTests: XCTestCase {
     private let inline = WidgetScope.inline(contextKeys: [])
+    private let packageScope = WidgetScope.package(inputs: [], contextKeys: [])
 
     private func object(_ fields: [String: WidgetValue]) -> WidgetValue { .object(fields) }
 
@@ -70,7 +71,7 @@ final class WidgetSourceReaderTests: XCTestCase {
     func testAProviderKeepsTheEngine10Shape() throws {
         XCTAssertEqual(
             try WidgetSourceReader.read(object(["kind": .string("provider"), "name": .string("app/clock"),
-                                                "every": .string("60s")]), scope: .package),
+                                                "every": .string("60s")]), scope: packageScope),
             .provider(ProviderSource(name: "app/clock", with: [:], every: "60s")))
     }
 
@@ -84,7 +85,7 @@ final class WidgetSourceReaderTests: XCTestCase {
         let cases: [(String, [String: WidgetValue], [String], String)] = [
             ("unknown kind", with(["kind": .string("magic")]), ["kind"], "source.kind \"magic\" is not one of"),
             ("unknown field", with(["port": .int(1)]), ["port"], "source.port is not a field of a command source"),
-            ("run and script", with(["script": .string("/bin/df")]), ["script"], "takes run or script, not both"),
+            ("run and script", with(["script": .string("/bin/df")]), ["script"], "has run or script, not both"),
             ("neither", with(["run": nil]), [], "a command source needs run or script"),
             ("spaces", with(["run": .string("df -h")]), ["run"], "has spaces"),
             ("relative inline script", with(["run": nil, "script": .string("bin/df")]), ["script"],
@@ -101,7 +102,7 @@ final class WidgetSourceReaderTests: XCTestCase {
             ("keep without stream", with(["keep": .int(5)]), ["keep"], "source.keep is only for mode: stream"),
             ("bad parse", with(["parse": .string("yaml")]), ["parse"], "source.parse \"yaml\" is one of"),
             ("bad target", with(["target": .string("there")]), ["target"],
-             "source.target is local, {machine: <name>} or {workspace: <name>}"),
+             "source.target \"there\": write local, {machine: <name>} or {workspace: <name>}"),
             ("inputs inline", with(["args": .list([.string("{{inputs.path}}")])]), ["args", "0"],
              "a widget written in a board has no inputs"),
             ("context not given", with(["args": .list([.string("{{context.repo}}")])]), ["args", "0"],
@@ -127,23 +128,23 @@ final class WidgetSourceReaderTests: XCTestCase {
     func testAPackageScriptIsRelativeAndInsideThePackage() {
         let script: [String: WidgetValue] = ["kind": .string("command"), "script": .string("widgets/disk/check.sh"),
                                              "every": .string("60s")]
-        XCTAssertNil(problem(script, scope: .package))
+        XCTAssertNil(problem(script, scope: packageScope))
         var absolute = script
         absolute["script"] = .string("/etc/x.sh")
-        XCTAssertEqual(problem(absolute, scope: .package)?.path, ["script"])
+        XCTAssertEqual(problem(absolute, scope: packageScope)?.path, ["script"])
         var escaping = script
         escaping["script"] = .string("../other/x.sh")
-        XCTAssertEqual(problem(escaping, scope: .package)?.path, ["script"])
+        XCTAssertEqual(problem(escaping, scope: packageScope)?.path, ["script"])
     }
 
     func testAPackageScriptPathIsCleanedLikeTheCLI() {
         func script(_ path: String) -> [String: WidgetValue] {
             ["kind": .string("command"), "script": .string(path), "every": .string("60s")]
         }
-        XCTAssertNil(problem(script("widgets/../check.sh"), scope: .package))
-        XCTAssertNil(problem(script("./check.sh"), scope: .package))
-        XCTAssertEqual(problem(script("widgets/.."), scope: .package)?.path, ["script"])
-        XCTAssertEqual(problem(script("widgets/../../x.sh"), scope: .package)?.path, ["script"])
+        XCTAssertNil(problem(script("widgets/../check.sh"), scope: packageScope))
+        XCTAssertNil(problem(script("./check.sh"), scope: packageScope))
+        XCTAssertEqual(problem(script("widgets/.."), scope: packageScope)?.path, ["script"])
+        XCTAssertEqual(problem(script("widgets/../../x.sh"), scope: packageScope)?.path, ["script"])
     }
 
     func testTemplatesFollowTheCLIPattern() {
@@ -152,7 +153,7 @@ final class WidgetSourceReaderTests: XCTestCase {
         odd["args"] = .list([.string("{{ what ever }}")])
         XCTAssertEqual(
             problem(odd)?.message,
-            "template {{ what ever }} in source.args.0 names neither inputs.<name> nor context.<name>")
+            "template {{ what ever }} in source.args[0] names neither inputs.<name> nor context.<name>")
         var item = base
         item["args"] = .list([.string("{{item.name}}")])
         XCTAssertTrue(problem(item)?.message.contains("item only works inside a list view's item") ?? false)
@@ -177,12 +178,129 @@ final class WidgetSourceReaderTests: XCTestCase {
         }
     }
 
+    func testPackageTemplatesNameDeclaredInputsAndContext() {
+        let fields: [String: WidgetValue] = [
+            "kind": .string("command"), "run": .string("df"), "every": .string("60s"),
+            "args": .list([.string("{{inputs.path}}"), .string("{{context.repo}}")]),
+        ]
+        XCTAssertNil(problem(fields, scope: .package(inputs: ["path"], contextKeys: ["repo"])))
+        XCTAssertEqual(
+            problem(fields, scope: .package(inputs: [], contextKeys: ["repo"]))?.message,
+            "template {{inputs.path}} in source.args[0] needs inputs.path")
+        XCTAssertEqual(
+            problem(fields, scope: .package(inputs: ["path"], contextKeys: []))?.message,
+            "template {{context.repo}} in source.args[1] needs context.repo to be declared")
+    }
+
+    func testAnEmptyRunOrScriptIsUnset() throws {
+        XCTAssertEqual(
+            problem(["kind": .string("command"), "run": .string(""), "every": .string("60s")])?.message,
+            "a command source needs run or script")
+        let source = try WidgetSourceReader.read(
+            object(["kind": .string("command"), "run": .string(""), "script": .string("/usr/local/bin/check"),
+                    "every": .string("60s")]),
+            scope: inline)
+        guard case let .command(command) = source else { return XCTFail("\(source)") }
+        XCTAssertNil(command.run)
+        XCTAssertEqual(command.script, "/usr/local/bin/check")
+        XCTAssertNil(problem(["kind": .string("command"), "run": .string("df"), "script": .null, "every": .string("60s")]))
+    }
+
+    func testABlankPromptOrSessionCountsNewlines() {
+        XCTAssertEqual(
+            problem(["kind": .string("prompt"), "harness": .string("claude"), "prompt": .string("\n\t\n")])?.path, ["prompt"])
+        XCTAssertEqual(problem(["kind": .string("session"), "session": .string("\n"), "every": .string("2s")])?.path, ["session"])
+    }
+
+    func testKeepZeroIsUnset() throws {
+        XCTAssertNil(problem(["kind": .string("command"), "run": .string("df"), "every": .string("60s"), "keep": .int(0)]))
+        let source = try WidgetSourceReader.read(
+            object(["kind": .string("command"), "run": .string("tail"), "mode": .string("stream"), "keep": .int(0)]),
+            scope: inline)
+        guard case let .command(command) = source else { return XCTFail("\(source)") }
+        XCTAssertEqual(command.keep, 200)
+    }
+
+    func testTargetShapesFollowTheCLI() throws {
+        func target(_ value: WidgetValue) throws -> WidgetTarget? {
+            try WidgetSourceReader.read(
+                object(["kind": .string("session"), "session": .string("main"), "every": .string("2s"), "target": value]),
+                scope: inline).target
+        }
+        XCTAssertEqual(try target(.object(["machine": .int(7)])), .machine("7"))
+        XCTAssertEqual(try target(.object(["machine": .string("main"), "workspace": .string("")])), .machine("main"))
+        XCTAssertEqual(try target(.object(["machine": .null, "workspace": .string("alice")])), .workspace("alice"))
+        XCTAssertEqual(try target(.string("local")), .local)
+        let base: [String: WidgetValue] = ["kind": .string("session"), "session": .string("main"), "every": .string("2s")]
+        let refused: [(WidgetValue, String)] = [
+            (.object(["machine": .string("main"), "workspace": .string("alice")]),
+             "source.target names one machine or one workspace: write local, {machine: <name>} or {workspace: <name>}"),
+            (.object(["machine": .string("")]),
+             "source.target names one machine or one workspace: write local, {machine: <name>} or {workspace: <name>}"),
+            (.object(["host": .string("main")]),
+             "source.target has an unknown key \"host\": write local, {machine: <name>} or {workspace: <name>}"),
+            (.object(["machine": .list([.string("main")])]),
+             "source.target: write local, {machine: <name>} or {workspace: <name>}"),
+            (.string(""), "source.target \"\": write local, {machine: <name>} or {workspace: <name>}"),
+        ]
+        for (value, message) in refused {
+            var fields = base
+            fields["target"] = value
+            XCTAssertEqual(problem(fields)?.message, message, "\(value)")
+        }
+    }
+
+    func testProviderRulesFollowTheCLI() {
+        let usage: [String: WidgetValue] = [
+            "kind": .string("provider"), "name": .string("app/harness-usage"),
+            "with": .object(["harness": .string("claude")]), "every": .string("60s"),
+        ]
+        XCTAssertNil(problem(usage, scope: packageScope))
+        func changed(_ key: String, _ value: WidgetValue?) -> [String: WidgetValue] {
+            var fields = usage
+            fields[key] = value
+            return fields
+        }
+        let cases: [(String, [String: WidgetValue], [String], String)] = [
+            ("unknown provider", changed("name", .string("app/weather")), ["name"],
+             "source.name \"app/weather\" is not a provider engine 1.1 knows: app/clock, app/harness-usage, app/machines, app/summary"),
+            ("unknown argument", changed("with", .object(["harness": .string("claude"), "zone": .string("utc")])),
+             ["with", "zone"], "source.with.zone is not an argument of app/harness-usage"),
+            ("missing argument", changed("with", nil), ["with"], "source.with.harness is required by app/harness-usage"),
+            ("inputs in a board", changed("with", .object(["harness": .string("{{inputs.harness}}")])),
+             ["with", "harness"], "template {{inputs.harness}} in source.with.harness: a widget written in a board has no inputs"),
+            ("no every", changed("every", nil), ["every"], "every widget needs source.every, at least 5s for app/harness-usage"),
+            ("bad every", changed("every", .string("soon")), ["every"],
+             "source.every \"soon\" is not a duration: write it like 60s or 5m"),
+            ("below minimum", changed("every", .string("1s")), ["every"],
+             "source.every 1s is below the app/harness-usage minimum of 5s"),
+        ]
+        for (name, fields, path, message) in cases {
+            let found = problem(fields)
+            XCTAssertEqual(found?.path, path, name)
+            XCTAssertEqual(found?.message, message, name)
+        }
+    }
+
+    func testTemplateWhitespaceIsASCIILikeGo() {
+        let base: [String: WidgetValue] = ["kind": .string("command"), "run": .string("echo"), "every": .string("60s")]
+        let scope = WidgetScope.inline(contextKeys: ["repo"])
+        var tabs = base
+        tabs["args"] = .list([.string("{{\tcontext.repo\n}}")])
+        XCTAssertNil(problem(tabs, scope: scope))
+        var nbsp = base
+        nbsp["args"] = .list([.string("{{\u{00A0}context.repo}}")])
+        XCTAssertEqual(
+            problem(nbsp, scope: scope)?.message,
+            "template {{\u{00A0}context.repo}} in source.args[0] names neither inputs.<name> nor context.<name>")
+    }
+
     func testPackageWidgetsMayUseInputs() {
         let fields: [String: WidgetValue] = [
             "kind": .string("command"), "run": .string("df"), "every": .string("60s"),
             "target": .object(["machine": .string("{{inputs.machine}}")]),
         ]
-        XCTAssertNil(problem(fields, scope: .package))
+        XCTAssertNil(problem(fields, scope: .package(inputs: ["machine"], contextKeys: [])))
     }
 
     func testURLAndPromptAndSessionRules() {

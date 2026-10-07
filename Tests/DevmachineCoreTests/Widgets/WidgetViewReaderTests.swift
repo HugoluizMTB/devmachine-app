@@ -10,13 +10,19 @@ final class WidgetViewReaderTests: XCTestCase {
     private let url = WidgetSource.url(URLSource(url: "https://example.com", every: .interval(30), timeout: 30, parse: .status))
     private let session = WidgetSource.session(SessionSource(target: .local, session: "main", every: .interval(2)))
 
-    private func read(_ fields: [String: WidgetValue], _ source: WidgetSource, writesParse: Bool = true) throws -> WidgetView {
-        try WidgetViewReader.read(.object(fields), source: source, sourceWritesParse: writesParse)
+    private func read(
+        _ fields: [String: WidgetValue], _ source: WidgetSource, writesParse: Bool = true,
+        scope: WidgetScope = .inline(contextKeys: [])
+    ) throws -> WidgetView {
+        try WidgetViewReader.read(.object(fields), source: source, sourceWritesParse: writesParse, scope: scope)
     }
 
-    private func problem(_ fields: [String: WidgetValue], _ source: WidgetSource, writesParse: Bool = true) -> WidgetSpecProblem? {
+    private func problem(
+        _ fields: [String: WidgetValue], _ source: WidgetSource, writesParse: Bool = true,
+        scope: WidgetScope = .inline(contextKeys: [])
+    ) -> WidgetSpecProblem? {
         do {
-            _ = try read(fields, source, writesParse: writesParse)
+            _ = try read(fields, source, writesParse: writesParse, scope: scope)
             return nil
         } catch let problem as WidgetSpecProblem {
             return problem
@@ -64,14 +70,13 @@ final class WidgetViewReaderTests: XCTestCase {
             ("json needs value", ["kind": .string("number")], command(.json), true, ["value"],
              "view.value picks what to show out of the JSON"),
             ("value without json", ["kind": .string("number"), "value": .string("{{json.a}}")], command(.number), true,
-             ["value"], "view.value is only for a source that parses json"),
+             ["value"], "view.value only applies when source.parse is json"),
             ("value not a json template", ["kind": .string("number"), "value": .string("{{inputs.a}}")], command(.json),
-             true, ["value"], "view.value holds one {{json.<path>}}"),
-            ("item outside list", ["kind": .string("number"), "value": .string("{{json.a}}"),
-                                   "unit": .string("{{item}}")], command(.json), true, ["unit"],
-             "{{item}} is only for view.item of a list"),
+             true, ["value"], "template {{inputs.a}} in view.value names json.<path>, like {{json.disk.used}}"),
+            ("item in value", ["kind": .string("number"), "value": .string("{{item}}")], command(.json), true,
+             ["value"], "template {{item}} in view.value names json.<path>, like {{json.disk.used}}"),
             ("item path needs json", ["kind": .string("list"), "item": .object(["title": .string("{{item.name}}")])],
-             command(.lines), true, ["item", "title"], "{{item.name}} needs a source that parses json"),
+             command(.lines), true, ["item", "title"], "template {{item.name}} in view.item.title reads a field, and only JSON items have fields: use {{item}}"),
             ("tail range", ["kind": .string("text"), "tail": .int(9000)], command(.text), true, ["tail"],
              "view.tail 9000 is outside 1 to 2000 lines"),
             ("gauge order", ["kind": .string("gauge"), "min": .int(10), "max": .int(5)], command(.number), true, ["min"],
@@ -87,6 +92,54 @@ final class WidgetViewReaderTests: XCTestCase {
             XCTAssertEqual(found?.path, path, name)
             XCTAssertTrue(found?.message.contains(message) ?? false, "\(name): \(String(describing: found))")
         }
+    }
+
+    func testValueMayHoldTextAroundJSONTemplatesLikeTheCLI() throws {
+        for value in ["{{json.a}}%", "{{json.a}} of {{json.b}}", "{{ json.disk.used }}"] {
+            XCTAssertEqual(try read(["kind": .string("number"), "value": .string(value)], command(.json)).value, value)
+        }
+        XCTAssertEqual(
+            problem(["kind": .string("number"), "value": .string("used")], command(.json))?.message,
+            "view.value \"used\" names no field: write it like \"{{json.used}}\"")
+        XCTAssertEqual(problem(["kind": .string("number"), "value": .string("")], command(.json))?.path, ["value"])
+        XCTAssertNil(problem(["kind": .string("number"), "value": .string("")], command(.number)))
+    }
+
+    func testItemTemplatesFollowTheCLIScopeRules() {
+        func item(_ title: String, _ source: WidgetSource, scope: WidgetScope = .inline(contextKeys: ["repo"])) -> String? {
+            problem(["kind": .string("list"), "item": .object(["title": .string(title)])], source, scope: scope)?.message
+        }
+        XCTAssertNil(item("{{item}}", command(.lines)))
+        XCTAssertNil(item("{{ item }} in {{context.repo}}", command(.lines)))
+        XCTAssertNil(item("{{item.name}}", command(.json)))
+        XCTAssertEqual(
+            item("{{item[0]}}", command(.json)),
+            "template {{item[0]}} in view.item.title names neither inputs.<name> nor context.<name>")
+        XCTAssertEqual(
+            item("{{item.}}", command(.json)),
+            "template {{item.}} in view.item.title names neither inputs.<name> nor context.<name>")
+        XCTAssertEqual(
+            item("{{foo}}", command(.lines)), "template {{foo}} in view.item.title names neither inputs.<name> nor context.<name>")
+        XCTAssertEqual(
+            item("{{inputs.label}}", command(.lines)),
+            "template {{inputs.label}} in view.item.title: a widget written in a board has no inputs")
+        XCTAssertNil(item("{{inputs.label}}", command(.lines), scope: .package(inputs: ["label"], contextKeys: [])))
+        XCTAssertEqual(
+            item("{{inputs.label}}", command(.lines), scope: .package(inputs: [], contextKeys: [])),
+            "template {{inputs.label}} in view.item.title needs inputs.label")
+        XCTAssertEqual(
+            item("{{context.branch}}", command(.lines)),
+            "template {{context.branch}} in view.item.title needs context.branch to be declared")
+    }
+
+    func testItemIsOnlyRefusedWhereTheCLIRefusesIt() {
+        XCTAssertNil(problem(["kind": .string("number"), "unit": .string("{{item}}")], command(.number)))
+        XCTAssertNil(problem(["kind": .string("gauge"), "unit": .string("{{item.x}}")], command(.number)))
+    }
+
+    func testTailZeroIsUnset() throws {
+        XCTAssertNil(try read(["kind": .string("text"), "tail": .int(0)], command(.text)).tail)
+        XCTAssertNil(try read(["kind": .string("terminal"), "tail": .int(0)], session).tail)
     }
 
     func testATextStatusSourceRefusesSizeRules() {
@@ -110,6 +163,11 @@ final class WidgetViewReaderTests: XCTestCase {
         XCTAssertNil(StatusRule.parse("300"))
         XCTAssertNil(StatusRule.parse("< 1e3"))
         XCTAssertNil(StatusRule.parse("> inf"))
+        XCTAssertNil(StatusRule.parse("== \"a\"b\""))
+        XCTAssertNil(StatusRule.parse("< ٣"))
+        XCTAssertEqual(StatusRule.parse("\n< 300\n"), StatusRule(op: .lt, operand: .number(300)))
+        XCTAssertEqual(StatusRule.parse("<\n300"), StatusRule(op: .lt, operand: .number(300)))
+        XCTAssertEqual(StatusRule.parse("== \"\""), StatusRule(op: .eq, operand: .text("")))
         XCTAssertEqual(StatusRule.parse(">= -1"), StatusRule(op: .ge, operand: .number(-1)))
     }
 }
