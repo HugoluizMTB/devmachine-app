@@ -73,6 +73,14 @@ final class SessionContextTests: XCTestCase {
         XCTAssertTrue(source("echo \"${DM_CONTEXT_REPO}x\"", shell: true).reads(contextKey: "repo"))
     }
 
+    func testEveryVariableInALineCountsEvenWhenOneRunsIntoTheNext() {
+        let line = source("echo \"$DM_CONTEXT_REPO_NAME $DM_CONTEXT_BRANCH\" DM_CONTEXT_DM_CONTEXT_PATH", shell: true)
+        XCTAssertTrue(line.reads(contextKey: "branch"))
+        XCTAssertTrue(line.reads(contextKey: "path"))
+        XCTAssertFalse(line.reads(contextKey: "repo"))
+        XCTAssertTrue(line.reads(contextKey: "repo_name"))
+    }
+
     func testAnInlineScriptReadsEveryKey() {
         XCTAssertTrue(source(nil, script: "/home/alice/bin/status").reads(contextKey: "repo"))
         XCTAssertTrue(source(nil, script: "/home/alice/bin/status").reads(contextKey: "branch"))

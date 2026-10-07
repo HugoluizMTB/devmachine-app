@@ -87,6 +87,7 @@ public struct ResolvedSource: Equatable, Sendable {
     /// The context keys a package widget declares; nil for a widget written in
     /// a board, which may read whatever its area gives.
     public let contextKeys: Set<String>?
+    let contextReads: ContextReads
 
     public init(
         source: WidgetSource, view: WidgetView, every: WidgetEvery, needsApproval: Bool, package: String?,
@@ -100,6 +101,7 @@ public struct ResolvedSource: Equatable, Sendable {
         self.packagePath = packagePath
         self.inputs = inputs
         self.contextKeys = contextKeys
+        self.contextReads = ContextReads(source: source, declared: contextKeys)
     }
 
     /// Only the context keys the source reads go in, so a shell line gets,

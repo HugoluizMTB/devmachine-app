@@ -84,35 +84,64 @@ extension ResolvedSource {
     /// branch) only when some widget uses it. A package widget declares its
     /// keys; an inline one is read from its templates and shell variables,
     /// and an inline script, whose text the app never sees, reads them all.
-    public func reads(contextKey key: String) -> Bool {
-        if let contextKeys { return contextKeys.contains(key) }
-        if case let .command(command) = source, command.script != nil { return true }
-        let variable = TemplateValues.variableName("DM_CONTEXT_", key)
-        return Self.strings(in: source).contains {
-            Self.template(in: $0, names: key) || Self.variable(variable, isIn: $0)
-        }
-    }
+    public func reads(contextKey key: String) -> Bool { contextReads.contains(key) }
 
     /// Only the keys a run reads, so a change to any other leaves it alone.
     public func readContext(_ context: [String: String]) -> [String: String] {
         context.filter { reads(contextKey: $0.key) }
     }
+}
 
-    private static func template(in text: String, names key: String) -> Bool {
-        text.matches(of: WidgetSourceReader.templatePattern).contains { match in
-            guard let reference = match.1.wholeMatch(of: WidgetSourceReader.referencePattern) else { return false }
-            return reference.1 == "context" && reference.2 == key
+/// The context keys a source reads, worked out once when it resolves: the
+/// board asks on every redraw and every context change.
+struct ContextReads: Equatable, Sendable {
+    private let all: Bool
+    private let declared: Set<String>?
+    private let templateKeys: Set<String>
+    private let variables: Set<String>
+
+    private static let variablePrefix = "DM_CONTEXT_"
+
+    init(source: WidgetSource, declared: Set<String>?) {
+        self.declared = declared
+        if case let .command(command) = source, command.script != nil, declared == nil {
+            all = true
+            templateKeys = []
+            variables = []
+            return
+        }
+        all = false
+        let strings = declared == nil ? Self.strings(in: source) : []
+        templateKeys = Set(strings.flatMap(Self.templateKeys(in:)))
+        variables = Set(strings.flatMap(Self.variables(in:)))
+    }
+
+    func contains(_ key: String) -> Bool {
+        if let declared { return declared.contains(key) }
+        return all || templateKeys.contains(key)
+            || variables.contains(TemplateValues.variableName(Self.variablePrefix, key))
+    }
+
+    private static func templateKeys(in text: String) -> [String] {
+        text.matches(of: WidgetSourceReader.templatePattern).compactMap { match in
+            guard let reference = match.1.wholeMatch(of: WidgetSourceReader.referencePattern),
+                  reference.1 == "context" else { return nil }
+            return String(reference.2)
         }
     }
 
-    private static func variable(_ name: String, isIn text: String) -> Bool {
+    /// Each `DM_CONTEXT_` and the identifier characters after it, so
+    /// `$DM_CONTEXT_REPO_NAME` names `REPO_NAME`, never `REPO`.
+    private static func variables(in text: String) -> [String] {
+        var found: [String] = []
         var rest = text[...]
-        while let found = rest.range(of: name) {
-            let next = rest[found.upperBound...].first
-            if next.map({ !($0.isLetter || $0.isNumber || $0 == "_") }) ?? true { return true }
-            rest = rest[found.upperBound...]
+        while let prefix = rest.range(of: variablePrefix) {
+            let tail = rest[prefix.upperBound...]
+            let name = tail.prefix { $0.isLetter || $0.isNumber || $0 == "_" }
+            found.append(variablePrefix + name)
+            rest = tail
         }
-        return false
+        return found
     }
 
     private static func strings(in value: Any) -> [String] {
