@@ -6,11 +6,12 @@ import DevmachineCore
 /// configuration whose only machine is `here`, this computer (`self: true`),
 /// so every command runs on this Mac and never over ssh. Skipped otherwise.
 final class WidgetSourceLiveTests: XCTestCase {
-    private var config: URL?
+    private var folder: URL?
 
     override func tearDown() {
-        if let config { try? FileManager.default.removeItem(at: config) }
-        config = nil
+        if let folder { try? FileManager.default.removeItem(at: folder) }
+        folder = nil
+        super.tearDown()
     }
 
     private func environment() throws -> SourceRunEnvironment {
@@ -21,7 +22,7 @@ final class WidgetSourceLiveTests: XCTestCase {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("WidgetSourceLiveTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        config = folder
+        self.folder = folder
         let file = folder.appendingPathComponent("config.yml")
         try Data("machines:\n  - name: here\n    self: true\n".utf8).write(to: file)
         var variables = inherited
@@ -69,18 +70,19 @@ final class WidgetSourceLiveTests: XCTestCase {
         }
         guard case let .exited(status, stderr)? = exited else { return XCTFail("\(String(describing: exited))") }
         XCTAssertEqual(status, 3)
-        XCTAssertEqual(stderr.split(separator: "\n").first, "oops")
+        XCTAssertEqual(stderr, "oops")
 
         let ghost = await failure { try await runner.fetch(request("true", [], .machine("ghost"))) }
         guard case let .neverRan(reason)? = ghost else { return XCTFail("\(String(describing: ghost))") }
         XCTAssertTrue(reason.contains("ghost"), reason)
     }
 
-    func testSIGTERMEndsARemoteStream() async throws {
+    func testSIGTERMEndsAStreamRunThroughDevmachineRunOnTheSelfMachine() async throws {
         let (invocation, remote) = try TargetInvoker.invocation(
             .argv(["sleep", "30"]), on: .machine("here"), environment: try environment())
         XCTAssertTrue(remote)
         let process = try FoundationProcessLauncher().launch(invocation) { _ in }
+        defer { process.terminate() }
         try await Task.sleep(for: .milliseconds(500))
         let started = Date()
         process.terminate()
