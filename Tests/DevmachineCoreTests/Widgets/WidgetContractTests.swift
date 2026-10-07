@@ -5,15 +5,31 @@ final class WidgetContractTests: XCTestCase {
     private func fixture() throws -> Data {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/widget-contract-1.5.json")
+            .appendingPathComponent("Fixtures/widget-contract-1.6.json")
         return try Data(contentsOf: url)
     }
 
     func testTheGoldenContractIsTheOneThisAppImplements() throws {
         let decoded = try JSONDecoder().decode(WidgetContract.self, from: fixture())
-        XCTAssertEqual(decoded, WidgetContract.engine15)
-        XCTAssertEqual(WidgetContract.current, WidgetContract.engine15)
-        XCTAssertEqual(WidgetContract.current.engine, "1.5")
+        XCTAssertEqual(decoded, WidgetContract.engine16)
+        XCTAssertEqual(WidgetContract.current, WidgetContract.engine16)
+        XCTAssertEqual(WidgetContract.current.engine, "1.6")
+    }
+
+    func testAPromptTakesItsHarnesssOwnPermissionModes() throws {
+        let fields = try XCTUnwrap(WidgetContract.current.sources["prompt"]?.fields)
+        let mode = try XCTUnwrap(fields["permission_mode"])
+        XCTAssertEqual(mode.type, "enum-by-harness")
+        XCTAssertFalse(mode.required)
+        XCTAssertNil(mode.values)
+        XCTAssertEqual(mode.byHarness?["claude"], ["manual", "dontAsk", "plan", "acceptEdits", "auto", "bypassPermissions"])
+        XCTAssertEqual(mode.byHarness?["codex"],
+                       ["read-only", "workspace-write", "danger-full-access", "approve-for-me", "dangerously-bypass-approvals-and-sandbox"])
+        XCTAssertEqual(Set(mode.byHarness.map { Array($0.keys) } ?? []), Set(fields["harness"]?.values ?? []))
+        XCTAssertEqual(mode.dangerous, ["bypassPermissions", "danger-full-access", "dangerously-bypass-approvals-and-sandbox"])
+        for (kind, spec) in WidgetContract.current.sources where kind != "prompt" {
+            XCTAssertNil(spec.fields["permission_mode"], kind)
+        }
     }
 
     func testChoiceInputsAndTheirSources() {

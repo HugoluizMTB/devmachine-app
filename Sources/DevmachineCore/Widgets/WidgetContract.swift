@@ -49,6 +49,8 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         }
     }
 
+    /// `byHarness` holds an `enum-by-harness` field's values for each
+    /// harness, and `dangerous` the values that run without any check.
     public struct FieldSpec: Decodable, Equatable, Sendable {
         public let type: String
         public let required: Bool
@@ -57,15 +59,19 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         public let min: WidgetValue?
         public let max: WidgetValue?
         public let fields: [String: FieldSpec]?
+        public let byHarness: [String: [String]]?
+        public let dangerous: [String]?
 
         enum CodingKeys: String, CodingKey {
-            case type, required, values, min, max, fields
+            case type, required, values, min, max, fields, dangerous
             case defaultValue = "default"
+            case byHarness = "by_harness"
         }
 
         public init(
             type: String, required: Bool = false, defaultValue: WidgetValue? = nil, values: [String]? = nil,
-            min: WidgetValue? = nil, max: WidgetValue? = nil, fields: [String: FieldSpec]? = nil
+            min: WidgetValue? = nil, max: WidgetValue? = nil, fields: [String: FieldSpec]? = nil,
+            byHarness: [String: [String]]? = nil, dangerous: [String]? = nil
         ) {
             self.type = type
             self.required = required
@@ -74,6 +80,8 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
             self.min = min
             self.max = max
             self.fields = fields
+            self.byHarness = byHarness
+            self.dangerous = dangerous
         }
 
         public init(from decoder: Decoder) throws {
@@ -85,6 +93,8 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
             min = try c.decodeIfPresent(WidgetValue.self, forKey: .min)
             max = try c.decodeIfPresent(WidgetValue.self, forKey: .max)
             fields = try c.decodeIfPresent([String: FieldSpec].self, forKey: .fields)
+            byHarness = try c.decodeIfPresent([String: [String]].self, forKey: .byHarness)
+            dangerous = try c.decodeIfPresent([String].self, forKey: .dangerous)
         }
     }
 
@@ -306,13 +316,13 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
 }
 
 extension WidgetContract {
-    public static let current = engine15
+    public static let current = engine16
 
     private static let target = FieldSpec(type: "target", defaultValue: .string("local"))
     private static let timeout = FieldSpec(type: "duration", defaultValue: .string("30s"), max: .string("10m"))
 
-    public static let engine15 = WidgetContract(
-        engine: "1.5",
+    public static let engine16 = WidgetContract(
+        engine: "1.6",
         layouts: ["canvas", "stack", "slot", "tabs"],
         unit: 80,
         snap: 8,
@@ -477,6 +487,16 @@ extension WidgetContract {
             ]),
             "prompt": SourceSpec(minEvery: "15m", approval: true, fields: [
                 "harness": FieldSpec(type: "enum", required: true, values: ["claude", "codex"]),
+                "permission_mode": FieldSpec(
+                    type: "enum-by-harness",
+                    byHarness: [
+                        "claude": ["manual", "dontAsk", "plan", "acceptEdits", "auto", "bypassPermissions"],
+                        "codex": [
+                            "read-only", "workspace-write", "danger-full-access", "approve-for-me",
+                            "dangerously-bypass-approvals-and-sandbox",
+                        ],
+                    ],
+                    dangerous: ["bypassPermissions", "danger-full-access", "dangerously-bypass-approvals-and-sandbox"]),
                 "prompt": FieldSpec(type: "string", required: true),
                 "target": target,
                 "every": FieldSpec(type: "every", defaultValue: .string("manual")),
