@@ -174,7 +174,8 @@ final class BoardCodecStackTests: XCTestCase {
         views["text"] = WidgetContract.ViewSpec(accepts: text.accepts, fields: text.fields, layouts: textLayouts, grows: text.grows)
         return WidgetContract(
             engine: c.engine, layouts: c.layouts, unit: c.unit, snap: c.snap, presets: c.presets, stackRow: c.stackRow,
-            stackEntry: c.stackEntry, surfaces: c.surfaces, contextTypes: c.contextTypes, providers: c.providers,
+            stackEntry: c.stackEntry, slotMax: c.slotMax, slotEntry: c.slotEntry, tabsEntry: c.tabsEntry,
+            surfaces: c.surfaces, contextTypes: c.contextTypes, providers: c.providers,
             packageProvider: c.packageProvider, views: views, sourceKinds: c.sourceKinds, sources: c.sources, formats: c.formats)
     }
 
@@ -250,7 +251,7 @@ final class BoardCodecStackTests: XCTestCase {
             line: 8, message: "size \"huge\" of widget \"disk\" is not one of small, medium, large, wide, tall"))
         let fits = inlineDisk.replacingOccurrences(of: "    size: auto", with: "    fits: [stack, shelf]")
         XCTAssertEqual(problem(fits), BoardProblem(
-            line: 8, message: "fits \"shelf\" of widget \"disk\" is not one of canvas, stack, slot"))
+            line: 8, message: "fits \"shelf\" of widget \"disk\" is not one of canvas, stack, slot, tabs"))
     }
 
     func testAFrameIsReportedBeforeAnInlineProblem() {

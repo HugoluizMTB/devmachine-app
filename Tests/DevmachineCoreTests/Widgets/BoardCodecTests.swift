@@ -542,7 +542,7 @@ final class BoardCodecTests: XCTestCase {
             BoardProblem(line: 1, message: "format must be 1"))
         XCTAssertEqual(
             problem("format: 1\nsurface: kitchen\nwidgets: []\n"),
-            BoardProblem(line: 2, message: "unknown surface \"kitchen\"; known: context-sidebar, home, sidebar"))
+            BoardProblem(line: 2, message: "unknown surface \"kitchen\"; known: context-sidebar, home, menubar, menubar-panel, sidebar"))
         XCTAssertEqual(
             problem("format: 1\nsurface: home\n"),
             BoardProblem(line: 1, message: "widgets is missing; use widgets: [] for an empty board"))

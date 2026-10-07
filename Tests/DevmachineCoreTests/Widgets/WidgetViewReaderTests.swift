@@ -54,6 +54,16 @@ final class WidgetViewReaderTests: XCTestCase {
         XCTAssertEqual(list.item, ListItemTemplate(title: "{{item.name}}", subtitle: nil, status: nil, link: "{{item.url}}"))
     }
 
+    func testANumberViewReadsHideZero() throws {
+        let source = WidgetSource.provider(ProviderSource(name: "app/open-pull-requests", with: [:], every: "60s"))
+        let scope = WidgetScope.package(inputs: [], contextKeys: [])
+        XCTAssertTrue(try read(["kind": .string("number"), "hide_zero": .bool(true)], source, writesParse: false, scope: scope).hideZero)
+        XCTAssertFalse(try read(["kind": .string("number")], source, writesParse: false, scope: scope).hideZero)
+        XCTAssertEqual(
+            problem(["kind": .string("number"), "hide_zero": .string("yes")], source, writesParse: false, scope: scope),
+            WidgetSpecProblem(["hide_zero"], "view.hide_zero must be true or false"))
+    }
+
     func testTerminalTakesASessionByKind() throws {
         XCTAssertEqual(try read(["kind": .string("terminal"), "tail": .int(40)], session).tail, 40)
         XCTAssertNotNil(problem(["kind": .string("text")], session))

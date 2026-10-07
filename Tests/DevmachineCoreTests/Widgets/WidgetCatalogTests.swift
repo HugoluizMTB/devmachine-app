@@ -143,7 +143,7 @@ final class WidgetCatalogTests: XCTestCase {
         locked.available = false
         locked.unavailableReason = "add the package: devmachine packages add acme --machine <name>"
         var future = CatalogFixtures.clock
-        future.requiresEngine = ">= 1.4"
+        future.requiresEngine = ">= 1.5"
         var gauge = CatalogFixtures.summary
         gauge.viewKind = "gauge"
         let catalog = CatalogFixtures.catalog([locked, future, gauge])
@@ -154,7 +154,7 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertEqual(WidgetResolution.resolve(entry("github-prs/open"), in: catalog), .notFound(type: "github-prs/open"))
         XCTAssertEqual(
             WidgetResolution.resolve(entry("devmachine-app/clock"), in: catalog),
-            .needsNewerApp(type: "devmachine-app/clock", reason: "it needs engine >= 1.4; this app implements 1.3"))
+            .needsNewerApp(type: "devmachine-app/clock", reason: "it needs engine >= 1.5; this app implements 1.4"))
         XCTAssertEqual(
             WidgetResolution.resolve(entry("devmachine-app/summary"), in: catalog),
             .needsNewerApp(type: "devmachine-app/summary", reason: "this app has no view gauge for app/summary"))

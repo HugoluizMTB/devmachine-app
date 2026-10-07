@@ -5,15 +5,59 @@ final class WidgetContractTests: XCTestCase {
     private func fixture() throws -> Data {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/widget-contract-1.3.json")
+            .appendingPathComponent("Fixtures/widget-contract-1.4.json")
         return try Data(contentsOf: url)
     }
 
     func testTheGoldenContractIsTheOneThisAppImplements() throws {
         let decoded = try JSONDecoder().decode(WidgetContract.self, from: fixture())
-        XCTAssertEqual(decoded, WidgetContract.engine13)
-        XCTAssertEqual(WidgetContract.current, WidgetContract.engine13)
-        XCTAssertEqual(WidgetContract.current.engine, "1.3")
+        XCTAssertEqual(decoded, WidgetContract.engine14)
+        XCTAssertEqual(WidgetContract.current, WidgetContract.engine14)
+        XCTAssertEqual(WidgetContract.current.engine, "1.4")
+    }
+
+    func testTheMenuBarIsASlotAndItsPanelIsTabs() {
+        let contract = WidgetContract.current
+        XCTAssertEqual(contract.layout(of: "menubar"), "slot")
+        XCTAssertEqual(contract.layout(of: "menubar-panel"), "tabs")
+        XCTAssertEqual(contract.layout(of: "sidebar"), "stack")
+        XCTAssertEqual(contract.layout(of: "nowhere"), "stack")
+        for surface in ["menubar", "menubar-panel"] {
+            XCTAssertEqual(contract.surfaces[surface]?.status, "available", surface)
+            XCTAssertEqual(contract.surfaces[surface]?.context, [:], surface)
+        }
+        XCTAssertTrue(contract.layouts.contains("tabs"))
+    }
+
+    func testTheSlotAndTabsRules() {
+        let contract = WidgetContract.current
+        XCTAssertEqual(contract.slotMax, 3)
+        XCTAssertEqual(Set(contract.slotEntry.forbids), ["frame", "size", "collapsed", "z", "minimized"])
+        XCTAssertEqual(Set(contract.slotEntry.views), ["text", "number", "status", "app.brand"])
+        XCTAssertEqual(contract.slotEntry.textMax, 24)
+        XCTAssertEqual(contract.slotFloor, 30)
+        XCTAssertEqual(Set(contract.tabsEntry.forbids), ["frame", "z", "minimized", "collapsed"])
+        XCTAssertEqual(contract.tabsEntry.ignores, ["size"])
+    }
+
+    func testTheMenubarProvidersAndViews() {
+        let contract = WidgetContract.current
+        XCTAssertEqual(contract.providers["app/brand"]?.returns, ["mark": "string"])
+        XCTAssertEqual(contract.providers["app/open-pull-requests"]?.returns, ["count": "number"])
+        XCTAssertEqual(
+            contract.providers["app/pull-requests-panel"]?.returns,
+            ["pull_requests": "list", "owners": "list", "error": "string?"])
+        XCTAssertEqual(contract.providers["app/usage-panel"]?.returns, ["harnesses": "list"])
+        XCTAssertEqual(contract.requiredContext(ofProvider: "app/open-pull-requests"), [])
+        XCTAssertTrue(contract.view("number", accepts: "app/open-pull-requests"))
+        XCTAssertFalse(contract.view("text", accepts: "app/open-pull-requests"))
+        XCTAssertTrue(contract.view("app.pull-requests-panel", accepts: "app/pull-requests-panel"))
+        XCTAssertTrue(contract.view("app.brand", accepts: "app/brand"))
+        XCTAssertTrue(contract.view("app.usage-panel", accepts: "app/usage-panel"))
+        XCTAssertEqual(contract.views["app.brand"]?.layouts, ["slot"])
+        XCTAssertEqual(contract.views["app.pull-requests-panel"]?.layouts, ["tabs"])
+        XCTAssertEqual(contract.views["app.usage-panel"]?.layouts, ["tabs"])
+        XCTAssertEqual(contract.views["number"]?.fields?["hide_zero"], .init(type: "bool", defaultValue: .bool(false)))
     }
 
     func testPackageProvidersRunOnAMachineOrWorkspaceAndTakeTargetAndTimeout() {

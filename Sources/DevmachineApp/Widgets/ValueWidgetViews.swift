@@ -28,6 +28,8 @@ struct NumberWidgetView: View {
 
     var body: some View {
         switch Result(catching: { try ValueExtraction.number(from: output, view: view) }) {
+        case let .success(number) where view.hideZero && number == 0:
+            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
         case let .success(number):
             Text(verbatim: NumberText.format(number, format: view.format, unit: view.unit))
                 .font(.dm(density == .full ? 44 : 26, weight: .semibold, design: .rounded))

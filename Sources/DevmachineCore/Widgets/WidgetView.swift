@@ -80,6 +80,7 @@ public struct WidgetView: Hashable, Sendable {
     public var value: String?
     public var unit: String?
     public var format = NumberFormat.plain
+    public var hideZero = false
     public var min: Double = 0
     public var max: Double?
     public var warn: Double?
@@ -144,6 +145,10 @@ public enum WidgetViewReader {
                 throw WidgetSpecProblem(["format"], "view.format \"\(format)\" is one of plain, percent, bytes, duration")
             }
             view.format = parsed
+        }
+        if let hideZero = fields["hide_zero"] {
+            guard let flag = hideZero.bool else { throw WidgetSpecProblem(["hide_zero"], "view.hide_zero must be true or false") }
+            view.hideZero = flag
         }
         if kind == "status" {
             view.okRule = try rule(fields, "ok", source: source)

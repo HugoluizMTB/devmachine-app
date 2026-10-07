@@ -263,8 +263,9 @@ final class WidgetSourceReaderTests: XCTestCase {
         }
         let cases: [(String, [String: WidgetValue], [String], String)] = [
             ("unknown provider", changed("name", .string("app/weather")), ["name"],
-             "source.name \"app/weather\" is not a provider engine 1.3 knows: app/clock, app/harness-usage, app/machines, "
-                + "app/publish-port, app/session-context, app/shortcuts, app/summary, app/workspaces"),
+             "source.name \"app/weather\" is not a provider engine 1.4 knows: app/brand, app/clock, app/harness-usage, app/machines, "
+                + "app/open-pull-requests, app/publish-port, app/pull-requests-panel, app/session-context, app/shortcuts, "
+                + "app/summary, app/usage-panel, app/workspaces"),
             ("unknown argument", changed("with", .object(["harness": .string("claude"), "zone": .string("utc")])),
              ["with", "zone"], "source.with.zone is not an argument of app/harness-usage"),
             ("missing argument", changed("with", nil), ["with"], "source.with.harness is required by app/harness-usage"),

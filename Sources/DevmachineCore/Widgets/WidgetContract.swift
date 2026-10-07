@@ -138,6 +138,28 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         public let collapsed: String
     }
 
+    /// The menu bar title: one-line widgets drawn by `views`, text cut at
+    /// `textMax`, every source raised to `minEvery`.
+    public struct SlotEntrySpec: Decodable, Equatable, Sendable {
+        public let forbids: [String]
+        public let views: [String]
+        public let textMax: Int
+        public let minEvery: String
+
+        enum CodingKeys: String, CodingKey {
+            case forbids, views
+            case textMax = "text_max"
+            case minEvery = "min_every"
+        }
+    }
+
+    /// A popover tab fills the popover, so the keys in `ignores` are read
+    /// and never used.
+    public struct TabsEntrySpec: Decodable, Equatable, Sendable {
+        public let forbids: [String]
+        public let ignores: [String]
+    }
+
     /// How a package's own command feeds a widget: its name, what its
     /// package.yml may declare, where it runs and when its widgets ask.
     public struct PackageProviderRules: Decodable, Equatable, Sendable {
@@ -170,6 +192,9 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
     public let presets: [String: [Int]]
     public let stackRow: Int
     public let stackEntry: StackEntrySpec
+    public let slotMax: Int
+    public let slotEntry: SlotEntrySpec
+    public let tabsEntry: TabsEntrySpec
     public let surfaces: [String: Surface]
     public let contextTypes: [String: [String: String]]
     public let providers: [String: Provider]
@@ -185,6 +210,9 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         case sourceKinds = "source_kinds"
         case stackRow = "stack_row"
         case stackEntry = "stack_entry"
+        case slotMax = "slot_max"
+        case slotEntry = "slot_entry"
+        case tabsEntry = "tabs_entry"
         case packageProvider = "package_provider"
     }
 
@@ -205,6 +233,14 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
 
     public func viewGrows(_ kind: String) -> Bool {
         views[kind]?.grows ?? false
+    }
+
+    public func layout(of surface: String) -> String {
+        surfaces[surface]?.layout ?? "stack"
+    }
+
+    public var slotFloor: TimeInterval {
+        GoDuration.seconds(slotEntry.minEvery) ?? 30
     }
 
     public func requiredContext(ofProvider name: String) -> Set<String> {
@@ -233,19 +269,24 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
 }
 
 extension WidgetContract {
-    public static let current = engine13
+    public static let current = engine14
 
     private static let target = FieldSpec(type: "target", defaultValue: .string("local"))
     private static let timeout = FieldSpec(type: "duration", defaultValue: .string("30s"), max: .string("10m"))
 
-    public static let engine13 = WidgetContract(
-        engine: "1.3",
-        layouts: ["canvas", "stack", "slot"],
+    public static let engine14 = WidgetContract(
+        engine: "1.4",
+        layouts: ["canvas", "stack", "slot", "tabs"],
         unit: 80,
         snap: 8,
         presets: ["small": [2, 2], "medium": [4, 2], "large": [4, 4], "wide": [8, 2], "tall": [2, 4]],
         stackRow: 40,
         stackEntry: StackEntrySpec(forbids: ["frame", "z"], size: "preset | auto", collapsed: "bool"),
+        slotMax: 3,
+        slotEntry: SlotEntrySpec(
+            forbids: ["frame", "size", "collapsed", "z", "minimized"],
+            views: ["text", "number", "status", "app.brand"], textMax: 24, minEvery: "30s"),
+        tabsEntry: TabsEntrySpec(forbids: ["frame", "z", "minimized", "collapsed"], ignores: ["size"]),
         surfaces: [
             "home": Surface(layout: "canvas", status: "available", context: [:]),
             "sidebar": Surface(
@@ -262,6 +303,8 @@ extension WidgetContract {
                     "branch": ContextSlot(type: "string", presence: "optional"),
                     "harness": ContextSlot(type: "string", presence: "optional"),
                 ]),
+            "menubar": Surface(layout: "slot", status: "available", context: [:]),
+            "menubar-panel": Surface(layout: "tabs", status: "available", context: [:]),
         ],
         contextTypes: [
             "machine": ["name": "string"],
@@ -292,6 +335,11 @@ extension WidgetContract {
             "app/shortcuts": Provider(
                 args: [:], minEvery: "5s", returns: ["shortcuts": "list"], context: ["session": "required"]),
             "app/publish-port": Provider(args: [:], minEvery: "5s", returns: ["available": "bool"]),
+            "app/brand": Provider(args: [:], minEvery: "5s", returns: ["mark": "string"]),
+            "app/open-pull-requests": Provider(args: [:], minEvery: "5s", returns: ["count": "number"]),
+            "app/pull-requests-panel": Provider(
+                args: [:], minEvery: "5s", returns: ["pull_requests": "list", "owners": "list", "error": "string?"]),
+            "app/usage-panel": Provider(args: [:], minEvery: "5s", returns: ["harnesses": "list"]),
         ],
         packageProvider: PackageProviderRules(
             name: "<package>/<command>", reserved: ["app"], minEvery: "5s",
@@ -312,15 +360,19 @@ extension WidgetContract {
             "app.todo": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
             "app.pull-requests": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
             "app.links": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
+            "app.brand": ViewSpec(accepts: ["app/brand"], layouts: ["slot"]),
+            "app.pull-requests-panel": ViewSpec(accepts: ["app/pull-requests-panel"], layouts: ["tabs"]),
+            "app.usage-panel": ViewSpec(accepts: ["app/usage-panel"], layouts: ["tabs"]),
             "text": ViewSpec(accepts: ["text", "lines", "ansi"], fields: [
                 "wrap": FieldSpec(type: "bool", defaultValue: .bool(true)),
                 "tail": FieldSpec(type: "int", min: .int(1), max: .int(2000)),
             ]),
-            "number": ViewSpec(accepts: ["number", "json"], fields: [
+            "number": ViewSpec(accepts: ["number", "json", "app/open-pull-requests"], fields: [
                 "value": FieldSpec(type: "template"),
                 "unit": FieldSpec(type: "string"),
                 "format": FieldSpec(
                     type: "enum", defaultValue: .string("plain"), values: ["plain", "percent", "bytes", "duration"]),
+                "hide_zero": FieldSpec(type: "bool", defaultValue: .bool(false)),
             ]),
             "gauge": ViewSpec(accepts: ["number", "json"], fields: [
                 "value": FieldSpec(type: "template"),
