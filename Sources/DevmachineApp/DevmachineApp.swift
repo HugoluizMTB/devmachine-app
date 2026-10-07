@@ -85,6 +85,7 @@ struct DevmachineApp: App {
                 .environmentObject(usageStore)
                 .environmentObject(settingsStore)
                 .environment(\.harnessSettingsFacade, harnessSettingsFacade)
+                .environment(\.widgetOptionSources, .live(stats: statsStore, model: model, usage: usageStore, facade: harnessSettingsFacade))
                 .environment(\.dmMetrics, metrics)
                 .environment(\.dmOpenCLIUpdate, { [model] in model.openSettings(.about) })
                 .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
@@ -231,6 +232,7 @@ struct DevmachineApp: App {
                 .environmentObject(model)
                 .environmentObject(MenubarController.shared)
                 .environment(\.harnessSettingsFacade, harnessSettingsFacade)
+                .environment(\.widgetOptionSources, .live(stats: statsStore, model: model, usage: usageStore, facade: harnessSettingsFacade))
                 .environment(\.dmMetrics, metrics)
         } label: {
             MenuBarLabelHost(label: MenubarController.shared.label)
