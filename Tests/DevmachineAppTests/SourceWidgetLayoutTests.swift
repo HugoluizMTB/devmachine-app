@@ -198,4 +198,37 @@ final class SourceWidgetLayoutTests: XCTestCase {
         state.output = output
         return state
     }
+
+    func testASessionWidgetOpensTheSessionItNames() {
+        let workspaces = [Workspace(name: "alice", alias: "alice-devmachine")]
+        let local = [LocalSession(handle: "shell-1", name: "Shell", path: "/Users/alice")]
+        XCTAssertEqual(
+            SessionOpening.item(target: .workspace("alice"), session: "main", workspaces: workspaces, localSessions: local),
+            .session(alias: "alice-devmachine", name: "main"))
+        XCTAssertEqual(
+            SessionOpening.item(target: .local, session: "shell-1", workspaces: workspaces, localSessions: local),
+            .localSession(name: "shell-1", path: "/Users/alice"))
+        XCTAssertNil(SessionOpening.item(target: .local, session: "gone", workspaces: workspaces, localSessions: local))
+        XCTAssertNil(SessionOpening.item(target: .workspace("bob"), session: "main", workspaces: workspaces, localSessions: local))
+        XCTAssertNil(SessionOpening.item(target: .machine("main"), session: "main", workspaces: workspaces, localSessions: local))
+    }
+
+    func testTheApprovalCardShowsUntilAllowedAndNeverForWidgetsThatNeedNone() {
+        XCTAssertEqual(SourceWidgetCardMode.of(approval: .waiting(hash: "h"), isDemo: false, viewKind: "text"), .approval)
+        XCTAssertEqual(SourceWidgetCardMode.of(approval: .denied(hash: "h"), isDemo: false, viewKind: "text"), .approval)
+        XCTAssertEqual(SourceWidgetCardMode.of(approval: .allowed, isDemo: false, viewKind: "text"), .content)
+        XCTAssertEqual(SourceWidgetCardMode.of(approval: .notNeeded, isDemo: false, viewKind: "text"), .content)
+        XCTAssertEqual(SourceWidgetCardMode.of(approval: .notNeeded, isDemo: true, viewKind: "text"), .demo)
+        XCTAssertEqual(SourceWidgetCardMode.of(approval: .notNeeded, isDemo: true, viewKind: "web"), .content)
+        XCTAssertEqual(SourceWidgetCardMode.of(approval: .waiting(hash: "h"), isDemo: true, viewKind: "text"), .approval)
+    }
+
+    func testTheApprovalCardSaysWhatRunsWhereAndHowOften() {
+        let source = ResolvedSource(
+            source: .session(SessionSource(target: .workspace("alice"), session: "main", every: .interval(10))),
+            view: WidgetView(kind: "terminal"), every: .interval(10), needsApproval: true, package: nil, packagePath: nil)
+        XCTAssertEqual(WidgetApprovalText.headline(kind: "session", denied: false), "Allow this session widget to run?")
+        XCTAssertEqual(WidgetApprovalText.headline(kind: "command", denied: true), "Paused: you denied this command widget")
+        XCTAssertEqual(WidgetApprovalText.whereAndWhen(source), "Runs in workspace alice, every 10s.")
+    }
 }

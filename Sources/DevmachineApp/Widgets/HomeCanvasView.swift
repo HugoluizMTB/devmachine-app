@@ -59,9 +59,13 @@ struct HomeCanvasView: View {
             controller.start()
             controller.runtime.providers = AppWidgetProviders(usage: usage, stats: stats)
             controller.runtime.start()
+            controller.sources.start()
             stats.start()
         }
-        .onDisappear { controller.runtime.stop() }
+        .onDisappear {
+            controller.runtime.stop()
+            controller.sources.stop()
+        }
     }
 
     private var addButton: some View {
@@ -165,6 +169,7 @@ private struct BoardCanvasLayer: View {
     let canvasSize: CGSize
     @Binding var clockRect: CGRect?
     @EnvironmentObject private var settingsStore: SettingsStore
+    @EnvironmentObject private var model: AppModel
     @Environment(\.harnessSettingsFacade) private var facade
     @Environment(\.dmMetrics) private var m
     @State private var drag: CanvasDrag?
@@ -223,6 +228,7 @@ private struct BoardCanvasLayer: View {
             initial: true
         ) { _, _ in
             controller.runtime.setJobs(controller.runtimeJobs(isOnScreen: isOnScreen))
+            controller.sources.update(controller.sourceEntries(isOnScreen: isOnScreen))
         }
         .onChange(of: clockDisplayRect, initial: true) { _, rect in clockRect = rect }
         .onChange(of: store.board) { _, _ in drag = nil }
@@ -250,9 +256,11 @@ private struct BoardCanvasLayer: View {
             onFront: { controller.bringToFront(widget.id) },
             onPreset: { controller.setPreset(widget.id, preset: $0) },
             onMinimize: { controller.setMinimized(widget.id, $0) },
-            onRefresh: { refresh(resolution) },
+            onRefresh: { refresh(widget, resolution) },
             onRemove: { controller.remove(widget.id) },
-            onPillSize: { pillSizes[widget.id] = $0 })
+            onPillSize: { pillSizes[widget.id] = $0 },
+            sources: controller.sources,
+            onOpenSession: openSession)
         .offset(x: display.minX, y: display.minY)
     }
 
@@ -325,9 +333,20 @@ private struct BoardCanvasLayer: View {
         controller.bringToFront(widget.id)
     }
 
-    private func refresh(_ resolution: WidgetResolution?) {
+    private func refresh(_ widget: BoardWidget, _ resolution: WidgetResolution?) {
         guard case let .ready(resolved)? = resolution else { return }
+        if resolved.source != nil { return controller.sources.runNow(widget.id) }
         controller.runtime.refreshNow(WidgetRefreshKey(provider: resolved.provider, args: resolved.arguments))
+    }
+
+    private func openSession(_ target: WidgetTarget, _ session: String) {
+        guard let item = SessionOpening.item(
+            target: target, session: session, workspaces: model.visibleWorkspaces, localSessions: model.localSessions)
+        else { return }
+        switch item {
+        case let .session(alias, name): model.clickSession(SessionRef(alias: alias, name: name))
+        case .localSession: model.clickLocalSession(item)
+        }
     }
 
     private func title(_ widget: BoardWidget, _ resolution: WidgetResolution?) -> String {

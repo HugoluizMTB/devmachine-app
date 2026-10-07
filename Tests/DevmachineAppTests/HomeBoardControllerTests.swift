@@ -31,6 +31,71 @@ final class HomeBoardControllerTests: XCTestCase {
 
     private var boardFile: URL { root.appendingPathComponent("config/boards/home.yml") }
 
+    private let sourceBoard = """
+        format: 1
+        surface: home
+        widgets:
+          - id: disk
+            title: Disk
+            source: {kind: command, run: df, every: 60s}
+            view: {kind: text}
+            frame: {x: 24, y: 24, w: 320, h: 160}
+            size: medium
+            minimized: false
+            z: 1
+          - id: tail
+            title: Log
+            source: {kind: command, run: tail, args: [-f, /var/log/system.log], mode: stream}
+            view: {kind: text}
+            frame: {x: 24, y: 200, w: 320, h: 320}
+            size: large
+            minimized: true
+            z: 2
+          - id: clock
+            title: Clock
+            source: {kind: provider, name: app/clock, every: 60s}
+            view: {kind: app.clock}
+            frame: {x: 400, y: 24, w: 320, h: 160}
+            size: medium
+            minimized: false
+            z: 3
+        """
+
+    func testSourceEntriesFollowMinimizeAndLeaveProvidersToTheRuntime() throws {
+        let board = try BoardCodec.decode(sourceBoard)
+        let entries = HomeBoardController.sourceEntries(
+            board: board, resolve: { WidgetResolution.resolveInline($0) }, isOnScreen: { _ in true })
+        XCTAssertEqual(entries.map(\.id), ["disk", "tail"])
+        XCTAssertEqual(entries.map(\.isVisible), [true, false])
+        XCTAssertEqual(entries.first?.source.needsApproval, true)
+    }
+
+    func testNothingIsVisibleWhenHomeIsNotOnScreen() throws {
+        let board = try BoardCodec.decode(sourceBoard)
+        let entries = HomeBoardController.sourceEntries(
+            board: board, resolve: { WidgetResolution.resolveInline($0) }, isOnScreen: { _ in false })
+        XCTAssertTrue(entries.allSatisfy { !$0.isVisible })
+    }
+
+    func testSourceWidgetsAreNotRuntimeJobs() throws {
+        let controller = makeController()
+        try sourceBoard.write(to: boardFile, atomically: true, encoding: .utf8)
+        controller.reload()
+        XCTAssertEqual(controller.runtimeJobs().map(\.instanceID), ["clock"])
+        XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), ["disk", "tail"])
+    }
+
+    func testAnInjectedSourceControllerIsTheOneUsed() {
+        let sources = WidgetSourceController(
+            runners: WidgetSourceLive.runners(),
+            approvalsFile: WidgetApprovalsFile(fileURL: root.appendingPathComponent("approvals.json")),
+            historyStore: SparklineHistoryStore(directory: root.appendingPathComponent("history")), isDemo: false)
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
+            catalog: WidgetCatalogStore(read: { DemoData.widgetCatalog }), sources: sources)
+        XCTAssertTrue(controller.sources === sources)
+    }
+
     func testOpeningWritesTheDefaultBoard() throws {
         let controller = makeController()
         XCTAssertEqual(controller.store?.board?.widgets.map(\.id), ["clock", "summary", "machines", "claude-usage"])

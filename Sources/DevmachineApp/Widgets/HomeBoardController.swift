@@ -36,6 +36,7 @@ final class HomeBoardController: ObservableObject {
     private var started = false
     private var openingFromConfiguration = false
     private let configPath: @Sendable () async -> String?
+    private var injectedSources: WidgetSourceController?
     private static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
 
     init(
@@ -43,12 +44,23 @@ final class HomeBoardController: ObservableObject {
         catalog: WidgetCatalogStore = WidgetCatalogStore(),
         configPath: @escaping @Sendable () async -> String? = {
             await Task.detached { try? DevmachineCLI.resolve().configPath().path }.value
-        }
+        },
+        sources: WidgetSourceController? = nil
     ) {
         self.placementsFile = placementsFile
         self.placements = placementsFile.load()
         self.catalog = catalog
         self.configPath = configPath
+        self.injectedSources = sources
+    }
+
+    /// Created on first use, so tests that never touch source widgets never
+    /// read the real approvals file.
+    var sources: WidgetSourceController {
+        if let injectedSources { return injectedSources }
+        let created = WidgetSourceController(runners: WidgetSourceLive.runners())
+        injectedSources = created
+        return created
     }
 
     static func placementsURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
@@ -216,8 +228,22 @@ final class HomeBoardController: ObservableObject {
     func runtimeJobs(isOnScreen: (BoardWidget) -> Bool = { _ in true }) -> [WidgetJob] {
         guard let board = store?.board else { return [] }
         return board.widgets.compactMap { widget in
-            guard case let .ready(resolved)? = resolution(of: widget) else { return nil }
+            guard case let .ready(resolved)? = resolution(of: widget), resolved.source == nil else { return nil }
             return AppWidgetJobs.job(for: widget, resolved: resolved, isOnScreen: isOnScreen(widget))
+        }
+    }
+
+    func sourceEntries(isOnScreen: (BoardWidget) -> Bool) -> [SourceWidgetEntry] {
+        guard let board = store?.board else { return [] }
+        return Self.sourceEntries(board: board, resolve: resolution(of:), isOnScreen: isOnScreen)
+    }
+
+    static func sourceEntries(
+        board: Board, resolve: (BoardWidget) -> WidgetResolution?, isOnScreen: (BoardWidget) -> Bool
+    ) -> [SourceWidgetEntry] {
+        board.widgets.compactMap { widget in
+            guard case let .ready(resolved)? = resolve(widget), let source = resolved.source else { return nil }
+            return SourceWidgetEntry(id: widget.id, source: source, isVisible: isOnScreen(widget) && !widget.minimized)
         }
     }
 

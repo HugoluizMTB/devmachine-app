@@ -47,6 +47,8 @@ struct WidgetChromeView: View {
     let onRefresh: () -> Void
     let onRemove: () -> Void
     var onPillSize: (CGSize) -> Void = { _ in }
+    var sources: WidgetSourceController?
+    var onOpenSession: (WidgetTarget, String) -> Void = { _, _ in }
 
     @State private var hovering = false
     @State private var pillDragged = false
@@ -148,7 +150,12 @@ struct WidgetChromeView: View {
     private var content: some View {
         switch resolution {
         case let .ready(resolved)?:
-            AppWidgetView(resolved: resolved, size: size)
+            if let source = resolved.source, let sources {
+                SourceWidgetCard(
+                    id: widget.id, title: title, source: source, controller: sources, size: size, onOpenSession: onOpenSession)
+            } else {
+                AppWidgetView(resolved: resolved, size: size)
+            }
         case let .some(placeholder):
             WidgetPlaceholderView(
                 icon: "puzzlepiece.extension", title: WidgetResolutionCopy.title(placeholder),
