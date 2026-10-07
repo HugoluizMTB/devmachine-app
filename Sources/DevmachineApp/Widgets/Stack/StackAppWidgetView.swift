@@ -6,11 +6,18 @@ import DevmachineCore
 struct StackAppWidgetView: View {
     let kind: StackAppViewKind
     let isLead: Bool
+    @EnvironmentObject private var model: AppModel
 
     var body: some View {
         switch kind {
         case .workspaces:
             WorkspacesWidgetView()
+        case .shortcuts:
+            if let target = model.selectedSessionTarget { ShortcutsSection(target: target) }
+        case .publishPort:
+            PublishPortWidgetView()
+        case .monitors, .shells, .subAgents, .todo, .pullRequests, .links:
+            ContextSectionWidgetView(kind: kind, store: model.context, isLead: isLead)
         default:
             WidgetPlaceholderView(
                 icon: "puzzlepiece.extension", title: "Needs a newer app",

@@ -156,6 +156,14 @@ final class ContextStore: ObservableObject {
     }
 }
 
+/// Session context polls only while someone can see it: the Context tab
+/// open and an expanded widget on its board reading `app/session-context`.
+enum ContextPollRule {
+    static func shouldPoll(showsPanel: Bool, collapsed: Bool, tab: ContextTab, hasTarget: Bool, boardNeedsContext: Bool) -> Bool {
+        showsPanel && !collapsed && tab == .context && hasTarget && boardNeedsContext
+    }
+}
+
 /// The context engine is the `devmachine-app` package's `context` entrypoint,
 /// reached through the devmachine CLI (`DevmachineCLI.context`) rather than
 /// run directly by the app.

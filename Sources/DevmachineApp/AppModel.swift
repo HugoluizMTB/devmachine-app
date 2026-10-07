@@ -617,6 +617,9 @@ final class AppModel: ObservableObject {
             syncContext()
         }
     }
+    @Published var contextBoardNeedsSessionContext = true {
+        didSet { if oldValue != contextBoardNeedsSessionContext { syncContext() } }
+    }
     let context: ContextStore
     let cache: DataCache
 
@@ -2034,7 +2037,9 @@ final class AppModel: ObservableObject {
 
     /// Provider context polls only while its tab is actually on screen.
     func syncContext() {
-        guard showsContextPanel, !contextCollapsed, contextTab == .context,
+        guard ContextPollRule.shouldPoll(
+            showsPanel: showsContextPanel, collapsed: contextCollapsed, tab: contextTab,
+            hasTarget: selectedSessionTarget != nil, boardNeedsContext: contextBoardNeedsSessionContext),
               let target = selectedSessionTarget else {
             context.stop()
             updateSelectionPoll()

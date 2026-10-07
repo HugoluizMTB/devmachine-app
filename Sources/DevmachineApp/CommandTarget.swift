@@ -66,6 +66,20 @@ struct HostRunner: Sendable {
         }
     }
 
+    /// The same, but a local folder reaches the shell as an argument, never
+    /// spliced into the line. Over ssh the host's tmux names the folder.
+    func runCapturingWithFolderArgument(_ target: CommandTarget, _ command: String) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        switch target {
+        case .remote:
+            return try runCapturing(target, command)
+        case let .local(_, path):
+            return try local.runCapturing(
+                executable: "/bin/sh", args: ["-c", "cd \"$1\" && " + command, "sh", path],
+                environment: LocalContext.environment())
+        }
+    }
+
     /// Puts text where the session is waiting for input, without running it.
     /// One interface, two multiplexers: `tmux send-keys` over there, `zmx send`
     /// here.
