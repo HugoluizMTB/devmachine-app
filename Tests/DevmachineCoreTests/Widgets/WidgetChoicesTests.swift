@@ -77,7 +77,7 @@ final class WidgetChoicesTests: XCTestCase {
         let selection = ChoiceSelection(input: many, current: .list(["old", "main"]), options: options)
         XCTAssertEqual(selection.options.last, ChoiceOption(id: "old", label: "old (not found)", isMissing: true))
         XCTAssertTrue(selection.isChosen("old"))
-        XCTAssertEqual(selection.value, .list(["main", "old"]))
+        XCTAssertEqual(selection.value, .list(["old", "main"]))
     }
 
     func testOneValueIsAPick() {
@@ -94,5 +94,67 @@ final class WidgetChoicesTests: XCTestCase {
             name: "machines",
             input: CatalogInput(type: "choice", defaultValue: .list(["main"]), summary: "", from: "machines", many: true))!
         XCTAssertEqual(ChoiceSelection(input: input, current: nil, options: options).chosen, ["main"])
+    }
+
+    func testOneChoiceWithNoValueShowsTheFirstOptionAndWritesNothing() {
+        let selection = ChoiceSelection(input: one, current: nil, options: options)
+        XCTAssertEqual(selection.chosen, ["main"])
+        XCTAssertTrue(selection.isChosen("main"))
+        XCTAssertNil(selection.value)
+    }
+
+    func testASentenceWithADotInsideStaysWhole() {
+        let input = ChoiceInput(
+            name: "x", input: CatalogInput(type: "choice", defaultValue: nil, summary: "Pick v1.5 or e.g. this.", from: "machines"))!
+        XCTAssertEqual(input.menuTitle, "Choose pick v1.5 or e.g. this…")
+        let two = ChoiceInput(
+            name: "x", input: CatalogInput(type: "choice", defaultValue: nil, summary: "Which one. Shows more.", from: "machines"))!
+        XCTAssertEqual(two.menuTitle, "Choose which one…")
+    }
+
+    func testSavedOrderSurvivesAnUnchangedOpen() {
+        let selection = ChoiceSelection(input: many, current: .list(["build", "main"]), options: options)
+        XCTAssertEqual(selection.value, .list(["build", "main"]))
+    }
+
+    func testANewTickIsAppended() {
+        var selection = ChoiceSelection(input: many, current: .list(["build"]), options: options)
+        selection.toggle("main")
+        XCTAssertEqual(selection.value, .list(["build", "main"]))
+    }
+
+    func testAScalarDefaultOnManyMeansThatOneName() {
+        let input = ChoiceInput(
+            name: "machines",
+            input: CatalogInput(type: "choice", defaultValue: .string("here"), summary: "", from: "machines", many: true))!
+        XCTAssertEqual(ChoiceSelection(input: input, current: nil, options: options).chosen, ["here"])
+    }
+
+    func testAListDefaultOnOneMeansItsFirstItem() {
+        let input = ChoiceInput(
+            name: "harness",
+            input: CatalogInput(type: "choice", defaultValue: .list(["here", "build"]), summary: "", from: "machines"))!
+        XCTAssertEqual(ChoiceSelection(input: input, current: nil, options: options).chosen, ["here"])
+    }
+
+    func testDuplicateOptionIdsKeepTheFirst() {
+        let dup = options + [ChoiceOption(id: "main", label: "again")]
+        let selection = ChoiceSelection(input: many, current: nil, options: dup)
+        XCTAssertEqual(selection.options.map(\.id), ["main", "here", "build"])
+        XCTAssertEqual(selection.options.first?.label, "main")
+    }
+
+    func testAMissingNameOnAOneChoiceStaysVisible() {
+        let selection = ChoiceSelection(input: one, current: .string("old"), options: options)
+        XCTAssertEqual(selection.options.last, ChoiceOption(id: "old", label: "old (not found)", isMissing: true))
+        XCTAssertEqual(selection.chosen, ["old"])
+        XCTAssertEqual(selection.value, .string("old"))
+    }
+
+    func testTickingAllWhileAMissingNameIsChosenStaysAList() {
+        var selection = ChoiceSelection(input: many, current: .list(["old", "main", "here"]), options: options)
+        selection.toggle("build")
+        XCTAssertFalse(selection.isAll)
+        XCTAssertEqual(selection.value, .list(["old", "main", "here", "build"]))
     }
 }

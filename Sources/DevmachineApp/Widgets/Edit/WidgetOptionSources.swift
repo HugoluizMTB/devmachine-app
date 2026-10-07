@@ -4,14 +4,14 @@ import HarnessUsageKit
 
 /// The one place that knows where each `option_sources` key's options live.
 /// Every chooser reads it; tests hand it closures.
-@MainActor
-struct WidgetOptionSources {
-    var machines: () -> [ChoiceOption]
-    var workspaces: () -> [ChoiceOption]
-    var harnesses: () -> [ChoiceOption]
+struct WidgetOptionSources: Sendable {
+    var machines: @MainActor @Sendable () -> [ChoiceOption]
+    var workspaces: @MainActor @Sendable () -> [ChoiceOption]
+    var harnesses: @MainActor @Sendable () -> [ChoiceOption]
 
     static let none = WidgetOptionSources(machines: { [] }, workspaces: { [] }, harnesses: { [] })
 
+    @MainActor
     func options(_ source: WidgetOptionSource) -> [ChoiceOption] {
         switch source {
         case .machines: return machines()
@@ -24,6 +24,7 @@ struct WidgetOptionSources {
         states.map { ChoiceOption(id: $0.harnessID, label: title($0.harnessID) ?? $0.harnessID) }
     }
 
+    @MainActor
     static func live(
         stats: StatsStore, model: AppModel, usage: HarnessUsageStore, facade: HarnessSettingsFacade
     ) -> WidgetOptionSources {
@@ -37,7 +38,7 @@ struct WidgetOptionSources {
 }
 
 private struct WidgetOptionSourcesKey: EnvironmentKey {
-    static var defaultValue: WidgetOptionSources { MainActor.assumeIsolated { .none } }
+    static var defaultValue: WidgetOptionSources { .none }
 }
 
 extension EnvironmentValues {
