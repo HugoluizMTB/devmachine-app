@@ -825,6 +825,58 @@ Rules:
 - The CLI's config folder is watched (`ConfigDirectoryWatcher`), so a machine
   or workspace added in a terminal shows up without a restart.
 
+## Home widgets
+- **Home is `<config>/boards/home.yml`, nothing else.** `<config>` is the CLI's
+  config folder (`DEVMACHINE_CONFIG` moves it), never `AppSettings.opsRepoPath`.
+  The app, `devmachine widgets add/remove` and agents edit the same file.
+  `BoardStore` reloads it on every change. The app never creates the config
+  folder: with no folder, nothing is written.
+- **The CLI writes by rename, so `BoardFileWatcher` watches the `boards/`
+  folder.** A watch on the file alone goes blind after the first CLI write,
+  because the rename swaps the inode. The file is watched too, for editors that
+  write in place. Bursts settle for 150 ms, so one save is one reload.
+- **What is on disk wins.** A write waits 300 ms (`BoardStore.writeDelay`) and
+  is dropped when the file changed since the store last read it: the CLI's
+  edit replaces the app's pending one. An invalid file keeps the last good
+  layout on screen, the banner names the line, and nothing is written until it
+  is valid again: someone is fixing it by hand. Reset is the one write allowed
+  then, and it saves `home.yml.bak` first.
+- **Yams reads, our code writes.** Three writers produce the file (the app, the
+  CLI, a person or agent), so the reader must accept any YAML style. A
+  hand-made parser would call valid files invalid, and that blocks every write.
+  The writer (`BoardCodec.encode`) stays ours because the spec fixes the key
+  order and the flow-style `frame`. It quotes text with the rules in
+  `YAMLScalarStyle.swift`, kept compatible with the CLI's `yaml.v3`. Cross-writer
+  tests guard that: change the quoting and they fail.
+- **The golden fixture is the CLI's file.**
+  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.0.json` must stay
+  byte-identical to `internal/widgets/testdata/contract.json` in the CLI repo.
+  Change one, copy it to the other.
+- **Frames are points at 100% text size** (`CanvasLayout`). The canvas
+  multiplies by the text scale to draw and divides to store, so the file reads
+  the same at any setting. A window smaller than the layout moves widgets in on
+  screen only.
+- **A widget's meaning comes from the CLI catalog** (`widgets list --format
+  json`, `WidgetCatalogStore`). The app ships no `widget.yml`. An entry the
+  catalog cannot resolve keeps its place as a placeholder, so a missing
+  package never loses a layout. `DemoData.widgetCatalog` is for demo
+  screenshots only.
+- **`places` adds a widget once.** `widget-placements.json` in Application
+  Support (`WidgetPlacementsFile`) remembers it, so a removed widget does not
+  come back. A usage widget is placed only for a harness turned on in
+  Settings, as Home did before.
+- **Stats keep their own schedule.** A widget never starts its own `stats`
+  ssh; it reads `StatsStore`. Usage refreshes per harness on the widget's
+  interval. A minimized widget, or one scrolled out of sight, refreshes
+  nothing.
+- **Compatibility fails open.** `WidgetAppManifest.current` names the CLI and
+  packages release this build needs. The corner card shows only when one is
+  readable and older. A `dev` CLI is never "behind". Newer releases are the
+  update toasts' job, not this card's.
+- Test hooks: `DEVMACHINE_CLI=<binary>` runs another CLI,
+  `DEVMACHINE_WIDGET_PLACEMENTS=<file>` moves the placements file, and
+  `DEVMACHINE_DEMO_BOARDS=<folder>` keeps a demo board across restarts.
+
 ## Host keys
 - **ssh refusing a host key is its own problem** (`SSHFailure.hostKeyRejected`,
   from ssh's own words on exit 255). No login was tried, so it counts toward
