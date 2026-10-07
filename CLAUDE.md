@@ -862,9 +862,10 @@ Rules:
   `YAMLScalarStyle.swift`, kept compatible with the CLI's `yaml.v3`. Cross-writer
   tests guard that: change the quoting and they fail.
 - **The golden fixture is the CLI's file.**
-  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.1.json` must stay
+  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.2.json` must stay
   byte-identical to `internal/widgets/testdata/contract.json` in the CLI repo.
-  Change one, copy it to the other.
+  Change one, copy it to the other. `widgets schema --json` prints the same
+  document re-indented, so the live test compares it as sorted-key JSON.
 - **Frames are points at 100% text size** (`CanvasLayout`). The canvas
   multiplies by the text scale to draw and divides to store, so the file reads
   the same at any setting. A window smaller than the layout moves widgets in on
@@ -960,12 +961,98 @@ Rules:
   `DEVMACHINE_WIDGETS_E2E=<binary>` runs `WidgetSourceLiveTests` through that
   CLI against a temp config whose only machine is `here` (`self: true`, this
   Mac), with `DEVMACHINE_KEYCHAIN=off`. It never targets a remote machine.
-- **Sidebar stack controls stay out of the way.** A widget with its own
-  section header shows grip, chevron and ⋯ in that header on hover. The
-  workspace list and Publish a port have no header, and a pill there would
-  cover the first workspace's buttons, so their pill shows only while the
-  pointer is over them **and ⌥ is held**: hold ⌥ over the workspace list to
-  move or remove it. The rule is `StackRowModel.showsControls`.
+  The same variable runs `StackBoardLiveTests` (see Sidebar widget stacks).
+
+## Sidebar widget stacks
+- **The sidebar and the Context tab are boards.** `<config>/boards/sidebar.yml`
+  and `<config>/boards/context-sidebar.yml`, same envelope and store rules as
+  `home.yml` (`StackBoardStore` = `BoardFileStore<StackBoard>`: disk wins,
+  300 ms write, an invalid file is never written over, reset keeps `.bak`).
+  `surface:` must match the file. A stack entry has no `frame` and no `z`;
+  its place is its index. Optional `size` is a preset (its rows × `stack_row`
+  40 pt) or `auto` for a view that grows; with no `size` it draws `auto` when
+  the view grows, else the widget's `default_size`, its first size, or
+  `medium` (`StackLayout.effectiveSize`). `collapsed: true` draws the header
+  only and runs nothing. Key order on write: typed `id, type, with, size,
+  collapsed`; inline `id, title, source, view, sizes, fits, size, collapsed`;
+  `size` only when set, `collapsed` only when true. Inline `source` and
+  `view` are written back as they were read, byte for byte.
+- **The default boards are today's UI** (`DefaultStackBoard`): `[workspaces]`
+  and `[shortcuts, publish-port, monitors, shells, sub-agents, todo,
+  pull-requests, links]`, every entry `type: devmachine-app/<id>`,
+  `size: auto`. The CLI starts from the same boards when a file is missing.
+- **Wrap, never rewrite.** The nine app views (`WorkspacesWidgetView`,
+  `PublishPortWidgetView`, `ContextSectionWidgets`, `StackAppWidgetView`) hold the old SidebarView and ContextPanel code,
+  moved as it was. Change them as you would have changed the old code; never
+  "clean them up" into new layouts: selection, ⌘/⇧-click, `SidebarOrder`
+  drag, host-key and readiness cards, row menus and the add-machine button
+  live there. Shortcuts and Publish a port scroll with the rest; at offset 0
+  the panel looks as it did.
+- **The sidebar never empties.** The nine `devmachine-app/*` widgets resolve
+  built in (`AppStackWidgets`) when the catalog lacks them; a catalog entry of
+  the same name wins. With no config path the default board draws in memory,
+  read-only. An invalid file on first read draws the default read-only under
+  a `DMBanner` naming the file and line; nothing is written until it is valid.
+- **The chrome stays out of the way** (`StackRowModel.showsControls`). A
+  widget with its own section header (shortcuts, monitors, shells,
+  sub-agents, todo, pull-requests, links) shows grip, chevron and ⋯ in that
+  header's trailing slot (`StackHeaderControls()`) on hover. The workspace
+  list and Publish a port have no header, and a pill there would cover the
+  first workspace's buttons, so their pill shows only while the pointer is
+  over them **and ⌥ is held**. Any other widget gets a `StackTitleHeader` with
+  the controls always shown. The "Add widget" row is always in the layout, at
+  the end, drawn (and hit-testable) only while the pointer is over the panel.
+- **A header drag freezes the list.** While the grip's drag is held the rows
+  come from a snapshot (`StackBoardView`'s `StackDrag`), the dragged row
+  lifted by `.zIndex` and offset; it lands by the neighbour it crossed
+  (`StackDragMath`, `StackDropTarget`) and the order is written once, on
+  release. Never reorder or remove the view holding a live drag.
+- **Context keys, every one set, empty when unknown.** Sidebar: `selected`
+  (the selected workspace, `SidebarContext`). Context sidebar: `machine,
+  session, workspace, path, repo, branch, harness` (`SessionContextFacts`,
+  built by `ContextBridge` from the selection, `ContextState`, readiness and
+  the self machine). `session` is the tmux session or the local session's
+  name; `machine` is the workspace's machine, or the self machine for a local
+  session; `path` is `ContextState.cwd`, else the local session's folder.
+- **`repo` and `branch` cost a probe, so they run only when read.**
+  `ContextGitProbe` (`git rev-parse --abbrev-ref HEAD` and
+  `remote.origin.url`) runs through `HostRunner.runCapturingWithFolderArgument`
+  (the folder is `$1` after `cd --`, never spliced into the line), once per
+  session and folder, only while an expanded widget reads `repo` or `branch`
+  (`StackBoardController.needsGitContext`). No timer.
+- **A context change stops what it touches.** A widget whose read values
+  change is stopped, what it showed is cleared (it belonged to the other
+  session; sparkline history stays) and its approval hash is taken again: an
+  inline widget asks again for each new set of resolved values, by design. A
+  widget reads only the keys its templates or `$DM_CONTEXT_<KEY>` variables
+  name (`ResolvedSource.reads(contextKey:)`); an inline `shell: true` line
+  gets and hashes only the `DM_CONTEXT_` values it names; an inline `script`,
+  whose text the app never sees, reads them all. A package widget reads the
+  keys it declares.
+- **Allow and Deny count only for the hash the card showed**
+  (`WidgetSourceController.approve(_:hash:)`): if the context moved on, the
+  card redraws with the new values and asks again. A source widget waiting
+  for approval or denied takes at least `StackLayout.approvalRows` (5) rows so
+  the card's buttons fit.
+- **Who runs when.** Sidebar widgets run while the sidebar is open
+  (`isVisible: !sidebarCollapsed`; SidebarView stays mounted at width 0);
+  the context board's while the Context tab is on screen. A collapsed widget
+  runs nothing. `ContextStore` keeps its 5 s poll only under
+  `ContextPollRule` (panel shown, not collapsed, Context tab, a target, and
+  an expanded widget reading `app/session-context`).
+- **Placements are saved per surface** (`WidgetPlacementsFile.save(_:surface:)`):
+  Home and each sidebar rewrite only their own set. A placements file that
+  does not decode moves to `widget-placements.json.broken`, the move is
+  logged, and the save goes on with a fresh file.
+- **Controllers start from `ContentView.onAppear`**
+  (`StackBoardController.startAll()`), never from a view a test can render,
+  so rendering `ContextPanel` in a test never asks the CLI anything. No test
+  reads `StackBoardController.sidebar` or `.contextSidebar`.
+- Test hook: `DEVMACHINE_WIDGETS_E2E=<binary>` runs `StackBoardLiveTests`
+  against a temp config the test makes itself: the schema equals the
+  fixture, and the CLI's `validate`, `move` and `remove` on an app-written
+  `context-sidebar.yml` keep an inline entry byte for byte and refuse a
+  `frame`.
 
 ## Host keys
 - **ssh refusing a host key is its own problem** (`SSHFailure.hostKeyRejected`,
