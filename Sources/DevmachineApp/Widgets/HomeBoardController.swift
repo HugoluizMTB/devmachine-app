@@ -151,9 +151,11 @@ final class HomeBoardController: ObservableObject {
     func applyPlaces(canvasWidth: Int, enabledHarnesses: Set<String>) {
         self.canvasWidth = canvasWidth
         guard let store, store.canEdit, let board = store.board, let catalog = catalog.catalog else { return }
-        let shown = Set(board.widgets.compactMap { widget -> String? in
+        let firstHarness = enabledHarnesses.sorted().first
+        let shown: Set<String> = Set(board.widgets.compactMap { (widget: BoardWidget) -> String? in
             guard case let .ready(resolved)? = resolution(of: widget), resolved.provider == "app/harness-usage" else { return nil }
-            return resolved.arguments["harness"]
+            let harness = resolved.arguments["harness"] ?? ""
+            return harness.isEmpty ? firstHarness : harness
         })
         let result = WidgetPlacer.place(
             on: board, catalog: catalog, placements: placements, canvasWidth: canvasWidth,

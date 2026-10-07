@@ -214,10 +214,12 @@ public enum WidgetPlacer {
         let surface = board.surface
         for widget in catalog.widgets where widget.placesItself(on: surface) {
             if let choice = oneChoice(of: widget) {
-                for option in options[choice.source] ?? [] {
+                let values = options[choice.source] ?? []
+                for option in values {
                     let key = "\(widget.name)#\(option)"
                     guard !placements.contains(key, on: surface) else { continue }
-                    if !showsOption(board, widget: widget, input: choice.input, option: option, key: key) {
+                    let isFirst = option == values.first
+                    if !showsOption(board, widget: widget, input: choice.input, option: option, key: key, isFirst: isFirst) {
                         var copy = newInstance(
                             of: widget, on: board, canvasWidth: canvasWidth, contract: contract, idBase: "\(option)-usage")
                         copy.with = [choice.input: .string(option)]
@@ -248,9 +250,13 @@ public enum WidgetPlacer {
         return (entry.key, source)
     }
 
-    private static func showsOption(_ board: Board, widget: CatalogWidget, input: String, option: String, key: String) -> Bool {
+    /// An entry with no value for a one-choice input shows its first option.
+    private static func showsOption(
+        _ board: Board, widget: CatalogWidget, input: String, option: String, key: String, isFirst: Bool
+    ) -> Bool {
         board.widgets.contains { entry in
-            (entry.type == widget.name && entry.with[input] == .string(option)) || entry.type == legacyTypes[key]
+            guard entry.type == widget.name else { return entry.type == legacyTypes[key] }
+            return entry.with[input] == .string(option) || (isFirst && entry.with[input] == nil)
         }
     }
 
