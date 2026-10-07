@@ -64,11 +64,58 @@ When the owner asks for a feature or "a page", he wants something that loads
   persisted by `PaletteRecentsStore`.
 
 ## Menubar
-`MenuBarExtra` uses `.menuBarExtraStyle(.window)` — an interactive popover with a
-tab bar (`MenuBarTab`), mouse-navigable like pr-menubar. Tabs render inline
-(Pull Requests, Usage, …); no separate PR window. The popover should size itself
-to the active tab. Tab styling should be elegant/custom, not the raw native
-segmented control.
+`MenuBarExtra` uses `.menuBarExtraStyle(.window)`: an interactive popover. The
+title and the popover are widget boards (engine 1.4), owned by one
+app-scoped `MenubarController.shared`:
+
+- **Two files.** `<config>/boards/menubar.yml` (surface `menubar`, layout
+  `slot`) and `<config>/boards/menubar-panel.yml` (surface `menubar-panel`,
+  layout `tabs`). Same envelope and store rules as the sidebars
+  (`StackBoardStore`, `StackBoardController`): disk wins, 300 ms write, an
+  invalid file is never written over (the popover shows the banner), reset
+  keeps `.bak`. A slot entry has no `frame`, `size`, `collapsed`, `z` or
+  `minimized`; at most 3, left to right. A tab has no `frame`, `z`,
+  `minimized` or `collapsed`; its `size` is kept on write and ignored.
+- **Defaults are today** (`DefaultStackBoard`): `[brand, open-pull-requests]`
+  and `[pull-requests-panel, usage-panel]`, no `size`. They resolve built in
+  (`AppMenubarWidgets`), so a missing CLI or packages release never changes
+  the title or the tabs. `MenuBarLabelTests` pins today's label pixels; keep
+  it green.
+- **The title is text plus one SF Symbol per slot** (`MenubarLabelModel`),
+  so macOS can template it. A slot draws `text` (first non-empty line, cut
+  at 24 characters counting the "…"), `number`, `status` (a symbol per
+  level: colour is lost in the menu bar) or `app.brand` ("❯_"). Any other
+  view is refused. A `number` view with `hide_zero: true` draws nothing at 0
+  (the built-in open pull request count sets it); without it, 0 shows. With
+  nothing to draw, the title shows "❯_", so the item never vanishes.
+- **Who runs when.** The title's widgets run from launch, window or not
+  (`DevmachineApp.init` starts the controller; never a view, never a test).
+  A slot source's `every` is raised to 30 s, and a stream is refused. The
+  popover's widgets run only between its `onAppear` and `onDisappear`, and
+  only the selected tab (`StackBoardController.setVisibleEntries`).
+  `PRStore` and `HarnessUsageStore` keep their own schedules; the providers
+  `app/open-pull-requests`, `app/pull-requests-panel` and `app/usage-panel`
+  only read them. The 30 s floor and the 24-character cut are the app's;
+  the CLI only carries the numbers in the contract.
+- **Wrap, never rewrite.** The Pull Requests tab is `PRsView` as it is; the
+  Usage tab is `MenuBarUsageColumns`, the old block moved as it was. Width
+  776 and height 640 for every tab (`MenuBarSizing`, `UsageLayoutTests`).
+- **Approval.** A title widget waiting for approval draws "!" in its slot;
+  a denied one draws nothing. Both are listed, as their `SourceWidgetCard`,
+  in an "Approvals" tab that comes first and is selected when the popover
+  opens. The title re-reads approvals when the popover opens and when the
+  config folder changes, so an answer given in the CLI or on another
+  surface reaches the title without a relaunch.
+- **Edit mode** (pencil in the footer) lists both boards with up, down and
+  remove, and "Add widget" opens `WidgetGalleryView` in place, filtered to
+  that surface. A full menu bar refuses an add ("The menu bar holds 3
+  widgets"), and a placed widget never makes a fourth slot.
+- **Settings → Appearance** resets "menubar" and "menubar panel" next to
+  the sidebars (`StackBoardController.reset()`, `.bak` kept).
+- Test hook: `DEVMACHINE_WIDGETS_E2E=<binary>` runs `MenubarBoardLiveTests`
+  against a temp config: the CLI validates the app's default boards,
+  refuses a fourth slot and a slot `size`, and moves a tab keeping an
+  inline entry byte for byte. No test reads `MenubarController.shared`.
 
 The footer's eyedropper and ⌘K's "Pick a color from the screen" share
 `ScreenColorPicker` (the system `NSColorSampler`); the clipboard text is
@@ -862,7 +909,7 @@ Rules:
   `YAMLScalarStyle.swift`, kept compatible with the CLI's `yaml.v3`. Cross-writer
   tests guard that: change the quoting and they fail.
 - **The golden fixture is the CLI's file.**
-  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.3.json` must stay
+  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.4.json` must stay
   byte-identical to `internal/widgets/testdata/contract.json` in the CLI repo.
   Change one, copy it to the other. `widgets schema --json` prints the same
   document re-indented, so the live test compares it as sorted-key JSON.
@@ -963,7 +1010,8 @@ Rules:
   `DEVMACHINE_WIDGETS_E2E=<binary>` runs `WidgetSourceLiveTests` through that
   CLI against a temp config whose only machine is `here` (`self: true`, this
   Mac), with `DEVMACHINE_KEYCHAIN=off`. It never targets a remote machine.
-  The same variable runs `StackBoardLiveTests` (see Sidebar widget stacks).
+  The same variable runs `StackBoardLiveTests` and `MenubarBoardLiveTests`
+  (see Sidebar widget stacks and Menubar).
 
 ## Sidebar widget stacks
 - **The sidebar and the Context tab are boards.** `<config>/boards/sidebar.yml`
