@@ -7,12 +7,12 @@ import HarnessUsageKit
 struct DevmachineApp: App {
     private let harnessSettingsFacade: HarnessSettingsFacade
     @StateObject private var model = AppModel(cache: .shared)
-    @StateObject private var prStore = PRStore()
+    @StateObject private var prStore: PRStore
     @StateObject private var filesStore = FilesStore()
     @StateObject private var caddyStore = CaddyStore(cache: .shared)
     @StateObject private var skillsStore = SkillsStore()
     @StateObject private var recentCommandStore = RecentCommandStore()
-    @StateObject private var statsStore = StatsStore()
+    @StateObject private var statsStore: StatsStore
     @StateObject private var healthCheckStore = HealthCheckStore()
     @StateObject private var usageStore: HarnessUsageStore
     @StateObject private var settingsStore = SettingsStore.shared
@@ -26,6 +26,10 @@ struct DevmachineApp: App {
     init() {
         DemoSnapshots.applyScrollBarDefaultsIfNeeded()
         MainWindowSizer.readSavedFrame()
+        let prs = PRStore()
+        let stats = StatsStore()
+        _prStore = StateObject(wrappedValue: prs)
+        _statsStore = StateObject(wrappedValue: stats)
         let facade = HarnessSettingsFacade()
         harnessSettingsFacade = facade
         HomeBoardController.shared.defaultBoard = {
@@ -41,6 +45,7 @@ struct DevmachineApp: App {
         WidgetCompatibilityStore.shared.onUpdated = {
             HomeBoardController.shared.reload()
             StackBoardController.reloadAll()
+            MenubarController.shared.reload()
         }
         Task.detached(priority: .utility) { facade.refreshAvailability() }
         // `DEVMACHINE_DEMO=1`: every store seeds itself from `DemoData` (see
@@ -54,7 +59,9 @@ struct DevmachineApp: App {
             let settings = SettingsStore.shared.settings ?? .empty
             providers = facade.usageRegistrations(for: settings).map(\.provider)
         }
-        _usageStore = StateObject(wrappedValue: HarnessUsageStore(providers: providers))
+        let usage = HarnessUsageStore(providers: providers)
+        _usageStore = StateObject(wrappedValue: usage)
+        MenubarController.shared.start(prs: prs, providers: AppWidgetProviders(usage: usage, stats: stats, prs: prs))
     }
 
     private var metrics: DMMetrics {
@@ -219,30 +226,14 @@ struct DevmachineApp: App {
             MenuBarPanel()
                 .environmentObject(prStore)
                 .environmentObject(usageStore)
+                .environmentObject(statsStore)
                 .environmentObject(model)
+                .environmentObject(MenubarController.shared)
                 .environment(\.harnessSettingsFacade, harnessSettingsFacade)
                 .environment(\.dmMetrics, metrics)
         } label: {
-            MenuBarLabel(prStore: prStore)
+            MenuBarLabelHost(label: MenubarController.shared.label)
         }
         .menuBarExtraStyle(.window)
-    }
-}
-
-// Its own view so that a PRStore publish re-renders the label alone, instead of
-// every Scene through the App's body.
-struct MenuBarLabel: View {
-    @ObservedObject var prStore: PRStore
-
-    var body: some View {
-        let mark = Text(verbatim: "❯_").font(.dm(13, weight: .bold, design: .monospaced))
-        if prStore.openCount > 0 {
-            HStack(spacing: 3) {
-                mark
-                Text(verbatim: "\(prStore.openCount)")
-            }
-        } else {
-            mark
-        }
     }
 }
