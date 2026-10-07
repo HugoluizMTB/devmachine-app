@@ -785,6 +785,24 @@ final class AppModel: ObservableObject {
     /// forget the place the rename just moved over.
     private var renamesInFlight: [SessionRef: Date] = [:]
     private static let renameGrace: TimeInterval = 30
+    /// Sessions this app killed or renamed away, and when. A list that left
+    /// before tmux answered still holds the name; showing it again would let a
+    /// click attach with `new-session -A` and start the session over.
+    private var justDeleted: [SessionRef: Date] = [:]
+    private static let deleteGrace: TimeInterval = 30
+    /// Workspaces asked to refresh while a read of them was running.
+    private var refreshAgainAliases: Set<String> = []
+
+    private func withoutJustDeleted(_ listed: [TmuxSession], alias: String) -> [TmuxSession] {
+        let names = Set(listed.map(\.name))
+        let now = Date()
+        justDeleted = justDeleted.filter { ref, deleted in
+            !(ref.alias == alias && !names.contains(ref.name))
+                && now.timeIntervalSince(deleted) < Self.deleteGrace
+        }
+        let hidden = Set(justDeleted.keys.filter { $0.alias == alias }.map(\.name))
+        return hidden.isEmpty ? listed : listed.filter { !hidden.contains($0.name) }
+    }
 
     private func dropMissingSessions(alias: String, present: [TmuxSession]) {
         let names = Set(present.map(\.name))
@@ -1445,29 +1463,58 @@ final class AppModel: ObservableObject {
     func deleteSessions(_ refs: [SessionRef]) {
         pendingBulkDelete = nil
         guard !refs.isEmpty else { return }
-        updateSidebarOrder { order in
-            for ref in refs { order.removeSession(ref.name, in: ref.alias) }
-        }
         let taskId = beginTask(label: "Deleting sessions", total: refs.count)
         Task.detached { [store] in
+            var failed: [(ref: SessionRef, reason: String)] = []
             for ref in refs {
-                _ = try? store.run(alias: ref.alias, command: RemoteCommands.killSession(name: ref.name))
+                if let reason = AppModel.remoteFailure({
+                    try store.runCapturing(alias: ref.alias, command: RemoteCommands.killSession(name: ref.name))
+                }) {
+                    failed.append((ref, reason))
+                }
                 await MainActor.run { self.bumpTask(taskId) }
             }
-            let affectedAliases = Set(refs.map(\.alias))
+            let failures = failed
             await MainActor.run {
-                for alias in affectedAliases { self.refresh(alias: alias) }
-                for ref in refs {
-                    self.selectedSessions.remove(ref)
-                    TerminalRegistry.shared.close(alias: ref.alias, session: ref.name)
-                    PreviewStore.shared.closeSession(ref)
-                    let item = SidebarItem.session(alias: ref.alias, name: ref.name)
-                    if self.selection == item {
-                        self.selection = nil
-                    }
-                }
-                self.finishTask(taskId)
+                let gone = refs.filter { ref in !failures.contains { $0.ref == ref } }
+                for ref in gone { self.forgetDeletedSession(ref) }
+                for alias in Set(gone.map(\.alias)) { self.refresh(alias: alias) }
+                guard let first = failures.first else { return self.finishTask(taskId) }
+                self.dropTask(taskId)
+                self.flashToast(failures.count == 1
+                    ? "Couldn't delete \(first.ref.name): \(first.reason)"
+                    : "Couldn't delete \(failures.count) sessions: \(first.reason)")
             }
+        }
+    }
+
+    /// The kill's own answer, not a later list, says the session is gone.
+    private func forgetDeletedSession(_ ref: SessionRef) {
+        justDeleted[ref] = Date()
+        updateSidebarOrder { $0.removeSession(ref.name, in: ref.alias) }
+        if sessionsByAlias[ref.alias]?.contains(where: { $0.name == ref.name }) == true {
+            sessionsByAlias[ref.alias]?.removeAll { $0.name == ref.name }
+            dropMissingSessions(alias: ref.alias, present: sessionsByAlias[ref.alias] ?? [])
+        }
+        selectedSessions.remove(ref)
+        TerminalRegistry.shared.close(alias: ref.alias, session: ref.name)
+        PreviewStore.shared.closeSession(ref)
+        if selection == .session(alias: ref.alias, name: ref.name) {
+            selection = nil
+        }
+    }
+
+    /// Why a remote command failed, or nil when it exited 0.
+    nonisolated private static func remoteFailure(
+        _ run: () throws -> (stdout: String, stderr: String, exitCode: Int32)
+    ) -> String? {
+        do {
+            let result = try run()
+            guard result.exitCode != 0 else { return nil }
+            let reason = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            return reason.isEmpty ? "exit \(result.exitCode)" : reason
+        } catch {
+            return error.localizedDescription
         }
     }
 
@@ -1480,13 +1527,30 @@ final class AppModel: ObservableObject {
             return
         }
         pendingRename = nil
+        let renamed = SessionRef(alias: alias, name: clean)
+        justDeleted[renamed] = nil
         updateSidebarOrder { $0.renameSession(old, to: clean, in: alias) }
-        renamesInFlight[SessionRef(alias: alias, name: clean)] = Date()
+        renamesInFlight[renamed] = Date()
         let taskId = beginTask(label: "Renaming \(old)", total: 1)
         Task.detached { [store] in
-            _ = try? store.run(alias: alias, command: RemoteCommands.rename(session: old, to: clean))
+            let failure = AppModel.remoteFailure {
+                try store.runCapturing(alias: alias, command: RemoteCommands.rename(session: old, to: clean))
+            }
             await MainActor.run {
+                if let failure {
+                    self.renamesInFlight[renamed] = nil
+                    self.updateSidebarOrder { $0.renameSession(clean, to: old, in: alias) }
+                    self.dropTask(taskId)
+                    self.flashToast("Couldn't rename \(old): \(failure)")
+                    return
+                }
                 self.bumpTask(taskId)
+                self.justDeleted[SessionRef(alias: alias, name: old)] = Date()
+                if let i = self.sessionsByAlias[alias]?.firstIndex(where: { $0.name == old }),
+                   let session = self.sessionsByAlias[alias]?[i] {
+                    self.sessionsByAlias[alias]?[i] = TmuxSession(
+                        name: clean, windows: session.windows, harnesses: session.harnesses)
+                }
                 self.refresh(alias: alias)
                 // The old client is still attached to the renamed tmux session;
                 // drop it so the new name mounts as the only client.
@@ -1497,6 +1561,7 @@ final class AppModel: ObservableObject {
                 if self.selection == oldItem {
                     self.selection = .session(alias: alias, name: clean)
                 }
+                self.dropMissingSessions(alias: alias, present: self.sessionsByAlias[alias] ?? [])
                 self.finishTask(taskId)
             }
         }
@@ -1504,19 +1569,20 @@ final class AppModel: ObservableObject {
 
     func deleteSession(alias: String, name: String) {
         pendingDelete = nil
-        updateSidebarOrder { $0.removeSession(name, in: alias) }
         let taskId = beginTask(label: "Deleting \(name)", total: 1)
         Task.detached { [store] in
-            _ = try? store.run(alias: alias, command: RemoteCommands.killSession(name: name))
+            let failure = AppModel.remoteFailure {
+                try store.runCapturing(alias: alias, command: RemoteCommands.killSession(name: name))
+            }
             await MainActor.run {
-                self.bumpTask(taskId)
-                self.refresh(alias: alias)
-                TerminalRegistry.shared.close(alias: alias, session: name)
-                PreviewStore.shared.closeSession(SessionRef(alias: alias, name: name))
-                let item = SidebarItem.session(alias: alias, name: name)
-                if self.selection == item {
-                    self.selection = nil
+                if let failure {
+                    self.dropTask(taskId)
+                    self.flashToast("Couldn't delete \(name): \(failure)")
+                    return
                 }
+                self.bumpTask(taskId)
+                self.forgetDeletedSession(SessionRef(alias: alias, name: name))
+                self.refresh(alias: alias)
                 self.finishTask(taskId)
             }
         }
@@ -1549,6 +1615,7 @@ final class AppModel: ObservableObject {
         // Created here rather than left to the terminal's own `new-session -A`,
         // because only a session created up front can be told which directory to
         // start in, and harnesses resolve project files from that location.
+        justDeleted[SessionRef(alias: alias, name: name)] = nil
         let store = self.store
         let startup = startupLine(startup, for: .remote(alias: alias, session: name))
         let sender = sessionCommandSender
@@ -1883,6 +1950,7 @@ final class AppModel: ObservableObject {
                 self.sweepInFlight = false
                 self.sweepTaskID = nil
                 self.dropTask(sweepTask)
+                for ws in targets { self.refreshAgainIfAsked(ws.alias) }
             }
         }
     }
@@ -1898,9 +1966,13 @@ final class AppModel: ObservableObject {
         // only a configuration change or Try again asks again.
         guard sessionProblems[alias]?.isAwaitingSync != true else { return }
         // A tick that arrives while the previous ssh for this alias is still
-        // running is dropped: a slow host would otherwise stack one blocked
-        // process per 5s tick.
-        guard !refreshingAliases.contains(alias) else { return }
+        // running waits for it and runs once after: a slow host would
+        // otherwise stack one blocked process per 5s tick, and dropping it
+        // would lose the read a delete or rename asked for.
+        guard !refreshingAliases.contains(alias) else {
+            refreshAgainAliases.insert(alias)
+            return
+        }
         refreshingAliases.insert(alias)
         let source = services.sessionSource
         let settings = settings ?? .empty
@@ -1911,8 +1983,14 @@ final class AppModel: ObservableObject {
             await MainActor.run {
                 self.refreshingAliases.remove(alias)
                 _ = self.apply(outcome, alias: alias)
+                self.refreshAgainIfAsked(alias)
             }
         }
+    }
+
+    private func refreshAgainIfAsked(_ alias: String) {
+        guard refreshAgainAliases.remove(alias) != nil else { return }
+        refresh(alias: alias)
     }
 
     // Returns the failure that must pause polling: the host or the ssh agent is
@@ -1920,7 +1998,8 @@ final class AppModel: ObservableObject {
     private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) -> SSHFailure? {
         markAnswered(alias)
         switch outcome {
-        case .success(let result):
+        case .success(let listed):
+            let result = withoutJustDeleted(listed, alias: alias)
             // Assign only on a real change: every write to a @Published
             // re-renders the whole tree, and the 5s poll usually returns
             // exactly what is already on screen.
