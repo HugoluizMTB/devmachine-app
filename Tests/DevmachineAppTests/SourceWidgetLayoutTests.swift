@@ -137,6 +137,23 @@ final class SourceWidgetLayoutTests: XCTestCase {
     }
 
     @MainActor
+    func testAWebWidgetWhoseAddressIsNotAWebPageShowsTheErrorAndFits() {
+        let source = ResolvedSource(
+            source: .url(URLSource(url: "{{inputs.host}}", every: .interval(60), timeout: 30, parse: .status)),
+            view: WidgetView(kind: "web"), every: .interval(60), needsApproval: false, package: "mine", packagePath: nil)
+        for preset in WidgetContract.presetOrder {
+            let size = CanvasLayout.presetSize(preset)!
+            let result = DMFitCheck.render(width: CGFloat(size.w), scale: 1) {
+                SourceWidgetContent(
+                    title: "Status page", source: source, state: SourceWidgetState(), history: [],
+                    size: CGSize(width: size.w, height: size.h), onRun: {},
+                    webAddress: .failure(.unreadable("file:///etc/hosts is not a web address")))
+            }
+            XCTAssertEqual(result.spilledPixels, 0, "web error spills out of \(preset)")
+        }
+    }
+
+    @MainActor
     func testEveryEmptyAndErrorStateFitsEveryPreset() {
         var failed = SourceWidgetState()
         failed.error = .exited(status: 2, stderr: "error: alice has no such file\nsecond line of stderr")
@@ -236,7 +253,7 @@ final class SourceWidgetLayoutTests: XCTestCase {
             view: WidgetView(kind: "terminal"), every: .interval(10), needsApproval: true, package: nil, packagePath: nil)
         XCTAssertEqual(WidgetApprovalText.headline(kind: "session", denied: false), "Allow this session widget to run?")
         XCTAssertEqual(WidgetApprovalText.headline(kind: "command", denied: true), "Paused: you denied this command widget")
-        XCTAssertEqual(WidgetApprovalText.whereAndWhen(source), "Runs in workspace alice, every 10s.")
+        XCTAssertEqual(WidgetApprovalText.whereAndWhen(ApprovalPrompt(source, context: [:])), "Runs in workspace alice, every 10s.")
         let command = WidgetSource.command(CommandSource(
             run: "tail", script: nil, args: ["-n", "50", "/var/log/system log"], shell: false, target: .local,
             every: .interval(60), timeout: 30, mode: .poll, keep: 200, parse: .text))

@@ -7,9 +7,18 @@ public enum ApprovalSubject {
     /// A shell line reads its values from the environment, so those values
     /// are part of what runs and a changed one asks again.
     public static func hash(_ source: WidgetSource, values: TemplateValues) throws -> String? {
+        let filled = try subject(source, values: values)
+        return hash(filled.source, environment: filled.environment)
+    }
+
+    /// The source with its templates filled and, for a shell line, the
+    /// values it reads: what the hash covers and the card shows.
+    static func subject(
+        _ source: WidgetSource, values: TemplateValues
+    ) throws -> (source: WidgetSource, environment: [String: String]) {
         let resolved = try source.resolved(with: values)
-        guard case let .command(command) = source, command.shell else { return hash(resolved) }
-        return hash(resolved, environment: values.environment)
+        guard case let .command(command) = source, command.shell else { return (resolved, [:]) }
+        return (resolved, values.environment)
     }
 
     /// What the runner checks right before a run and what the card records a
@@ -156,12 +165,13 @@ public struct WidgetApprovalsFile: Sendable {
 
 /// The words a person reads before allowing a widget: what runs, where and how often.
 public enum ApprovalCopy {
-    public static func what(_ source: WidgetSource) -> String {
+    public static func what(_ source: WidgetSource, environment: [String: String] = [:]) -> String {
         switch source {
         case let .command(command):
             let program = command.run ?? command.script ?? ""
             guard !command.shell else {
-                return ([program] + command.args.map(RemoteCommands.shellSingleQuoted)).joined(separator: " ")
+                let variables = environment.keys.sorted().map { "\($0)=\(word(environment[$0] ?? ""))" }
+                return (variables + [program] + command.args.map(RemoteCommands.shellSingleQuoted)).joined(separator: " ")
             }
             return ([program] + command.args.map(word)).joined(separator: " ")
         case let .prompt(prompt):
@@ -191,13 +201,27 @@ public enum ApprovalCopy {
         }
     }
 
-    public static func summary(_ source: WidgetSource) -> String {
-        "\(what(source)) \(place(source.target)), \(howOften(source.every))"
-    }
-
     private static func word(_ text: String) -> String {
         text.isEmpty || text.contains(where: { $0.isWhitespace || "'\"$`\\;|&<>(){}*?!#~".contains($0) })
             ? RemoteCommands.shellSingleQuoted(text) : text
+    }
+}
+
+/// The card and the stored summary read the source filled the same way the
+/// run fills it, so the owner approves exactly what the hash covers.
+public struct ApprovalPrompt: Equatable, Sendable {
+    public let what: String
+    public let place: String
+    public let howOften: String
+
+    public var summary: String { "\(what) \(place), \(howOften)" }
+
+    public init(_ resolved: ResolvedSource, context: [String: String]) {
+        let shown = (try? ApprovalSubject.subject(resolved.source, values: resolved.values(context: context)))
+            ?? (source: resolved.source, environment: [:])
+        what = ApprovalCopy.what(shown.source, environment: shown.environment)
+        place = ApprovalCopy.place(shown.source.target)
+        howOften = ApprovalCopy.howOften(resolved.every)
     }
 }
 

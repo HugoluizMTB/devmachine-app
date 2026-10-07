@@ -340,6 +340,19 @@ final class SourceRunnerTests: XCTestCase {
         XCTAssertEqual(timedOut, .timedOut(30))
     }
 
+    func testAWebAddressIsFilledLikeTheRunFillsIt() throws {
+        func web(_ address: String, inputs: [String: String] = [:]) -> ResolvedSource {
+            ResolvedSource(source: .url(URLSource(url: address, every: .interval(30), timeout: 30, parse: .status)),
+                           view: WidgetView(kind: "web"), every: .interval(30), needsApproval: false, package: "mine",
+                           packagePath: nil, inputs: inputs, contextKeys: [])
+        }
+        XCTAssertEqual(try URLSourceRunner.address(of: web("https://{{inputs.host}}/", inputs: ["host": "example.com"]), context: [:]),
+                       URL(string: "https://example.com/"))
+        XCTAssertThrowsError(try URLSourceRunner.address(of: web("{{inputs.host}}", inputs: ["host": "file:///etc/hosts"]), context: [:])) {
+            XCTAssertEqual($0 as? SourceError, .unreadable("file:///etc/hosts is not a web address"))
+        }
+    }
+
     private func prompt(_ harness: PromptHarness, _ text: String, _ target: WidgetTarget, needsApproval: Bool = false,
                         approvals: WidgetApprovals = WidgetApprovals()) -> SourceRunRequest {
         request(.prompt(PromptSource(harness: harness, prompt: text, target: target, every: .manual, timeout: 300)),

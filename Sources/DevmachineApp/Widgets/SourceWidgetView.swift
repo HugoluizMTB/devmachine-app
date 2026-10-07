@@ -69,6 +69,7 @@ struct SourceWidgetContent: View {
     let size: CGSize
     let onRun: () -> Void
     var onOpenSession: (() -> Void)?
+    var webAddress: Result<URL, SourceError>?
     @Environment(\.dmMetrics) private var m
 
     private var density: WidgetDensity {
@@ -114,7 +115,12 @@ struct SourceWidgetContent: View {
     @ViewBuilder
     private var bodyView: some View {
         if source.view.kind == "web", case let .url(url) = source.source {
-            WebWidgetView(address: url.url, zoom: source.view.zoom, every: url.every.seconds)
+            switch webAddress ?? .failure(.unreadable("\(url.url) is not a web address")) {
+            case let .success(address):
+                WebWidgetView(address: address.absoluteString, zoom: source.view.zoom, every: url.every.seconds)
+            case let .failure(error):
+                SourceErrorView(state: SourceErrorPresentation.state(error), density: density)
+            }
         } else if source.every == .continuous {
             if state.lines.isEmpty, let error = state.error {
                 SourceErrorView(

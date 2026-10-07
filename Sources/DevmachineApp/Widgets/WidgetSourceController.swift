@@ -55,6 +55,7 @@ final class WidgetSourceController: ObservableObject {
     private let surface: String
     private let context: [String: String]
     private let isDemo: Bool
+    private let startsTimer: Bool
     private let now: () -> Date
     private nonisolated static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
     private nonisolated static let historyQueue = DispatchQueue(label: "app.devmachine.mac.widget-history", qos: .utility)
@@ -62,8 +63,8 @@ final class WidgetSourceController: ObservableObject {
     init(
         runners: SourceRunners, approvalsFile: WidgetApprovalsFile = WidgetApprovalsFile(),
         historyStore: SparklineHistoryStore = SparklineHistoryStore(), surface: String = DefaultBoard.surface,
-        context: [String: String] = [:], isDemo: Bool = DemoMode.isActive, now: @escaping () -> Date = Date.init,
-        contract: WidgetContract = .current
+        context: [String: String] = [:], isDemo: Bool = DemoMode.isActive, startsTimer: Bool = true,
+        now: @escaping () -> Date = Date.init, contract: WidgetContract = .current
     ) {
         self.runners = runners
         self.approvalsFile = approvalsFile
@@ -72,11 +73,13 @@ final class WidgetSourceController: ObservableObject {
         let keys = Set(contract.surfaces[surface]?.context.keys.map { $0 } ?? [])
         self.context = context.filter { keys.contains($0.key) }
         self.isDemo = isDemo
+        self.startsTimer = startsTimer
         self.now = now
         approvals = approvalsFile.load()
     }
 
     var isDemoMode: Bool { isDemo }
+    var isTicking: Bool { timer != nil }
 
     func state(_ id: String) -> SourceWidgetState { states[id] ?? SourceWidgetState() }
 
@@ -125,9 +128,11 @@ final class WidgetSourceController: ObservableObject {
             schedule.resumeAll()
             replaceJobs()
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
-            guard let self else { return timer.invalidate() }
-            MainActor.assumeIsolated { self.tick() }
+        if startsTimer {
+            timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+                guard let self else { return timer.invalidate() }
+                MainActor.assumeIsolated { self.tick() }
+            }
         }
         tick()
     }
@@ -154,6 +159,17 @@ final class WidgetSourceController: ObservableObject {
         if streams[id] == nil { startStream(id) }
     }
 
+    /// The card reads what the hash covers: the source filled with this
+    /// area's context, the same way the run fills it.
+    func approvalPrompt(for source: ResolvedSource) -> ApprovalPrompt {
+        ApprovalPrompt(source, context: context)
+    }
+
+    func webAddress(for source: ResolvedSource) -> Result<URL, SourceError> {
+        Result { try URLSourceRunner.address(of: source, context: context) }
+            .mapError { $0 as? SourceError ?? .unreadable($0.localizedDescription) }
+    }
+
     func approve(_ id: String) { decide(.allowed, id) }
     func deny(_ id: String) { decide(.denied, id) }
 
@@ -161,9 +177,7 @@ final class WidgetSourceController: ObservableObject {
         guard let entry = entries[id], entry.source.needsApproval,
               case let .success(hash?) = hashes[id], !hash.isEmpty
         else { return }
-        let summary = (try? entry.source.resolved(context: context)).map(ApprovalCopy.summary)
-            ?? ApprovalCopy.summary(entry.source.source)
-        approvals.record(decision, hash: hash, summary: summary, at: now())
+        approvals.record(decision, hash: hash, summary: approvalPrompt(for: entry.source).summary, at: now())
         do {
             try approvalsFile.save(approvals)
         } catch {

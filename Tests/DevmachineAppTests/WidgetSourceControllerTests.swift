@@ -37,7 +37,7 @@ final class WidgetSourceControllerTests: XCTestCase {
         let made = WidgetSourceController(
             runners: runners, approvalsFile: WidgetApprovalsFile(fileURL: folder.appendingPathComponent("approvals.json")),
             historyStore: SparklineHistoryStore(directory: folder.appendingPathComponent("history")), surface: surface,
-            context: context, isDemo: isDemo, now: { [unowned self] in self.clock })
+            context: context, isDemo: isDemo, startsTimer: false, now: { [unowned self] in self.clock })
         others.append(made)
         return made
     }
@@ -55,6 +55,41 @@ final class WidgetSourceControllerTests: XCTestCase {
         return SourceWidgetEntry(id: id, source: ResolvedSource(
             source: source, view: widgetView, every: source.every, needsApproval: inline,
             package: inline ? nil : "mine", packagePath: nil), isVisible: visible)
+    }
+
+    func testTheTestsDriveTheTicksThemselves() {
+        controller.start()
+        XCTAssertFalse(controller.isTicking)
+    }
+
+    func testTheCardAndTheStoredSummaryShowWhatTheHashCovers() throws {
+        let sidebar = makeController(surface: "sidebar", context: ["selected": "alice-dev"])
+        sidebar.start()
+        let listing = entry(run: "ls", args: ["{{context.selected}}"])
+        sidebar.update([listing])
+        XCTAssertEqual(sidebar.approvalPrompt(for: listing.source).what, "ls alice-dev")
+        XCTAssertEqual(controller.approvalPrompt(for: listing.source).what, "ls ''")
+        sidebar.approve("disk")
+        let stored = try XCTUnwrap(sidebar.approvals.entries.values.first)
+        XCTAssertEqual(stored.summary, "ls alice-dev on this Mac, every 1m")
+        guard case let .success(hash?) = Result(catching: {
+            try ApprovalSubject.hash(.command(CommandSource(
+                run: "ls", script: nil, args: ["alice-dev"], shell: false, target: .local, every: .interval(60),
+                timeout: 30, mode: .poll, keep: 3, parse: .text)), values: .none)
+        }) else { return XCTFail() }
+        XCTAssertNotNil(sidebar.approvals.entries[hash])
+    }
+
+    func testAWebWidgetLoadsItsAddressFilledFromItsInputs() {
+        let web = ResolvedSource(
+            source: .url(URLSource(url: "https://{{inputs.host}}/", every: .interval(60), timeout: 30, parse: .status)),
+            view: WidgetView(kind: "web"), every: .interval(60), needsApproval: false, package: "mine", packagePath: nil,
+            inputs: ["host": "example.com"], contextKeys: [])
+        XCTAssertEqual(try controller.webAddress(for: web).get(), URL(string: "https://example.com/"))
+        let blank = ResolvedSource(
+            source: .url(URLSource(url: "{{inputs.host}}", every: .interval(60), timeout: 30, parse: .status)),
+            view: WidgetView(kind: "web"), every: .interval(60), needsApproval: false, package: "mine", packagePath: nil)
+        XCTAssertEqual(controller.webAddress(for: blank), .failure(.unreadable(" is not a web address")))
     }
 
     func testAnInlineCommandWaitsAndRunsNothing() async {

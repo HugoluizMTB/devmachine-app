@@ -34,8 +34,8 @@ enum WidgetApprovalText {
         denied ? "Paused: you denied this \(kind) widget" : "Allow this \(kind) widget to run?"
     }
 
-    static func whereAndWhen(_ source: ResolvedSource) -> String {
-        "Runs \(ApprovalCopy.place(source.source.target)), \(ApprovalCopy.howOften(source.every))."
+    static func whereAndWhen(_ prompt: ApprovalPrompt) -> String {
+        "Runs \(prompt.place), \(prompt.howOften)."
     }
 
     static let warning = "It was written into home.yml, by you or an agent. Allow it only if you know what it does."
@@ -44,7 +44,8 @@ enum WidgetApprovalText {
 /// An inline widget that runs something waits here until the owner says
 /// so; the board file can be written by an agent, this card cannot.
 struct WidgetApprovalCard: View {
-    let source: ResolvedSource
+    let kind: String
+    let prompt: ApprovalPrompt
     let state: ApprovalState
     let size: CGSize
     let onAllow: () -> Void
@@ -57,10 +58,10 @@ struct WidgetApprovalCard: View {
     }
 
     var body: some View {
-        let what = ApprovalCopy.what(source.source)
+        let what = prompt.what
         VStack(alignment: .leading, spacing: m.space.sm) {
             Label {
-                Text(verbatim: WidgetApprovalText.headline(kind: source.source.kind, denied: denied))
+                Text(verbatim: WidgetApprovalText.headline(kind: kind, denied: denied))
                     .lineLimit(2)
             } icon: {
                 Image(systemName: denied ? "pause.circle" : "hand.raised")
@@ -77,7 +78,7 @@ struct WidgetApprovalCard: View {
                 .padding(m.space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .dmSurface(Color.dmBand, radius: DMRadius.row)
-            Text(verbatim: WidgetApprovalText.whereAndWhen(source))
+            Text(verbatim: WidgetApprovalText.whereAndWhen(prompt))
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
                 .lineLimit(2)
@@ -119,15 +120,20 @@ struct SourceWidgetCard: View {
         ) {
         case .approval:
             WidgetApprovalCard(
-                source: source, state: approval == .notNeeded ? .waiting(hash: "") : approval, size: size,
+                kind: source.source.kind, prompt: controller.approvalPrompt(for: source), state: approval == .notNeeded ? .waiting(hash: "") : approval, size: size,
                 onAllow: { controller.approve(id) }, onDeny: { controller.deny(id) })
         case .demo:
             WidgetPlaceholderView(icon: "play.slash", title: title, detail: "Demo mode never runs widget commands.")
         case .content:
             SourceWidgetContent(
                 title: title, source: source, state: controller.state(id), history: controller.history(id), size: size,
-                onRun: { controller.runNow(id) }, onOpenSession: sessionAction)
+                onRun: { controller.runNow(id) }, onOpenSession: sessionAction, webAddress: webAddress)
         }
+    }
+
+    private var webAddress: Result<URL, SourceError>? {
+        guard source.view.kind == "web" else { return nil }
+        return controller.webAddress(for: source)
     }
 
     private var sessionAction: (() -> Void)? {

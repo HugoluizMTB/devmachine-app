@@ -16,14 +16,25 @@ public struct URLSourceRunner: SourceRunner {
         self.clock = clock
     }
 
-    public func fetch(_ request: SourceRunRequest) async throws -> SourceRunResult {
-        if let blocked = try SourceApprovalGate.blocked(request) { return .needsApproval(blocked) }
-        guard case let .url(source) = try SourceFailure.refusing({ try request.source.resolved(context: request.context) }) else {
+    /// The address a fetch or a web view loads, filled from the same inputs
+    /// and context; anything but http(s) is refused.
+    public static func address(of resolved: ResolvedSource, context: [String: String]) throws -> URL {
+        try resolve(resolved, context: context).url
+    }
+
+    private static func resolve(_ resolved: ResolvedSource, context: [String: String]) throws -> (source: URLSource, url: URL) {
+        guard case let .url(source) = try SourceFailure.refusing({ try resolved.resolved(context: context) }) else {
             throw SourceError.cannotStart("not a url source")
         }
         guard let url = URL(string: source.url), PreviewURLPolicy.isWeb(url) else {
             throw SourceError.unreadable("\(source.url) is not a web address")
         }
+        return (source, url)
+    }
+
+    public func fetch(_ request: SourceRunRequest) async throws -> SourceRunResult {
+        if let blocked = try SourceApprovalGate.blocked(request) { return .needsApproval(blocked) }
+        let (source, url) = try Self.resolve(request.source, context: request.context)
         let started = clock()
         let answer: (status: Int, body: Data)
         do {

@@ -129,4 +129,36 @@ final class WidgetApprovalsTests: XCTestCase {
         XCTAssertEqual(ApprovalCopy.what(.session(SessionSource(target: .local, session: "main", every: .interval(2)))),
                        "Read the screen of session main")
     }
+
+    private func resolved(_ source: WidgetSource, inputs: [String: String] = [:]) -> ResolvedSource {
+        ResolvedSource(source: source, view: WidgetView(kind: "text"), every: source.every, needsApproval: true,
+                       package: nil, packagePath: nil, inputs: inputs)
+    }
+
+    func testThePromptShowsTheFilledValuesTheHashCovers() throws {
+        let inline = resolved(command { $0.run = "ls"; $0.args = ["{{context.dir}}"]; $0.target = .local })
+        XCTAssertEqual(ApprovalPrompt(inline, context: [:]).what, "ls ''")
+        XCTAssertEqual(ApprovalPrompt(inline, context: ["dir": "/Users/alice/a b"]).what, "ls '/Users/alice/a b'")
+        let placed = resolved(command { $0.target = .machine("{{inputs.machine}}") }, inputs: ["machine": "main"])
+        let prompt = ApprovalPrompt(placed, context: [:])
+        XCTAssertEqual(prompt.place, "on machine main")
+        XCTAssertEqual(prompt.summary, "df -h / on machine main, every 1m")
+        XCTAssertEqual(try ApprovalSubject.hash(for: placed, context: [:]),
+                       ApprovalSubject.hash(command { $0.target = .machine("main") }))
+    }
+
+    func testAShellLineShowsTheValuesItReadsFromTheEnvironment() throws {
+        func line(_ disk: String) -> ResolvedSource {
+            resolved(command { $0.run = #"df -h "$DM_INPUT_DISK""#; $0.shell = true; $0.args = [] }, inputs: ["disk": disk])
+        }
+        XCTAssertEqual(ApprovalPrompt(line("/"), context: [:]).what, #"DM_INPUT_DISK=/ df -h "$DM_INPUT_DISK""#)
+        XCTAssertEqual(ApprovalPrompt(line("/a b"), context: [:]).what, #"DM_INPUT_DISK='/a b' df -h "$DM_INPUT_DISK""#)
+        XCTAssertNotEqual(try ApprovalSubject.hash(for: line("/"), context: [:]),
+                          try ApprovalSubject.hash(for: line("/a b"), context: [:]))
+    }
+
+    func testARefusedSourceShowsItAsWritten() {
+        let refused = resolved(command { $0.run = "{{inputs.tool}}" }, inputs: ["tool": "rm"])
+        XCTAssertEqual(ApprovalPrompt(refused, context: [:]).what, "{{inputs.tool}} -h /")
+    }
 }
