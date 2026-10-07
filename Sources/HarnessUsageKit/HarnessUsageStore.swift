@@ -95,6 +95,11 @@ public final class HarnessUsageStore: ObservableObject {
         for provider in providers { refresh(provider, force: force) }
     }
 
+    public func refresh(harnessID: String, force: Bool = false) {
+        guard let provider = providers.first(where: { $0.harnessID == harnessID }) else { return }
+        refresh(provider, force: force)
+    }
+
     public func refreshStats(force: Bool = false) {
         refresh(force: force)
     }
