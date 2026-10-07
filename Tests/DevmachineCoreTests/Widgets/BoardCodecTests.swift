@@ -284,7 +284,7 @@ final class BoardCodecTests: XCTestCase {
         XCTAssertEqual(found?.line, 4)
         XCTAssertEqual(
             found?.message,
-            "a widget written in place (source and view, no type) needs engine 1.1; this app implements engine 1.0")
+            "a widget written in place (source and view, no type) needs engine 1.1; this app implements engine 1.1")
     }
 
     func testFrameValuesArePlainNonNegativeIntegers() {

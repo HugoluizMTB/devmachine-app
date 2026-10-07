@@ -25,7 +25,7 @@ final class WidgetCatalogLiveTests: XCTestCase {
         processEnvironment["DEVMACHINE_CONFIG"] = config.path
         let cli = DevmachineCLI(executable: binary, processEnvironment: processEnvironment)
         let catalog = try WidgetCatalog.decode(cli.widgetsList())
-        XCTAssertEqual(catalog.engine, WidgetContract.engine10.engine)
+        XCTAssertEqual(catalog.engine, WidgetContract.current.engine)
         if environment["DEVMACHINE_WIDGETS_PACKAGES"] != nil {
             for name in ["devmachine-app/clock", "devmachine-app/summary", "devmachine-app/machines"] {
                 let widget = try XCTUnwrap(catalog.widget(named: name), name)

@@ -89,7 +89,7 @@ public enum WidgetResolution: Equatable, Sendable {
     case needsNewerApp(type: String, reason: String)
 
     public static func resolve(
-        _ instance: BoardWidget, in catalog: WidgetCatalog, contract: WidgetContract = .engine10
+        _ instance: BoardWidget, in catalog: WidgetCatalog, contract: WidgetContract = .current
     ) -> WidgetResolution {
         guard let widget = catalog.widget(named: instance.type) else { return .notFound(type: instance.type) }
         guard widget.available else { return .needsPackage(package: widget.package, reason: widget.unavailableReason) }

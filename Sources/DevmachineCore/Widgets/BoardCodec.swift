@@ -10,7 +10,7 @@ public enum BoardCodec {
     private static let frameKeys = ["x", "y", "w", "h"]
     private static let specialFloats: [String: Double] = [".inf": .infinity, "-.inf": -.infinity, ".nan": .nan]
 
-    public static func decode(_ text: String, contract: WidgetContract = .engine10) throws -> Board {
+    public static func decode(_ text: String, contract: WidgetContract = .current) throws -> Board {
         let root: Node
         do {
             guard let node = try Yams.compose(yaml: text) else {

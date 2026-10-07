@@ -62,7 +62,7 @@ final class WidgetCatalogTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/widgets-list-cli-0.9.0.json")
         let catalog = try WidgetCatalog.decode(Data(contentsOf: url))
-        XCTAssertEqual(catalog.engine, WidgetContract.engine10.engine)
+        XCTAssertEqual(catalog.engine, "1.0")
         XCTAssertEqual(catalog.problems, [])
         XCTAssertEqual(
             catalog.widgets.map(\.name),
@@ -143,7 +143,7 @@ final class WidgetCatalogTests: XCTestCase {
         locked.available = false
         locked.unavailableReason = "add the package: devmachine packages add acme --machine <name>"
         var future = CatalogFixtures.clock
-        future.requiresEngine = ">= 1.1"
+        future.requiresEngine = ">= 1.2"
         var gauge = CatalogFixtures.summary
         gauge.viewKind = "gauge"
         let catalog = CatalogFixtures.catalog([locked, future, gauge])
@@ -154,7 +154,7 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertEqual(WidgetResolution.resolve(entry("github-prs/open"), in: catalog), .notFound(type: "github-prs/open"))
         XCTAssertEqual(
             WidgetResolution.resolve(entry("devmachine-app/clock"), in: catalog),
-            .needsNewerApp(type: "devmachine-app/clock", reason: "it needs engine >= 1.1; this app implements 1.0"))
+            .needsNewerApp(type: "devmachine-app/clock", reason: "it needs engine >= 1.2; this app implements 1.1"))
         XCTAssertEqual(
             WidgetResolution.resolve(entry("devmachine-app/summary"), in: catalog),
             .needsNewerApp(type: "devmachine-app/summary", reason: "this app has no view gauge for app/summary"))

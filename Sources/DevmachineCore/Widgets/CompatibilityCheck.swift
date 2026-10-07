@@ -16,7 +16,7 @@ public struct WidgetAppManifest: Equatable, Sendable {
     public var requiresPackages: PackagesVersion? { PackagesVersion(requiresPackagesTag) }
 
     public static let current = WidgetAppManifest(
-        engine: WidgetContract.engine10.engine,
+        engine: WidgetContract.current.engine,
         requiresCLI: SemanticVersion(major: 0, minor: 9, patch: 0),
         requiresPackagesTag: "v39")
 }

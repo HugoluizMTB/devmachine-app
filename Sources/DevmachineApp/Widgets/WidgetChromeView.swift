@@ -207,7 +207,7 @@ struct WidgetChromeView: View {
     }
 
     private func sizeLabel(_ preset: String) -> String {
-        guard let cells = WidgetContract.engine10.presetCells(preset) else { return preset }
+        guard let cells = WidgetContract.current.presetCells(preset) else { return preset }
         return "\(preset.prefix(1).uppercased() + preset.dropFirst()) · \(cells.columns)×\(cells.rows)"
     }
 

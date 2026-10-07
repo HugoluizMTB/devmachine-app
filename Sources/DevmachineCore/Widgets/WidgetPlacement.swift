@@ -104,7 +104,7 @@ public struct PlacementResult: Equatable, Sendable {
 public enum WidgetPlacer {
     public static func place(
         on board: Board, catalog: WidgetCatalog, placements: WidgetPlacements, canvasWidth: Int,
-        contract: WidgetContract = .engine10, isEligible: (CatalogWidget) -> Bool
+        contract: WidgetContract = .current, isEligible: (CatalogWidget) -> Bool
     ) -> PlacementResult {
         var board = board
         var placements = placements
@@ -126,7 +126,7 @@ public enum WidgetPlacer {
     }
 
     public static func newInstance(
-        of widget: CatalogWidget, on board: Board, canvasWidth: Int, contract: WidgetContract = .engine10
+        of widget: CatalogWidget, on board: Board, canvasWidth: Int, contract: WidgetContract = .current
     ) -> BoardWidget {
         let preset = CanvasLayout.presetSize(widget.defaultSize, contract: contract)
         let size = preset ?? CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract)

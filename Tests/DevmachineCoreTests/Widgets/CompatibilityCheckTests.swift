@@ -70,7 +70,7 @@ final class CompatibilityCheckTests: XCTestCase {
     }
 
     func testTheCurrentManifestImplementsTheGoldenEngine() {
-        XCTAssertEqual(WidgetAppManifest.current.engine, WidgetContract.engine10.engine)
+        XCTAssertEqual(WidgetAppManifest.current.engine, WidgetContract.current.engine)
         XCTAssertNotNil(WidgetAppManifest.current.requiresPackages)
     }
 }

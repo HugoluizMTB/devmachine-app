@@ -51,19 +51,19 @@ public enum CanvasLayout {
         return max(0, Int(steps) * snap)
     }
 
-    public static func presetSize(_ name: String, contract: WidgetContract = .engine10) -> CanvasSize? {
+    public static func presetSize(_ name: String, contract: WidgetContract = .current) -> CanvasSize? {
         guard let cells = contract.presetCells(name) else { return nil }
         return CanvasSize(w: cells.columns * contract.unit, h: cells.rows * contract.unit)
     }
 
-    public static func minimumSize(sizes: [String], contract: WidgetContract = .engine10) -> CanvasSize {
+    public static func minimumSize(sizes: [String], contract: WidgetContract = .current) -> CanvasSize {
         let all = sizes.compactMap { presetSize($0, contract: contract) }
         let fallback = presetSize("small", contract: contract) ?? CanvasSize(w: 160, h: 160)
         guard let width = all.map(\.w).min(), let height = all.map(\.h).min() else { return fallback }
         return CanvasSize(w: width, h: height)
     }
 
-    public static func sizeName(_ size: CanvasSize, sizes: [String], contract: WidgetContract = .engine10) -> String {
+    public static func sizeName(_ size: CanvasSize, sizes: [String], contract: WidgetContract = .current) -> String {
         sizes.first { presetSize($0, contract: contract) == size } ?? BoardWidget.customSize
     }
 
