@@ -581,6 +581,24 @@ struct DevmachineCLI: Sendable {
         return report
     }
 
+    /// `machines password-login`: logs in to ask sshd who can use a password.
+    func passwordLogin(machine: String) throws -> MachinePasswordLogin {
+        let result = try runner.runCapturing(
+            executable: executable, args: MachinePasswordLogin.arguments(machine: machine), environment: environment())
+        try requireSuccess(result)
+        guard let report = MachinePasswordLogin.parse(result.stdout) else {
+            throw DevmachineCLIError.commandFailed("The CLI said nothing about password login on \(machine).")
+        }
+        return report
+    }
+
+    /// `machines password-login --off|--keep|--on --yes`.
+    func changePasswordLogin(machine: String, to change: PasswordLoginChange) throws {
+        let result = try runner.runCapturing(
+            executable: executable, args: change.arguments(machine: machine), environment: environment())
+        try requireSuccess(result)
+    }
+
     /// Every configured machine that is not this Mac — the set Stats and the
     /// package gate check, instead of only the first one.
     func nonSelfMachines() throws -> [CLIConfigMachine] {

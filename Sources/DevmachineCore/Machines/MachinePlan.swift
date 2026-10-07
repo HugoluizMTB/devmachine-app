@@ -188,6 +188,7 @@ public enum MachinePlan {
         }
         if !draft.hasConfiguration, !draft.trimmedDomain.isEmpty { arguments += ["--domain", draft.trimmedDomain] }
         if !draft.essentials { arguments.append("--no-essentials") }
+        arguments += draft.passwordLoginArguments
         return MachinePlanStep(
             kind: .addMachine, title: "Connect \(draft.trimmedName)", arguments: arguments + location + ["--yes"],
             asksInTerminal: false, input: input)
@@ -195,7 +196,7 @@ public enum MachinePlan {
 
     private static func addStep(for draft: MachineDraft) -> MachinePlanStep {
         let title = "Connect \(draft.trimmedName)"
-        let essentials = draft.essentials ? [] : ["--no-essentials"]
+        let essentials = (draft.essentials ? [] : ["--no-essentials"]) + draft.passwordLoginArguments
         guard !asksInTerminal(draft), let fingerprint = draft.expectedFingerprint else {
             let command = draft.hasConfiguration ? ["machines", "add"] : ["setup"]
             return MachinePlanStep(
@@ -246,6 +247,10 @@ public enum MachinePlan {
             password = "not asked when the key already logs in"
         }
         answers.append(Answer(question: "password", answer: password))
+        if draft.passwordLogin == .offForEveryone {
+            answers.append(Answer(
+                question: "SSH password login (a newer CLI asks)", answer: "1, off for every account"))
+        }
         return answers
     }
 }

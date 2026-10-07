@@ -23,6 +23,9 @@ enum DemoMachinesMap {
         .init(id: "map-wizard-location", fileName: "169-add-machine-location.png", settleNanoseconds: 500_000_000),
         .init(id: "map-wizard-old-cli", fileName: "170-add-machine-location-old-cli.png",
               settleNanoseconds: 500_000_000),
+        .init(id: "map-password-login", fileName: "171-machines-password-login.png", settleNanoseconds: 700_000_000),
+        .init(id: "map-wizard-password-login", fileName: "172-add-machine-password-login.png",
+              settleNanoseconds: 500_000_000),
     ]
 
     static func handles(_ id: String) -> Bool { screens.contains { $0.id == id } }
@@ -36,12 +39,13 @@ enum DemoMachinesMap {
         MachinesStore.shared.seedDemo(snapshot)
         PackagesStore.shared.seedDemo(DemoPackages.snapshot(after: .saved))
         DemoSnapshots.machinesSelected = ["map-selected", "map-check", "map-addresses", "map-credentials",
-                                          "map-lima-job"].contains(id) ? selection(for: id) : nil
+                                          "map-lima-job", "map-password-login"].contains(id) ? selection(for: id) : nil
         model.jobs.seedDemo(id == "map-lima-job" ? [limaJob] : [])
         let details = MachineDetailsStore.shared
         await details.seedDemo(open: nil, machine: "", isSelf: false)
         if id.hasPrefix("map-wizard") {
-            await prepareWizard(old: id == "map-wizard-old-cli", model: model, snapshot: snapshot)
+            await prepareWizard(old: id == "map-wizard-old-cli", keepsPasswords: id == "map-wizard-password-login",
+                                model: model, snapshot: snapshot)
             return
         }
         guard id != "map-location-editor" else { return }
@@ -54,6 +58,7 @@ enum DemoMachinesMap {
         case "map-check": await details.seedDemo(open: .check, machine: "main", isSelf: false)
         case "map-addresses": await details.seedDemo(open: .addresses, machine: "homebox", isSelf: false)
         case "map-credentials": await details.seedDemo(open: .credentials, machine: "main", isSelf: false)
+        case "map-password-login": await details.seedDemo(open: .passwordLogin, machine: "main", isSelf: false)
         default: break
         }
     }
@@ -80,16 +85,26 @@ enum DemoMachinesMap {
         }
     }
 
-    private static func prepareWizard(old: Bool, model: AppModel, snapshot: MachinesSnapshot) async {
+    private static func prepareWizard(
+        old: Bool, keepsPasswords: Bool, model: AppModel, snapshot: MachinesSnapshot
+    ) async {
         var seeded = snapshot
         if old { seeded.cliVersion = SemanticVersion(major: 0, minor: 7, patch: 29) }
+        if keepsPasswords { seeded.cliVersion = PasswordLoginChoice.keepMinimumCLIVersion }
         MachinesStore.shared.seedDemo(seeded)
         let state = AddMachineModel.shared
         state.startOver()
         model.showPage(.addMachine)
         try? await Task.sleep(nanoseconds: 150_000_000)
         state.startOver()
-        if old {
+        if keepsPasswords {
+            state.wizard.choose(.server)
+            state.wizard.draft.name = "studio"
+            state.wizard.draft.location = "office"
+            state.wizard.draft.address = "203.0.113.30"
+            state.wizard.draft.passwordLogin = .keepSome
+            state.wizard.draft.keepPasswordLoginAccounts = "alice"
+        } else if old {
             state.wizard.choose(.server)
             state.wizard.draft.name = "backup"
             state.wizard.draft.location = "home"

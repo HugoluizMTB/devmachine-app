@@ -38,13 +38,22 @@ public struct MachineWizard: Equatable, Sendable {
     /// The CLI takes `--location` (`MachineLocation`); an older one is
     /// still asked, and keeps nothing until it is updated.
     public let takesLocation: Bool
+    /// The CLI takes `--keep-password-login` (`PasswordLoginChoice`).
+    public let takesKeepPasswordLogin: Bool
+
+    /// What the wizard offers for password login: keeping some accounts
+    /// needs a CLI that takes the flag.
+    public var passwordLoginChoices: [PasswordLoginChoice] {
+        takesKeepPasswordLogin ? PasswordLoginChoice.allCases : [.offForEveryone, .leaveOn]
+    }
 
     public init(
         existingMachines: [String], existingWorkspaces: [String] = [], limaFound: Bool, unattended: Bool = false,
         firstRun: Bool = false, sizeLimits: LocalMachineSizeLimits? = nil, skillAgentOptions: [SkillAgent] = [],
-        takesLocation: Bool = false
+        takesLocation: Bool = false, takesKeepPasswordLogin: Bool = false
     ) {
         self.takesLocation = takesLocation
+        self.takesKeepPasswordLogin = takesKeepPasswordLogin
         self.skillAgentOptions = skillAgentOptions
         self.sizeLimits = unattended ? sizeLimits : nil
         self.existingMachines = existingMachines

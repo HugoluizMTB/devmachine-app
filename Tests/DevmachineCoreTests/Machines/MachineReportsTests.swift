@@ -24,6 +24,43 @@ final class MachineReportsTests: XCTestCase {
         XCTAssertNil(MachineAddresses.parse("not json"))
     }
 
+    func testPasswordLoginSaysWhoCanLogInWithAPassword() throws {
+        let json = #"""
+        {"machine":"studio","default":false,"drop_in":true,
+         "accounts":[{"user":"alice","password_login":true},{"user":"bob","password_login":false}],
+         "keep":["alice"]}
+        """#
+        let report = try XCTUnwrap(MachinePasswordLogin.parse(json))
+        XCTAssertFalse(report.allowedByDefault)
+        XCTAssertTrue(report.dropIn)
+        XCTAssertEqual(report.accounts.map(\.user), ["alice", "bob"])
+        XCTAssertEqual(report.accounts.map(\.allowed), [true, false])
+        XCTAssertEqual(report.keep, ["alice"])
+        XCTAssertEqual(report.summary, "Off, except for alice")
+        XCTAssertNil(MachinePasswordLogin.parse("not json"))
+    }
+
+    func testPasswordLoginSummaryForEachState() throws {
+        let off = try XCTUnwrap(MachinePasswordLogin.parse(#"{"machine":"m","default":false,"drop_in":true,"accounts":[],"keep":[]}"#))
+        XCTAssertEqual(off.summary, "Off for every account")
+        let on = try XCTUnwrap(MachinePasswordLogin.parse(#"{"machine":"m","default":true,"drop_in":false,"accounts":null,"keep":null}"#))
+        XCTAssertEqual(on.summary, "On (the system's own setting)")
+        XCTAssertTrue(on.accounts.isEmpty)
+    }
+
+    func testPasswordLoginArguments() {
+        XCTAssertEqual(MachinePasswordLogin.arguments(machine: "studio"),
+                       ["--format", "json", "machines", "password-login", "studio"])
+        XCTAssertEqual(PasswordLoginChange.off.arguments(machine: "studio"),
+                       ["machines", "password-login", "studio", "--off", "--yes"])
+        XCTAssertEqual(PasswordLoginChange.keep(["alice", "bob"]).arguments(machine: "studio"),
+                       ["machines", "password-login", "studio", "--keep", "alice,bob", "--yes"])
+        XCTAssertEqual(PasswordLoginChange.on.arguments(machine: "studio"),
+                       ["machines", "password-login", "studio", "--on", "--yes"])
+        XCTAssertEqual(PasswordLoginChange.keep([]).arguments(machine: "studio"),
+                       ["machines", "password-login", "studio", "--off", "--yes"])
+    }
+
     func testResolveArgumentsNameTheMachine() {
         XCTAssertEqual(MachineAddresses.arguments(machine: "main"), ["--format", "json", "resolve", "--machine", "main"])
     }
