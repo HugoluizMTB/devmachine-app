@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 import DevmachineCore
 @testable import DevmachineApp
 
@@ -248,6 +249,117 @@ final class PollPauseTests: XCTestCase {
 
         model.noteSSHFailure(alias: gamma.alias, .unreachable)
         XCTAssertTrue(model.isPollingPaused(alias: gamma.alias))
+    }
+
+    func testOneRefusalPausesOneWorkspaceAndASecondOnTheSameMachinePausesTheMachine() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .authDenied)
+        let delta = Workspace(name: "delta", alias: "delta-devmachine")
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge", "delta": "main"])
+        model.workspaces = [acme, beta, gamma, delta]
+
+        try await sweep(model)
+        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .loginRefused)
+        XCTAssertFalse(model.isPollingPaused(alias: beta.alias))
+
+        source.fail(beta.alias, with: .authDenied)
+        try await sweep(model)
+
+        for ws in [acme, beta, delta] {
+            XCTAssertEqual(model.pollPauses[ws.alias]?.reason, .machineLoginsRefused, ws.name)
+            XCTAssertTrue(model.isPollingPaused(alias: ws.alias), ws.name)
+        }
+        XCTAssertEqual(source.calls(delta.alias), 1, "the machine is paused before its next account is asked")
+        XCTAssertFalse(model.isPollingPaused(alias: gamma.alias))
+        let pause = try XCTUnwrap(model.pollPauses[beta.alias])
+        XCTAssertEqual(
+            pause.notice(workspace: "beta"),
+            "Logins to several workspaces on main were refused. Paused checking main for 5 min "
+                + "so it doesn't block this Mac's IP.")
+
+        try await sweep(model)
+        XCTAssertEqual(source.calls(acme.alias) + source.calls(beta.alias), 3, "no login to a paused machine")
+    }
+
+    func testARefusalOnAnotherMachineDoesNotCount() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .authDenied)
+        source.fail(gamma.alias, with: .authDenied)
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+
+        try await sweep(model)
+
+        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .loginRefused)
+        XCTAssertEqual(model.pollPauses[gamma.alias]?.reason, .loginRefused)
+        XCTAssertNil(model.pollPauses[beta.alias])
+    }
+
+    func testTryAgainOnAPausedMachineAsksOnceAndASuccessFreesIt() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .authDenied)
+        source.fail(beta.alias, with: .authDenied)
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        try await sweep(model)
+        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .machineLoginsRefused)
+
+        source.fail(acme.alias, with: nil)
+        source.fail(beta.alias, with: nil)
+        model.retry(alias: acme.alias)
+        try await waitFor { model.sessionsByAlias[self.acme.alias] != nil }
+
+        XCTAssertEqual(source.calls(acme.alias), 2)
+        XCTAssertEqual(source.calls(beta.alias), 1)
+        XCTAssertTrue(model.pollPauses.isEmpty)
+    }
+
+    func testTheToastShowsOnceWhenAPauseStarts() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .authDenied)
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        let notice = "Login refused for acme. Paused checking it for 5 min so main doesn't block this Mac's IP."
+        let toasts = toastCounter(model, label: notice)
+        defer { toasts.cancel() }
+
+        try await sweep(model)
+        XCTAssertEqual(toasts.count, 1)
+
+        try await sweep(model)
+        var now = Date()
+        model.pauseClock = { now }
+        now = now.addingTimeInterval(PollPause.loginRefusedSeconds + 1)
+        try await sweep(model)
+
+        XCTAssertEqual(source.calls(acme.alias), 2, "the pause ended and the sweep asked again")
+        XCTAssertEqual(toasts.count, 1, "a pause that goes on is not announced again")
+    }
+
+    func testAnUnreachableMachineIsAnnouncedOnce() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .unreachable)
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        let toasts = toastCounter(model, label: "Couldn't reach main. Paused checking its workspaces for 1 min.")
+        defer { toasts.cancel() }
+
+        try await sweep(model)
+
+        XCTAssertEqual(toasts.count, 1)
+        XCTAssertEqual(model.activeTasks.filter { $0.label.contains("beta") }.count, 0)
+    }
+
+    /// Counts each corner card with this label once, however long it stays.
+    private final class ToastCounter {
+        var ids: Set<UUID> = []
+        var token: AnyCancellable?
+        var count: Int { ids.count }
+        func cancel() { token?.cancel() }
+    }
+
+    private func toastCounter(_ model: AppModel, label: String) -> ToastCounter {
+        let counter = ToastCounter()
+        counter.token = model.$activeTasks.sink { tasks in
+            for task in tasks where task.label == label { counter.ids.insert(task.id) }
+        }
+        return counter
     }
 
     func testAPausedWorkspaceHoldsTheContextPollButNotItsRetry() async throws {

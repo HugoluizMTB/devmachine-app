@@ -764,14 +764,18 @@ Rules:
   only what it is about (`PollPause`, `AppModel.pollPauses`), so one broken workspace
   never stalls the others: a refused login pauses that workspace for 5 min (fail2ban
   counts failed logins per source IP on each machine; another account's working login
-  adds nothing), an unreachable machine pauses its own workspaces for 1 min (only that
-  workspace when the machine is unknown), a refused host key pauses nothing. A paused
+  adds nothing); a second workspace refused on the same machine inside that pause
+  pauses the whole machine for 5 min, so a locked agent costs at most two refused
+  logins per machine per pause. An unreachable machine pauses its own workspaces for
+  1 min (only that workspace when the machine is unknown), a refused host key pauses
+  nothing. A paused
   workspace gets no automatic login at all: sweep, selection poll, context, Git, copy
   mode check, the mosh watchdog's ssh. Try again and opening a session try once; a
   refusal pauses again (a refused mosh-server login skips the ssh fallback, which would
   be a second refusal). The sidebar shows each pause under the workspace
-  (`PollPauseSidebarCard`, one per machine when unreachable) and it clears on the next
-  answer.
+  (`PollPauseSidebarCard`, one per machine when the machine is paused) and it clears on
+  the next answer; a corner toast says it once, when the pause starts, not again while
+  it only goes on.
 
 - Machine stats are the one app-wide poll, because Home shows them: `StatsStore`
   reads every non-self machine every 90s, staggered, one run per machine, backing
