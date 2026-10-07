@@ -1008,6 +1008,14 @@ Rules:
   over them **and ⌥ is held**. Any other widget gets a `StackTitleHeader` with
   the controls always shown. The "Add widget" row is always in the layout, at
   the end, drawn (and hit-testable) only while the pointer is over the panel.
+  An app widget with nothing to show (no pull requests, no links, a section
+  before the first read, Shortcuts with no session, Publish a port with no
+  Caddy) is 0 pt at rest, as before; while the pointer is over the panel it
+  draws `StackEmptyWidgetHeader`, its title row with the controls its row
+  style gives, so it can still be collapsed, moved or removed.
+- **One session-context section leads** (`ContextSectionLead`): before the
+  first read, the board's first expanded one draws the status view; after
+  it, the first that draws something carries the age label.
 - **A header drag freezes the list.** While the grip's drag is held the rows
   come from a snapshot (`StackBoardView`'s `StackDrag`), the dragged row
   lifted by `.zIndex` and offset; it lands by the neighbour it crossed

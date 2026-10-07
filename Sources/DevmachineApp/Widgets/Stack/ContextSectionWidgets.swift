@@ -2,19 +2,41 @@ import SwiftUI
 import AppKit
 import DevmachineCore
 
+/// Which section carries the status view and the age label: before the
+/// first read, the board's first expanded one; after it, the first that
+/// draws something, since empty pull requests or links draw nothing.
+enum ContextSectionLead {
+    static func draws(_ kind: StackAppViewKind, state: ContextState) -> Bool {
+        switch kind {
+        case .monitors, .shells, .subAgents, .todo: true
+        case .pullRequests: !state.prs.isEmpty
+        case .links: !state.links.isEmpty
+        default: false
+        }
+    }
+
+    static func isLead(_ kind: StackAppViewKind, preceding: [StackAppViewKind], state: ContextState?) -> Bool {
+        guard let state else { return preceding.isEmpty }
+        return draws(kind, state: state) && !preceding.contains { draws($0, state: state) }
+    }
+}
+
 /// One context section as a stack widget. The sections are the panel's own
 /// code; while nothing has been read, the board's first one (the lead)
 /// shows the panel's status view and the others draw nothing.
 struct ContextSectionWidgetView: View {
     let kind: StackAppViewKind
     @ObservedObject var store: ContextStore
-    let isLead: Bool
+    /// The expanded session-context sections above this one on the board.
+    let preceding: [StackAppViewKind]
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var model: AppModel
     @Environment(\.stackFillHeight) private var fillHeight
 
+    private var isLead: Bool { ContextSectionLead.isLead(kind, preceding: preceding, state: store.state) }
+
     var body: some View {
-        if let state = store.state {
+        if let state = store.state, ContextSectionLead.draws(kind, state: state) {
             section(state)
                 .overlay(alignment: .topTrailing) {
                     if isLead {
@@ -24,11 +46,13 @@ struct ContextSectionWidgetView: View {
                     }
                 }
                 .transition(.opacity)
-        } else if isLead {
+        } else if store.state == nil, isLead {
             VStack(spacing: 0) { contextStatus }
                 .frame(maxWidth: .infinity)
                 .frame(height: max(fillHeight, m.pt(120)), alignment: .top)
                 .clipped()
+        } else {
+            StackEmptyWidgetHeader()
         }
     }
 

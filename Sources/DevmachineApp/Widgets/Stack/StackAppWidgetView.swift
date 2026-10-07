@@ -5,7 +5,7 @@ import DevmachineCore
 /// a kind without one says this app cannot draw it.
 struct StackAppWidgetView: View {
     let kind: StackAppViewKind
-    let isLead: Bool
+    let preceding: [StackAppViewKind]
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -13,11 +13,15 @@ struct StackAppWidgetView: View {
         case .workspaces:
             WorkspacesWidgetView()
         case .shortcuts:
-            if let target = model.selectedSessionTarget { ShortcutsSection(target: target) }
+            if let target = model.selectedSessionTarget {
+                ShortcutsSection(target: target)
+            } else {
+                StackEmptyWidgetHeader()
+            }
         case .publishPort:
             PublishPortWidgetView()
         case .monitors, .shells, .subAgents, .todo, .pullRequests, .links:
-            ContextSectionWidgetView(kind: kind, store: model.context, isLead: isLead)
+            ContextSectionWidgetView(kind: kind, store: model.context, preceding: preceding)
         default:
             WidgetPlaceholderView(
                 icon: "puzzlepiece.extension", title: "Needs a newer app",

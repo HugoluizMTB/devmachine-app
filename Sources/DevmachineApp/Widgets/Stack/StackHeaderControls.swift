@@ -7,6 +7,7 @@ struct StackWidgetChrome {
     let isHovered: Bool
     let isDragging: Bool
     let isOptionHeld: Bool
+    let isPanelHovered: Bool
     let canEdit: Bool
     let areaName: String
     let onToggleCollapsed: () -> Void
@@ -126,5 +127,22 @@ struct StackTitleHeader: View {
             padding: EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14),
             label: { DMSectionLabel(text: title.uppercased()) },
             trailing: { StackHeaderControls(alwaysShown: true) })
+    }
+}
+
+/// The title row of an app widget that has nothing to show; it draws only
+/// while `StackRowModel.showsEmptyHeader` says so, with the controls its
+/// row style gives.
+struct StackEmptyWidgetHeader: View {
+    @Environment(\.stackWidgetChrome) private var chrome
+
+    var body: some View {
+        if let chrome, StackRowModel.showsEmptyHeader(
+            panelHovered: chrome.isPanelHovered, dragging: chrome.isDragging, canEdit: chrome.canEdit) {
+            DMSection(
+                padding: EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14),
+                label: { DMSectionLabel(text: chrome.model.title.uppercased()) },
+                trailing: { StackHeaderControls() })
+        }
     }
 }

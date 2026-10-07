@@ -14,6 +14,8 @@ struct PublishPortWidgetView: View {
             }
             .padding(.horizontal, m.pt(14))
             .padding(.top, m.space.md)
+        } else {
+            StackEmptyWidgetHeader()
         }
     }
 }

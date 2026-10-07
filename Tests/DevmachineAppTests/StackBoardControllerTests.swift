@@ -269,6 +269,15 @@ final class StackBoardControllerTests: XCTestCase {
         XCTAssertFalse(controller.needsGitContext)
     }
 
+    func testASectionKnowsTheExpandedSectionsAboveIt() {
+        let controller = makeController("context-sidebar")
+        XCTAssertEqual(controller.expandedAppKinds(provider: "app/session-context", before: "monitors"), [])
+        XCTAssertEqual(controller.expandedAppKinds(provider: "app/session-context", before: "todo"), [.monitors, .shells, .subAgents])
+        controller.setCollapsed("shells", true)
+        XCTAssertEqual(controller.expandedAppKinds(provider: "app/session-context", before: "todo"), [.monitors, .subAgents])
+        XCTAssertEqual(controller.expandedAppKinds(provider: "app/session-context", before: "gone"), [])
+    }
+
     func testAnInlineWidgetThatReadsPathOrHarnessNeedsSessionContext() throws {
         for reference in ["{{context.path}}", "{{context.harness}}"] {
             try write("""

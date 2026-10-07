@@ -256,6 +256,17 @@ final class StackBoardController: ObservableObject {
         }?.id
     }
 
+    /// The expanded app views `provider` draws above `id`, so a section
+    /// knows whether it leads once it sees what the others have to show.
+    func expandedAppKinds(provider: String, before id: String) -> [StackAppViewKind] {
+        guard let index = board.index(of: id) else { return [] }
+        return board.entries.prefix(index).compactMap { entry in
+            guard !entry.collapsed, case let .ready(resolved)? = resolution(of: entry), resolved.provider == provider
+            else { return nil }
+            return StackAppViewKind(viewKind: resolved.viewKind)
+        }
+    }
+
     /// `path` and `harness` come from the session-context poll too, so a
     /// widget reading them keeps it running.
     var needsSessionContext: Bool {

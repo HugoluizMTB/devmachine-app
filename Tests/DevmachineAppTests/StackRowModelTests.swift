@@ -185,4 +185,36 @@ final class StackRowModelTests: XCTestCase {
         XCTAssertEqual(WidgetGalleryContent.of(hasCatalog: false, entries: 0, failure: "offline"), .failure("offline"))
         XCTAssertEqual(WidgetGalleryContent.of(hasCatalog: false, entries: 0, failure: nil), .loading)
     }
+
+    private func contextState(prs: Bool, links: Bool) -> ContextState {
+        ContextState(
+            cwd: "/home/alice/api", isClaude: true, updatedAt: "2026-10-07T10:00:00Z", plan: nil,
+            prs: prs ? [ContextState.PR(
+                number: 7, repo: "acme/api", title: "Fix", url: "https://example.com/acme/api/pull/7", ci: "passing",
+                review: "approved", state: "open")] : [],
+            links: links ? [ContextState.Link(url: "https://example.com", label: "Docs", kind: "doc")] : [])
+    }
+
+    func testBeforeTheFirstReadTheFirstSectionLeads() {
+        XCTAssertTrue(ContextSectionLead.isLead(.pullRequests, preceding: [], state: nil))
+        XCTAssertFalse(ContextSectionLead.isLead(.monitors, preceding: [.pullRequests], state: nil))
+    }
+
+    func testOnceReadTheLeadIsTheFirstSectionThatDrawsSomething() {
+        let empty = contextState(prs: false, links: false)
+        XCTAssertFalse(ContextSectionLead.isLead(.pullRequests, preceding: [], state: empty))
+        XCTAssertFalse(ContextSectionLead.isLead(.links, preceding: [.pullRequests], state: empty))
+        XCTAssertTrue(ContextSectionLead.isLead(.monitors, preceding: [.pullRequests, .links], state: empty))
+        XCTAssertFalse(ContextSectionLead.isLead(.shells, preceding: [.pullRequests, .monitors], state: empty))
+        let withPRs = contextState(prs: true, links: false)
+        XCTAssertTrue(ContextSectionLead.isLead(.pullRequests, preceding: [], state: withPRs))
+        XCTAssertFalse(ContextSectionLead.isLead(.monitors, preceding: [.pullRequests], state: withPRs))
+    }
+
+    func testAnEmptyAppWidgetShowsItsTitleRowOnlyWhileThePanelIsHoveredAndEditable() {
+        XCTAssertFalse(StackRowModel.showsEmptyHeader(panelHovered: false, dragging: false, canEdit: true))
+        XCTAssertTrue(StackRowModel.showsEmptyHeader(panelHovered: true, dragging: false, canEdit: true))
+        XCTAssertTrue(StackRowModel.showsEmptyHeader(panelHovered: false, dragging: true, canEdit: true))
+        XCTAssertFalse(StackRowModel.showsEmptyHeader(panelHovered: true, dragging: false, canEdit: false))
+    }
 }

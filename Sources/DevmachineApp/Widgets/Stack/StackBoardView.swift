@@ -194,7 +194,8 @@ struct StackBoardView: View {
                     onOpenSession: openSession)
                     .frame(height: size.height)
             } else if let kind = StackAppViewKind(viewKind: resolved.viewKind) {
-                StackAppWidgetView(kind: kind, isLead: controller.leadEntryID(provider: resolved.provider) == entry.id)
+                StackAppWidgetView(
+                    kind: kind, preceding: controller.expandedAppKinds(provider: resolved.provider, before: entry.id))
                     .frame(height: fixed)
             } else {
                 AppWidgetView(resolved: resolved, size: size)
@@ -213,7 +214,7 @@ struct StackBoardView: View {
     private func chrome(for row: StackRowModel, entry: StackEntry) -> StackWidgetChrome {
         StackWidgetChrome(
             model: row, isHovered: hovered == entry.id, isDragging: drag?.id == entry.id, isOptionHeld: optionHeld,
-            canEdit: controller.canEdit, areaName: StackArea.name(controller.surface),
+            isPanelHovered: panelHovered, canEdit: controller.canEdit, areaName: StackArea.name(controller.surface),
             onToggleCollapsed: { controller.setCollapsed(entry.id, !entry.collapsed) },
             onMoveUp: { controller.moveUp(entry.id) },
             onMoveDown: { controller.moveDown(entry.id) },
