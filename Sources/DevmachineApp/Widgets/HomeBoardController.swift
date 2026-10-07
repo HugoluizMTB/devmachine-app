@@ -41,7 +41,7 @@ final class HomeBoardController: ObservableObject {
 
     init(
         placementsFile: WidgetPlacementsFile = WidgetPlacementsFile(fileURL: HomeBoardController.placementsURL()),
-        catalog: WidgetCatalogStore = WidgetCatalogStore(),
+        catalog: WidgetCatalogStore = .shared,
         configPath: @escaping @Sendable () async -> String? = {
             await Task.detached { try? DevmachineCLI.resolve().configPath().path }.value
         },
@@ -75,12 +75,7 @@ final class HomeBoardController: ObservableObject {
         started = true
         if DemoMode.isActive {
             catalog.pin(DemoData.widgetCatalog)
-            let environment = ProcessInfo.processInfo.environment
-            let folder = environment["DEVMACHINE_DEMO_BOARDS"].flatMap { $0.isEmpty ? nil : $0 }
-                ?? FileManager.default.temporaryDirectory
-                    .appendingPathComponent("devmachine-demo-config-\(UUID().uuidString)").path
-            try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-            open(configDirectory: folder)
+            open(configDirectory: DemoMode.boardsFolder)
             return
         }
         catalog.reloadSoon()

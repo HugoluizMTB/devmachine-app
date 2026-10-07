@@ -115,6 +115,7 @@ struct ContentView: View {
             model.settings = settingsStore.settings
             model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
             Task { await compat.check() }
+            StackBoardController.startAll()
         }
         .onReceive(settingsStore.$settings) { model.settings = $0 }
         .onChange(of: model.pendingPublishWorkspace) { _, workspace in

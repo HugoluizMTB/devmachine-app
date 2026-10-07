@@ -38,7 +38,10 @@ struct DevmachineApp: App {
             }
             return DefaultBoard.make(usage: usage)
         }
-        WidgetCompatibilityStore.shared.onUpdated = { HomeBoardController.shared.reload() }
+        WidgetCompatibilityStore.shared.onUpdated = {
+            HomeBoardController.shared.reload()
+            StackBoardController.reloadAll()
+        }
         Task.detached(priority: .utility) { facade.refreshAvailability() }
         // `DEVMACHINE_DEMO=1`: every store seeds itself from `DemoData` (see
         // `DemoMode.swift`) instead of reading real usage files, the CLI, or

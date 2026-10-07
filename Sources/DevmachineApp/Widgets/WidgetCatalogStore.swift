@@ -5,6 +5,8 @@ import DevmachineCore
 /// good catalog; with none, Home says it could not fetch packages.
 @MainActor
 final class WidgetCatalogStore: ObservableObject {
+    static let shared = WidgetCatalogStore()
+
     enum State: Equatable {
         case idle
         case loading
