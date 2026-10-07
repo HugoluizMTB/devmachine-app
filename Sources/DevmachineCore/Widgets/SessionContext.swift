@@ -82,13 +82,20 @@ public enum ContextGitProbe {
 extension ResolvedSource {
     /// Whether a run reads `key`, so the board fetches a costly key (repo,
     /// branch) only when some widget uses it. A package widget declares its
-    /// keys; an inline one is read from its templates and shell variables.
+    /// keys; an inline one is read from its templates and shell variables,
+    /// and an inline script, whose text the app never sees, reads them all.
     public func reads(contextKey key: String) -> Bool {
         if let contextKeys { return contextKeys.contains(key) }
+        if case let .command(command) = source, command.script != nil { return true }
         let variable = TemplateValues.variableName("DM_CONTEXT_", key)
         return Self.strings(in: source).contains {
             Self.template(in: $0, names: key) || Self.variable(variable, isIn: $0)
         }
+    }
+
+    /// Only the keys a run reads, so a change to any other leaves it alone.
+    public func readContext(_ context: [String: String]) -> [String: String] {
+        context.filter { reads(contextKey: $0.key) }
     }
 
     private static func template(in text: String, names key: String) -> Bool {

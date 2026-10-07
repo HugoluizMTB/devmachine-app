@@ -421,6 +421,58 @@ final class WidgetSourceControllerTests: XCTestCase {
         XCTAssertEqual(board.state("here").output, .text("ok"))
     }
 
+    func testAnInlineWidgetIgnoresAChangeToAKeyItDoesNotRead() async {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api", "branch": "main"])
+        board.start()
+        board.update([contextEntry()])
+        await waitUntil { self.command.calls == 1 }
+        await waitUntil { board.state("here").output == .text("ok") }
+        board.setContext(["path": "/home/alice/api", "branch": "feature"])
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 1)
+        XCTAssertEqual(board.state("here").output, .text("ok"))
+        board.setContext(["path": "/home/alice/web", "branch": "feature"])
+        await waitUntil { self.command.calls == 2 }
+    }
+
+    func testAnApprovedInlineWidgetStaysApprovedWhenAnUnreadKeyChanges() async {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api", "branch": "main"])
+        board.start()
+        board.update([contextEntry(inline: true)])
+        board.approve("here", hash: shown(board, "here"))
+        await waitUntil { self.command.calls == 1 }
+        await waitUntil { board.state("here").output == .text("ok") }
+        board.setContext(["path": "/home/alice/api", "branch": "feature"])
+        XCTAssertEqual(board.approvalState("here"), .allowed)
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 1)
+    }
+
+    func testAnInlineShellLineAsksAgainWhenAnyKeyChangesBecauseItsHashCoversThem() async {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api", "branch": "main"])
+        board.start()
+        board.update([entry("here", run: "echo \"$DM_CONTEXT_PATH\"", shell: true)])
+        board.approve("here", hash: shown(board, "here"))
+        await waitUntil { self.command.calls == 1 }
+        board.setContext(["path": "/home/alice/api", "branch": "feature"])
+        guard case .waiting = board.approvalState("here") else { return XCTFail("\(board.approvalState("here"))") }
+    }
+
+    func testAnInlineScriptRerunsOnAnyKeyChange() async {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api", "branch": "main"])
+        board.start()
+        let source = WidgetSource.command(CommandSource(
+            run: nil, script: "/home/alice/bin/status", args: [], shell: false, target: .local, every: .interval(60),
+            timeout: 30, mode: .poll, keep: 3, parse: .text))
+        board.update([SourceWidgetEntry(id: "status", source: ResolvedSource(
+            source: source, view: WidgetView(kind: "text"), every: .interval(60), needsApproval: false,
+            package: "mine", packagePath: nil), isVisible: true)])
+        await waitUntil { self.command.calls == 1 }
+        await waitUntil { !board.state("status").isRunning }
+        board.setContext(["path": "/home/alice/api", "branch": "feature"])
+        await waitUntil { self.command.calls == 2 }
+    }
+
     func testASessionSwitchCancelsTheRunAndDropsItsAnswer() async {
         command = ScriptedSourceRunner([.success(.output(.text("files")))], gated: true)
         let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"])

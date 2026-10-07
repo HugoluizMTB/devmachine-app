@@ -45,9 +45,11 @@ final class SessionContextTests: XCTestCase {
         XCTAssertEqual(ContextGitProbe.repo(fromRemote: ""), "")
     }
 
-    private func source(_ run: String, args: [String] = [], shell: Bool = false, keys: Set<String>? = nil) -> ResolvedSource {
+    private func source(
+        _ run: String?, script: String? = nil, args: [String] = [], shell: Bool = false, keys: Set<String>? = nil
+    ) -> ResolvedSource {
         let command = WidgetSource.command(CommandSource(
-            run: run, script: nil, args: args, shell: shell, target: .local, every: .interval(30), timeout: 30,
+            run: run, script: script, args: args, shell: shell, target: .local, every: .interval(30), timeout: 30,
             mode: .poll, keep: 200, parse: .text))
         return ResolvedSource(
             source: command, view: WidgetView(kind: "text"), every: .interval(30), needsApproval: keys == nil,
@@ -69,5 +71,18 @@ final class SessionContextTests: XCTestCase {
         XCTAssertFalse(source("echo", args: ["{{ context.repository }}"]).reads(contextKey: "repo"))
         XCTAssertFalse(source("echo \"$DM_CONTEXT_REPO_NAME\"", shell: true).reads(contextKey: "repo"))
         XCTAssertTrue(source("echo \"${DM_CONTEXT_REPO}x\"", shell: true).reads(contextKey: "repo"))
+    }
+
+    func testAnInlineScriptReadsEveryKey() {
+        XCTAssertTrue(source(nil, script: "/home/alice/bin/status").reads(contextKey: "repo"))
+        XCTAssertTrue(source(nil, script: "/home/alice/bin/status").reads(contextKey: "branch"))
+        XCTAssertFalse(source(nil, script: "status.sh", keys: ["path"]).reads(contextKey: "repo"))
+    }
+
+    func testReadContextKeepsOnlyTheKeysTheSourceReads() {
+        let context = ["path": "/home/alice/api", "branch": "main", "repo": "acme/api"]
+        XCTAssertEqual(source("ls", args: ["{{context.path}}"]).readContext(context), ["path": "/home/alice/api"])
+        XCTAssertEqual(source("git", keys: ["branch"]).readContext(context), ["branch": "main"])
+        XCTAssertEqual(source(nil, script: "/home/alice/bin/status").readContext(context), context)
     }
 }
