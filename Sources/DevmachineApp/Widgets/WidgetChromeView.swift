@@ -4,6 +4,11 @@ import DevmachineCore
 
 enum WidgetChromeLayout {
     static let resizeCornerAlignment: Alignment = .bottomTrailing
+    /// The grip and the ⋯ split the whole handle pill between them, its
+    /// padding included, so no click on the glass falls between targets.
+    static let gripArea = CGSize(width: 28, height: DMControlHeight.small)
+    static let menuArea = CGSize(width: 24, height: DMControlHeight.small)
+    static let resizeCorner = DMHitSize.regular
 }
 
 /// Where an overlay of a given size lands inside a card, so content
@@ -169,11 +174,11 @@ struct WidgetChromeView: View {
     }
 
     private var handle: some View {
-        HStack(spacing: m.space.xs) {
+        HStack(spacing: 0) {
             Image(systemName: "line.3.horizontal")
                 .font(.dm(10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.8))
-                .frame(width: m.size(DMHitSize.compact).width, height: m.size(DMHitSize.compact).height)
+                .frame(width: m.size(WidgetChromeLayout.gripArea).width, height: m.size(WidgetChromeLayout.gripArea).height)
                 .contentShape(Rectangle())
                 .gesture(moveGesture)
                 .canvasCursor(.openHand)
@@ -182,14 +187,17 @@ struct WidgetChromeView: View {
                 menuItems
             } label: {
                 Image(systemName: "ellipsis")
+                    .font(.dm(10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .frame(width: m.size(WidgetChromeLayout.menuArea).width, height: m.size(WidgetChromeLayout.menuArea).height)
+                    .contentShape(Rectangle())
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel(Text(verbatim: "Actions for \(title)"))
         }
-        .padding(.horizontal, m.space.sm)
-        .frame(height: m.control.small)
         .dmGlass(radius: DMRadius.pill)
         .fixedSize()
         .onHover { handleHovered = $0 }
@@ -232,7 +240,7 @@ struct WidgetChromeView: View {
         Image(systemName: "arrow.up.left.and.arrow.down.right")
             .font(.dm(9, weight: .semibold))
             .foregroundStyle(.white.opacity(0.8))
-            .frame(width: m.size(DMHitSize.compact).width, height: m.size(DMHitSize.compact).height)
+            .frame(width: m.size(WidgetChromeLayout.resizeCorner).width, height: m.size(WidgetChromeLayout.resizeCorner).height)
             .contentShape(Rectangle())
             .canvasCursor(.crosshair)
             .gesture(

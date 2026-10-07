@@ -74,8 +74,20 @@ final class AppWidgetViewsTests: XCTestCase {
             every: every, minimum: CanvasSize(w: 160, h: 160))
     }
 
+    func testTheHandleGripAndMenuFillThePillHeight() {
+        XCTAssertEqual(WidgetChromeLayout.gripArea.height, DMControlHeight.small)
+        XCTAssertEqual(WidgetChromeLayout.menuArea.height, DMControlHeight.small)
+    }
+
+    func testTheHandleGripAndMenuAreComfortableTargets() {
+        XCTAssertGreaterThanOrEqual(WidgetChromeLayout.gripArea.width, DMHitSize.footer.width)
+        XCTAssertGreaterThanOrEqual(WidgetChromeLayout.menuArea.width, DMHitSize.strip.width)
+        XCTAssertGreaterThanOrEqual(WidgetChromeLayout.resizeCorner.width, DMHitSize.regular.width)
+        XCTAssertGreaterThanOrEqual(WidgetChromeLayout.resizeCorner.height, DMHitSize.regular.height)
+    }
+
     func testTheMoreChipNeverSitsUnderTheResizeCorner() {
-        let corner = DMHitSize.compact
+        let corner = WidgetChromeLayout.resizeCorner
         let chip = CGSize(width: 96, height: DMControlHeight.small)
         for preset in WidgetContract.presetOrder {
             let size = CanvasLayout.presetSize(preset)!
