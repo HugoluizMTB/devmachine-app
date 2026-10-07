@@ -131,20 +131,7 @@ public struct Board: Equatable, Sendable {
     public var topZ: Int { widgets.map(\.z).max() ?? 0 }
 
     public func uniqueID(base: String) -> String {
-        let cleaned = base.lowercased()
-            .map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" }
-            .reduce(into: "") { result, character in
-                if character == "-", result.last == "-" || result.isEmpty { return }
-                result.append(character)
-            }
-        var stem = cleaned
-        while stem.hasSuffix("-") { stem.removeLast() }
-        if stem.isEmpty { stem = "widget" }
-        let taken = Set(widgets.map(\.id))
-        guard taken.contains(stem) else { return stem }
-        var counter = 2
-        while taken.contains("\(stem)-\(counter)") { counter += 1 }
-        return "\(stem)-\(counter)"
+        BoardIDs.unique(base: base, taken: Set(widgets.map(\.id)))
     }
 }
 
@@ -159,4 +146,24 @@ public struct BoardProblem: Error, Equatable, Sendable, CustomStringConvertible 
     }
 
     public var description: String { line.map { "line \($0): \(message)" } ?? message }
+}
+
+/// The id rule every board shares: lower case a-z, 0-9 and single dashes,
+/// numbered from 2 when taken.
+public enum BoardIDs {
+    public static func unique(base: String, taken: Set<String>) -> String {
+        let cleaned = base.lowercased()
+            .map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" }
+            .reduce(into: "") { result, character in
+                if character == "-", result.last == "-" || result.isEmpty { return }
+                result.append(character)
+            }
+        var stem = cleaned
+        while stem.hasSuffix("-") { stem.removeLast() }
+        if stem.isEmpty { stem = "widget" }
+        guard taken.contains(stem) else { return stem }
+        var counter = 2
+        while taken.contains("\(stem)-\(counter)") { counter += 1 }
+        return "\(stem)-\(counter)"
+    }
 }
