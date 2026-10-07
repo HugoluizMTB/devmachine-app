@@ -63,18 +63,42 @@ enum ANSIPalette {
     }
 }
 
+/// Up to 1 MB of coloured output is parsed once per new output, not on
+/// every render of the card.
+@MainActor
+final class ANSIRenderCache {
+    private var key: [String]?
+    private var value = AttributedString()
+    private let render: ([String]) -> AttributedString
+
+    init(render: @escaping ([String]) -> AttributedString = {
+        ANSIPalette.attributed(ANSIText.lines($0.joined(separator: "\n")))
+    }) {
+        self.render = render
+    }
+
+    func text(for lines: [String]) -> AttributedString {
+        if key != lines {
+            value = render(lines)
+            key = lines
+        }
+        return value
+    }
+}
+
 /// Text and stream lines; a stream, a screen or a tail follows the newest line.
 struct TextLinesView: View {
     let lines: [String]
     let wrap: Bool
     let keepsColor: Bool
     let followsNewest: Bool
+    @State private var colored = ANSIRenderCache()
 
     var body: some View {
         ScrollView(wrap ? .vertical : [.vertical, .horizontal]) {
             Group {
                 if keepsColor {
-                    Text(ANSIPalette.attributed(ANSIText.lines(lines.joined(separator: "\n"))))
+                    Text(colored.text(for: lines))
                 } else {
                     Text(verbatim: lines.map(LogText.plain).joined(separator: "\n"))
                 }

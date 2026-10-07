@@ -216,6 +216,20 @@ final class SourceWidgetLayoutTests: XCTestCase {
         return state
     }
 
+    @MainActor
+    func testColouredOutputIsParsedOncePerNewOutput() {
+        var renders = 0
+        let cache = ANSIRenderCache { lines in
+            renders += 1
+            return AttributedString(lines.joined(separator: "\n"))
+        }
+        XCTAssertEqual(String(cache.text(for: ["a", "b"]).characters), "a\nb")
+        _ = cache.text(for: ["a", "b"])
+        XCTAssertEqual(renders, 1)
+        XCTAssertEqual(String(cache.text(for: ["c"]).characters), "c")
+        XCTAssertEqual(renders, 2)
+    }
+
     func testASessionWidgetOpensTheSessionItNames() {
         let workspaces = [Workspace(name: "alice", alias: "alice-devmachine")]
         let local = [LocalSession(handle: "shell-1", name: "Shell", path: "/Users/alice")]

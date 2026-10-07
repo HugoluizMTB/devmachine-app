@@ -143,7 +143,7 @@ public enum ANSIText {
             case 90...97: style.foreground = .palette(code - 90 + 8)
             case 100...107: style.background = .palette(code - 100 + 8)
             case 38, 48:
-                switch extendedColor(Array(codes.dropFirst(i + 1))) {
+                switch extendedColor(codes[(i + 1)...]) {
                 case let .color(color, used):
                     if code == 38 { style.foreground = color } else { style.background = color }
                     i += used
@@ -158,14 +158,15 @@ public enum ANSIText {
         }
     }
 
-    private static func extendedColor(_ codes: [Int?]) -> ExtendedColor {
-        guard let mode = codes.first ?? nil else { return .malformed }
+    private static func extendedColor(_ slice: ArraySlice<Int?>) -> ExtendedColor {
+        let codes = { (offset: Int) in slice[slice.startIndex + offset] }
+        guard let mode = slice.first ?? nil else { return .malformed }
         switch mode {
         case 5:
-            guard codes.count >= 2, let entry = codes[1] else { return .malformed }
+            guard slice.count >= 2, let entry = codes(1) else { return .malformed }
             return (0...255).contains(entry) ? .color(.palette(entry), codes: 2) : .outOfRange(codes: 2)
         case 2:
-            guard codes.count >= 4, let r = codes[1], let g = codes[2], let b = codes[3] else { return .malformed }
+            guard slice.count >= 4, let r = codes(1), let g = codes(2), let b = codes(3) else { return .malformed }
             return .color(.rgb(UInt8(clamping: r), UInt8(clamping: g), UInt8(clamping: b)), codes: 4)
         default:
             return .malformed
