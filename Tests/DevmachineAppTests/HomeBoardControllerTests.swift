@@ -85,6 +85,15 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), ["disk", "tail"])
     }
 
+    func testAWidgetChangedWithinOneReleaseRefreshesTheJobs() {
+        let before = DemoData.widgetCatalog
+        let edited = WidgetCatalog(
+            engine: before.engine, packagesRelease: before.packagesRelease, widgets: Array(before.widgets.dropLast()))
+        XCTAssertNotEqual(
+            HomeJobsTrigger(board: nil, catalog: before, visible: .zero),
+            HomeJobsTrigger(board: nil, catalog: edited, visible: .zero))
+    }
+
     func testAnInjectedSourceControllerIsTheOneUsed() {
         let sources = WidgetSourceController(
             runners: WidgetSourceLive.runners(),

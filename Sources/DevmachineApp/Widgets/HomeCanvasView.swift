@@ -7,6 +7,14 @@ enum HomeCanvasMetrics {
     static let padding: CGFloat = 24
 }
 
+/// The whole catalog, not just its release: a local package edit can change
+/// a widget's source within one release, and the old command must not keep running.
+struct HomeJobsTrigger: Equatable {
+    let board: Board?
+    let catalog: WidgetCatalog?
+    let visible: CGSize
+}
+
 struct HomeCanvasView: View {
     @ObservedObject var controller: HomeBoardController
     @ObservedObject private var catalog: WidgetCatalogStore
@@ -191,12 +199,6 @@ private struct BoardCanvasLayer: View {
         let harnesses: [String]
     }
 
-    private struct JobsTrigger: Equatable {
-        let board: Board?
-        let release: String?
-        let visible: CGSize
-    }
-
     private var scale: Double { Double(m.pt(1)) }
     private var boardVisible: CGSize {
         CGSize(width: canvasSize.width / scale, height: canvasSize.height / scale)
@@ -224,7 +226,7 @@ private struct BoardCanvasLayer: View {
             controller.applyPlaces(canvasWidth: Int(boardVisible.width), enabledHarnesses: Set(enabledHarnesses))
         }
         .onChange(
-            of: JobsTrigger(board: store.board, release: catalog.catalog?.packagesRelease, visible: boardVisible),
+            of: HomeJobsTrigger(board: store.board, catalog: catalog.catalog, visible: boardVisible),
             initial: true
         ) { _, _ in
             controller.runtime.setJobs(controller.runtimeJobs(isOnScreen: isOnScreen))
