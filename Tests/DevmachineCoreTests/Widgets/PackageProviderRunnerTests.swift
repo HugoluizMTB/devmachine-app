@@ -113,6 +113,29 @@ final class PackageProviderRunnerTests: XCTestCase {
         XCTAssertTrue(launcher.invocations.isEmpty)
     }
 
+    private func approvals(_ decision: ApprovalDecision) throws -> WidgetApprovals {
+        let source = request(needsApproval: true).source
+        let hash = try XCTUnwrap(ApprovalSubject.hash(for: source, context: [:]))
+        var approvals = WidgetApprovals()
+        approvals.record(decision, hash: hash, summary: ApprovalPrompt(source, context: [:]).summary,
+                         at: Date(timeIntervalSince1970: 0))
+        return approvals
+    }
+
+    func testAnAllowedHashRunsOnce() async throws {
+        launcher.stdout = Data(#"{"load": 0.5}"#.utf8)
+        let result = try await runner().fetch(request(needsApproval: true, approvals: approvals(.allowed)))
+        XCTAssertEqual(result, .output(.json(.object(["load": .double(0.5)]))))
+        XCTAssertEqual(launcher.invocations.count, 1)
+    }
+
+    func testADeniedHashRunsNothing() async throws {
+        let result = try await runner().fetch(request(needsApproval: true, approvals: approvals(.denied)))
+        guard case let .needsApproval(.denied(hash)) = result else { return XCTFail("\(result)") }
+        XCTAssertFalse(hash.isEmpty)
+        XCTAssertTrue(launcher.invocations.isEmpty)
+    }
+
     func testExitCodesReadAsTheCLISaysThem() async {
         launcher.status = 3
         launcher.stderr = "boom"
@@ -129,6 +152,8 @@ final class PackageProviderRunnerTests: XCTestCase {
         launcher.holds = true
         let error = await failure { try await runner(sleep: { _ in }).fetch(request()) }
         XCTAssertEqual(error, .timedOut(20))
+        XCTAssertEqual(launcher.processes.count, 1)
+        XCTAssertTrue(try XCTUnwrap(launcher.processes.first).isTerminated)
     }
 
     func testAWithValueThatHoldsANULByteNeverStarts() async {

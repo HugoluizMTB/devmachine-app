@@ -314,4 +314,30 @@ final class SourceWidgetLayoutTests: XCTestCase {
             XCTAssertEqual(result.spilledPixels, 0, "the card spills out at \(scale)")
         }
     }
+
+    @MainActor
+    func testALongThirdPartyCommandFitsTheStackApprovalRow() {
+        let width: CGFloat = 200
+        let height = CGFloat(StackLayout.approvalRows * WidgetContract.current.stackRow)
+        let resolved = ResolvedSource(
+            source: .packageProvider(PackageProviderSource(
+                name: "acme-tools/load-average-of-every-container",
+                with: ["window": "15m", "include-stopped-containers": "true", "path": "/Users/alice/projects/a-long-folder-name/x",
+                       "format": "json-with-every-field"],
+                target: .workspace("alice-dev-with-a-long-workspace-name"), every: .interval(30), timeout: 30)),
+            view: WidgetView(kind: "number"), every: .interval(30), needsApproval: true, package: "acme-tools",
+            packagePath: nil, trust: .thirdParty, packageCommit: String(repeating: "1", count: 40),
+            packageSourceURL: "https://example.com/acme/a-very-long-path/that-keeps-going/acme-tools.git")
+        let prompt = ApprovalPrompt(resolved, context: [:])
+        for scale in DMFitCheck.scales {
+            let m = DMMetrics(scale: scale)
+            let size = CGSize(width: m.pt(width), height: m.pt(height))
+            let result = DMFitCheck.render(width: width, scale: scale) {
+                WidgetApprovalCard(
+                    kind: WidgetApprovalText.kind(resolved.source), prompt: prompt, state: .waiting(hash: "h"),
+                    surface: "context-sidebar", size: size, onAllow: {}, onDeny: {})
+            }
+            XCTAssertEqual(result.spilledPixels, 0, "the stack card spills out at \(scale)")
+        }
+    }
 }
