@@ -274,7 +274,8 @@ public enum WidgetSourceReader {
             }
             if let run, !shell, Self.hasSpaceOutsideTemplates(run) {
                 throw WidgetSpecProblem(
-                    ["run"], "source.run \"\(run)\" has spaces: put the arguments in args, or set shell: true")
+                    ["run"],
+                    "source.run \"\(run)\" has spaces: put each argument in source.args, or set shell: true to run it as a shell line")
             }
             if let run, !shell { try checkProgramWord(run) }
             if let script { try checkScript(script, scope: scope) }

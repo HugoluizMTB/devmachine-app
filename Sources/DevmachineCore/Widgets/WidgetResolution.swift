@@ -71,32 +71,55 @@ public enum WidgetTemplate {
     }
 }
 
-/// A widget that runs something itself instead of a provider of the app:
-/// its source with templates filled, its view, and the `every` it really uses.
+/// A widget that runs something itself instead of a provider of the app.
+/// `source` keeps its templates: they are filled once, at run time, with the
+/// area's real context, so a value can never pull in another value. Approval
+/// state uses `ApprovalSubject.hash(for:context:)` with that same context.
 public struct ResolvedSource: Equatable, Sendable {
     public let source: WidgetSource
     public let view: WidgetView
     public let every: WidgetEvery
     public let needsApproval: Bool
-    public let approvalHash: String?
     public let package: String?
     public let packagePath: String?
-    /// A shell line reads these as DM_ variables; `ArgvBuilder.command`
-    /// needs them, since `source` already has its templates resolved.
-    public let values: TemplateValues
+    /// Declared inputs only: their defaults, then the board's `with`.
+    public let inputs: [String: String]
+    /// The context keys a package widget declares; nil for a widget written in
+    /// a board, which may read whatever its area gives.
+    public let contextKeys: Set<String>?
 
     public init(
-        source: WidgetSource, view: WidgetView, every: WidgetEvery, needsApproval: Bool, approvalHash: String?,
-        package: String?, packagePath: String?, values: TemplateValues = .none
+        source: WidgetSource, view: WidgetView, every: WidgetEvery, needsApproval: Bool, package: String?,
+        packagePath: String?, inputs: [String: String] = [:], contextKeys: Set<String>? = nil
     ) {
         self.source = source
         self.view = view
         self.every = every
         self.needsApproval = needsApproval
-        self.approvalHash = approvalHash
         self.package = package
         self.packagePath = packagePath
-        self.values = values
+        self.inputs = inputs
+        self.contextKeys = contextKeys
+    }
+
+    /// The area's context goes in as is; home gives none, so `{{context.x}}`
+    /// reads as empty there.
+    public func values(context: [String: String]) -> TemplateValues {
+        let allowed = contextKeys.map { keys in context.filter { keys.contains($0.key) } } ?? context
+        return TemplateValues(inputs: inputs, context: allowed)
+    }
+
+    /// Target, url, prompt and session as they run, and what a person reads.
+    /// A command's process comes from `command(context:)`, never from this.
+    public func resolved(context: [String: String]) throws -> WidgetSource {
+        try source.resolved(with: values(context: context))
+    }
+
+    /// The process of a command source; nil for any other kind.
+    public func command(context: [String: String]) throws -> TargetCommand? {
+        guard case let .command(command) = source else { return nil }
+        return try ArgvBuilder.command(
+            command, values: values(context: context), package: package, packagePath: packagePath)
     }
 }
 
@@ -165,22 +188,18 @@ public enum WidgetResolution: Equatable, Sendable {
         } catch {
             return .needsNewerApp(type: widget.name, reason: "\(error)")
         }
-        let inputs = widget.inputs.compactMapValues { $0.defaultValue?.text }
-            .merging(instance.with.mapValues(\.text)) { _, chosen in chosen }
-        let values = TemplateValues(inputs: inputs, context: [:])
-        let resolved: WidgetSource
-        do {
-            resolved = try source.resolved(with: values)
-        } catch {
-            return .needsNewerApp(type: widget.name, reason: error.localizedDescription)
+        if case let .command(command) = source, let refused = ArgvBuilder.refusal(command) {
+            return .needsNewerApp(type: widget.name, reason: refused.message)
         }
-        let every = floored(resolved.every, kind: resolved.kind, contract: contract)
+        let inputs = widget.inputs.compactMapValues { $0.defaultValue?.text }
+            .merging(instance.with.filter { widget.inputs[$0.key] != nil }.mapValues(\.text)) { _, chosen in chosen }
+        let every = floored(source.every, kind: source.kind, contract: contract)
         return .ready(ResolvedWidget(
             widget: widget, provider: "", viewKind: view.kind, arguments: [:], every: every.seconds ?? 0,
             minimum: CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract),
             source: ResolvedSource(
-                source: resolved, view: view, every: every, needsApproval: false, approvalHash: nil,
-                package: widget.package, packagePath: widget.packagePath, values: values)))
+                source: source, view: view, every: every, needsApproval: false, package: widget.package,
+                packagePath: widget.packagePath, inputs: inputs, contextKeys: Set(widget.context.keys))))
     }
 
     /// A widget written in a board resolves without the catalog: it carries
@@ -198,22 +217,17 @@ public enum WidgetResolution: Equatable, Sendable {
                 widget: widget, provider: provider.name, viewKind: inline.view.kind, arguments: provider.with,
                 every: max(floor, GoDuration.seconds(provider.every) ?? floor), minimum: minimum, title: inline.title))
         }
-        let source: WidgetSource
-        let hash: String?
-        do {
-            source = try inline.source.resolved(with: .none)
-            hash = try ApprovalSubject.hash(inline.source, values: .none)
-        } catch {
-            return .needsNewerApp(type: instance.id, reason: error.localizedDescription)
+        let source = inline.source
+        if case let .command(command) = source, let refused = ArgvBuilder.refusal(command) {
+            return .needsNewerApp(type: instance.id, reason: refused.message)
         }
-        let needsApproval = contract.needsApproval(source.kind)
         let every = floored(source.every, kind: source.kind, contract: contract)
         return .ready(ResolvedWidget(
             widget: widget, provider: "", viewKind: inline.view.kind, arguments: [:], every: every.seconds ?? 0,
             minimum: minimum,
             source: ResolvedSource(
-                source: source, view: inline.view, every: every, needsApproval: needsApproval,
-                approvalHash: needsApproval ? hash : nil, package: nil, packagePath: nil),
+                source: source, view: inline.view, every: every, needsApproval: contract.needsApproval(source.kind),
+                package: nil, packagePath: nil),
             title: inline.title))
     }
 

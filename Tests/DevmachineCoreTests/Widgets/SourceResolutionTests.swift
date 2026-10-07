@@ -21,10 +21,11 @@ final class SourceResolutionTests: XCTestCase {
     func testAPackageCommandFillsItsInputsAndNeedsNoApproval() throws {
         let resolved = try XCTUnwrap(ready(WidgetResolution.resolve(entry("mine/disk", with: ["machine": .string("sandbox")]), in: catalog())))
         let source = try XCTUnwrap(resolved.source)
-        guard case let .command(command) = source.source else { return XCTFail() }
+        guard case let .command(written) = source.source else { return XCTFail() }
+        XCTAssertEqual(written.target, .machine("{{inputs.machine}}"))
+        guard case let .command(command) = try source.resolved(context: [:]) else { return XCTFail() }
         XCTAssertEqual(command.target, .machine("sandbox"))
         XCTAssertFalse(source.needsApproval)
-        XCTAssertNil(source.approvalHash)
         XCTAssertEqual(source.package, "mine")
         XCTAssertEqual(source.packagePath, "/Users/alice/.config/devmachine/packages/mine")
         XCTAssertEqual(source.view.tail, 20)
@@ -34,9 +35,9 @@ final class SourceResolutionTests: XCTestCase {
 
     func testAnInputDefaultFillsATemplate() throws {
         let resolved = try XCTUnwrap(ready(WidgetResolution.resolve(entry("mine/disk"), in: catalog())))
-        guard case let .command(command)? = resolved.source?.source else { return XCTFail() }
+        guard case let .command(command)? = try resolved.source?.resolved(context: [:]) else { return XCTFail() }
         XCTAssertEqual(command.target, .machine("main"))
-        XCTAssertEqual(resolved.source?.values.inputs["machine"], "main")
+        XCTAssertEqual(resolved.source?.inputs, ["machine": "main"])
     }
 
     func testEverySourceKindResolves() throws {
@@ -95,7 +96,9 @@ final class SourceResolutionTests: XCTestCase {
             """)
         let disk = try XCTUnwrap(ready(WidgetResolution.resolveInline(board.widgets[0])))
         XCTAssertEqual(disk.source?.needsApproval, true)
-        XCTAssertEqual(disk.source?.approvalHash, ApprovalSubject.hash(board.widgets[0].inline!.source))
+        XCTAssertEqual(
+            try ApprovalSubject.hash(for: XCTUnwrap(disk.source), context: [:]),
+            try ApprovalSubject.hash(board.widgets[0].inline!.source, values: .none))
         XCTAssertNil(disk.source?.package)
         XCTAssertEqual(disk.title, "Disk")
         XCTAssertEqual(disk.widget.sizes, ["medium"])
@@ -140,5 +143,76 @@ final class SourceResolutionTests: XCTestCase {
 
     func testATypedEntryHasNoInlineResolution() {
         XCTAssertEqual(WidgetResolution.resolveInline(entry("mine/disk")), .notFound(type: "mine/disk"))
+    }
+
+    private func catalog(with widget: CatalogWidget) -> WidgetCatalog {
+        WidgetCatalog(engine: "1.1", packagesRelease: "v40", widgets: [widget])
+    }
+
+    private func packageCommand(_ raw: [String: WidgetValue], context: [String: String] = [:]) -> CatalogWidget {
+        CatalogWidget(
+            name: "mine/probe", requiresEngine: ">= 1.1", context: context,
+            inputs: [
+                "token": CatalogInput(type: "string", defaultValue: nil, summary: ""),
+                "path": CatalogInput(type: "string", defaultValue: .string("/"), summary: ""),
+            ],
+            source: CatalogSource(raw: .object(raw.merging(["every": .string("60s")]) { given, _ in given })),
+            viewKind: "text", sizes: ["medium"], defaultSize: "medium",
+            packagePath: "/Users/alice/.config/devmachine/packages/mine")
+    }
+
+    func testAValueThatLooksLikeATemplateStaysLiteral() throws {
+        let widget = packageCommand([
+            "kind": .string("command"), "run": .string("df"),
+            "args": .list([.string("{{inputs.path}}"), .string("{{inputs.token}}")]),
+        ])
+        let entry = entry("mine/probe", with: ["path": .string("{{inputs.token}}"), "token": .string("secret")])
+        let source = try XCTUnwrap(ready(WidgetResolution.resolve(entry, in: catalog(with: widget)))?.source)
+        XCTAssertEqual(try source.command(context: [:]), .argv(["df", "{{inputs.token}}", "secret"]))
+        guard case let .command(shown) = try source.resolved(context: [:]) else { return XCTFail() }
+        XCTAssertEqual(shown.args, ["{{inputs.token}}", "secret"])
+    }
+
+    func testAContextChangeChangesTheApprovalHash() throws {
+        let board = try BoardCodec.decode("""
+            format: 1
+            surface: context-sidebar
+            widgets:
+              - id: repo
+                title: Repo
+                source: {kind: command, run: git, args: [log, "{{context.branch}}"], every: 60s}
+                view: {kind: text}
+                frame: {x: 24, y: 24, w: 320, h: 160}
+            """)
+        let source = try XCTUnwrap(ready(WidgetResolution.resolveInline(board.widgets[0]))?.source)
+        let main = try ApprovalSubject.hash(for: source, context: ["branch": "main"])
+        let other = try ApprovalSubject.hash(for: source, context: ["branch": "other"])
+        XCTAssertNotNil(main)
+        XCTAssertNotEqual(main, other)
+        XCTAssertEqual(try source.command(context: ["branch": "other"]), .argv(["git", "log", "other"]))
+    }
+
+    func testUndeclaredInputsAndContextNeverReachTheShell() throws {
+        let widget = packageCommand(
+            ["kind": .string("command"), "run": .string("echo \"$DM_INPUT_TOKEN\""), "shell": .bool(true)],
+            context: ["branch": "string"])
+        let entry = entry("mine/probe", with: ["token": .string("t"), "evil": .string("x")])
+        let source = try XCTUnwrap(ready(WidgetResolution.resolve(entry, in: catalog(with: widget)))?.source)
+        XCTAssertEqual(source.inputs, ["token": "t", "path": "/"])
+        guard case let .shell(_, environment) = try source.command(context: ["branch": "main", "secret": "s"]) else {
+            return XCTFail()
+        }
+        XCTAssertEqual(environment, ["DM_INPUT_TOKEN": "t", "DM_INPUT_PATH": "/", "DM_CONTEXT_BRANCH": "main"])
+    }
+
+    func testHomeGivesNoContextSoATemplateOfItIsEmptyInTheHashAndTheRun() throws {
+        let widget = packageCommand(
+            ["kind": .string("command"), "run": .string("git"), "args": .list([.string("{{context.branch}}")])],
+            context: ["branch": "string"])
+        let source = try XCTUnwrap(ready(WidgetResolution.resolve(entry("mine/probe"), in: catalog(with: widget)))?.source)
+        XCTAssertEqual(try source.command(context: [:]), .argv(["git", ""]))
+        guard case var .command(expected) = source.source else { return XCTFail() }
+        expected.args = [""]
+        XCTAssertEqual(try ApprovalSubject.hash(for: source, context: [:]), ApprovalSubject.hash(.command(expected)))
     }
 }

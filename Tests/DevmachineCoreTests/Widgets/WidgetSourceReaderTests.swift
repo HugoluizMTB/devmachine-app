@@ -322,6 +322,13 @@ final class WidgetSourceReaderTests: XCTestCase {
         XCTAssertNil(problem(argTemplate, scope: scope))
     }
 
+    func testARunWithSpacesSaysWhatTheCLISays() {
+        let spaced: [String: WidgetValue] = ["kind": .string("command"), "run": .string("df -h"), "every": .string("60s")]
+        XCTAssertEqual(
+            problem(spaced, scope: .inline(contextKeys: []))?.message,
+            "source.run \"df -h\" has spaces: put each argument in source.args, or set shell: true to run it as a shell line")
+    }
+
     func testARunWithoutShellRefusesAProgramEnvWouldMisread() {
         let scope = WidgetScope.inline(contextKeys: ["repo"])
         let dash: [String: WidgetValue] = ["kind": .string("command"), "run": .string("-i"), "every": .string("60s")]

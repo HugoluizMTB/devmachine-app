@@ -12,6 +12,12 @@ public enum ApprovalSubject {
         return hash(resolved, environment: values.environment)
     }
 
+    /// What the runner checks right before a run and what the card records a
+    /// decision for: the same inputs and the same real context as the run.
+    public static func hash(for resolved: ResolvedSource, context: [String: String]) throws -> String? {
+        try hash(resolved.source, values: resolved.values(context: context))
+    }
+
     public static func canonicalJSON(_ source: WidgetSource, environment: [String: String] = [:]) -> String? {
         func target(_ target: WidgetTarget) -> WidgetValue {
             switch target {
