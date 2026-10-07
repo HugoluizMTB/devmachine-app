@@ -372,6 +372,9 @@ final class ArgvBuilderTests: XCTestCase {
                 guard case .refused? = $0 as? WidgetCommandError else { return XCTFail("\($0)") }
             }
         }
+        XCTAssertThrowsError(try ArgvBuilder.packageProvider(provider(with: ["path": "a\u{0}b"]))) {
+            XCTAssertEqual($0 as? WidgetCommandError, .refused("source.with.path holds a NUL byte"))
+        }
         for key in ["x; rm", "-all", "All", "a b", "", "1st", "a\nb", "$(id)"] {
             XCTAssertThrowsError(try ArgvBuilder.packageProvider(provider(with: [key: "v"])), key) {
                 guard case .refused? = $0 as? WidgetCommandError else { return XCTFail("\($0)") }

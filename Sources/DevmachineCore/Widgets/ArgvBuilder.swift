@@ -113,7 +113,8 @@ public enum ArgvBuilder {
     public static var flagName: Regex<Substring> { /[a-z][a-z0-9_-]*/ }
 
     /// Each `with` pair is two argv items in key order: a value is never
-    /// split, quoted or read by a shell, whatever it holds.
+    /// split, quoted or read by a shell. A NUL byte would cut it short in
+    /// the C argv, so it is refused.
     public static func packageProvider(_ source: PackageProviderSource) throws -> TargetCommand {
         guard let parts = PackageProviderName.parts(source.name) else {
             throw WidgetCommandError.refused("source.name \"\(source.name)\" is not <package>/<command>")
@@ -123,7 +124,11 @@ public enum ArgvBuilder {
             guard key.wholeMatch(of: flagName) != nil else {
                 throw WidgetCommandError.refused("source.with.\(key) is not a flag name")
             }
-            args += ["--\(key)", source.with[key] ?? ""]
+            let value = source.with[key] ?? ""
+            guard !value.contains("\u{0}") else {
+                throw WidgetCommandError.refused("source.with.\(key) holds a NUL byte")
+            }
+            args += ["--\(key)", value]
         }
         return .packageCommand(package: parts.package, command: parts.command, args: args)
     }
