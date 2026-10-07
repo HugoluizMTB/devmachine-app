@@ -382,4 +382,101 @@ final class WidgetSourceControllerTests: XCTestCase {
         reloaded.update([entry("load", inline: false, view: "sparkline", parse: .number)])
         XCTAssertEqual(reloaded.history("load").map(\.value), [42])
     }
+
+    private func contextEntry(_ id: String = "here", args: [String] = ["{{context.path}}"], inline: Bool = false, keys: Set<String>? = nil) -> SourceWidgetEntry {
+        let source = WidgetSource.command(CommandSource(
+            run: "ls", script: nil, args: args, shell: false, target: .local, every: .interval(60), timeout: 30,
+            mode: .poll, keep: 3, parse: .text))
+        return SourceWidgetEntry(id: id, source: ResolvedSource(
+            source: source, view: WidgetView(kind: "text"), every: .interval(60), needsApproval: inline,
+            package: inline ? nil : "mine", packagePath: nil, contextKeys: keys), isVisible: true)
+    }
+
+    func testASessionSwitchRerunsWithTheNewContext() async {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api", "stray": "x"])
+        board.start()
+        board.update([contextEntry()])
+        await waitUntil { self.command.calls == 1 }
+        XCTAssertEqual(command.requests[0].context["path"], "/home/alice/api")
+        XCTAssertNil(board.context["stray"])
+        await waitUntil { !board.state("here").isRunning }
+        board.setContext(["path": "/home/alice/web"])
+        await waitUntil { self.command.calls == 2 }
+        XCTAssertEqual(command.requests[1].context["path"], "/home/alice/web")
+    }
+
+    func testAChangeToAKeyTheWidgetDoesNotReadChangesNothing() async {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api", "branch": "main"])
+        board.start()
+        board.update([contextEntry(keys: ["path"])])
+        await waitUntil { self.command.calls == 1 }
+        await waitUntil { board.state("here").output == .text("ok") }
+        board.setContext(["path": "/home/alice/api", "branch": "feature"])
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 1)
+        XCTAssertEqual(board.state("here").output, .text("ok"))
+    }
+
+    func testASessionSwitchCancelsTheRunAndDropsItsAnswer() async {
+        command = ScriptedSourceRunner([.success(.output(.text("files")))], gated: true)
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"])
+        board.start()
+        board.update([contextEntry()])
+        await waitUntil { self.command.calls == 1 }
+        board.setContext(["path": "/home/alice/web"])
+        await waitUntil { self.command.calls == 2 }
+        command.release()
+        await waitUntil { board.state("here").output == .text("files") }
+        XCTAssertEqual(command.cancelled, 1)
+        XCTAssertEqual(command.requests.map { $0.context["path"] }, ["/home/alice/api", "/home/alice/web"])
+    }
+
+    func testASessionSwitchClearsTheOtherSessionsOutput() async {
+        command = ScriptedSourceRunner([.success(.output(.text("api files"))), .failure(.exited(status: 2, stderr: "no"))])
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"])
+        board.start()
+        board.update([contextEntry()])
+        await waitUntil { board.state("here").output == .text("api files") }
+        board.setContext(["path": "/home/alice/web"])
+        await waitUntil { board.state("here").error != nil }
+        XCTAssertNil(board.state("here").output)
+    }
+
+    func testAnInlineWidgetAsksAgainWhenItsResolvedContextChanges() async {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"])
+        board.start()
+        board.update([contextEntry(inline: true)])
+        guard case .waiting = board.approvalState("here") else { return XCTFail("\(board.approvalState("here"))") }
+        board.approve("here")
+        XCTAssertEqual(board.approvalState("here").canRun, true)
+        board.setContext(["path": "/home/alice/web"])
+        guard case .waiting = board.approvalState("here") else { return XCTFail("\(board.approvalState("here"))") }
+        board.setContext(["path": "/home/alice/api"])
+        XCTAssertEqual(board.approvalState("here").canRun, true)
+    }
+
+    func testASessionSwitchRestartsAStreamWithTheNewContext() async {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"])
+        board.start()
+        board.update([entry("log", run: "tail", inline: false, mode: .stream, args: ["{{context.path}}"])])
+        await waitUntil { self.launcher.processes.count == 1 }
+        launcher.write("api line\n")
+        await waitUntil { board.state("log").lines == ["api line"] }
+        board.setContext(["path": "/home/alice/web"])
+        XCTAssertTrue(launcher.processes[0].isTerminated)
+        await waitUntil { self.launcher.processes.count == 2 }
+        XCTAssertTrue(board.state("log").lines.isEmpty)
+        XCTAssertTrue(launcher.invocations[1].arguments.contains("/home/alice/web"))
+    }
+
+    func testASessionSwitchKeepsTheSparklineHistory() async {
+        command = ScriptedSourceRunner([.success(.output(.number(42))), .success(.output(.number(7)))])
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"])
+        board.start()
+        board.update([entry("load", inline: false, view: "sparkline", parse: .number, args: ["{{context.path}}"])])
+        await waitUntil { board.history("load").count == 1 }
+        board.setContext(["path": "/home/alice/web"])
+        await waitUntil { board.history("load").count == 2 }
+        XCTAssertEqual(board.history("load").map(\.value), [42, 7])
+    }
 }

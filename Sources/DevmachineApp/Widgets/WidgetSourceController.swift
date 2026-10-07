@@ -53,7 +53,8 @@ final class WidgetSourceController: ObservableObject {
     private let approvalsFile: WidgetApprovalsFile
     private let historyStore: SparklineHistoryStore
     private let surface: String
-    private let context: [String: String]
+    private(set) var context: [String: String]
+    private let contextKeys: Set<String>
     private let isDemo: Bool
     private let startsTimer: Bool
     private let now: () -> Date
@@ -71,6 +72,7 @@ final class WidgetSourceController: ObservableObject {
         self.historyStore = historyStore
         self.surface = surface
         let keys = Set(contract.surfaces[surface]?.context.keys.map { $0 } ?? [])
+        contextKeys = keys
         self.context = context.filter { keys.contains($0.key) }
         self.isDemo = isDemo
         self.startsTimer = startsTimer
@@ -114,6 +116,25 @@ final class WidgetSourceController: ObservableObject {
         }
         for entry in next where entry.source.view.kind == "sparkline" && histories[entry.id] == nil {
             histories[entry.id] = historyStore.load(surface: surface, id: entry.id)
+        }
+        replaceJobs()
+        tick()
+    }
+
+    /// A new session (or selection) for this board's area. Only widgets whose
+    /// filled values change start over; what they showed belonged to the
+    /// other session, so it goes too.
+    func setContext(_ next: [String: String]) {
+        let filtered = next.filter { contextKeys.contains($0.key) }
+        guard filtered != context else { return }
+        let old = context
+        context = filtered
+        for (id, entry) in entries where entry.source.values(context: old) != entry.source.values(context: filtered) {
+            cancelRun(id)
+            stopStream(id)
+            heldStreams.remove(id)
+            states[id] = nil
+            hashes[id] = approvalHash(entry)
         }
         replaceJobs()
         tick()
@@ -215,7 +236,11 @@ final class WidgetSourceController: ObservableObject {
         let runnable = approvalState(entry.id).canRun && !refused && !isDemo
         return SourceJob(
             instanceID: entry.id, source: entry.source, isRunnable: runnable, isVisible: entry.isVisible,
-            signature: String(describing: entry.source))
+            signature: String(describing: entry.source) + "|" + Self.contextSignature(entry.source.values(context: context)))
+    }
+
+    private static func contextSignature(_ values: TemplateValues) -> String {
+        values.context.keys.sorted().map { "\($0)=\(values.context[$0] ?? "")" }.joined(separator: "\u{1F}")
     }
 
     private func request(_ id: String, _ entry: SourceWidgetEntry) -> SourceRunRequest {
