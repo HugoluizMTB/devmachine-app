@@ -340,4 +340,17 @@ final class SourceWidgetLayoutTests: XCTestCase {
             XCTAssertEqual(result.spilledPixels, 0, "the stack card spills out at \(scale)")
         }
     }
+
+    func testTheApprovalCardWarnsInRedForAModeWithNoChecks() {
+        let source = ResolvedSource(
+            source: .prompt(PromptSource(harness: .claude, prompt: "Search", target: .workspace("alice"), every: .manual,
+                                         timeout: 300, permissionMode: "bypassPermissions")),
+            view: WidgetView(kind: "markdown"), every: .manual, needsApproval: true, package: nil, packagePath: nil)
+        let prompt = ApprovalPrompt(source, context: [:])
+        XCTAssertEqual(WidgetApprovalText.headline(kind: WidgetApprovalText.kind(source.source), denied: false),
+                       "Allow this prompt widget to run?")
+        XCTAssertEqual(prompt.danger,
+                       "bypassPermissions runs without any check: Claude can change files and run commands without asking you.")
+        XCTAssertEqual(WidgetApprovalText.whereAndWhen(prompt), "Runs in workspace alice, when you press ▶.")
+    }
 }

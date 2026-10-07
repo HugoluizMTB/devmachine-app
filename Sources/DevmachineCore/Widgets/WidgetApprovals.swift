@@ -57,6 +57,7 @@ public enum ApprovalSubject {
                 "kind": .string("prompt"), "harness": .string(prompt.harness.rawValue), "prompt": .string(prompt.prompt),
                 "target": target(prompt.target),
             ]
+            if let mode = prompt.permissionMode { fields["permission_mode"] = .string(mode) }
         case let .session(session):
             fields = ["kind": .string("session"), "session": .string(session.session), "target": target(session.target)]
         case let .packageProvider(provider):
@@ -203,7 +204,9 @@ public enum ApprovalCopy {
             }
             return ([program] + command.args.map(word)).joined(separator: " ")
         case let .prompt(prompt):
-            return "Ask \(prompt.harness == .claude ? "Claude" : "Codex"): \(prompt.prompt)"
+            let name = prompt.harness == .claude ? "Claude" : "Codex"
+            guard let mode = prompt.permissionMode else { return "Ask \(name): \(prompt.prompt)" }
+            return "Ask \(name) in permission mode \(mode): \(prompt.prompt)"
         case let .session(session):
             return "Read the screen of session \(session.session)"
         case let .url(url):
@@ -249,6 +252,8 @@ public struct ApprovalPrompt: Equatable, Sendable {
     /// The git address a third-party package came from, "" when unknown;
     /// nil for any other widget.
     public let thirdPartySource: String?
+    /// Red on the card: a permission mode that runs without any check.
+    public let danger: String?
 
     public var summary: String { "\(what) \(place), \(howOften)" }
 
@@ -259,6 +264,11 @@ public struct ApprovalPrompt: Equatable, Sendable {
         place = ApprovalCopy.place(shown.source.target)
         howOften = ApprovalCopy.howOften(resolved.every)
         thirdPartySource = resolved.trust == .thirdParty ? resolved.packageSourceURL ?? "" : nil
+        if case let .prompt(prompt) = shown.source, let mode = prompt.permissionMode, PermissionModes.isDangerous(mode) {
+            danger = PermissionModes.warning(mode, harness: prompt.harness)
+        } else {
+            danger = nil
+        }
     }
 }
 

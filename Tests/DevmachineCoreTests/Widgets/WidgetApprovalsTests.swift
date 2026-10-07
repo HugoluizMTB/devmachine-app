@@ -265,4 +265,32 @@ final class WidgetApprovalsTests: XCTestCase {
         XCTAssertEqual(try SourceApprovalGate.blocked(SourceRunRequest(instanceID: "w", source: moved, approvals: approvals)),
                        .waiting(hash: movedHash))
     }
+
+    private func asked(_ mode: String?, harness: PromptHarness = .claude) -> WidgetSource {
+        .prompt(PromptSource(harness: harness, prompt: "Hi", target: .local, every: .manual, timeout: 300, permissionMode: mode))
+    }
+
+    func testThePermissionModeIsPartOfWhatIsApproved() {
+        XCTAssertEqual(ApprovalSubject.canonicalJSON(asked(nil)), #"{"harness":"claude","kind":"prompt","prompt":"Hi","target":"local"}"#)
+        XCTAssertEqual(ApprovalSubject.canonicalJSON(asked("auto")),
+                       #"{"harness":"claude","kind":"prompt","permission_mode":"auto","prompt":"Hi","target":"local"}"#)
+        let hashes = [nil, "plan", "auto", "bypassPermissions"].map { ApprovalSubject.hash(asked($0)) }
+        XCTAssertEqual(Set(hashes).count, hashes.count)
+        XCTAssertEqual(ApprovalSubject.hash(asked("auto")), ApprovalSubject.hash(asked("auto")))
+    }
+
+    func testTheCardNamesTheModeAndWarnsOnlyForAModeWithNoChecks() {
+        func shown(_ source: WidgetSource) -> ApprovalPrompt {
+            ApprovalPrompt(ResolvedSource(source: source, view: WidgetView(kind: "markdown"), every: .manual, needsApproval: true,
+                                          package: nil, packagePath: nil), context: [:])
+        }
+        XCTAssertEqual(shown(asked(nil)).what, "Ask Claude: Hi")
+        XCTAssertNil(shown(asked(nil)).danger)
+        XCTAssertEqual(shown(asked("auto")).what, "Ask Claude in permission mode auto: Hi")
+        XCTAssertNil(shown(asked("auto")).danger)
+        XCTAssertEqual(shown(asked("danger-full-access", harness: .codex)).what, "Ask Codex in permission mode danger-full-access: Hi")
+        XCTAssertEqual(shown(asked("danger-full-access", harness: .codex)).danger,
+                       "danger-full-access runs without any check: Codex can change files and run commands without asking you.")
+        XCTAssertEqual(shown(asked("bypassPermissions")).summary, "Ask Claude in permission mode bypassPermissions: Hi on this Mac, when you press ▶")
+    }
 }

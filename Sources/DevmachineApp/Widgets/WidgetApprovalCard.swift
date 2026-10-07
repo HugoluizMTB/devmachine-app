@@ -113,6 +113,16 @@ struct WidgetApprovalCard: View {
                 .padding(m.space.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .dmSurface(Color.dmBand, radius: DMRadius.row)
+            if let danger = prompt.danger {
+                Label {
+                    Text(verbatim: danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.octagon.fill")
+                }
+                .font(.dm(11, weight: .semibold))
+                .foregroundStyle(Color.red)
+            }
             Text(verbatim: WidgetApprovalText.whereAndWhen(prompt))
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
