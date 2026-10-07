@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import DevmachineApp
 @testable import DevmachineCore
 
@@ -71,5 +72,27 @@ final class AppWidgetViewsTests: XCTestCase {
         return ResolvedWidget(
             widget: widget, provider: provider, viewKind: "app.harness-usage", arguments: ["harness": harness],
             every: every, minimum: CanvasSize(w: 160, h: 160))
+    }
+
+    func testTheMoreChipNeverSitsUnderTheResizeCorner() {
+        let corner = DMHitSize.compact
+        let chip = CGSize(width: 96, height: DMControlHeight.small)
+        for preset in WidgetContract.presetOrder {
+            let size = CanvasLayout.presetSize(preset)!
+            let card = CGSize(width: size.w, height: size.h)
+            let cornerRect = WidgetOverlayPlacement.rect(of: corner, at: WidgetChromeLayout.resizeCornerAlignment, in: card)
+            let chipRect = WidgetOverlayPlacement.rect(of: chip, at: MachinesWidgetView.moreChipAlignment, in: card)
+
+            XCTAssertFalse(cornerRect.intersects(chipRect), preset)
+        }
+    }
+
+    func testOverlayPlacementPutsAViewInTheCornerItIsAlignedTo() {
+        let card = CGSize(width: 320, height: 160)
+        let view = CGSize(width: 20, height: 10)
+
+        XCTAssertEqual(WidgetOverlayPlacement.rect(of: view, at: .bottomTrailing, in: card), CGRect(x: 300, y: 150, width: 20, height: 10))
+        XCTAssertEqual(WidgetOverlayPlacement.rect(of: view, at: .bottomLeading, in: card), CGRect(x: 0, y: 150, width: 20, height: 10))
+        XCTAssertEqual(WidgetOverlayPlacement.rect(of: view, at: .top, in: card), CGRect(x: 150, y: 0, width: 20, height: 10))
     }
 }

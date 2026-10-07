@@ -69,6 +69,9 @@ struct MachinesWidgetView: View {
     static let cardSpacing: CGFloat = 12
     /// A stats card with a snapshot at 100%; the tallest card drawn replaces it.
     static let nominalCardHeight: CGFloat = 132
+    /// The opposite corner from the chrome's resize corner, so a press a
+    /// little off that corner does not open Stats.
+    static let moreChipAlignment: Alignment = .bottomLeading
 
     let size: CGSize
     @EnvironmentObject private var model: AppModel
@@ -98,7 +101,7 @@ struct MachinesWidgetView: View {
             grid(fit)
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
-        .overlay(alignment: .bottomTrailing) { moreChip(fit.hidden(of: stats.machines.count)) }
+        .overlay(alignment: Self.moreChipAlignment) { moreChip(fit.hidden(of: stats.machines.count)) }
     }
 
     private func grid(_ fit: CardGridFit) -> some View {

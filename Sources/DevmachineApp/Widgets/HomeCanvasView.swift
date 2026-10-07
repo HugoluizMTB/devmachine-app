@@ -203,13 +203,14 @@ private struct BoardCanvasLayer: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             if let board = store.board {
-                ForEach(drawingOrder(board)) { widget in
+                ForEach(board.widgets) { widget in
                     widgetView(widget, board: board)
+                        .zIndex(CanvasLayout.stackLevel(of: widget, in: board, lifting: drag?.id))
                 }
             }
-            guides
         }
         .frame(width: canvasSize.width, height: canvasSize.height, alignment: .topLeading)
+        .overlay(alignment: .topLeading) { guides }
         .overlay(alignment: .top) { problemBanner }
         .onChange(
             of: PlacesTrigger(release: catalog.catalog?.packagesRelease, status: store.status, harnesses: enabledHarnesses),
@@ -226,16 +227,6 @@ private struct BoardCanvasLayer: View {
         .onChange(of: clockDisplayRect, initial: true) { _, rect in clockRect = rect }
         .onChange(of: store.board) { _, _ in drag = nil }
         .onDisappear { drag = nil }
-    }
-
-    /// The widget being dragged draws last, so it stays on top without
-    /// touching the board until the gesture ends.
-    private func drawingOrder(_ board: Board) -> [BoardWidget] {
-        board.widgets.sorted { lhs, rhs in
-            let lhsDragged = lhs.id == drag?.id, rhsDragged = rhs.id == drag?.id
-            if lhsDragged != rhsDragged { return rhsDragged }
-            return lhs.z < rhs.z
-        }
     }
 
     /// Clamping pulls every widget back inside the canvas, so while the

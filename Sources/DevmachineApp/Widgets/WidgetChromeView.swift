@@ -2,6 +2,30 @@ import SwiftUI
 import AppKit
 import DevmachineCore
 
+enum WidgetChromeLayout {
+    static let resizeCornerAlignment: Alignment = .bottomTrailing
+}
+
+/// Where an overlay of a given size lands inside a card, so content
+/// overlays can be checked against the chrome's hit areas.
+enum WidgetOverlayPlacement {
+    static func rect(of view: CGSize, at alignment: Alignment, in card: CGSize) -> CGRect {
+        let x: CGFloat
+        switch alignment.horizontal {
+        case .leading: x = 0
+        case .trailing: x = card.width - view.width
+        default: x = (card.width - view.width) / 2
+        }
+        let y: CGFloat
+        switch alignment.vertical {
+        case .top: y = 0
+        case .bottom: y = card.height - view.height
+        default: y = (card.height - view.height) / 2
+        }
+        return CGRect(origin: CGPoint(x: x, y: y), size: view)
+    }
+}
+
 /// One widget on the canvas: its content, and on hover a small handle on
 /// its top edge to drag it by, with the ⋯ menu, and a resize corner. The
 /// handle sits on the edge so it never covers the card's own title or
@@ -29,14 +53,23 @@ struct WidgetChromeView: View {
     /// Half of the handle sits outside the card, where the card's own hover
     /// ends, so the handle keeps itself shown while the pointer is on it.
     @State private var handleHovered = false
+    /// A gesture lives only as long as its view: the handle and the corner
+    /// stay while their drag is held, even when the pointer runs ahead of
+    /// the card and its hover ends.
+    @GestureState private var moving = false
+    @GestureState private var resizing = false
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        if widget.minimized {
-            pill
-        } else {
-            card
+        Group {
+            if widget.minimized {
+                pill
+            } else {
+                card
+            }
         }
+        .onChange(of: moving) { _, held in if !held { onMoveEnded() } }
+        .onChange(of: resizing) { _, held in if !held { onResizeEnded() } }
     }
 
     private var presets: [String] {
@@ -46,6 +79,7 @@ struct WidgetChromeView: View {
 
     private var moveGesture: some Gesture {
         DragGesture(minimumDistance: 2, coordinateSpace: .global)
+            .updating($moving) { _, held, _ in held = true }
             .onChanged { onMoveChanged($0.translation) }
             .onEnded { _ in onMoveEnded() }
     }
@@ -81,6 +115,7 @@ struct WidgetChromeView: View {
 
     private var pillMoveGesture: some Gesture {
         DragGesture(minimumDistance: 2, coordinateSpace: .global)
+            .updating($moving) { _, held, _ in held = true }
             .onChanged {
                 pillDragged = true
                 onMoveChanged($0.translation)
@@ -101,8 +136,10 @@ struct WidgetChromeView: View {
                         .allowsHitTesting(false)
                 }
             }
-            .overlay(alignment: .top) { if (hovering || handleHovered) && editable { handle } }
-            .overlay(alignment: .bottomTrailing) { if hovering && editable { resizeCorner } }
+            .overlay(alignment: .top) { if (hovering || handleHovered || moving) && editable { handle } }
+            .overlay(alignment: WidgetChromeLayout.resizeCornerAlignment) {
+                if (hovering || resizing) && editable { resizeCorner }
+            }
             .onHover { hovering = $0 }
             .simultaneousGesture(TapGesture().onEnded { onFront() })
     }
@@ -183,6 +220,7 @@ struct WidgetChromeView: View {
             .canvasCursor(.crosshair)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .updating($resizing) { _, held, _ in held = true }
                     .onChanged { onResizeChanged($0.translation) }
                     .onEnded { _ in onResizeEnded() })
             .accessibilityLabel(Text(verbatim: "Resize \(title)"))

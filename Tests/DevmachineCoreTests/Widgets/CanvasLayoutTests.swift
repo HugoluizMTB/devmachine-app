@@ -113,4 +113,25 @@ final class CanvasLayoutTests: XCTestCase {
             start, to: CGPoint(x: Double(start.x) + translation.width, y: Double(start.y) + translation.height), among: [])
         XCTAssertEqual(move.frame, frame(104, 64, 320, 160))
     }
+
+    func testTheDraggedWidgetIsLiftedAboveEveryOtherWithoutChangingTheBoard() {
+        let board = Board(surface: "home", widgets: [
+            BoardWidget(id: "clock", type: "devmachine-app/clock", frame: medium(368, 24), size: "medium", z: 1),
+            BoardWidget(id: "machines", type: "devmachine-app/machines", frame: frame(24, 24, 320, 320), size: "large", z: 3),
+            BoardWidget(id: "codex-usage", type: "codex/usage", frame: medium(24, 360), size: "medium", z: 5),
+        ])
+        let levels = board.widgets.map { CanvasLayout.stackLevel(of: $0, in: board, lifting: "machines") }
+
+        XCTAssertEqual(levels, [1, 6, 5])
+        XCTAssertEqual(board.widgets.map(\.z), [1, 3, 5])
+    }
+
+    func testWithoutADragEveryWidgetStacksAtItsOwnZ() {
+        let board = Board(surface: "home", widgets: [
+            BoardWidget(id: "clock", type: "devmachine-app/clock", frame: medium(368, 24), size: "medium", z: 2),
+            BoardWidget(id: "summary", type: "devmachine-app/summary", frame: medium(368, 200), size: "medium", z: 1),
+        ])
+
+        XCTAssertEqual(board.widgets.map { CanvasLayout.stackLevel(of: $0, in: board, lifting: nil) }, [2, 1])
+    }
 }
