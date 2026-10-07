@@ -41,6 +41,13 @@ final class SourceScheduleTests: XCTestCase {
         XCTAssertEqual(schedule.streams, ["log"])
     }
 
+    func testARunningStreamStaysAStream() {
+        var schedule = SourceSchedule()
+        schedule.replaceJobs([job("log", .continuous)])
+        schedule.begin("log", at: start)
+        XCTAssertEqual(schedule.streams, ["log"])
+    }
+
     func testOneRunInFlightPerWidget() {
         var schedule = SourceSchedule()
         schedule.replaceJobs([job("disk", .interval(5))])

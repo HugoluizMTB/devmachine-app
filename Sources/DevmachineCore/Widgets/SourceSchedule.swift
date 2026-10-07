@@ -1,5 +1,6 @@
 import Foundation
 
+/// One source widget as the schedule sees it: how often, whether it may run, and whether it is on screen.
 public struct SourceJob: Equatable, Sendable {
     public let instanceID: String
     public let every: WidgetEvery
@@ -57,7 +58,9 @@ public struct SourceSchedule: Sendable {
 
     public func due(now: Date) -> [String] {
         jobs.values.filter { job in
-            guard isEligible(job), job.isVisible, case let .interval(seconds) = job.every else { return false }
+            guard isEligible(job), !inFlight.contains(job.instanceID), job.isVisible,
+                  case let .interval(seconds) = job.every
+            else { return false }
             return lastRun[job.instanceID].map { now.timeIntervalSince($0) >= seconds } ?? true
         }
         .map(\.instanceID)
@@ -66,7 +69,7 @@ public struct SourceSchedule: Sendable {
 
     public func canRunNow(_ id: String) -> Bool {
         guard let job = jobs[id] else { return false }
-        return isEligible(job)
+        return isEligible(job) && !inFlight.contains(id)
     }
 
     public mutating func begin(_ id: String, at date: Date) {
@@ -80,6 +83,7 @@ public struct SourceSchedule: Sendable {
 
     public func isInFlight(_ id: String) -> Bool { inFlight.contains(id) }
 
+    /// Pausing does not end the run: the caller still calls `finish`.
     public mutating func pause(_ id: String, for state: ApprovalState) {
         guard !state.canRun, jobs[id] != nil else { return }
         paused.insert(id)
@@ -91,12 +95,13 @@ public struct SourceSchedule: Sendable {
         paused.removeAll()
     }
 
+    /// A stream stays in flight while it runs, so in-flight does not drop it.
     public var streams: Set<String> {
         Set(jobs.values.filter { $0.every == .continuous && isEligible($0) && $0.isVisible }.map(\.instanceID))
     }
 
     private func isEligible(_ job: SourceJob) -> Bool {
-        job.isRunnable && !inFlight.contains(job.instanceID) && !paused.contains(job.instanceID)
+        job.isRunnable && !paused.contains(job.instanceID)
     }
 }
 
