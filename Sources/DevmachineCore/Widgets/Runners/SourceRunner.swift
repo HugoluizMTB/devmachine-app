@@ -166,7 +166,10 @@ public enum SourceExitMapping {
     }
 
     static func lastErrorLine(_ stderr: String) -> String? {
-        stderr.split(separator: "\n").reversed().first { $0.hasPrefix("error: ") }.map { String($0.dropFirst("error: ".count)) }
+        let prefix = "error:"
+        guard let line = stderr.split(separator: "\n").last(where: { $0.lowercased().hasPrefix(prefix) }) else { return nil }
+        let cause = line.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
+        return cause.isEmpty ? nil : cause
     }
 }
 

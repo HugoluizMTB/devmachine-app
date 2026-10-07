@@ -240,6 +240,17 @@ final class SourceRunnerTests: XCTestCase {
         XCTAssertEqual(error, .neverRan("machine \"ghost\" is not in config.yml"))
     }
 
+    func testExit255FindsTheErrorLineWhateverItsCase() {
+        for prefix in ["Error:", "ERROR:", "error:"] {
+            let stderr = "some ssh noise\n\(prefix) acme-tools is not installed on main\nexit status 255"
+            XCTAssertEqual(
+                SourceExitMapping.error(status: 255, stderr: stderr, stdoutWasEmpty: true, remote: true),
+                .neverRan("acme-tools is not installed on main"), prefix)
+        }
+        XCTAssertEqual(SourceExitMapping.lastErrorLine("an error: inside a line"), nil)
+        XCTAssertEqual(SourceExitMapping.lastErrorLine("error:"), nil)
+    }
+
     func testALocalExit255IsTheCommandsOwnCode() async {
         launcher.status = 255
         let error = await failure { try await runner().fetch(command()) }
