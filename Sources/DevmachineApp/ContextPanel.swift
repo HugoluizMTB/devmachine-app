@@ -113,8 +113,8 @@ struct ContextPanel: View {
             .overlay(alignment: .bottom) {
                 if stacks.needsSessionContext, store.state != nil { staleBanner }
             }
-            .onChange(of: readyFacts, initial: true) { _, facts in
-                if let facts { stacks.setContext(facts.values) }
+            .onChange(of: readyPush, initial: true) { _, push in
+                if let push { stacks.setContext(push.facts.values, pending: push.pending) }
             }
             .onChange(of: gitTrigger, initial: true) { _, trigger in
                 gitContext.refresh(trigger.needed ? commandTarget : nil, cwd: trigger.cwd, revision: trigger.revision)
@@ -131,18 +131,21 @@ struct ContextPanel: View {
             needed: stacks.needsGitContext)
     }
 
-    private var readyFacts: SessionContextFacts? {
-        guard ContextPushGate.ready(status: store.status, hasState: store.state != nil, gitPending: gitContext.isPending)
-        else { return nil }
-        return bridgeFacts
+    private var readyPush: ContextPush? {
+        guard ContextPushGate.ready(status: store.status, hasState: store.state != nil) else { return nil }
+        let pending = ContextPushGate.pendingGitKeys(
+            needed: stacks.needsGitContext,
+            triggerKey: commandTarget.map { ContextGitStatusStore.key($0, cwd: store.state?.cwd) },
+            answeredKey: gitContext.answeredKey)
+        return ContextPush(facts: bridgeFacts(git: pending.isEmpty ? gitContext.status : nil), pending: pending)
     }
 
-    private var bridgeFacts: SessionContextFacts {
+    private func bridgeFacts(git: ContextGitStatus?) -> SessionContextFacts {
         ContextBridge.facts(
             selection: model.selection, workspaces: model.visibleWorkspaces,
             machineForWorkspace: { readiness.machine(forWorkspace: $0) },
             selfMachine: machines.snapshot?.machines.first(where: \.isSelf)?.name,
-            state: store.state, git: gitContext.status)
+            state: store.state, git: git)
     }
 
     @ViewBuilder
@@ -194,6 +197,11 @@ struct ContextPanel: View {
         )
     }
 
+}
+
+private struct ContextPush: Equatable {
+    let facts: SessionContextFacts
+    let pending: Set<String>
 }
 
 private struct GitProbeTrigger: Equatable {

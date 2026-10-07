@@ -47,15 +47,19 @@ final class ContextBridgeTests: XCTestCase {
     }
 
     func testTheContextWaitsForTheFirstReadOfANewSession() {
-        XCTAssertFalse(ContextPushGate.ready(status: .loading, hasState: false, gitPending: false))
-        XCTAssertTrue(ContextPushGate.ready(status: .loading, hasState: true, gitPending: false))
-        XCTAssertTrue(ContextPushGate.ready(status: .idle, hasState: false, gitPending: false))
-        XCTAssertTrue(ContextPushGate.ready(status: .failed("offline"), hasState: false, gitPending: false))
-        XCTAssertTrue(ContextPushGate.ready(status: .empty, hasState: false, gitPending: false))
+        XCTAssertFalse(ContextPushGate.ready(status: .loading, hasState: false))
+        XCTAssertTrue(ContextPushGate.ready(status: .loading, hasState: true))
+        XCTAssertTrue(ContextPushGate.ready(status: .idle, hasState: false))
+        XCTAssertTrue(ContextPushGate.ready(status: .failed("offline"), hasState: false))
+        XCTAssertTrue(ContextPushGate.ready(status: .empty, hasState: false))
     }
 
-    func testTheContextWaitsForTheGitProbeOfANewSession() {
-        XCTAssertFalse(ContextPushGate.ready(status: .loaded, hasState: true, gitPending: true))
-        XCTAssertFalse(ContextPushGate.ready(status: .idle, hasState: false, gitPending: true))
+    func testRepoAndBranchArePendingUntilTheProbeAnswersForTheTriggersKey() {
+        XCTAssertEqual(
+            ContextPushGate.pendingGitKeys(needed: true, triggerKey: "alice-dev-devmachine/web|", answeredKey: "alice-dev-devmachine/api|"),
+            ["repo", "branch"])
+        XCTAssertEqual(ContextPushGate.pendingGitKeys(needed: true, triggerKey: "alice-dev-devmachine/api|", answeredKey: nil), ["repo", "branch"])
+        XCTAssertEqual(ContextPushGate.pendingGitKeys(needed: true, triggerKey: "alice-dev-devmachine/api|", answeredKey: "alice-dev-devmachine/api|"), [])
+        XCTAssertEqual(ContextPushGate.pendingGitKeys(needed: false, triggerKey: "alice-dev-devmachine/web|", answeredKey: nil), [])
     }
 }

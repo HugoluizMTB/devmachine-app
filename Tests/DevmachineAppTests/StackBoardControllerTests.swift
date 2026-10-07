@@ -200,6 +200,50 @@ final class StackBoardControllerTests: XCTestCase {
         XCTAssertEqual(command.calls, 1)
     }
 
+    private var branchReader: CatalogWidget {
+        var widget = CatalogWidget(
+            name: "acme/branch", fits: ["stack"], context: ["path": "required", "branch": "optional"],
+            source: CatalogSource(raw: .object([
+                "kind": .string("command"), "run": .string("echo"),
+                "args": .list([.string("{{context.path}}"), .string("{{context.branch}}")]), "every": .string("60s"),
+            ])),
+            viewKind: "text", sizes: ["medium"], defaultSize: "medium", surfaces: ["context-sidebar"])
+        widget.view = .object(["kind": .string("text")])
+        return widget
+    }
+
+    func testWhileTheGitProbeIsOutOnlyWidgetsThatReadRepoOrBranchWait() async throws {
+        try write("""
+            format: 1
+            surface: context-sidebar
+            widgets:
+              - id: here
+                type: acme/here
+              - id: branch
+                type: acme/branch
+
+            """, "context-sidebar")
+        let controller = makeController("context-sidebar", catalog: catalog([here, branchReader]))
+        controller.setContext(["path": "/home/alice/api", "branch": "main"])
+        controller.setVisible(true)
+        await waitUntil { self.command.calls == 2 }
+        await waitUntil { controller.sources.state("branch").output != nil }
+        controller.setContext(["path": "/home/alice/web", "branch": ""], pending: ["repo", "branch"])
+        await waitUntil { self.command.calls == 3 }
+        XCTAssertEqual(command.requests[2].instanceID, "here")
+        XCTAssertEqual(command.requests[2].context["path"], "/home/alice/web")
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(command.calls, 3)
+        XCTAssertNotNil(controller.sources.state("branch").output)
+        controller.setContext(["path": "/home/alice/web", "branch": "feature"])
+        await waitUntil { self.command.calls == 4 }
+        XCTAssertEqual(command.requests[3].instanceID, "branch")
+        XCTAssertEqual(command.requests[3].context["branch"], "feature")
+        XCTAssertEqual(command.requests[3].context["path"], "/home/alice/web")
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(command.calls, 4)
+    }
+
     func testHidingTheAreaStopsItsSources() async throws {
         try write("""
             format: 1

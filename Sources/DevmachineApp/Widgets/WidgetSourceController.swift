@@ -54,6 +54,8 @@ final class WidgetSourceController: ObservableObject {
     private let historyStore: SparklineHistoryStore
     let surface: String
     private(set) var context: [String: String]
+    private var pending: Set<String> = []
+    private var heldContext: [String: String]?
     private let contextKeys: Set<String>
     private let isDemo: Bool
     private let startsTimer: Bool
@@ -124,13 +126,24 @@ final class WidgetSourceController: ObservableObject {
     /// A new session (or selection) for this board's area. Only widgets that
     /// read a changed key start over; what they showed belonged to the other
     /// session, so it goes too.
-    func setContext(_ next: [String: String]) {
+    ///
+    /// `pending` keys are still being read. A widget that reads one keeps
+    /// the context it last had, shows what it showed and does not run, so
+    /// it moves to the new session once, with every key in.
+    func setContext(_ next: [String: String], pending nextPending: Set<String> = []) {
         let filtered = next.filter { contextKeys.contains($0.key) }
-        guard filtered != context else { return }
+        let pendingKeys = nextPending.intersection(contextKeys)
+        guard filtered != context || pendingKeys != pending else { return }
         objectWillChange.send()
-        let old = context
+        let before = entries.mapValues { $0.source.values(context: context(for: $0.source)) }
+        if pendingKeys.isEmpty {
+            heldContext = nil
+        } else if heldContext == nil {
+            heldContext = context
+        }
         context = filtered
-        for (id, entry) in entries where entry.source.values(context: old) != entry.source.values(context: filtered) {
+        pending = pendingKeys
+        for (id, entry) in entries where before[id] != entry.source.values(context: context(for: entry.source)) {
             cancelRun(id)
             stopStream(id)
             heldStreams.remove(id)
@@ -184,11 +197,20 @@ final class WidgetSourceController: ObservableObject {
     /// The card reads what the hash covers: the source filled with this
     /// area's context, the same way the run fills it.
     func approvalPrompt(for source: ResolvedSource) -> ApprovalPrompt {
-        ApprovalPrompt(source, context: context)
+        ApprovalPrompt(source, context: context(for: source))
+    }
+
+    private func isHeld(_ source: ResolvedSource) -> Bool {
+        heldContext != nil && pending.contains { source.reads(contextKey: $0) }
+    }
+
+    private func context(for source: ResolvedSource) -> [String: String] {
+        if isHeld(source), let heldContext { return heldContext }
+        return context
     }
 
     func webAddress(for source: ResolvedSource) -> Result<URL, SourceError> {
-        Result { try URLSourceRunner.address(of: source, context: context) }
+        Result { try URLSourceRunner.address(of: source, context: context(for: source)) }
             .mapError { $0 as? SourceError ?? .unreadable($0.localizedDescription) }
     }
 
@@ -219,7 +241,7 @@ final class WidgetSourceController: ObservableObject {
     private func approvalHash(_ entry: SourceWidgetEntry) -> Result<String?, SourceError> {
         guard entry.source.needsApproval else { return .success(nil) }
         do {
-            return .success(try ApprovalSubject.hash(for: entry.source, context: context))
+            return .success(try ApprovalSubject.hash(for: entry.source, context: context(for: entry.source)))
         } catch {
             let refusal = SourceError.refused(error.localizedDescription)
             var state = self.state(entry.id)
@@ -236,10 +258,11 @@ final class WidgetSourceController: ObservableObject {
     private func job(for entry: SourceWidgetEntry) -> SourceJob? {
         guard entry.source.view.kind != "web", runners.runner(for: entry.source.source) != nil else { return nil }
         let refused = if case .failure = hashes[entry.id] { true } else { false }
-        let runnable = approvalState(entry.id).canRun && !refused && !isDemo
+        let runnable = approvalState(entry.id).canRun && !refused && !isDemo && !isHeld(entry.source)
         return SourceJob(
             instanceID: entry.id, source: entry.source, isRunnable: runnable, isVisible: entry.isVisible,
-            signature: String(describing: entry.source) + "|" + Self.contextSignature(entry.source.readContext(context)))
+            signature: String(describing: entry.source) + "|"
+                + Self.contextSignature(entry.source.readContext(context(for: entry.source))))
     }
 
     private static func contextSignature(_ context: [String: String]) -> String {
@@ -247,7 +270,7 @@ final class WidgetSourceController: ObservableObject {
     }
 
     private func request(_ id: String, _ entry: SourceWidgetEntry) -> SourceRunRequest {
-        SourceRunRequest(instanceID: id, source: entry.source, context: context, approvals: approvals)
+        SourceRunRequest(instanceID: id, source: entry.source, context: context(for: entry.source), approvals: approvals)
     }
 
     private func run(_ id: String) {

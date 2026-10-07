@@ -26,12 +26,22 @@ enum ContextBridge {
     }
 }
 
-/// A session switch hands the widgets its context once, whole: not while
-/// its first read or git probe is still out, which would run each widget
-/// on empty keys first and flash an approval card for them.
+/// A session switch hands the widgets its context once its first read is
+/// in, not on empty keys first. The git probe holds back only `repo` and
+/// `branch`: the other keys go at once, and only widgets that read the
+/// pending keys wait (`WidgetSourceController.setContext(_:pending:)`).
 enum ContextPushGate {
-    static func ready(status: ContextLoadStatus, hasState: Bool, gitPending: Bool) -> Bool {
-        let firstReadOut = status == .loading && !hasState
-        return !firstReadOut && !gitPending
+    static let gitKeys: Set<String> = ["repo", "branch"]
+
+    static func ready(status: ContextLoadStatus, hasState: Bool) -> Bool {
+        !(status == .loading && !hasState)
+    }
+
+    /// Judged by the key the panel is about to probe, not the store's: on
+    /// the render before the probe starts, the store still holds the old
+    /// folder's answer.
+    static func pendingGitKeys(needed: Bool, triggerKey: String?, answeredKey: String?) -> Set<String> {
+        guard needed, let triggerKey, triggerKey != answeredKey else { return [] }
+        return gitKeys
     }
 }

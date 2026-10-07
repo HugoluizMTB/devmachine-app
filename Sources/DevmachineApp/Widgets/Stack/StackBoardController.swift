@@ -47,6 +47,7 @@ final class StackBoardController: ObservableObject {
     private var placements = WidgetPlacements()
     private var placementsLoaded = false
     private var context: [String: String] = [:]
+    private var pendingContext: Set<String> = []
     private var watcher: BoardFileWatcher?
     private var watchedFolder: UInt64?
     private var configObserver: NSObjectProtocol?
@@ -214,9 +215,12 @@ final class StackBoardController: ObservableObject {
         placementsError = nil
     }
 
-    func setContext(_ next: [String: String]) {
+    /// `pending` names keys still being read (repo and branch while the git
+    /// probe is out); widgets that read them wait, the others run at once.
+    func setContext(_ next: [String: String], pending: Set<String> = []) {
         context = next
-        createdSources?.setContext(next)
+        pendingContext = pending
+        createdSources?.setContext(next, pending: pending)
     }
 
     func setVisible(_ visible: Bool) {
@@ -233,7 +237,7 @@ final class StackBoardController: ObservableObject {
             return SourceWidgetEntry(id: entry.id, source: source, isVisible: isVisible && !entry.collapsed)
         }
         guard !entries.isEmpty || createdSources != nil else { return }
-        sources.setContext(context)
+        sources.setContext(context, pending: pendingContext)
         sources.update(entries)
         if isVisible { sources.start() }
     }

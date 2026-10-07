@@ -1041,10 +1041,16 @@ Rules:
   session and folder (`GitProbeThrottle`); a new session or folder, or the
   tab appearing, probes at once. A failure is retried on the first read
   30 s later, not sooner. No timer of its own (`ContextGitStatusStore`).
-- **A session switch hands over its context once, whole**
-  (`ContextPushGate`): while the new session's first context read or git
-  probe is out, the board keeps the old keys, so no widget runs on empty
-  `path`/`branch` first and no approval card flashes for them.
+- **A session switch hands over its context once per widget**
+  (`ContextPushGate`). While the new session's first context read is out,
+  the board keeps the old keys. While only the git probe is out (judged by
+  the key about to be probed, not the store's last one), every other key
+  goes at once with `repo`/`branch` pending
+  (`WidgetSourceController.setContext(_:pending:)`): a widget that reads a
+  pending key (`ResolvedSource.reads`) keeps its last context and output and
+  does not run until the probe answers; the rest run at once. So no widget
+  runs on an empty `path` or `branch` first, no approval card flashes, and a
+  hung ssh holds only the widgets that need git.
 - **A context change stops what it touches.** A widget whose read values
   change is stopped, what it showed is cleared (it belonged to the other
   session; sparkline history stays) and its approval hash is taken again: an

@@ -43,9 +43,11 @@ final class ContextGitStatusStore: ObservableObject {
         self.now = now
     }
 
-    /// A new session or folder has no answer yet; the context waits for it
-    /// rather than hand its widgets an empty branch first.
-    var isPending: Bool { current != nil && status == nil }
+    static func key(_ target: CommandTarget, cwd: String?) -> String { target.key + "|" + (cwd ?? "") }
+
+    /// The session and folder `status` answers for; nil while none has
+    /// answered, so the panel can tell an answer for the old folder apart.
+    var answeredKey: String? { status == nil ? nil : current?.key }
 
     func refresh(_ target: CommandTarget?, cwd: String?, revision: String? = nil) {
         guard let target else {
@@ -56,7 +58,7 @@ final class ContextGitStatusStore: ObservableObject {
             if status != nil { status = nil }
             return
         }
-        let key = target.key + "|" + (cwd ?? "")
+        let key = Self.key(target, cwd: cwd)
         if key != current?.key {
             current = (target, key)
             self.revision = revision

@@ -110,7 +110,7 @@ final class ContextGitStatusStoreTests: XCTestCase {
         clock.advance(25)
         store.refresh(target, cwd: "/home/alice/api", revision: "10:00:30")
         XCTAssertEqual(store.status?.branch, "main")
-        XCTAssertFalse(store.isPending)
+        XCTAssertNotNil(store.answeredKey)
         await waitUntil { store.status?.branch == "feature" }
         XCTAssertEqual(script.count, 2)
     }
@@ -154,11 +154,23 @@ final class ContextGitStatusStoreTests: XCTestCase {
         store.appeared()
         XCTAssertEqual(script.count, 0)
         store.refresh(.local(session: "notes", path: "/Users/alice/notes"), cwd: nil)
-        XCTAssertTrue(store.isPending)
+        XCTAssertNil(store.answeredKey)
         await waitUntil { store.status?.branch == "main" }
-        XCTAssertFalse(store.isPending)
+        XCTAssertNotNil(store.answeredKey)
         clock.advance(1)
         store.appeared()
         await waitUntil { store.status?.branch == "feature" }
+    }
+
+    func testTheAnswerNamesTheSessionAndFolderItBelongsTo() async {
+        let store = ContextGitStatusStore(run: { _, _ in "main\n\n" })
+        let target = CommandTarget.remote(alias: "alice-dev-devmachine", session: "api")
+        XCTAssertNil(store.answeredKey)
+        store.refresh(target, cwd: "/home/alice/api")
+        XCTAssertNil(store.answeredKey)
+        await waitUntil { store.status != nil }
+        XCTAssertEqual(store.answeredKey, ContextGitStatusStore.key(target, cwd: "/home/alice/api"))
+        store.refresh(target, cwd: "/home/alice/web")
+        XCTAssertNil(store.answeredKey)
     }
 }

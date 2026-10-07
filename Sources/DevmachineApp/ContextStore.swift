@@ -157,7 +157,10 @@ final class ContextStore: ObservableObject {
 }
 
 /// Session context polls only while someone can see it: the Context tab
-/// open and an expanded widget on its board reading `app/session-context`.
+/// open, not collapsed, a session selected, and an expanded widget on its
+/// board reading `app/session-context`, or an expanded source widget reading
+/// `path` or `harness`, which the same poll gives
+/// (`StackBoardController.needsSessionContext`).
 enum ContextPollRule {
     static func shouldPoll(showsPanel: Bool, collapsed: Bool, tab: ContextTab, hasTarget: Bool, boardNeedsContext: Bool) -> Bool {
         showsPanel && !collapsed && tab == .context && hasTarget && boardNeedsContext
