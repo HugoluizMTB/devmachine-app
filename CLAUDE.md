@@ -600,6 +600,12 @@ Rules:
   inside its field. WebKit's "Open Link in New Window" reads "New Tab".
 
 ## Home layout
+- **The default Home board is the old Home** (`DefaultBoard.make(harnesses:)`,
+  1280 x 800 board points): machines at the left, one
+  `devmachine-app/usage` per enabled harness under them (two columns from
+  two harnesses, 384 x 288 so the full card shows), the clock centred in the
+  space beside them, the summary at the bottom right. `DefaultHomeBoardTests`
+  pins it; the `HomeLayout` notes below describe the pre-widget view it copies.
 - **`HomeLayout.plan` decides from Home's width alone**; showing or hiding
   the sidebar only changes that width. The clock sits in the middle of all of
   Home when, there, it still clears the cards column by the gap
@@ -918,7 +924,7 @@ Rules:
   `YAMLScalarStyle.swift`, kept compatible with the CLI's `yaml.v3`. Cross-writer
   tests guard that: change the quoting and they fail.
 - **The golden fixture is the CLI's file.**
-  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.4.json` must stay
+  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.5.json` must stay
   byte-identical to `internal/widgets/testdata/contract.json` in the CLI repo.
   Change one, copy it to the other. `widgets schema --json` prints the same
   document re-indented, so the live test compares it as sorted-key JSON.
@@ -933,8 +939,13 @@ Rules:
   screenshots only.
 - **`places` adds a widget once.** `widget-placements.json` in Application
   Support (`WidgetPlacementsFile`) remembers it, so a removed widget does not
-  come back. A usage widget is placed only for a harness turned on in
-  Settings, as Home did before.
+  come back. Placement is generic (`WidgetPlacer.place`): a widget that
+  places itself and has one single-value `choice` input is placed once per
+  option of its source, and the placements file keys each copy
+  `<type>#<option>` (for usage: `devmachine-app/usage#claude`). A usage
+  widget is placed only for a harness turned on in Settings, and never for a
+  harness the board already shows (the default board's `devmachine-app/usage`
+  entries, or an older `claude-code/usage` or `codex/usage` entry).
 - **Stats keep their own schedule.** A widget never starts its own `stats`
   ssh; it reads `StatsStore`. Usage refreshes per harness on the widget's
   interval. A minimized widget, or one scrolled out of sight, refreshes
@@ -1024,8 +1035,8 @@ Rules:
   `DEVMACHINE_WIDGETS_E2E=<binary>` runs `WidgetSourceLiveTests` through that
   CLI against a temp config whose only machine is `here` (`self: true`, this
   Mac), with `DEVMACHINE_KEYCHAIN=off`. It never targets a remote machine.
-  The same variable runs `StackBoardLiveTests` and `MenubarBoardLiveTests`
-  (see Sidebar widget stacks and Menubar).
+  The same variable runs `StackBoardLiveTests`, `MenubarBoardLiveTests` and
+  `WidgetEditLiveTests`.
 
 ## Sidebar widget stacks
 - **The sidebar and the Context tab are boards.** `<config>/boards/sidebar.yml`
@@ -1152,6 +1163,62 @@ Rules:
   fixture, and the CLI's `validate`, `move` and `remove` on an app-written
   `context-sidebar.yml` keep an inline entry byte for byte and refuse a
   `frame`.
+
+## Choosing and editing widgets
+Engine 1.5. One mechanism for every widget, on Home, the sidebars and the
+menu bar; the app has no code for a particular widget's choices.
+
+- **A `choice` input declares its list.** `inputs.<name>: {type: choice,
+  from: machines|workspaces|harnesses, many: bool}`. The widget menu shows
+  "Choose ..." for each one (`ChoiceInput.all(of:)`, title from its summary),
+  and `WidgetChoiceView` draws a checklist (many) or a picker (one). Options
+  come from `WidgetOptionSources` (`StatsStore.machines`,
+  `AppModel.visibleWorkspaces`, `HarnessUsageStore.states`), the one place
+  that knows the sources; tests hand it closures. Never add a menu item or
+  a view that names a widget or an input.
+- **Saving a choice.** `WidgetChoiceModel.save` returns a
+  `WidgetChoiceOutcome`: `.saved` closes the chooser, `.refused(message)`
+  keeps it open and shows the message. It asks the board first
+  (`WidgetEditTarget.problem(with:for:)`), then applies.
+- **Many: empty means all.** No value, `[]` or every option ticked writes
+  no `with` key, so a machine added later shows too. A chosen name the
+  source no longer has stays in the chooser as "(not found)" to untick; the
+  widget just draws nothing for it. One: no value means the first option,
+  decided by the view (`UsageHarnessChoice`).
+- **Lists in `with`.** `BoardScalar.list`, written flow (`[main, here]`). A
+  template reads it joined with commas; an app provider gets the list in
+  `ResolvedWidget.listArguments`. The codec reads the shape; resolution
+  refuses a list for a single input and a scalar for a many input, with the
+  CLI's words (`InputShapes`).
+- **Overrides.** A typed entry may carry `title` and `every`
+  (`EntryOverrideRules`): `every` never goes below the provider's, source
+  kind's or package provider floor, a stream takes none, and a widget that
+  reads an app provider takes no `manual` (it runs on a schedule). Inline
+  entries own their title and source, so `every` there is refused. Key
+  order: `id, type, title, with, every`.
+- **Every edit replaces one entry.** The chooser and the editor build an
+  `EntryEdit` and hand it to the board's controller (`WidgetEditTarget`:
+  Home and every `StackBoardController`), which writes through the store:
+  the 300 ms rule, disk wins, nothing while the file is invalid. Other
+  entries stay byte for byte, and an inline source or view the edit did not
+  change keeps its YAML tree.
+- **An edit is refused only for a problem it adds.**
+  `problem(with:for:)` compares the entry's resolution before and after the
+  edit. A widget that was already refused (a missing package, say) can still
+  change its title; the edit is blocked only when it makes the entry worse
+  or names an input the widget does not declare.
+- **The editor writes YAML and reads it back.** `InlineWidgetForm` (Command,
+  URL status, Web page, Prompt, Session; only Command and URL status in the
+  menu bar) writes a one-entry board with one field per line, reads it with
+  `BoardCodec` and the area's resolver, and puts each problem under its
+  field. An inline widget the templates cannot show edits its title only.
+  `TypedEntryForm` edits a package widget's title, inputs and `every`.
+- **Approval is unchanged.** An edit that changes what runs (command,
+  arguments, target, prompt, session) asks again; title and `every` never
+  do (`WidgetEditApprovalTests`).
+- **Sheets on Home and in the sidebars, in place in the menu bar.** A
+  sheet or nested popover from the `MenuBarExtra` window is not reliable, so
+  the menubar Edit mode swaps its body for the chooser or the editor.
 
 ## Package providers and third-party widgets
 - **A package provider is `<pkg>/<command>`** (`PackageProviderName`; `app/*`
