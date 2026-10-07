@@ -26,44 +26,78 @@ public final class DispatchBoardWriteTimer: BoardWriteTimer {
     }
 }
 
+/// A board file's content: Home's canvas or a sidebar's stack, each
+/// read and written by its own codec.
+public protocol BoardFileDocument: Equatable, Sendable {
+    var surface: String { get }
+    static func decodeFile(_ text: String) throws -> Self
+    func encodeFile() -> String
+}
+
+extension Board: BoardFileDocument {
+    public static func decodeFile(_ text: String) throws -> Board { try BoardCodec.decode(text) }
+    public func encodeFile() -> String { BoardCodec.encode(self) }
+}
+
+extension StackBoard: BoardFileDocument {
+    public static func decodeFile(_ text: String) throws -> StackBoard { try BoardCodec.decodeStack(text) }
+    public func encodeFile() -> String { BoardCodec.encodeStack(self) }
+}
+
+/// Lives outside the generic store so every surface shares one type.
+public enum BoardStoreStatus: Equatable, Sendable {
+    case loading
+    case ready
+    case invalid(BoardProblem)
+}
+
+/// Each surface keeps its own file under `<config>/boards/`.
+public enum BoardFiles {
+    public static func url(configDirectory: String, surface: String) -> URL {
+        URL(fileURLWithPath: configDirectory).appendingPathComponent("boards").appendingPathComponent("\(surface).yml")
+    }
+}
+
+public typealias BoardStore = BoardFileStore<Board>
+public typealias StackBoardStore = BoardFileStore<StackBoard>
+
+extension BoardFileStore where Document == Board {
+    public static var fileName: String { "home.yml" }
+
+    public static func homeFileURL(configDirectory: String) -> URL {
+        BoardFiles.url(configDirectory: configDirectory, surface: DefaultBoard.surface)
+    }
+}
+
 /// One board file. What is on disk always wins: a change made elsewhere
 /// replaces a write still waiting here, and an invalid file is never
 /// written over, so a person fixing it by hand loses nothing.
 @MainActor
-public final class BoardStore: ObservableObject {
-    public enum Status: Equatable, Sendable {
-        case loading
-        case ready
-        case invalid(BoardProblem)
-    }
+public final class BoardFileStore<Document: BoardFileDocument>: ObservableObject {
+    public typealias Status = BoardStoreStatus
 
-    public static let writeDelay: TimeInterval = 0.3
-    public static let fileName = "home.yml"
+    public static var writeDelay: TimeInterval { 0.3 }
 
-    @Published public private(set) var board: Board?
+    @Published public private(set) var board: Document?
     @Published public private(set) var status: Status = .loading
     @Published public private(set) var writeError: String?
 
     public let fileURL: URL
     public let surface: String
-    private let makeDefault: @MainActor () -> Board
+    private let makeDefault: @MainActor () -> Document
     private let timer: any BoardWriteTimer
     private var diskData: Data?
-    private var savedBoard: Board?
+    private var savedBoard: Document?
     private var pending = false
 
     public init(
         fileURL: URL, surface: String = DefaultBoard.surface, timer: (any BoardWriteTimer)? = nil,
-        makeDefault: @escaping @MainActor () -> Board
+        makeDefault: @escaping @MainActor () -> Document
     ) {
         self.fileURL = fileURL
         self.surface = surface
         self.timer = timer ?? DispatchBoardWriteTimer()
         self.makeDefault = makeDefault
-    }
-
-    public static func homeFileURL(configDirectory: String) -> URL {
-        URL(fileURLWithPath: configDirectory).appendingPathComponent("boards").appendingPathComponent(fileName)
     }
 
     public var backupURL: URL { fileURL.appendingPathExtension("bak") }
@@ -84,7 +118,7 @@ public final class BoardStore: ObservableObject {
         timer.cancel()
         pending = false
         do {
-            let decoded = try BoardCodec.decode(String(decoding: data, as: UTF8.self))
+            let decoded = try Document.decodeFile(String(decoding: data, as: UTF8.self))
             guard decoded.surface == surface else {
                 throw BoardProblem(
                     line: nil, message: "this file is for the \(surface) area but says surface: \(decoded.surface)")
@@ -104,7 +138,7 @@ public final class BoardStore: ObservableObject {
         status = .invalid(problem)
     }
 
-    public func update(_ change: (inout Board) -> Void) {
+    public func update(_ change: (inout Document) -> Void) {
         guard canEdit, var next = board else { return }
         change(&next)
         guard next != board else { return }
@@ -123,7 +157,7 @@ public final class BoardStore: ObservableObject {
             return
         }
         guard FileManager.default.fileExists(atPath: configDirectory.path) else { return }
-        let data = Data(BoardCodec.encode(board).utf8)
+        let data = Data(board.encodeFile().utf8)
         do {
             try FileManager.default.createDirectory(
                 at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -146,7 +180,7 @@ public final class BoardStore: ObservableObject {
             try existing.write(to: backupURL, options: .atomic)
         }
         let fresh = makeDefault()
-        let data = Data(BoardCodec.encode(fresh).utf8)
+        let data = Data(fresh.encodeFile().utf8)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: fileURL, options: .atomic)
         diskData = data

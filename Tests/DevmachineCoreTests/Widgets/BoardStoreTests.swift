@@ -214,4 +214,67 @@ final class BoardStoreTests: XCTestCase {
         XCTAssertEqual(store.status, .invalid(BoardProblem(
             line: nil, message: "this file is for the home area but says surface: sidebar")))
     }
+
+    private var sidebarURL: URL { BoardFiles.url(configDirectory: config.path, surface: "sidebar") }
+
+    private func makeStackStore(surface: String = "sidebar") -> StackBoardStore {
+        StackBoardStore(
+            fileURL: BoardFiles.url(configDirectory: config.path, surface: surface), surface: surface, timer: timer,
+            makeDefault: { DefaultStackBoard.make(surface: surface) })
+    }
+
+    func testEachSurfaceHasItsOwnFile() {
+        XCTAssertEqual(BoardFiles.url(configDirectory: "/c", surface: "context-sidebar").path, "/c/boards/context-sidebar.yml")
+        XCTAssertEqual(BoardStore.homeFileURL(configDirectory: "/c").path, "/c/boards/home.yml")
+        XCTAssertEqual(BoardStore.writeDelay, 0.3)
+        XCTAssertEqual(StackBoardStore.writeDelay, 0.3)
+    }
+
+    func testAMissingStackFileGetsTheDefaultStack() throws {
+        let store = makeStackStore()
+        store.load()
+        XCTAssertEqual(store.status, .ready)
+        XCTAssertEqual(store.board, DefaultStackBoard.make(surface: "sidebar"))
+        XCTAssertEqual(
+            try String(contentsOf: sidebarURL, encoding: .utf8),
+            "format: 1\nsurface: sidebar\nwidgets:\n  - id: workspaces\n    type: devmachine-app/workspaces\n    size: auto\n")
+    }
+
+    func testAStackFileForAnotherSurfaceIsInvalid() throws {
+        try FileManager.default.createDirectory(at: sidebarURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("format: 1\nsurface: context-sidebar\nwidgets: []\n".utf8).write(to: sidebarURL)
+        let store = makeStackStore()
+        store.load()
+        XCTAssertEqual(store.status, .invalid(BoardProblem(
+            line: nil, message: "this file is for the sidebar area but says surface: context-sidebar")))
+        XCTAssertNil(store.board)
+    }
+
+    func testAStackEditWaitsThenWritesAndDiskWins() throws {
+        let store = makeStackStore(surface: "context-sidebar")
+        store.load()
+        store.update { $0.moveUp("links") }
+        XCTAssertEqual(timer.delay, 0.3)
+        timer.fire()
+        let written = try BoardCodec.decodeStack(
+            String(contentsOf: BoardFiles.url(configDirectory: config.path, surface: "context-sidebar"), encoding: .utf8))
+        XCTAssertEqual(written.entries.suffix(2).map(\.id), ["links", "pull-requests"])
+
+        store.update { $0.remove("todo") }
+        try Data("format: 1\nsurface: context-sidebar\nwidgets: []\n".utf8)
+            .write(to: BoardFiles.url(configDirectory: config.path, surface: "context-sidebar"), options: .atomic)
+        timer.fire()
+        XCTAssertEqual(store.board?.entries, [])
+    }
+
+    func testAStackResetKeepsABackup() throws {
+        let store = makeStackStore()
+        store.load()
+        store.update { $0.remove("workspaces") }
+        timer.fire()
+        XCTAssertTrue(try store.reset())
+        XCTAssertEqual(store.board, DefaultStackBoard.make(surface: "sidebar"))
+        XCTAssertEqual(
+            try String(contentsOf: store.backupURL, encoding: .utf8), "format: 1\nsurface: sidebar\nwidgets: []\n")
+    }
 }
