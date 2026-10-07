@@ -527,7 +527,7 @@ final class SessionProblemModelTests: XCTestCase {
         try await waitFor { model.sessionProblems["acme-devmachine"] != nil }
         XCTAssertEqual(model.sessionProblems["acme-devmachine"], .aliasMissing(alias: "acme-devmachine"))
         XCTAssertFalse(model.offlineAliases.contains("acme-devmachine"))
-        XCTAssertFalse(model.isPollingPaused)
+        XCTAssertFalse(model.isPollingPaused(alias: "acme-devmachine"))
     }
 
     func testAListThatAnswersClearsTheProblem() async throws {

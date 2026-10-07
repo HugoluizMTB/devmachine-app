@@ -9,10 +9,10 @@ final class TerminalReturnTests: XCTestCase {
     private var opened: [TerminalKind] = []
     private var windows: [NSWindow] = []
     private let checks = CheckLog()
-    private var paused = false
+    private var paused: Set<String> = []
     private var sweeping = false
     private var now = Date(timeIntervalSince1970: 1_000_000)
-    private var reported: [SSHFailure] = []
+    private var reported: [String] = []
 
     override func setUp() {
         super.setUp()
@@ -23,11 +23,11 @@ final class TerminalReturnTests: XCTestCase {
         TerminalRegistry.shared.copyModeSchedule = CopyModeCheckSchedule()
         let checks = self.checks
         TerminalRegistry.shared.copyModeContext = TerminalRegistry.CopyModeContext(
-            isPollingPaused: { [unowned self] in paused },
+            isPaused: { [unowned self] in paused.contains($0) },
             isSweeping: { [unowned self] in sweeping },
             machine: { ["acme-devmachine": "main", "beta-devmachine": "main"][$0] },
             now: { [unowned self] in now },
-            report: { [unowned self] in reported.append($0) },
+            report: { [unowned self] alias, failure in reported.append("\(alias) \(failure)") },
             run: { alias, command in checks.run(alias, command) })
     }
 
@@ -96,12 +96,9 @@ final class TerminalReturnTests: XCTestCase {
         try await waitFor { checks.calls.count == 2 }
     }
 
-    func testNothingLogsInWhilePollingIsPausedOrTheSweepRuns() async throws {
+    func testNothingLogsInWhileTheSweepRuns() async throws {
         open(.remote(alias: "acme-devmachine", session: "dash"), onScreen: true)
 
-        paused = true
-        TerminalRegistry.shared.leaveIdleCopyModeOnScreen()
-        paused = false
         sweeping = true
         TerminalRegistry.shared.leaveIdleCopyModeOnScreen()
         try await settle()
@@ -109,16 +106,42 @@ final class TerminalReturnTests: XCTestCase {
         XCTAssertTrue(checks.calls.isEmpty)
     }
 
-    func testARefusedLoginStopsTheRoundAndPausesPolling() async throws {
+    func testAPausedWorkspaceIsNotCheckedAndTheOthersAre() async throws {
+        open(.remote(alias: "acme-devmachine", session: "dash"), onScreen: true)
+        open(.remote(alias: "beta-devmachine", session: "main"), onScreen: true)
+        paused = ["acme-devmachine"]
+
+        TerminalRegistry.shared.leaveIdleCopyModeOnScreen()
+        try await waitFor { checks.calls.count == 1 }
+        try await settle()
+
+        XCTAssertEqual(checks.calls.map(\.alias), ["beta-devmachine"])
+    }
+
+    func testARefusedLoginPausesThatWorkspaceAndTheRoundGoesOn() async throws {
         checks.failure = .authDenied
         open(.remote(alias: "acme-devmachine", session: "dash"), onScreen: true)
         open(.remote(alias: "gamma-devmachine", session: "web"), onScreen: true)
 
         TerminalRegistry.shared.leaveIdleCopyModeOnScreen()
-        try await waitFor { reported == [.authDenied] }
+        try await waitFor { reported.count == 2 }
         try await settle()
 
-        XCTAssertEqual(checks.calls.count, 1)
+        XCTAssertEqual(checks.calls.count, 2)
+        XCTAssertEqual(Set(reported), ["acme-devmachine authDenied", "gamma-devmachine authDenied"])
+    }
+
+    func testAnUnreachableMachineEndsItsOwnChecksOnly() async throws {
+        checks.failure = .unreachable
+        open(.remote(alias: "acme-devmachine", session: "dash"), onScreen: true)
+        open(.remote(alias: "beta-devmachine", session: "main"), onScreen: true)
+        open(.remote(alias: "gamma-devmachine", session: "web"), onScreen: true)
+
+        TerminalRegistry.shared.leaveIdleCopyModeOnScreen()
+        try await waitFor { reported.count == 2 }
+        try await settle()
+
+        XCTAssertEqual(Set(checks.calls.map(\.alias)), ["acme-devmachine", "gamma-devmachine"])
     }
 
     private func settle() async throws {

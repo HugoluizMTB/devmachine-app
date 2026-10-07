@@ -59,6 +59,20 @@ final class MoshBootstrapTests: XCTestCase {
             .unreachable("ssh: connect to host 203.0.113.10 port 22: Operation timed out"))
     }
 
+    func testOnlyARefusedLoginBeforeMoshIsARefusedLogin() {
+        let refused = MoshConnector.Result.ssh(
+            reason: .unreachable, detail: "alice@203.0.113.10: Permission denied (publickey).", strayServerPID: nil)
+        let timedOut = MoshConnector.Result.ssh(
+            reason: .unreachable, detail: "ssh: connect to host 203.0.113.10 port 22: Operation timed out",
+            strayServerPID: nil)
+        let noServer = MoshConnector.Result.ssh(
+            reason: .noServer, detail: "Permission denied (publickey).", strayServerPID: nil)
+
+        XCTAssertTrue(refused.isRefusedLogin)
+        XCTAssertFalse(timedOut.isRefusedLogin)
+        XCTAssertFalse(noServer.isRefusedLogin, "the login worked; the machine has no mosh-server")
+    }
+
     func testAServerThatRanButNeverConnectedIsServerFailed() {
         let stderr = "mosh-server needs a UTF-8 native locale to run."
         XCTAssertEqual(

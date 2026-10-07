@@ -94,6 +94,9 @@ final class GitStore: ObservableObject {
     private var workspace: String?
     private var inFlight: String?
     private var checkedPaths: [String]?
+    /// True for a target whose workspace is paused after an ssh failure: the
+    /// automatic reads wait, and Refresh still reads once.
+    var holdsReads: @MainActor (CommandTarget) -> Bool = { AppModel.shared?.holdsAutomaticLogin($0) ?? false }
 
     init(host: HostRunner = HostRunner(), admin: WorktreeAdmin = CLIWorktreeAdmin(), demo: Bool = DemoMode.isActive) {
         self.host = host
@@ -111,11 +114,11 @@ final class GitStore: ObservableObject {
             mergedWorktrees = DemoData.worktreeChecks.filter(\.isCleanAndMerged)
             return
         }
-        refresh()
+        if !holdsReads(target) { refresh() }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self, !self.isRemoving else { return }
+                guard let self, !self.isRemoving, let current = self.current, !self.holdsReads(current) else { return }
                 self.refresh()
             }
         }

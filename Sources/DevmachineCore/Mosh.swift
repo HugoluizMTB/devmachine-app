@@ -374,6 +374,13 @@ public struct MoshConnector: Sendable {
     public enum Result: Equatable, Sendable {
         case mosh(ip: String, session: MoshSession)
         case ssh(reason: MoshFallbackReason, detail: String, strayServerPID: Int?)
+
+        /// The ssh that starts mosh-server was refused, so an ssh fallback
+        /// would only be one more refused login toward a ban.
+        public var isRefusedLogin: Bool {
+            guard case let .ssh(reason, detail, _) = self, reason == .unreachable else { return false }
+            return FailureCause.isSSHLoginRefused(detail)
+        }
     }
 
     public static let sshExecutable = "/usr/bin/ssh"

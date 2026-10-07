@@ -1101,10 +1101,10 @@ final class AppModelTests: XCTestCase {
         let waitForSweep = expectation(description: "sweep")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { waitForSweep.fulfill() }
         wait(for: [waitForSweep], timeout: 2)
-        XCTAssertTrue(model.isPollingPaused)
+        XCTAssertTrue(model.isPollingPaused(alias: "acme-devmachine"))
 
         model.resumePollingAfterWake()
-        XCTAssertFalse(model.isPollingPaused)
+        XCTAssertFalse(model.isPollingPaused(alias: "acme-devmachine"))
     }
 
 
@@ -1112,11 +1112,11 @@ final class AppModelTests: XCTestCase {
     func testAFailedLoginOutsideTheSweepPausesPollingTheSameWay() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
 
-        model.noteSSHFailure(.hostKeyRejected)
-        XCTAssertFalse(model.isPollingPaused, "a refused host key tried no login")
+        model.noteSSHFailure(alias: "acme-devmachine", .hostKeyRejected)
+        XCTAssertFalse(model.isPollingPaused(alias: "acme-devmachine"), "a refused host key tried no login")
 
-        model.noteSSHFailure(.authDenied)
-        XCTAssertTrue(model.isPollingPaused)
+        model.noteSSHFailure(alias: "acme-devmachine", .authDenied)
+        XCTAssertTrue(model.isPollingPaused(alias: "acme-devmachine"))
     }
 
     @MainActor
@@ -1132,7 +1132,8 @@ final class AppModelTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { sweep.fulfill() }
         wait(for: [sweep], timeout: 2)
 
-        XCTAssertTrue(model.isPollingPaused)
+        XCTAssertTrue(model.isPollingPaused(alias: "acme-devmachine"))
+        XCTAssertTrue(model.isPollingPaused(alias: "beta-devmachine"))
         XCTAssertTrue(model.offlineAliases.isEmpty)
     }
 
@@ -1151,7 +1152,7 @@ final class AppModelTests: XCTestCase {
 
         // No login was tried, so nothing counts toward a ban: the sweep went
         // on to every workspace, and each says why it cannot connect.
-        XCTAssertFalse(model.isPollingPaused)
+        XCTAssertTrue(model.pollPauses.isEmpty)
         XCTAssertTrue(model.offlineAliases.isEmpty)
         XCTAssertEqual(model.sessionProblems["acme-devmachine"]?.isHostKeyRejected, true)
         XCTAssertEqual(model.sessionProblems["beta-devmachine"]?.isHostKeyRejected, true)

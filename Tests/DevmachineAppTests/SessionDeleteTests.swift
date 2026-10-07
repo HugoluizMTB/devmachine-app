@@ -239,7 +239,7 @@ final class SessionDeleteTests: XCTestCase {
         let source = GatedSessionSource(before + ["web"])
         source.release()
         let model = makeModel(source: source, runner: KillRunner(exitCode: 0))
-        model.noteSSHFailure(.authDenied)
+        model.noteSSHFailure(alias: acme.alias, .authDenied)
 
         model.confirmNewSession(alias: acme.alias, name: "web", directory: "~")
         try await waitFor("the new session is selected") { model.selection == .session(alias: self.acme.alias, name: "web") }

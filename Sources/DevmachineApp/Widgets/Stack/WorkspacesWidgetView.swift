@@ -52,6 +52,14 @@ struct WorkspacesWidgetView: View {
                         .padding(.horizontal, m.space.md)
                         .padding(.vertical, m.space.xs)
                 }
+                if let pause = pollPauseCard(for: ws) {
+                    PollPauseSidebarCard(
+                        notice: pause.notice(workspace: ws.name), reason: pause.reason,
+                        retry: { model.retry(alias: ws.alias) })
+                        .dmSurface(Color.dmBand, radius: DMRadius.panel)
+                        .padding(.horizontal, m.space.md)
+                        .padding(.vertical, m.space.xs)
+                }
                 if let machine = hostKeyCardMachine(for: ws) {
                     HostKeySidebarCard(machine: machine)
                         .dmSurface(Color.dmBand, radius: DMRadius.panel)
@@ -62,7 +70,7 @@ struct WorkspacesWidgetView: View {
                     ForEach(model.localSessions) { s in
                         localSessionRow(session: s)
                     }
-                } else if let problem = model.sessionProblems[ws.alias],
+                } else if let problem = model.sessionProblems[ws.alias], model.pollPauses[ws.alias] == nil,
                           !(problem.isHostKeyRejected && hostKeyMachine(for: ws) != nil),
                           (model.sessionsByAlias[ws.alias] ?? []).isEmpty {
                     // A refused host key with no machine to review it under
@@ -91,6 +99,19 @@ struct WorkspacesWidgetView: View {
         else { return nil }
         let first = model.visibleWorkspaces.first { readiness.machine(forWorkspace: $0.name) == machine }
         return first?.alias == workspace.alias ? machine : nil
+    }
+
+    /// A paused workspace says so under its name. An unreachable machine
+    /// pauses all of its workspaces, so it gets one card, under the first of
+    /// them the sidebar shows.
+    private func pollPauseCard(for workspace: Workspace) -> PollPause? {
+        guard let pause = model.pollPauses[workspace.alias] else { return nil }
+        guard pause.reason == .unreachable, let machine = pause.machine else { return pause }
+        let first = model.visibleWorkspaces.first {
+            let other = model.pollPauses[$0.alias]
+            return other?.reason == .unreachable && other?.machine == machine
+        }
+        return first?.alias == workspace.alias ? pause : nil
     }
 
     /// A machine whose host key ssh refused gets one card, under the first

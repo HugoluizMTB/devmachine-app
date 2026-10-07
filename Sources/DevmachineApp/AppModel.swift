@@ -468,10 +468,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var answeredAliases: Set<String> = []
 
     /// The sidebar holds a workspace's place with placeholder rows until its
-    /// first read answers. A paused sweep will not read it soon, so a
-    /// workspace waiting on the pause shows as it is instead.
+    /// first read answers. A paused workspace will not be read soon, so it
+    /// shows as it is instead, under its pause card.
     func showsSessionSkeleton(alias: String) -> Bool {
-        !answeredAliases.contains(alias) && !isPollingPaused
+        !answeredAliases.contains(alias) && pollPauses[alias] == nil
     }
 
     private func markAnswered(_ alias: String) {
@@ -641,7 +641,6 @@ final class AppModel: ObservableObject {
     private var sweepInFlight = false
     private var sweepTimer: Timer? = nil
     private var localScanTimer: Timer? = nil
-    private var pollPausedUntil = Date.distantPast
     // Workspaces that appeared while the app was open and have not logged in
     // yet: the CLI writes the alias before the sync creates the account.
     private var awaitingFirstLogin: Set<String> = []
@@ -711,6 +710,7 @@ final class AppModel: ObservableObject {
         self.cliAvailabilityCheck = cliAvailabilityCheck
         self.detectSettings = detectSettings
         AppModel.shared = self
+        context.holdsReads = { [weak self] target in self?.holdsAutomaticLogin(target) ?? false }
         observeWake()
         TerminalRegistry.shared.onSessionEnded = { [weak self] kind in
             self?.sessionEnded(kind)
@@ -1908,9 +1908,17 @@ final class AppModel: ObservableObject {
 
     /// Clears a refused host key for one workspace and reads it again: the
     /// sidebar's Try again, when no machine card covers it.
+    /// Also the paused workspace's Try again: the pause is lifted and the
+    /// list read once, and a refusal pauses it again from there.
     func retry(alias: String) {
         if sessionProblems[alias]?.isHostKeyRejected == true || sessionProblems[alias]?.isAwaitingSync == true {
             sessionProblems[alias] = nil
+        }
+        if let pause = pollPauses[alias] {
+            if pause.reason == .unreachable, let machine = pause.machine {
+                clearUnreachablePauses(onMachine: machine)
+            }
+            pollPauses[alias] = nil
         }
         refresh(alias: alias)
     }
@@ -1947,13 +1955,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // One ssh at a time, and the sweep stops at the first ssh-level failure:
-    // nine parallel auths against a locked agent are nine denied logins in
-    // one second, which is a fail2ban ban of this Mac.
+    // One ssh at a time: nine parallel auths against a locked agent are nine
+    // denied logins in one second, which is a fail2ban ban of this Mac. A
+    // failure pauses only the workspaces it is about (`PollPause`); the sweep
+    // goes on to the others and never logs into a paused one.
     func refreshAll() {
-        guard !DemoMode.isActive, Date() >= pollPausedUntil, !sweepInFlight else { return }
+        guard !DemoMode.isActive, !sweepInFlight else { return }
         let targets = visibleWorkspaces.filter {
             !refreshingAliases.contains($0.alias) && sessionProblems[$0.alias]?.isAwaitingSync != true
+                && !isPollingPaused(alias: $0.alias)
         }
         guard !targets.isEmpty else { return }
         sweepInFlight = true
@@ -1963,35 +1973,17 @@ final class AppModel: ObservableObject {
         let source = services.sessionSource
         let settings = settings ?? .empty
         Task.detached {
-            var remaining = targets[...]
-            var stopped: SSHFailure?
-            while let ws = remaining.first {
-                remaining = remaining.dropFirst()
-                let outcome = Result {
-                    try source.sessions(for: ws, settings: settings)
-                }
-                let stop = await MainActor.run { () -> SSHFailure? in
-                    let stop = self.apply(outcome, alias: ws.alias)
+            for ws in targets {
+                // An unreachable machine met earlier in this sweep paused
+                // the rest of its workspaces.
+                let paused = await MainActor.run { self.isPollingPaused(alias: ws.alias) }
+                let outcome = paused ? nil : Result { try source.sessions(for: ws, settings: settings) }
+                await MainActor.run {
+                    if let outcome { self.apply(outcome, alias: ws.alias) }
                     self.bumpTask(sweepTask)
-                    return stop
                 }
-                if let stop { stopped = stop; break }
             }
-            // The aliases the stopped sweep never reached share the same host,
-            // so an unreachable host takes them with it. A refused login says
-            // nothing about the host, so it leaves them as they were.
-            let unreached = Array(remaining)
             await MainActor.run {
-                if stopped == .unreachable {
-                    for ws in unreached where !self.offlineAliases.contains(ws.alias) {
-                        self.offlineAliases.insert(ws.alias)
-                    }
-                    for ws in unreached where self.sessionProblems[ws.alias] == nil {
-                        self.sessionProblems[ws.alias] = .unreachable(
-                            detail: "Not asked: an earlier workspace on the same host could not be reached.")
-                    }
-                }
-                for ws in unreached { self.markAnswered(ws.alias) }
                 for ws in targets { self.refreshingAliases.remove(ws.alias) }
                 self.sweepInFlight = false
                 self.sweepTaskID = nil
@@ -2002,7 +1994,7 @@ final class AppModel: ObservableObject {
     }
 
     func refresh(alias: String) {
-        guard !DemoMode.isActive, Date() >= pollPausedUntil,
+        guard !DemoMode.isActive, !isPollingPaused(alias: alias),
               let ws = visibleWorkspaces.first(where: { $0.alias == alias }) else { return }
         // A refused host key fails the same way until someone reviews it: the
         // 5s selection poll leaves it to the 60s sweep instead of a handshake
@@ -2028,7 +2020,7 @@ final class AppModel: ObservableObject {
             }
             await MainActor.run {
                 self.refreshingAliases.remove(alias)
-                _ = self.apply(outcome, alias: alias)
+                self.apply(outcome, alias: alias)
                 self.refreshAgainIfAsked(alias)
             }
         }
@@ -2039,10 +2031,11 @@ final class AppModel: ObservableObject {
         refresh(alias: alias)
     }
 
-    // Returns the failure that must pause polling: the host or the ssh agent is
-    // down. Nil means the sweep goes on.
-    private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) -> SSHFailure? {
+    // Any answer ends the workspace's pause; a refused login or an
+    // unreachable host starts a new one.
+    private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) {
         markAnswered(alias)
+        if pollPauses[alias] != nil { pollPauses[alias] = nil }
         switch outcome {
         case .success(let listed):
             let visible = withoutJustDeleted(listed, alias: alias)
@@ -2061,8 +2054,8 @@ final class AppModel: ObservableObject {
                 offlineAliases.remove(alias)
             }
             if sessionProblems[alias] != nil { sessionProblems[alias] = nil }
+            if let machine = machine(forAlias: alias) { clearUnreachablePauses(onMachine: machine) }
             syncContext()
-            return nil
         case .failure(let error):
             let failure = (error as? SessionStoreError)?.failure
             // A refused login on a workspace that never logged in is its
@@ -2072,7 +2065,7 @@ final class AppModel: ObservableObject {
                 if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
                 offlineAliases.remove(alias)
                 syncContext()
-                return nil
+                return
             }
             let problem = SessionProblem(error)
             if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
@@ -2084,7 +2077,7 @@ final class AppModel: ObservableObject {
             if error is SessionListError {
                 offlineAliases.remove(alias)
                 syncContext()
-                return nil
+                return
             }
             // The host answered with a key this Mac does not trust. No login
             // was tried, so nothing counts toward a ban, and other machines
@@ -2093,7 +2086,7 @@ final class AppModel: ObservableObject {
             if failure == .hostKeyRejected {
                 offlineAliases.remove(alias)
                 syncContext()
-                return nil
+                return
             }
             // Red means the host does not answer. A login this Mac cannot sign
             // — a locked agent after waking — says nothing about the host, and
@@ -2105,15 +2098,35 @@ final class AppModel: ObservableObject {
             } else if !offlineAliases.contains(alias) {
                 offlineAliases.insert(alias)
             }
+            if let failure { pausePolling(alias: alias, after: failure) }
             syncContext()
-            guard let failure else { return nil }
-            pausePolling(after: failure)
-            return failure
         }
     }
 
-    /// True while a failure is holding the sweep back.
-    var isPollingPaused: Bool { Date() < pollPausedUntil }
+    /// Workspaces held back from automatic logins, and why: the sidebar
+    /// shows each one with Try again.
+    @Published private(set) var pollPauses: [String: PollPause] = [:]
+
+    /// When a pause ends is measured against this; tests move it.
+    var pauseClock: @MainActor () -> Date = { Date() }
+
+    /// The configuration's machine for a workspace name; tests stand in.
+    var machineForWorkspace: @MainActor (String) -> String? = {
+        MachineReadinessStore.shared.machine(forWorkspace: $0)
+    }
+
+    /// True while a failure holds this workspace back from every automatic
+    /// login: the sweep, the selection poll, the context and the copy mode
+    /// check. Try again and opening a session still log in once.
+    func isPollingPaused(alias: String) -> Bool {
+        guard let pause = pollPauses[alias] else { return false }
+        return pauseClock() < pause.until
+    }
+
+    func holdsAutomaticLogin(_ target: CommandTarget) -> Bool {
+        guard case let .remote(alias, _) = target else { return false }
+        return isPollingPaused(alias: alias)
+    }
 
     /// True while the sweep logs into each workspace in turn.
     var isSweeping: Bool { sweepInFlight }
@@ -2121,15 +2134,14 @@ final class AppModel: ObservableObject {
     /// The machine a workspace alias lives on, as the configuration says.
     func machine(forAlias alias: String) -> String? {
         guard let workspace = workspaces.first(where: { $0.alias == alias }) else { return nil }
-        return MachineReadinessStore.shared.machine(forWorkspace: workspace.name)
+        return machineForWorkspace(workspace.name)
     }
 
     /// An ssh made outside the sweep (the copy mode check) failed the way
-    /// that pauses polling: the same backoff applies, so nothing else logs
-    /// in again at once.
-    func noteSSHFailure(_ failure: SSHFailure) {
-        guard failure != .hostKeyRejected else { return }
-        pausePolling(after: failure)
+    /// that pauses polling: the same pause applies, so nothing else logs
+    /// into that workspace again at once.
+    func noteSSHFailure(alias: String, _ failure: SSHFailure) {
+        pausePolling(alias: alias, after: failure)
     }
 
     /// Sleeping made every ssh fail at once, which paused the sweep and turned
@@ -2137,7 +2149,7 @@ final class AppModel: ObservableObject {
     /// applies, so it is lifted and the sweep runs at once instead of leaving
     /// the sidebar wrong for up to two minutes.
     func resumePollingAfterWake() {
-        pollPausedUntil = .distantPast
+        if !pollPauses.isEmpty { pollPauses = [:] }
         sweepInFlight = false
         refreshingAliases.removeAll()
         refreshAll()
@@ -2152,14 +2164,46 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func pausePolling(after failure: SSHFailure) {
-        let seconds: TimeInterval = failure == .authDenied ? 300 : 60
-        pollPausedUntil = Date().addingTimeInterval(seconds)
-        let label = failure == .authDenied
-            ? "SSH auth denied — polling paused 5 min (unlock the ssh agent)"
-            : "Host unreachable — polling paused 1 min"
-        let id = beginTask(label: label, total: 1)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.finishTask(id) }
+    /// A refused login pauses that workspace alone: fail2ban counts each
+    /// account's failed logins against this Mac's IP, and another account's
+    /// working login adds nothing. A machine that does not answer pauses
+    /// every workspace on it; with no known machine, only this one.
+    private func pausePolling(alias: String, after failure: SSHFailure) {
+        let machine = machine(forAlias: alias)
+        switch failure {
+        case .hostKeyRejected:
+            return
+        case .authDenied:
+            setPause(PollPause(.loginRefused, machine: machine, from: pauseClock()), alias: alias)
+        case .unreachable:
+            let pause = PollPause(.unreachable, machine: machine, from: pauseClock())
+            setPause(pause, alias: alias)
+            guard let machine else { return }
+            for ws in visibleWorkspaces where ws.alias != alias && self.machine(forAlias: ws.alias) == machine {
+                setPause(pause, alias: ws.alias)
+                if !offlineAliases.contains(ws.alias) { offlineAliases.insert(ws.alias) }
+                if sessionProblems[ws.alias] == nil {
+                    sessionProblems[ws.alias] = .unreachable(
+                        detail: "Not asked: another workspace on \(machine) could not be reached.")
+                }
+                markAnswered(ws.alias)
+            }
+        }
+    }
+
+    /// A shorter pause never cuts a longer one short: a refused login stays
+    /// paused for its 5 minutes when its machine then stops answering.
+    private func setPause(_ pause: PollPause, alias: String) {
+        if let current = pollPauses[alias], current.until >= pause.until { return }
+        pollPauses[alias] = pause
+    }
+
+    /// The machine answered: its other workspaces are reachable again, and
+    /// the next sweep or selection poll reads them.
+    private func clearUnreachablePauses(onMachine machine: String) {
+        for (alias, pause) in pollPauses where pause.reason == .unreachable && pause.machine == machine {
+            pollPauses[alias] = nil
+        }
     }
 
     /// Provider context polls only while its tab is actually on screen.
