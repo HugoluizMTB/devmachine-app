@@ -6,8 +6,8 @@ final class FlowLayoutTests: XCTestCase {
         let m = DMMetrics(scale: 1.1)
         let card = CGSize(width: m.pt(MachineStatsCard.width), height: 100)
 
-        let result = FlowLayout(spacing: HomeLayout.cardSpacing, rowSpacing: HomeLayout.cardSpacing)
-            .arrange([card, card], in: HomeLayout.twoMachineCardsWidth(m), metrics: m)
+        let result = FlowLayout(spacing: MachinesWidgetView.cardSpacing, rowSpacing: MachinesWidgetView.cardSpacing)
+            .arrange([card, card], in: m.pt(MachineStatsCard.width) * 2 + m.pt(MachinesWidgetView.cardSpacing), metrics: m)
 
         XCTAssertEqual(result.origins.map(\.y), [0, 0])
     }

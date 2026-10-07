@@ -25,17 +25,6 @@ final class UsageLayoutTests: XCTestCase {
         XCTAssertEqual(MenuBarSizing.columnWidth(panelWidth: 776, usageColumns: 2), 380)
     }
 
-    func testHomePlacesTwoHarnessCardsSideBySide() {
-        XCTAssertEqual(HomeUsageLayout.columnCount(for: 1), 1)
-        XCTAssertEqual(HomeUsageLayout.columnCount(for: 2), 2)
-        XCTAssertEqual(HomeUsageLayout.width(for: 2), 774)
-    }
-
-    func testHomeWrapsAdditionalHarnessCardsAfterTwoColumns() {
-        XCTAssertEqual(HomeUsageLayout.columnCount(for: 3), 2)
-        XCTAssertEqual(HomeUsageLayout.width(for: 3), 774)
-    }
-
     func testHomeUnmountsWhenAnotherPageCoversTheMainPane() {
         XCTAssertTrue(MainPaneVisibility.showsHome(hasSelection: false, activePage: nil))
         XCTAssertFalse(MainPaneVisibility.showsHome(hasSelection: false, activePage: .stats))

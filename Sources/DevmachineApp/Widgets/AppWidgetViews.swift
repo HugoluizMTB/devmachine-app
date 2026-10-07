@@ -66,6 +66,8 @@ struct SummaryWidgetView: View {
 }
 
 struct MachinesWidgetView: View {
+    static let cardSpacing: CGFloat = 12
+
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var stats: StatsStore
     @ObservedObject private var readiness = MachineReadinessStore.shared
@@ -84,7 +86,7 @@ struct MachinesWidgetView: View {
                         .kerning(0.8)
                         .foregroundStyle(.white.opacity(0.7))
                         .shadow(color: .black.opacity(0.4), radius: 4)
-                    FlowLayout(spacing: HomeLayout.cardSpacing, rowSpacing: HomeLayout.cardSpacing) {
+                    FlowLayout(spacing: Self.cardSpacing, rowSpacing: Self.cardSpacing) {
                         ForEach(stats.machines) { machine in
                             MachineStatsCard(
                                 machine: machine,
