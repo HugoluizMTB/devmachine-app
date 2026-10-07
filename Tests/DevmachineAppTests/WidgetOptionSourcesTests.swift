@@ -16,6 +16,13 @@ final class WidgetOptionSourcesTests: XCTestCase {
         XCTAssertEqual(WidgetOptionSources.none.options(.machines), [])
     }
 
+    func testAHarnessTheContractDoesNotListIsNotOffered() {
+        let sources = WidgetOptionSources(
+            machines: { [] }, workspaces: { [] },
+            harnesses: { ["claude", "pi", "codex"].map { ChoiceOption(id: $0, label: $0) } })
+        XCTAssertEqual(sources.options(.harnesses).map(\.id), ["claude", "codex"])
+    }
+
     func testHarnessOptionsComeFromTheUsageStatesInOrder() {
         let options = WidgetOptionSources.harnessOptions(
             states: [HarnessUsageState(harnessID: "codex"), HarnessUsageState(harnessID: "claude")],

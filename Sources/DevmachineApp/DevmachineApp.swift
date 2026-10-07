@@ -37,7 +37,7 @@ struct DevmachineApp: App {
             let ids = DemoMode.isActive
                 ? DemoData.usageProviders.map(\.harnessID)
                 : facade.usageRegistrations(for: settings).map(\.descriptor.id.rawValue)
-            return DefaultBoard.make(harnesses: ids)
+            return DefaultBoard.make(harnesses: WidgetContract.current.allowed(ids, from: "harnesses"))
         }
         WidgetCompatibilityStore.shared.onUpdated = {
             HomeBoardController.shared.reload()

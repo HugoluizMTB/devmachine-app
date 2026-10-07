@@ -258,6 +258,12 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertEqual(usageEntries(controller), ["claude-code/usage#bare", "devmachine-app/usage#codex"])
     }
 
+    func testAHarnessTheContractDoesNotListGetsNoUsageWidget() {
+        let controller = makeController(catalog: WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [genericUsage]))
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "pi"])
+        XCTAssertEqual(harnessValues(controller), ["claude"])
+    }
+
     func testAUsageWidgetWithNoHarnessCountsAsTheFirstHarness() {
         let controller = makeController(catalog: WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [genericUsage]))
         controller.store?.update {

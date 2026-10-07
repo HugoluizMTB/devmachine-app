@@ -246,6 +246,13 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         case entryOverrides = "entry_overrides"
     }
 
+    /// Keeps only the names an option source's fixed list allows, so the app
+    /// never offers or places a value the CLI would leave out.
+    public func allowed(_ names: [String], from source: String) -> [String] {
+        guard let values = optionSources[source]?.values else { return names }
+        return names.filter(values.contains)
+    }
+
     public static let presetOrder = ["small", "medium", "large", "wide", "tall"]
 
     public func presetCells(_ name: String) -> (columns: Int, rows: Int)? {

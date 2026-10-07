@@ -12,12 +12,15 @@ struct WidgetOptionSources: Sendable {
     static let none = WidgetOptionSources(machines: { [] }, workspaces: { [] }, harnesses: { [] })
 
     @MainActor
-    func options(_ source: WidgetOptionSource) -> [ChoiceOption] {
+    func options(_ source: WidgetOptionSource, contract: WidgetContract = .current) -> [ChoiceOption] {
+        let all: [ChoiceOption]
         switch source {
-        case .machines: return machines()
-        case .workspaces: return workspaces()
-        case .harnesses: return harnesses()
+        case .machines: all = machines()
+        case .workspaces: all = workspaces()
+        case .harnesses: all = harnesses()
         }
+        let allowed = Set(contract.allowed(all.map(\.id), from: source.rawValue))
+        return all.filter { allowed.contains($0.id) }
     }
 
     static func harnessOptions(states: [HarnessUsageState], title: (String) -> String?) -> [ChoiceOption] {

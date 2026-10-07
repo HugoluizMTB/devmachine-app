@@ -214,7 +214,7 @@ public enum WidgetPlacer {
         let surface = board.surface
         for widget in catalog.widgets where widget.placesItself(on: surface) {
             if let choice = oneChoice(of: widget) {
-                let values = options[choice.source] ?? []
+                let values = contract.allowed(options[choice.source] ?? [], from: choice.source)
                 for option in values {
                     let key = "\(widget.name)#\(option)"
                     guard !placements.contains(key, on: surface) else { continue }

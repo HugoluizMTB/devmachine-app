@@ -4,6 +4,11 @@ import XCTest
 final class DefaultHomeBoardTests: XCTestCase {
     private func frame(_ board: Board, _ id: String) -> BoardFrame? { board.widgets.first { $0.id == id }?.frame }
 
+    func testTheContractKeepsOnlyTheHarnessesItLists() {
+        XCTAssertEqual(WidgetContract.current.allowed(["claude", "pi", "codex"], from: "harnesses"), ["claude", "codex"])
+        XCTAssertEqual(WidgetContract.current.allowed(["main", "ghost"], from: "machines"), ["main", "ghost"])
+    }
+
     func testOneHarnessIsWrittenAsTheCLIWritesIt() {
         XCTAssertEqual(BoardCodec.encode(DefaultBoard.make(harnesses: ["claude"])), """
             format: 1
