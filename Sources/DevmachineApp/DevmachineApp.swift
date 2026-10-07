@@ -28,6 +28,17 @@ struct DevmachineApp: App {
         MainWindowSizer.readSavedFrame()
         let facade = HarnessSettingsFacade()
         harnessSettingsFacade = facade
+        HomeBoardController.shared.defaultBoard = {
+            let settings = SettingsStore.shared.settings ?? .empty
+            let ids = DemoMode.isActive
+                ? DemoData.usageProviders.map(\.harnessID)
+                : facade.usageRegistrations(for: settings).map(\.descriptor.id.rawValue)
+            let usage = ids.compactMap { id in
+                facade.descriptor(for: HarnessID(rawValue: id))?.packageName.map { UsageHarness(harness: id, package: $0) }
+            }
+            return DefaultBoard.make(usage: usage)
+        }
+        WidgetCompatibilityStore.shared.onUpdated = { HomeBoardController.shared.reload() }
         Task.detached(priority: .utility) { facade.refreshAvailability() }
         // `DEVMACHINE_DEMO=1`: every store seeds itself from `DemoData` (see
         // `DemoMode.swift`) instead of reading real usage files, the CLI, or
