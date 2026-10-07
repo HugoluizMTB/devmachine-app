@@ -786,8 +786,34 @@ final class AppModel: ObservableObject {
     /// click attach with `new-session -A` and start the session over.
     private var justDeleted: [SessionRef: Date] = [:]
     private static let deleteGrace: TimeInterval = 30
+    /// Sessions this app created, and when. tmux has them the moment the
+    /// create returns; a list that left before that, or no list at all while
+    /// polling is paused, must not hide them.
+    private var justCreated: [SessionRef: Date] = [:]
+    private static let createGrace: TimeInterval = 30
     /// Workspaces asked to refresh while a read of them was running.
     private var refreshAgainAliases: Set<String> = []
+
+    private func withJustCreated(_ listed: [TmuxSession], alias: String) -> [TmuxSession] {
+        let names = Set(listed.map(\.name))
+        let now = Date()
+        justCreated = justCreated.filter { ref, created in
+            !(ref.alias == alias && names.contains(ref.name))
+                && now.timeIntervalSince(created) < Self.createGrace
+        }
+        let missing = justCreated.keys.filter { $0.alias == alias }.map(\.name).sorted()
+        guard !missing.isEmpty else { return listed }
+        let shown = sessionsByAlias[alias] ?? []
+        return listed + missing.map { name in
+            shown.first { $0.name == name } ?? TmuxSession(name: name, windows: 1, harnesses: [])
+        }
+    }
+
+    private func showCreatedSession(_ ref: SessionRef) {
+        justCreated[ref] = Date()
+        guard sessionsByAlias[ref.alias]?.contains(where: { $0.name == ref.name }) != true else { return }
+        sessionsByAlias[ref.alias, default: []].append(TmuxSession(name: ref.name, windows: 1, harnesses: []))
+    }
 
     private func withoutJustDeleted(_ listed: [TmuxSession], alias: String) -> [TmuxSession] {
         let names = Set(listed.map(\.name))
@@ -1487,6 +1513,7 @@ final class AppModel: ObservableObject {
     /// The kill's own answer, not a later list, says the session is gone.
     private func forgetDeletedSession(_ ref: SessionRef) {
         justDeleted[ref] = Date()
+        justCreated[ref] = nil
         updateSidebarOrder { $0.removeSession(ref.name, in: ref.alias) }
         if sessionsByAlias[ref.alias]?.contains(where: { $0.name == ref.name }) == true {
             sessionsByAlias[ref.alias]?.removeAll { $0.name == ref.name }
@@ -1551,6 +1578,7 @@ final class AppModel: ObservableObject {
                 }
                 self.bumpTask(taskId)
                 self.justDeleted[SessionRef(alias: alias, name: old)] = Date()
+                self.justCreated[SessionRef(alias: alias, name: old)] = nil
                 if let i = self.sessionsByAlias[alias]?.firstIndex(where: { $0.name == old }),
                    let session = self.sessionsByAlias[alias]?[i] {
                     self.sessionsByAlias[alias]?[i] = TmuxSession(
@@ -1625,12 +1653,15 @@ final class AppModel: ObservableObject {
         let startup = startupLine(startup, for: .remote(alias: alias, session: name))
         let sender = sessionCommandSender
         Task.detached {
-            _ = try? store.run(
-                alias: alias, command: RemoteCommands.createSession(name: name, directory: directory))
+            let failure = AppModel.remoteFailure {
+                try store.runCapturing(
+                    alias: alias, command: RemoteCommands.createSession(name: name, directory: directory))
+            }
             if let startup {
                 try? sender.send(startup, into: .remote(alias: alias, session: name))
             }
             await MainActor.run {
+                if failure == nil { self.showCreatedSession(SessionRef(alias: alias, name: name)) }
                 self.selection = .session(alias: alias, name: name)
                 if let taskID {
                     self.bumpTask(taskID)
@@ -2004,8 +2035,9 @@ final class AppModel: ObservableObject {
         markAnswered(alias)
         switch outcome {
         case .success(let listed):
-            let result = withoutJustDeleted(listed, alias: alias)
-            settleRenames(alias: alias, listed: result)
+            let visible = withoutJustDeleted(listed, alias: alias)
+            settleRenames(alias: alias, listed: visible)
+            let result = withJustCreated(visible, alias: alias)
             // Assign only on a real change: every write to a @Published
             // re-renders the whole tree, and the 5s poll usually returns
             // exactly what is already on screen.

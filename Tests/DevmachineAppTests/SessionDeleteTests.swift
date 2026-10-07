@@ -69,6 +69,10 @@ private final class KillRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
+private struct SilentSender: SessionCommandSending {
+    func send(_ command: String, into target: CommandTarget) throws {}
+}
+
 @MainActor
 final class SessionDeleteTests: XCTestCase {
     private let acme = Workspace(name: "acme", alias: "acme-devmachine")
@@ -81,6 +85,7 @@ final class SessionDeleteTests: XCTestCase {
             services: DevmachineServices(
                 workspaceSource: FixtureWorkspaceSource(), sessionSource: source,
                 contextSource: FixtureContextSource()),
+            sessionCommandSender: SilentSender(),
             detectSettings: { .empty },
             defaults: UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!)
         model.settings = AppSettings(
@@ -228,6 +233,39 @@ final class SessionDeleteTests: XCTestCase {
 
         XCTAssertEqual(names(model), before)
         XCTAssertEqual(model.sessions(in: acme.alias).map(\.name), before)
+    }
+
+    func testANewSessionShowsAtOnceWhilePollingIsPaused() async throws {
+        let source = GatedSessionSource(before + ["web"])
+        source.release()
+        let model = makeModel(source: source, runner: KillRunner(exitCode: 0))
+        model.noteSSHFailure(.authDenied)
+
+        model.confirmNewSession(alias: acme.alias, name: "web", directory: "~")
+        try await waitFor("the new session is selected") { model.selection == .session(alias: self.acme.alias, name: "web") }
+
+        XCTAssertEqual(names(model), before + ["web"])
+    }
+
+    func testAListThatLeftBeforeTheCreateDoesNotDropTheNewSession() async throws {
+        let source = GatedSessionSource(before)
+        let model = makeModel(source: source, runner: KillRunner(exitCode: 0))
+        model.refresh(alias: acme.alias)
+        try await waitFor("the first list starts") { source.callCount == 1 }
+
+        source.set(before + ["web"])
+        model.confirmNewSession(alias: acme.alias, name: "web", directory: "~")
+        try await waitFor("the new session shows") { self.names(model) == self.before + ["web"] }
+        var seen: [[String]] = []
+        let watch = model.$sessionsByAlias.sink { seen.append(($0[self.acme.alias] ?? []).map(\.name)) }
+
+        source.release()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        watch.cancel()
+
+        XCTAssertEqual(names(model), before + ["web"])
+        XCTAssertEqual(model.selection, .session(alias: acme.alias, name: "web"))
+        XCTAssertFalse(seen.contains { !$0.contains("web") }, "\(seen)")
     }
 
     func testARefreshAskedForWhileOneRunsRunsOnceMoreAfterIt() async throws {
