@@ -149,7 +149,7 @@ public struct InlineWidgetForm: Equatable, Sendable {
         surface: String, id: String, keeping old: InlineWidget? = nil, catalog: WidgetCatalog? = nil,
         contract: WidgetContract = .current
     ) -> Result<InlineWidget, FormProblem> {
-        guard !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failure(FormProblem(field: "title", message: "Give the widget a title."))
         }
         let built = yaml(surface: surface, id: id, contract: contract)
@@ -220,7 +220,7 @@ public struct InlineWidgetForm: Equatable, Sendable {
                 add("      shell: true", "shellLine")
             } else {
                 add("      run: \(Self.block(run))", "run")
-                let words = args.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
+                let words = args.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 if !words.isEmpty { add("      args: [\(words.map(Self.flow).joined(separator: ", "))]", "args") }
             }
             add("      target: \(targetText)", "target")
@@ -245,7 +245,7 @@ public struct InlineWidgetForm: Equatable, Sendable {
         }
         add("    view:", "view")
         add("      kind: \(Self.block(view))", "view")
-        if template == .webPage { add("      zoom: \(Double(zoom) != nil ? zoom : Self.block(zoom))", "zoom") }
+        if template == .webPage { add("      zoom: \(zoomText)", "zoom") }
         if !value.isEmpty { add("      value: \(Self.block(value))", "value") }
         if contract.layout(of: surface) == "canvas" {
             add("    frame: {x: 0, y: 0, w: 320, h: 160}", nil)
@@ -254,6 +254,11 @@ public struct InlineWidgetForm: Equatable, Sendable {
             add("    z: 1", nil)
         }
         return (lines.joined(separator: "\n") + "\n", fields)
+    }
+
+    private var zoomText: String {
+        guard let number = Double(zoom), number.isFinite else { return Self.block(zoom) }
+        return String(format: "%g", number)
     }
 
     private var targetText: String {

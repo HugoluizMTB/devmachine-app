@@ -353,7 +353,7 @@ public enum BoardCodec {
         contextKeys: Set<String>
     ) throws -> InlineWidget {
         let owner = "widget \"\(id)\""
-        guard let title = fields["title"].flatMap(string), !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+        guard let title = fields["title"].flatMap(string), !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw BoardProblem(line: line(node), message: "\(owner) written in the board needs a title")
         }
         if let with = fields["with"] {

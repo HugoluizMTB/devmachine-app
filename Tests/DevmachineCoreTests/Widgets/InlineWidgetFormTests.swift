@@ -157,4 +157,72 @@ final class InlineWidgetFormTests: XCTestCase {
         guard case let .prompt(prompt) = try form.read(surface: "home", id: "check").get().source else { return XCTFail() }
         XCTAssertEqual(prompt.prompt, "Say \"hi\"\nthen: stop")
     }
+
+    func testHostileValuesArriveIntactWithNoExtraKeyOrEntry() throws {
+        let hostile = [
+            "x\nsource: {kind: command, run: rm}", "a]b", "a, b", "a #b", "- a", "it's", "say \"hi\"",
+            "https://example.com/a#b", "a: b", "path:", "a}b", "yes", "no", "1e3", "null", "true", "~", "123",
+        ]
+        for text in hostile {
+            var command = filled(.command)
+            command.title = text
+            command.run = "tool"
+            command.args = text.replacingOccurrences(of: "\n", with: " ")
+            command.target = .machine(text.replacingOccurrences(of: "\n", with: " "))
+            let inline = try command.read(surface: "home", id: "check").get()
+            XCTAssertEqual(inline.title, text)
+            guard case let .command(source) = inline.source else { return XCTFail(text) }
+            XCTAssertEqual(source.run, "tool")
+            XCTAssertEqual(source.args, [text.replacingOccurrences(of: "\n", with: " ")].filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+            XCTAssertEqual(source.target, .machine(text.replacingOccurrences(of: "\n", with: " ")))
+
+            var shell = filled(.command)
+            shell.commandStyle = .shell
+            shell.shellLine = text
+            guard case let .command(line) = try shell.read(surface: "home", id: "check").get().source else { return XCTFail(text) }
+            XCTAssertEqual(line.run, text)
+            XCTAssertTrue(line.shell)
+
+            var url = filled(.webPage)
+            url.url = "https://example.com/" + text.replacingOccurrences(of: "\n", with: "")
+            if case let .success(read) = url.read(surface: "home", id: "check"), case let .url(source) = read.source {
+                XCTAssertEqual(source.url, url.url)
+            }
+
+            var prompt = filled(.prompt)
+            prompt.prompt = text
+            guard case let .prompt(asked) = try prompt.read(surface: "home", id: "check").get().source else { return XCTFail(text) }
+            XCTAssertEqual(asked.prompt, text)
+        }
+    }
+
+    func testURLsWithAHashAColonSpaceAndATrailingColonStayWhole() throws {
+        for address in ["https://example.com/a#b", "https://example.com/a: b", "https://example.com/a:"] {
+            var form = filled(.urlStatus)
+            form.url = address
+            guard case let .url(source) = try form.read(surface: "home", id: "check").get().source else { return XCTFail(address) }
+            XCTAssertEqual(source.url, address)
+        }
+    }
+
+    func testATitleOfOnlyANewLineIsAskedFor() {
+        var form = filled(.command)
+        form.title = "\n"
+        XCTAssertEqual(form.read(surface: "home", id: "check"), .failure(FormProblem(field: "title", message: "Give the widget a title.")))
+    }
+
+    func testAnArgumentLineOfOnlySpacesIsDropped() throws {
+        var form = filled(.command)
+        form.args = "-h\n   \n/var/log"
+        guard case let .command(command) = try form.read(surface: "home", id: "check").get().source else { return XCTFail() }
+        XCTAssertEqual(command.args, ["-h", "/var/log"])
+    }
+
+    func testAZoomIsWrittenFromItsNumber() throws {
+        var form = filled(.webPage)
+        form.zoom = "1.5"
+        XCTAssertTrue(form.yaml(surface: "home", id: "check").text.contains("zoom: 1.5\n"))
+        form.zoom = "1: x"
+        XCTAssertFalse(form.yaml(surface: "home", id: "check").text.contains("\n      x"))
+    }
 }
