@@ -96,6 +96,9 @@ struct StackBoardView: View {
             controller.setVisible(false)
             drag = nil
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            readOptionKey()
+        }
         .onChange(of: isVisible) { _, visible in
             controller.setVisible(visible)
             controller.runtime.setJobs(controller.runtimeJobs())
@@ -170,7 +173,12 @@ struct StackBoardView: View {
         .environment(\.stackWidgetChrome, chrome)
         .environment(\.stackFillHeight, fillHeight(excluding: entry.id))
         .onHover { inside in
-            if inside { hovered = entry.id } else if hovered == entry.id { hovered = nil }
+            if inside {
+                hovered = entry.id
+                readOptionKey()
+            } else if hovered == entry.id {
+                hovered = nil
+            }
         }
     }
 
@@ -218,8 +226,15 @@ struct StackBoardView: View {
             onDragEnded: { endDrag() })
     }
 
+    /// The local monitor hears nothing while another app is in front, so a
+    /// ⌥ let go there is read again on return and on the next hover.
+    private func readOptionKey() {
+        let held = NSEvent.modifierFlags.contains(.option)
+        if optionHeld != held { optionHeld = held }
+    }
+
     private func watchOptionKey() {
-        optionHeld = NSEvent.modifierFlags.contains(.option)
+        readOptionKey()
         guard flagsMonitor == nil else { return }
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
             optionHeld = event.modifierFlags.contains(.option)
