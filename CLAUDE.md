@@ -896,7 +896,10 @@ Rules:
   runs, taken at run time with the area's real context
   (`ApprovalSubject.hash(for:context:)`): kind, run/script/args, shell,
   target, harness, prompt, session, and for `shell: true` the `DM_` values it
-  reads — never `every`, `timeout`, `mode`, `keep` or `parse`. The runner
+  reads — never `every`, `timeout`, `mode`, `keep` or `parse`. The card and
+  the stored summary read `ApprovalPrompt`, built from that same filled
+  source and `DM_` values, so the owner approves exactly what the hash
+  covers, never the raw templates. The runner
   checks the hash again right before every run (`SourceApprovalGate`). It
   lives in `Application Support/Devmachine/widget-approvals.json`, never in
   the config folder: whoever can write a board must not be able to approve
@@ -944,7 +947,9 @@ Rules:
   clickable.
 - **Web widgets** share one non-persistent `WKWebsiteDataStore` for the app
   run (not the preview browser's), allow http(s) in the main frame only, open
-  no popups, and reload on `every` only while the view exists.
+  no popups, and reload on `every` only while the view exists. The address
+  comes from `URLSourceRunner.address(of:context:)`, the fill a `url` fetch
+  uses; one that is not http(s) shows its error in the card, never a blank page.
 - **Inline entries are written back as they were read** (`YAMLTree`: flow or
   block, quoting kept), in the order `id, title, source, view, sizes, fits,
   frame, size, minimized, z`, byte-identical to the CLI's writer; a
