@@ -15,6 +15,17 @@ public struct CommandSourceRunner: SourceRunner {
 
     public func fetch(_ request: SourceRunRequest) async throws -> SourceRunResult {
         if let blocked = try SourceApprovalGate.blocked(request) { return .needsApproval(blocked) }
+        let (command, invocation, remote) = try Self.invocation(request, environment: environment)
+        let data = try await ProcessCollector.collect(
+            invocation, remote: remote, timeout: command.timeout, launcher: launcher, sleep: sleep)
+        return .output(try SourceOutputs.parse(data, as: command.parse))
+    }
+
+    /// The process a command source runs, shared with a stream so both build
+    /// it the same way. It checks no approval: the caller does that first.
+    public static func invocation(
+        _ request: SourceRunRequest, environment: SourceRunEnvironment
+    ) throws -> (command: CommandSource, invocation: ProcessInvocation, remote: Bool) {
         guard case let .command(command) = try SourceFailure.refusing({ try request.source.resolved(context: request.context) }),
               let words = try SourceFailure.refusing({ try request.source.command(context: request.context) })
         else { throw SourceError.cannotStart("not a command source") }
@@ -23,8 +34,6 @@ public struct CommandSourceRunner: SourceRunner {
             throw SourceError.cannotStart("this Mac runs a package script from the package's own folder, and none is known")
         }
         let (invocation, remote) = try TargetInvoker.invocation(words, on: command.target, environment: environment)
-        let data = try await ProcessCollector.collect(
-            invocation, remote: remote, timeout: command.timeout, launcher: launcher, sleep: sleep)
-        return .output(try SourceOutputs.parse(data, as: command.parse))
+        return (command, invocation, remote)
     }
 }
