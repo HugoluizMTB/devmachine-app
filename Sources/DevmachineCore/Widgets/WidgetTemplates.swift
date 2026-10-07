@@ -20,94 +20,57 @@ public struct TemplateValues: Equatable, Sendable {
             return escape(value ?? "")
         }
     }
+
+    /// What a `shell: true` line reads: `$DM_INPUT_<NAME>` and
+    /// `$DM_CONTEXT_<KEY>`, so a value is never parsed as shell code.
+    public var environment: [String: String] {
+        var variables: [String: String] = [:]
+        for key in inputs.keys.sorted() { variables[Self.variableName("DM_INPUT_", key)] = inputs[key] }
+        for key in context.keys.sorted() { variables[Self.variableName("DM_CONTEXT_", key)] = context[key] }
+        return variables
+    }
+
+    /// The CLI's EnvName: upper case, one `_` for each character outside
+    /// A-Z and 0-9, so both sides name the same variable.
+    public static func variableName(_ prefix: String, _ key: String) -> String {
+        prefix + String(key.unicodeScalars.map { scalar -> Character in
+            let upper = scalar.properties.uppercaseMapping.unicodeScalars
+            let mapped = upper.count == 1 ? upper.first ?? scalar : scalar
+            return ("A"..."Z").contains(mapped) || ("0"..."9").contains(mapped) ? Character(mapped) : "_"
+        })
+    }
+
+    /// The variable a template reference such as `inputs.disk-path` reads,
+    /// or nil for a reference to anything but inputs and context.
+    public static func variableName(reference: String) -> String? {
+        let trimmed = reference.trimmingCharacters(in: .whitespaces)
+        guard let dot = trimmed.firstIndex(of: ".") else { return nil }
+        let key = String(trimmed[trimmed.index(after: dot)...])
+        guard !key.isEmpty else { return nil }
+        switch trimmed[..<dot] {
+        case "inputs": return variableName("DM_INPUT_", key)
+        case "context": return variableName("DM_CONTEXT_", key)
+        default: return nil
+        }
+    }
 }
 
-/// Why a command source builds no line, so nothing half-safe ever runs.
+/// Why a command source builds nothing, so nothing half-safe ever runs.
 public enum WidgetCommandError: Error, Equatable, LocalizedError {
-    case unsafeTemplate(UnsafeTemplate)
+    case refused(String)
     case nothingToRun
 
     public var errorDescription: String? {
         switch self {
-        case let .unsafeTemplate(found): return found.message
+        case let .refused(message): return message
         case .nothingToRun: return "the command source has nothing to run"
         }
     }
 }
 
-/// A template of a shell line the shell could unquote. `quoted` is the
-/// CLI's rule; the other places are refused by the app alone.
-public struct UnsafeTemplate: Equatable, Sendable {
-    public var template: String
-    public var quoted: Bool
-
-    public var message: String {
-        if quoted {
-            return "source.run puts \(template) inside quotes; with shell: true every value is quoted for you — remove the quotes around it"
-        }
-        return "source.run puts \(template) in backticks, a comment, a here-document or right after \\ or $; "
-            + "with shell: true every value is quoted for you — write it bare"
-    }
-}
-
-/// A template's value is single-quoted for the shell, which is only safe
-/// where the template sits bare. Inside '…', "…" or `…`, in a comment or a
-/// here-document, or right after \ or $, the value closes the quotes.
-public enum ShellQuoteScan {
-    private enum State { case bare, single, double, backtick, comment, heredoc }
-
-    public static func firstUnsafeTemplate(_ line: String) -> UnsafeTemplate? {
-        var templates: [String.Index: (end: String.Index, text: String)] = [:]
-        for match in line.matches(of: WidgetSourceReader.templatePattern) {
-            templates[match.range.lowerBound] = (match.range.upperBound, String(match.output.0))
-        }
-        guard !templates.isEmpty else { return nil }
-        var state = State.bare
-        var previous: Character?
-        var index = line.startIndex
-        while index < line.endIndex {
-            if let template = templates[index] {
-                switch state {
-                case .single, .double: return UnsafeTemplate(template: template.text, quoted: true)
-                case .backtick, .comment, .heredoc: return UnsafeTemplate(template: template.text, quoted: false)
-                case .bare where previous == "$" || previous == "\\": return UnsafeTemplate(template: template.text, quoted: false)
-                case .bare: break
-                }
-                previous = "}"
-                index = template.end
-                continue
-            }
-            let character = line[index]
-            var next = line.index(after: index)
-            var escaped = false
-            switch (state, character) {
-            case (.bare, "\\"), (.double, "\\"), (.backtick, "\\"):
-                if next < line.endIndex, templates[next] == nil {
-                    next = line.index(after: next)
-                    escaped = true
-                }
-            case (.bare, "'"): state = .single
-            case (.bare, "\""): state = .double
-            case (.bare, "`"): state = .backtick
-            case (.bare, "#") where previous.map { startsAWord(after: $0) } ?? true: state = .comment
-            case (.bare, "<") where line[next...].hasPrefix("<"): state = .heredoc
-            case (.single, "'"), (.double, "\""), (.backtick, "`"), (.comment, "\n"): state = .bare
-            default: break
-            }
-            previous = escaped ? "x" : character
-            index = next
-        }
-        return nil
-    }
-
-    private static func startsAWord(after character: Character) -> Bool {
-        character.isWhitespace || ";&|()<>".contains(character)
-    }
-}
-
 extension WidgetSource {
-    /// Every template resolved. In a shell line each value is quoted for
-    /// the shell; anywhere else it stays one literal word.
+    /// Every template resolved, for the approval hash and what a person reads.
+    /// A command that holds a template where none may sit is refused.
     public func resolved(with values: TemplateValues) throws -> WidgetSource {
         func plain(_ text: String) -> String { values.resolve(text) }
         func target(_ target: WidgetTarget) -> WidgetTarget {
@@ -122,10 +85,7 @@ extension WidgetSource {
             source.with = source.with.mapValues(plain)
             return .provider(source)
         case var .command(source):
-            if source.shell, let run = source.run, let found = ShellQuoteScan.firstUnsafeTemplate(run) {
-                throw WidgetCommandError.unsafeTemplate(found)
-            }
-            source.run = source.run.map { source.shell ? values.resolve($0, escape: RemoteCommands.shellSingleQuoted) : plain($0) }
+            if let refused = ArgvBuilder.refusal(source) { throw WidgetCommandError.refused(refused.message) }
             source.args = source.args.map(plain)
             source.target = target(source.target)
             return .command(source)

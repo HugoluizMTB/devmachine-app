@@ -169,7 +169,7 @@ final class WidgetSourceReaderTests: XCTestCase {
     }
 
     func testRunRefusesAnyWhitespaceWithoutShell() {
-        for run in ["df\r-h", "df\u{00A0}-h", "df\u{2003}-h", "df\u{3000}-h", "df\u{0B}-h", "{{context.repo}} -h"] {
+        for run in ["df\r-h", "df\u{00A0}-h", "df\u{2003}-h", "df\u{3000}-h", "df\u{0B}-h"] {
             let fields: [String: WidgetValue] = ["kind": .string("command"), "run": .string(run), "every": .string("60s")]
             XCTAssertEqual(problem(fields, scope: .inline(contextKeys: ["repo"]))?.path, ["run"], run.debugDescription)
             var shell = fields
@@ -295,30 +295,31 @@ final class WidgetSourceReaderTests: XCTestCase {
             "template {{\u{00A0}context.repo}} in source.args[0] names neither inputs.<name> nor context.<name>")
     }
 
-    func testAShellRunRefusesATemplateInsideQuotes() {
+    func testRunHoldsNoTemplateAndAShellLineTakesNoArgs() {
         let scope = WidgetScope.inline(contextKeys: ["repo"])
-        for run in ["echo '{{context.repo}}'", "echo \"{{context.repo}}\"", "cd {{context.repo}} && echo \"at {{context.repo}}\""] {
-            let fields: [String: WidgetValue] = [
-                "kind": .string("command"), "run": .string(run), "shell": .bool(true), "every": .string("60s"),
-            ]
-            XCTAssertEqual(
-                problem(fields, scope: scope)?.message,
-                "source.run puts {{context.repo}} inside quotes; with shell: true every value is quoted for you — remove the quotes around it",
-                run)
-        }
-        let comment: [String: WidgetValue] = [
-            "kind": .string("command"), "run": .string("echo hi # {{context.repo}}"), "shell": .bool(true),
+        let shellTemplate: [String: WidgetValue] = [
+            "kind": .string("command"), "run": .string("cd \"{{context.repo}}\""), "shell": .bool(true), "every": .string("60s"),
+        ]
+        XCTAssertEqual(problem(shellTemplate, scope: scope)?.path, ["run"])
+        XCTAssertEqual(problem(shellTemplate, scope: scope)?.message, ArgvBuilder.refusal(CommandSource(
+            run: "cd \"{{context.repo}}\"", script: nil, args: [], shell: true, target: .local, every: .manual, timeout: 0,
+            mode: .poll, keep: 0, parse: .text))?.message)
+        let shellArgs: [String: WidgetValue] = [
+            "kind": .string("command"), "run": .string("df"), "args": .list([.string("-h")]), "shell": .bool(true),
             "every": .string("60s"),
         ]
-        XCTAssertEqual(
-            problem(comment, scope: scope)?.message,
-            "source.run puts {{context.repo}} in backticks, a comment, a here-document or right after \\ or $; "
-                + "with shell: true every value is quoted for you — write it bare")
-        let bare: [String: WidgetValue] = [
-            "kind": .string("command"), "run": .string("cd {{context.repo}} && echo 'done'"), "shell": .bool(true),
+        XCTAssertEqual(problem(shellArgs, scope: scope)?.path, ["args"])
+        let program: [String: WidgetValue] = ["kind": .string("command"), "run": .string("{{context.repo}}"), "every": .string("60s")]
+        XCTAssertEqual(problem(program, scope: scope)?.path, ["run"])
+        let fine: [String: WidgetValue] = [
+            "kind": .string("command"), "run": .string("cd \"$DM_CONTEXT_REPO\" && git status"), "shell": .bool(true),
             "every": .string("60s"),
         ]
-        XCTAssertNil(problem(bare, scope: scope))
+        XCTAssertNil(problem(fine, scope: scope))
+        let argTemplate: [String: WidgetValue] = [
+            "kind": .string("command"), "run": .string("ls"), "args": .list([.string("{{context.repo}}")]), "every": .string("60s"),
+        ]
+        XCTAssertNil(problem(argTemplate, scope: scope))
     }
 
     func testARunWithoutShellRefusesAProgramEnvWouldMisread() {
@@ -326,14 +327,12 @@ final class WidgetSourceReaderTests: XCTestCase {
         let dash: [String: WidgetValue] = ["kind": .string("command"), "run": .string("-i"), "every": .string("60s")]
         XCTAssertEqual(
             problem(dash, scope: scope)?.message,
-            "source.run \"-i\" starts with -: the app starts a program through env, which reads it as an option "
-                + "— name the program, and put options in source.args")
+            "source.run \"-i\" starts with -: a program name never does — name the program, and put options in source.args")
         let equals: [String: WidgetValue] = ["kind": .string("command"), "run": .string("A=b"), "every": .string("60s")]
         XCTAssertEqual(
             problem(equals, scope: scope)?.message,
-            "source.run \"A=b\" has =: the app starts a program through env, which reads it as a variable to set "
-                + "— name the program, or set shell: true")
-        for run in ["-i", "A=b", "--{{context.repo}}", "/opt/a=b"] {
+            "source.run \"A=b\" has =: it reads as a variable to set, not a program — name the program, or set shell: true")
+        for run in ["-i", "A=b", "--x", "/opt/a=b"] {
             let fields: [String: WidgetValue] = ["kind": .string("command"), "run": .string(run), "every": .string("60s")]
             XCTAssertEqual(problem(fields, scope: scope)?.path, ["run"], run)
             var remote = fields

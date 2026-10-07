@@ -36,6 +36,7 @@ final class SourceResolutionTests: XCTestCase {
         let resolved = try XCTUnwrap(ready(WidgetResolution.resolve(entry("mine/disk"), in: catalog())))
         guard case let .command(command)? = resolved.source?.source else { return XCTFail() }
         XCTAssertEqual(command.target, .machine("main"))
+        XCTAssertEqual(resolved.source?.values.inputs["machine"], "main")
     }
 
     func testEverySourceKindResolves() throws {

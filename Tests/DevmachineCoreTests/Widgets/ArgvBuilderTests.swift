@@ -4,6 +4,9 @@ import XCTest
 final class ArgvBuilderTests: XCTestCase {
     private let cli = CLIInvocationContext(executable: "/opt/homebrew/bin/devmachine", environment: ["SSH_AUTH_SOCK": "/tmp/a"])
     private let home = "/Users/alice"
+    private let attacks = [
+        "x; rm -rf ~", "'; id; '", "$(id)", "`id`", "a\nid", "a'b", "a\"b", "a\\b", "&& id", "| id", "> /tmp/x", "$HOME", "-h", "",
+    ]
 
     private func command(
         run: String? = "df", script: String? = nil, args: [String] = [], shell: Bool = false, target: WidgetTarget = .local
@@ -12,6 +15,8 @@ final class ArgvBuilderTests: XCTestCase {
                       timeout: 30, mode: .poll, keep: 200, parse: .text)
     }
 
+    private func onlyUsrBin(_ path: String) -> Bool { path.hasPrefix("/usr/bin/") }
+
     func testShellSyntaxInAnArgumentStaysOneWord() throws {
         let words = try ArgvBuilder.command(command(args: ["-h", "x; rm -rf ~", "$(id)"]), package: nil, packagePath: nil)
         XCTAssertEqual(words, .argv(["df", "-h", "x; rm -rf ~", "$(id)"]))
@@ -19,7 +24,8 @@ final class ArgvBuilderTests: XCTestCase {
             ArgvBuilder.remote(words, target: .machine("main"), cli: cli)?.arguments,
             ["--machine", "main", "run", "--no-log", "--argv", "--", "df", "-h", "x; rm -rf ~", "$(id)"])
         XCTAssertEqual(
-            ArgvBuilder.local(words, environment: [:], home: home)?.arguments, ["df", "-h", "x; rm -rf ~", "$(id)"])
+            ArgvBuilder.local(words, environment: [:], home: home, isExecutable: onlyUsrBin)?.arguments,
+            ["-h", "x; rm -rf ~", "$(id)"])
     }
 
     func testAWorkspaceGoesAfterRun() throws {
@@ -30,33 +36,122 @@ final class ArgvBuilderTests: XCTestCase {
         XCTAssertNil(ArgvBuilder.remote(.argv(["df"]), target: .local, cli: cli))
     }
 
-    func testShellTrueQuotesEveryArgument() throws {
-        let line = try ArgvBuilder.command(command(run: "df | tail -1", args: ["-h", "it's"], shell: true), package: nil, packagePath: nil)
-        XCTAssertEqual(line, .shellLine("df | tail -1 '-h' 'it'\\''s'"))
-        XCTAssertEqual(ArgvBuilder.remote(line, target: .machine("main"), cli: cli)?.arguments,
-                       ["--machine", "main", "run", "--no-log", "--", "df | tail -1 '-h' 'it'\\''s'"])
-        let local = ArgvBuilder.local(line, environment: [:], home: home)
+    func testVariableNames() {
+        XCTAssertEqual(TemplateValues.variableName("DM_INPUT_", "path"), "DM_INPUT_PATH")
+        XCTAssertEqual(TemplateValues.variableName("DM_INPUT_", "max-load"), "DM_INPUT_MAX_LOAD")
+        XCTAssertEqual(TemplateValues.variableName("DM_CONTEXT_", "workspace.name"), "DM_CONTEXT_WORKSPACE_NAME")
+        XCTAssertEqual(TemplateValues.variableName("DM_INPUT_", "a b$é9"), "DM_INPUT_A_B__9")
+        let values = TemplateValues(inputs: ["path": "/", "max-load": "3"], context: ["workspace.name": "alice"])
+        XCTAssertEqual(values.environment, [
+            "DM_INPUT_PATH": "/", "DM_INPUT_MAX_LOAD": "3", "DM_CONTEXT_WORKSPACE_NAME": "alice",
+        ])
+    }
+
+    func testVariableNamesMatchTheCLIsEnvName() {
+        let cases = [
+            "inputs.disk-path": "DM_INPUT_DISK_PATH", "inputs.machine": "DM_INPUT_MACHINE", " inputs.max_lines ": "DM_INPUT_MAX_LINES",
+            "context.workspace.name": "DM_CONTEXT_WORKSPACE_NAME", "context.project": "DM_CONTEXT_PROJECT",
+        ]
+        for (reference, name) in cases { XCTAssertEqual(TemplateValues.variableName(reference: reference), name, reference) }
+        for reference in ["item.name", "inputs", "inputs.", "machine"] { XCTAssertNil(TemplateValues.variableName(reference: reference)) }
+        XCTAssertEqual(TemplateValues.variableName("DM_INPUT_", "straße"), "DM_INPUT_STRA_E")
+    }
+
+    func testTheCLIsRefusalWords() {
+        func refusal(_ run: String, args: [String] = [], shell: Bool = true) -> (field: String, message: String)? {
+            ArgvBuilder.refusal(command(run: run, args: args, shell: shell))
+        }
+        XCTAssertEqual(refusal("echo {{inputs.machine}}")?.message,
+                       "source.run is a shell line, so it cannot hold {{inputs.machine}}: read it as \"$DM_INPUT_MACHINE\" instead")
+        XCTAssertEqual(refusal("echo '{{ context.project }}'")?.message,
+                       "source.run is a shell line, so it cannot hold {{ context.project }}: read it as \"$DM_CONTEXT_PROJECT\" instead")
+        XCTAssertEqual(refusal("echo {{item.name}}")?.message,
+                       "source.run is a shell line, so it cannot hold {{item.name}}: read values as $DM_INPUT_<NAME> or $DM_CONTEXT_<KEY> instead")
+        XCTAssertEqual(refusal("df", args: ["-h"])?.message,
+                       "a shell line takes no source.args: write the words in source.run, and read values as $DM_INPUT_<NAME>")
+        XCTAssertEqual(refusal("{{inputs.prog}}", shell: false)?.message,
+                       "source.run cannot hold {{inputs.prog}}: a value must not pick the program — name the program in run, "
+                           + "and put the value in source.args")
+        XCTAssertNil(refusal("df -h -- \"$DM_INPUT_MACHINE\""))
+    }
+
+    func testAShellLineReadsItsValuesFromTheEnvironment() throws {
+        let values = TemplateValues(inputs: ["path": "/; id"], context: ["workspace.name": "alice"])
+        let built = try ArgvBuilder.command(command(run: "df \"$DM_INPUT_PATH\" | tail -1", shell: true), values: values,
+                                            package: nil, packagePath: nil)
+        let environment = ["DM_INPUT_PATH": "/; id", "DM_CONTEXT_WORKSPACE_NAME": "alice"]
+        XCTAssertEqual(built, .shell(line: "df \"$DM_INPUT_PATH\" | tail -1", environment: environment))
+        XCTAssertEqual(ArgvBuilder.remote(built, target: .machine("main"), cli: cli)?.arguments, [
+            "--machine", "main", "run", "--no-log", "--argv", "--", "/usr/bin/env",
+            "DM_CONTEXT_WORKSPACE_NAME=alice", "DM_INPUT_PATH=/; id", "/bin/sh", "-c", "df \"$DM_INPUT_PATH\" | tail -1",
+        ])
+        XCTAssertEqual(ArgvBuilder.remote(built, target: .workspace("alice"), cli: cli)?.arguments.prefix(6),
+                       ["run", "--workspace", "alice", "--no-log", "--argv", "--"])
+        let local = ArgvBuilder.local(built, environment: ["LANG": "C", "DM_INPUT_OLD": "stale"], home: home)
         XCTAssertEqual(local?.executable, "/bin/sh")
-        XCTAssertEqual(local?.arguments, ["-c", "df | tail -1 '-h' 'it'\\''s'"])
+        XCTAssertEqual(local?.arguments, ["-c", "df \"$DM_INPUT_PATH\" | tail -1"])
+        XCTAssertEqual(local?.currentDirectory, home)
+        XCTAssertEqual(local?.environment?["DM_INPUT_PATH"], "/; id")
+        XCTAssertEqual(local?.environment?["DM_CONTEXT_WORKSPACE_NAME"], "alice")
+        XCTAssertEqual(local?.environment?["LANG"], "C")
+        XCTAssertNil(local?.environment?["DM_INPUT_OLD"])
     }
 
-    func testATemplatedValueInAShellLineIsQuoted() throws {
-        let source = WidgetSource.command(command(run: "echo {{inputs.msg}}", shell: true))
-        let resolved = try source.resolved(with: TemplateValues(inputs: ["msg": "a; id"], context: [:]))
-        guard case let .command(value) = resolved else { return XCTFail() }
-        XCTAssertEqual(value.run, "echo 'a; id'")
+    func testAShellLineSeesHostileValuesLiterallyThroughARealShell() throws {
+        for attack in attacks {
+            let built = try ArgvBuilder.command(
+                command(run: "printf '%s|' \"$DM_INPUT_V\" $DM_CONTEXT_K", shell: true),
+                values: TemplateValues(inputs: ["v": attack], context: ["k": "plain"]), package: nil, packagePath: nil)
+            XCTAssertEqual(try printed(by: built), "\(attack)|plain|", attack)
+        }
     }
 
-    func testATemplateWithoutShellIsOneWordUnquoted() throws {
-        let source = WidgetSource.command(command(run: "{{inputs.prog}}", args: ["{{inputs.path}}"],
-                                                  target: .machine("{{inputs.machine}}")))
-        let resolved = try source.resolved(with: TemplateValues(
-            inputs: ["prog": "rm -rf", "path": "x; id", "machine": "main"], context: [:]))
-        guard case let .command(value) = resolved else { return XCTFail() }
-        XCTAssertEqual(value.run, "rm -rf")
-        XCTAssertEqual(value.args, ["x; id"])
+    func testTheRemoteShellArgvHoldsEachValueAsOneWord() throws {
+        for attack in attacks {
+            let built = try ArgvBuilder.command(command(run: "echo \"$DM_INPUT_V\"", shell: true),
+                                                values: TemplateValues(inputs: ["v": attack], context: [:]), package: nil, packagePath: nil)
+            XCTAssertEqual(ArgvBuilder.remote(built, target: .machine("main"), cli: cli)?.arguments.suffix(5),
+                           ["/usr/bin/env", "DM_INPUT_V=\(attack)", "/bin/sh", "-c", "echo \"$DM_INPUT_V\""], attack)
+        }
+    }
+
+    func testTheEnvArgvAReachesAShellAsTheSameValue() throws {
+        for attack in attacks {
+            let built = try ArgvBuilder.command(command(run: "printf %s \"$DM_INPUT_V\"", shell: true),
+                                                values: TemplateValues(inputs: ["v": attack], context: [:]), package: nil, packagePath: nil)
+            guard let words = ArgvBuilder.remote(built, target: .machine("main"), cli: cli)?.arguments.drop(while: { $0 != "--" }).dropFirst()
+            else { return XCTFail() }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: words.first ?? "")
+            process.arguments = Array(words.dropFirst())
+            process.environment = [:]
+            XCTAssertEqual(try output(of: process), attack, attack)
+        }
+    }
+
+    func testAShellLineWithATemplateOrArgsBuildsNothing() {
+        let cases = [
+            command(run: "echo {{inputs.x}}", shell: true), command(run: "echo \"{{inputs.x}}\"", shell: true),
+            command(run: "echo", args: ["{{inputs.x}}"], shell: true), command(run: "{{inputs.prog}}"),
+        ]
+        for source in cases {
+            XCTAssertThrowsError(try ArgvBuilder.command(source, values: .none, package: nil, packagePath: nil)) { error in
+                XCTAssertEqual(error as? WidgetCommandError, ArgvBuilder.refusal(source).map { .refused($0.message) })
+            }
+            XCTAssertThrowsError(try WidgetSource.command(source).resolved(with: .none))
+        }
+        XCTAssertEqual(ArgvBuilder.refusal(cases[0])?.field, "run")
+        XCTAssertEqual(ArgvBuilder.refusal(cases[2])?.field, "args")
+        XCTAssertNil(ArgvBuilder.refusal(command(run: "df", args: ["{{inputs.x}}"])))
+    }
+
+    func testTemplatesInArgsAreOneWordUnquoted() throws {
+        let source = command(run: "df", args: ["{{inputs.path}}", "-x{{inputs.path}}"], target: .machine("{{inputs.machine}}"))
+        let values = TemplateValues(inputs: ["path": "x; id", "machine": "main"], context: [:])
+        guard case let .command(value) = try WidgetSource.command(source).resolved(with: values) else { return XCTFail() }
+        XCTAssertEqual(value.args, ["x; id", "-xx; id"])
         XCTAssertEqual(value.target, .machine("main"))
-        XCTAssertEqual(try ArgvBuilder.command(value, package: nil, packagePath: nil), .argv(["rm -rf", "x; id"]))
+        XCTAssertEqual(try ArgvBuilder.command(source, values: values, package: nil, packagePath: nil), .argv(["df", "x; id", "-xx; id"]))
     }
 
     func testContextAndMissingValues() throws {
@@ -65,12 +160,14 @@ final class ArgvBuilderTests: XCTestCase {
     }
 
     func testPackageScripts() throws {
-        let source = command(run: nil, script: "widgets/disk/check.sh", args: ["/"])
-        XCTAssertEqual(try ArgvBuilder.command(source, package: "mine", packagePath: "/Users/alice/.config/devmachine/packages/mine"),
-                       .argv(["/Users/alice/.config/devmachine/packages/mine/widgets/disk/check.sh", "/"]))
+        let source = command(run: nil, script: "widgets/disk/check.sh", args: ["{{inputs.at}}"])
+        let values = TemplateValues(inputs: ["at": "/"], context: [:])
+        XCTAssertEqual(
+            try ArgvBuilder.command(source, values: values, package: "mine", packagePath: "/Users/alice/.config/devmachine/packages/mine"),
+            .argv(["/Users/alice/.config/devmachine/packages/mine/widgets/disk/check.sh", "/"]))
         var remote = source
         remote.target = .machine("main")
-        let words = try ArgvBuilder.command(remote, package: "mine", packagePath: "/x")
+        let words = try ArgvBuilder.command(remote, values: values, package: "mine", packagePath: "/x")
         XCTAssertEqual(words, .packageScript(package: "mine", script: "widgets/disk/check.sh", args: ["/"]))
         XCTAssertEqual(ArgvBuilder.remote(words, target: .machine("main"), cli: cli)?.arguments,
                        ["--machine", "main", "run", "--no-log", "--package", "mine", "--script", "widgets/disk/check.sh", "--", "/"])
@@ -79,21 +176,47 @@ final class ArgvBuilderTests: XCTestCase {
 
     func testAnInlineScriptIsAnAbsolutePath() throws {
         let words = try ArgvBuilder.command(command(run: nil, script: "/opt/tools/check", args: ["a"], target: .machine("main")),
-                                        package: nil, packagePath: nil)
+                                            package: nil, packagePath: nil)
         XCTAssertEqual(words, .argv(["/opt/tools/check", "a"]))
         let local = ArgvBuilder.local(words, environment: [:], home: home)
         XCTAssertEqual(local?.executable, "/opt/tools/check")
         XCTAssertEqual(local?.arguments, ["a"])
     }
 
-    func testAProgramNameRunsThroughEnvWithAFullPath() throws {
-        let local = ArgvBuilder.local(.argv(["df", "-h"]), environment: ["PATH": "/usr/bin:/bin", "LANG": "C"], home: home)
-        XCTAssertEqual(local?.executable, "/usr/bin/env")
-        XCTAssertEqual(local?.arguments, ["df", "-h"])
+    func testAProgramNameIsFoundOnThePATHAndStartedWithoutEnv() throws {
+        var looked: [String] = []
+        let local = ArgvBuilder.local(.argv(["df", "-h"]), environment: ["PATH": "/opt/x:/usr/bin", "LANG": "C"], home: home) {
+            looked.append($0)
+            return $0 == "/usr/bin/df"
+        }
+        XCTAssertEqual(looked, ["/opt/x/df", "/usr/bin/df"])
+        XCTAssertEqual(local?.executable, "/usr/bin/df")
+        XCTAssertEqual(local?.arguments, ["-h"])
         XCTAssertEqual(local?.currentDirectory, home)
         XCTAssertEqual(local?.environment?["LANG"], "C")
         XCTAssertEqual(local?.environment?["PATH"],
-                       "/usr/bin:/bin:/Users/alice/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/sbin:/sbin")
+                       "/opt/x:/usr/bin:/Users/alice/.local/bin:/opt/homebrew/bin:/usr/local/bin:/bin:/usr/sbin:/sbin")
+        XCTAssertNil(ArgvBuilder.local(.argv(["nothere"]), environment: [:], home: home) { _ in false })
+    }
+
+    func testAValueLikeProgramNameIsOnlyAFileName() {
+        var looked: [String] = []
+        XCTAssertNil(ArgvBuilder.local(.argv(["-i", "id"]), environment: ["PATH": "/usr/bin"], home: home) {
+            looked.append($0)
+            return false
+        })
+        XCTAssertEqual(looked.first, "/usr/bin/-i")
+        XCTAssertEqual(ArgvBuilder.local(.argv(["A=b"]), environment: [:], home: home) { $0 == "/usr/bin/A=b" }?.executable, "/usr/bin/A=b")
+    }
+
+    func testARealProgramRunsWithoutEnv() throws {
+        let built = try ArgvBuilder.command(command(run: "printf", args: ["%s", "{{inputs.v}}"]),
+                                            values: TemplateValues(inputs: ["v": "$(echo pwned)"], context: [:]),
+                                            package: nil, packagePath: nil)
+        guard let invocation = ArgvBuilder.local(built, environment: [:], home: NSTemporaryDirectory()) else { return XCTFail() }
+        XCTAssertNotEqual(invocation.executable, "/usr/bin/env")
+        XCTAssertTrue(invocation.executable.hasSuffix("/printf"))
+        XCTAssertEqual(try printed(by: built), "$(echo pwned)")
     }
 
     func testPromptsAndSessions() throws {
@@ -104,42 +227,28 @@ final class ArgvBuilderTests: XCTestCase {
         XCTAssertEqual(ArgvBuilder.tmuxCapture(session: "main; id"), .argv(["tmux", "capture-pane", "-p", "-e", "-t", "main; id"]))
     }
 
-    func testInjectionAttemptsStayLiteral() throws {
-        let attempts = ["x; rm -rf ~", "$(id)", "`id`", "a\nid", "a'b", "a\"b", "&& id", "| id", "> /tmp/x"]
-        for attempt in attempts {
-            let words = try ArgvBuilder.command(command(args: [attempt]), package: nil, packagePath: nil)
-            XCTAssertEqual(words, .argv(["df", attempt]), attempt)
-            XCTAssertEqual(ArgvBuilder.local(words, environment: [:], home: home)?.arguments, ["df", attempt], attempt)
-            XCTAssertEqual(ArgvBuilder.remote(words, target: .workspace("alice"), cli: cli)?.arguments.last, attempt, attempt)
-
-            let line = try ArgvBuilder.command(command(run: "echo", args: [attempt], shell: true), package: nil, packagePath: nil)
-            XCTAssertEqual(line, .shellLine("echo " + RemoteCommands.shellSingleQuoted(attempt)), attempt)
-
-            let source = WidgetSource.command(command(run: "echo {{inputs.v}}", shell: true))
-            guard case let .command(value) = try source.resolved(with: TemplateValues(inputs: ["v": attempt], context: [:])) else {
-                return XCTFail()
-            }
-            XCTAssertEqual(value.run, "echo " + RemoteCommands.shellSingleQuoted(attempt), attempt)
+    func testInjectionAttemptsInArgsStayOneArgvItem() throws {
+        for attack in attacks {
+            let words = try ArgvBuilder.command(command(args: ["{{inputs.v}}"]),
+                                                values: TemplateValues(inputs: ["v": attack], context: [:]), package: nil, packagePath: nil)
+            XCTAssertEqual(words, .argv(["df", attack]), attack)
+            XCTAssertEqual(ArgvBuilder.local(words, environment: [:], home: home, isExecutable: onlyUsrBin)?.arguments, [attack], attack)
+            XCTAssertEqual(ArgvBuilder.remote(words, target: .workspace("alice"), cli: cli)?.arguments.last, attack, attack)
         }
     }
 
-    func testShellQuotedValuesComeBackLiteralFromARealShell() throws {
-        let attempts = ["x; echo pwned", "$(echo pwned)", "`echo pwned`", "a\necho pwned", "it's", "\"q\"", "$HOME"]
-        for attempt in attempts {
-            let source = WidgetSource.command(command(run: "printf %s {{inputs.v}}", shell: true))
-            guard case let .command(unresolved) = source else { return XCTFail() }
-            let words = try ArgvBuilder.command(
-                unresolved, values: TemplateValues(inputs: ["v": attempt], context: [:]), package: nil, packagePath: nil)
-            XCTAssertEqual(try printed(by: words), attempt, attempt)
-        }
-    }
-
-    func testBareTemplatesBetweenOtherWordsStayLiteral() throws {
-        let source = command(run: "printf '%s|' {{inputs.a}} \"x\" {{inputs.b}}", shell: true)
-        let words = try ArgvBuilder.command(
-            source, values: TemplateValues(inputs: ["a": "$(echo pwned)", "b": "'; echo pwned; '"], context: [:]),
-            package: nil, packagePath: nil)
-        XCTAssertEqual(try printed(by: words), "$(echo pwned)|x|'; echo pwned; '|")
+    func testTheApprovalHashCoversAShellLinesValues() throws {
+        let shell = WidgetSource.command(command(run: "df \"$DM_INPUT_PATH\"", shell: true))
+        let one = try ApprovalSubject.hash(shell, values: TemplateValues(inputs: ["path": "/"], context: [:]))
+        let two = try ApprovalSubject.hash(shell, values: TemplateValues(inputs: ["path": "/home"], context: [:]))
+        XCTAssertNotNil(one)
+        XCTAssertNotEqual(one, two)
+        XCTAssertEqual(one, try ApprovalSubject.hash(shell, values: TemplateValues(inputs: ["path": "/"], context: [:])))
+        XCTAssertTrue(ApprovalSubject.canonicalJSON(shell, environment: ["DM_INPUT_PATH": "/"])?.contains(#""env":{"DM_INPUT_PATH":"/"}"#) ?? false)
+        let argv = WidgetSource.command(command(args: ["{{inputs.path}}"]))
+        XCTAssertNotEqual(try ApprovalSubject.hash(argv, values: TemplateValues(inputs: ["path": "/"], context: [:])),
+                          try ApprovalSubject.hash(argv, values: TemplateValues(inputs: ["path": "/home"], context: [:])))
+        XCTAssertEqual(try ApprovalSubject.hash(argv, values: .none), ApprovalSubject.hash(.command(command(args: [""]))))
     }
 
     private func printed(by words: TargetCommand) throws -> String {
@@ -151,71 +260,25 @@ final class ArgvBuilderTests: XCTestCase {
         process.executableURL = URL(fileURLWithPath: invocation.executable)
         process.arguments = invocation.arguments
         process.environment = invocation.environment
-        let output = Pipe()
-        process.standardOutput = output
+        return try output(of: process)
+    }
+
+    private func output(of process: Process) throws -> String {
+        let pipe = Pipe()
+        process.standardOutput = pipe
         process.standardInput = FileHandle.nullDevice
         try process.run()
-        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         process.waitUntilExit()
         return text
     }
 
-    private func quoted(_ line: String) -> Bool? { ShellQuoteScan.firstUnsafeTemplate(line)?.quoted }
-
-    func testTheQuoteScannerFindsTemplatesTheShellCouldUnquote() {
-        XCTAssertEqual(quoted("echo '{{inputs.x}}'"), true)
-        XCTAssertEqual(quoted("echo \"{{inputs.x}}\""), true)
-        XCTAssertEqual(quoted("echo \"a {{ inputs.x }} b\""), true)
-        XCTAssertEqual(quoted("echo {{inputs.a}} '{{inputs.b}}'"), true)
-        XCTAssertEqual(quoted("echo \"a\\\"{{inputs.x}}\""), true)
-        XCTAssertEqual(quoted("echo \"\\{{inputs.x}}\""), true)
-        XCTAssertEqual(quoted("echo 'unclosed {{inputs.x}}"), true)
-        XCTAssertEqual(quoted("echo \"it's {{inputs.x}}\""), true)
-        XCTAssertEqual(quoted("echo `echo {{inputs.x}}`"), false)
-        XCTAssertEqual(quoted("echo hi # {{inputs.x}}"), false)
-        XCTAssertEqual(quoted("cat <<EOF\n{{inputs.x}}\nEOF"), false)
-        XCTAssertEqual(quoted("echo ${{inputs.x}}"), false)
-        XCTAssertEqual(quoted("echo \\{{inputs.x}}"), false)
-        XCTAssertEqual(ShellQuoteScan.firstUnsafeTemplate("echo {{inputs.a}} '{{ inputs.b }}'")?.template, "{{ inputs.b }}")
-        XCTAssertNil(quoted("echo a#b {{inputs.x}}"))
-        XCTAssertNil(quoted("echo hi # note\necho {{inputs.x}}"))
-        XCTAssertNil(quoted("echo \\${{inputs.x}}"))
-        XCTAssertNil(quoted("echo \\\\{{inputs.x}}"))
-        XCTAssertNil(quoted("echo {{inputs.x}}"))
-        XCTAssertNil(quoted("echo {{inputs.a}} {{inputs.b}} | tail -1"))
-        XCTAssertNil(quoted("echo 'a' {{inputs.x}} \"b\""))
-        XCTAssertNil(quoted("echo \\'{{inputs.x}}"))
-        XCTAssertNil(quoted("echo \"a\\\\\" {{inputs.x}}"))
-        XCTAssertNil(quoted("echo 'a\\' {{inputs.x}}"))
-        XCTAssertNil(quoted("echo 'no templates'"))
-    }
-
-    func testATemplateTheShellCouldUnquoteBuildsNoLine() {
-        let values = TemplateValues(inputs: ["x": "a; id"], context: [:])
-        for run in ["echo '{{inputs.x}}'", "echo \"{{inputs.x}}\"", "echo hi # {{inputs.x}}", "echo `echo {{inputs.x}}`"] {
-            let source = command(run: run, shell: true)
-            XCTAssertThrowsError(try ArgvBuilder.command(source, values: values, package: nil, packagePath: nil)) { error in
-                XCTAssertEqual(error as? WidgetCommandError, ShellQuoteScan.firstUnsafeTemplate(run).map { .unsafeTemplate($0) })
-            }
-            XCTAssertThrowsError(try WidgetSource.command(source).resolved(with: values))
-        }
-        XCTAssertEqual(
-            try ArgvBuilder.command(command(run: "echo '{{inputs.x}}'"), values: values, package: nil, packagePath: nil),
-            .argv(["echo 'a; id'"]))
-    }
-
     func testNothingToRunBuildsNothing() {
-        for source in [command(run: nil), command(run: ""), command(run: "{{inputs.none}}"), command(run: " ", shell: true)] {
+        for source in [command(run: nil), command(run: ""), command(run: " ", shell: true)] {
             XCTAssertThrowsError(try ArgvBuilder.command(source, values: .none, package: nil, packagePath: nil)) { error in
                 XCTAssertEqual(error as? WidgetCommandError, .nothingToRun)
             }
         }
-    }
-
-    func testALocalProgramEnvWouldMisreadBuildsNothing() {
-        XCTAssertNil(ArgvBuilder.local(.argv(["-i", "id"]), environment: [:], home: home))
-        XCTAssertNil(ArgvBuilder.local(.argv(["A=b", "id"]), environment: [:], home: home))
-        XCTAssertEqual(ArgvBuilder.local(.argv(["/opt/a=b"]), environment: [:], home: home)?.executable, "/opt/a=b")
     }
 
     func testTemplatesReachEveryField() throws {
@@ -245,6 +308,7 @@ final class ArgvBuilderTests: XCTestCase {
 
     func testAnEmptyArgvBuildsNothing() throws {
         XCTAssertNil(ArgvBuilder.local(.argv([]), environment: [:], home: home))
+        XCTAssertNil(ArgvBuilder.local(.argv([""]), environment: [:], home: home))
     }
 
     func testNumbersReadTheWayTheCLIWritesThem() throws {

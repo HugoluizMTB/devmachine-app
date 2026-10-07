@@ -266,12 +266,15 @@ public enum WidgetSourceReader {
             default: break
             }
             let shell = try bool("shell")
+            let args = try list("args")
+            if let refused = ArgvBuilder.refusal(CommandSource(
+                run: run, script: script, args: args, shell: shell, target: .local, every: .manual, timeout: 0, mode: .poll,
+                keep: 0, parse: .text)) {
+                throw WidgetSpecProblem([refused.field], refused.message)
+            }
             if let run, !shell, Self.hasSpaceOutsideTemplates(run) {
                 throw WidgetSpecProblem(
                     ["run"], "source.run \"\(run)\" has spaces: put the arguments in args, or set shell: true")
-            }
-            if let run, shell, let found = ShellQuoteScan.firstUnsafeTemplate(run) {
-                throw WidgetSpecProblem(["run"], found.message)
             }
             if let run, !shell { try checkProgramWord(run) }
             if let script { try checkScript(script, scope: scope) }
@@ -304,7 +307,7 @@ public enum WidgetSourceReader {
                 timeout = try self.timeout()
             }
             return CommandSource(
-                run: run, script: script, args: try list("args"), shell: shell, target: try target(), every: every,
+                run: run, script: script, args: args, shell: shell, target: try target(), every: every,
                 timeout: timeout, mode: mode, keep: keep, parse: parse)
         }
 
@@ -314,14 +317,12 @@ public enum WidgetSourceReader {
             if program.hasPrefix("-") {
                 throw WidgetSpecProblem(
                     ["run"],
-                    "source.run \"\(run)\" starts with -: the app starts a program through env, which reads it as an option "
-                        + "— name the program, and put options in source.args")
+                    "source.run \"\(run)\" starts with -: a program name never does — name the program, and put options in source.args")
             }
             if program.contains("=") {
                 throw WidgetSpecProblem(
                     ["run"],
-                    "source.run \"\(run)\" has =: the app starts a program through env, which reads it as a variable to set "
-                        + "— name the program, or set shell: true")
+                    "source.run \"\(run)\" has =: it reads as a variable to set, not a program — name the program, or set shell: true")
             }
         }
 

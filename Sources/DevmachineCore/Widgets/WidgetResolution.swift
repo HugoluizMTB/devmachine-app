@@ -81,10 +81,13 @@ public struct ResolvedSource: Equatable, Sendable {
     public let approvalHash: String?
     public let package: String?
     public let packagePath: String?
+    /// A shell line reads these as DM_ variables; `ArgvBuilder.command`
+    /// needs them, since `source` already has its templates resolved.
+    public let values: TemplateValues
 
     public init(
         source: WidgetSource, view: WidgetView, every: WidgetEvery, needsApproval: Bool, approvalHash: String?,
-        package: String?, packagePath: String?
+        package: String?, packagePath: String?, values: TemplateValues = .none
     ) {
         self.source = source
         self.view = view
@@ -93,6 +96,7 @@ public struct ResolvedSource: Equatable, Sendable {
         self.approvalHash = approvalHash
         self.package = package
         self.packagePath = packagePath
+        self.values = values
     }
 }
 
@@ -163,14 +167,20 @@ public enum WidgetResolution: Equatable, Sendable {
         }
         let inputs = widget.inputs.compactMapValues { $0.defaultValue?.text }
             .merging(instance.with.mapValues(\.text)) { _, chosen in chosen }
-        let resolved = source.resolved(with: TemplateValues(inputs: inputs, context: [:]))
+        let values = TemplateValues(inputs: inputs, context: [:])
+        let resolved: WidgetSource
+        do {
+            resolved = try source.resolved(with: values)
+        } catch {
+            return .needsNewerApp(type: widget.name, reason: error.localizedDescription)
+        }
         let every = floored(resolved.every, kind: resolved.kind, contract: contract)
         return .ready(ResolvedWidget(
             widget: widget, provider: "", viewKind: view.kind, arguments: [:], every: every.seconds ?? 0,
             minimum: CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract),
             source: ResolvedSource(
                 source: resolved, view: view, every: every, needsApproval: false, approvalHash: nil,
-                package: widget.package, packagePath: widget.packagePath)))
+                package: widget.package, packagePath: widget.packagePath, values: values)))
     }
 
     /// A widget written in a board resolves without the catalog: it carries
@@ -188,7 +198,14 @@ public enum WidgetResolution: Equatable, Sendable {
                 widget: widget, provider: provider.name, viewKind: inline.view.kind, arguments: provider.with,
                 every: max(floor, GoDuration.seconds(provider.every) ?? floor), minimum: minimum, title: inline.title))
         }
-        let source = inline.source.resolved(with: .none)
+        let source: WidgetSource
+        let hash: String?
+        do {
+            source = try inline.source.resolved(with: .none)
+            hash = try ApprovalSubject.hash(inline.source, values: .none)
+        } catch {
+            return .needsNewerApp(type: instance.id, reason: error.localizedDescription)
+        }
         let needsApproval = contract.needsApproval(source.kind)
         let every = floored(source.every, kind: source.kind, contract: contract)
         return .ready(ResolvedWidget(
@@ -196,7 +213,7 @@ public enum WidgetResolution: Equatable, Sendable {
             minimum: minimum,
             source: ResolvedSource(
                 source: source, view: inline.view, every: every, needsApproval: needsApproval,
-                approvalHash: needsApproval ? ApprovalSubject.hash(source) : nil, package: nil, packagePath: nil),
+                approvalHash: needsApproval ? hash : nil, package: nil, packagePath: nil),
             title: inline.title))
     }
 

@@ -4,7 +4,15 @@ import Foundation
 /// What an approval is about: only what runs and where, so a change of
 /// frequency keeps it and any change of the command asks again.
 public enum ApprovalSubject {
-    public static func canonicalJSON(_ source: WidgetSource) -> String? {
+    /// A shell line reads its values from the environment, so those values
+    /// are part of what runs and a changed one asks again.
+    public static func hash(_ source: WidgetSource, values: TemplateValues) throws -> String? {
+        let resolved = try source.resolved(with: values)
+        guard case let .command(command) = source, command.shell else { return hash(resolved) }
+        return hash(resolved, environment: values.environment)
+    }
+
+    public static func canonicalJSON(_ source: WidgetSource, environment: [String: String] = [:]) -> String? {
         func target(_ target: WidgetTarget) -> WidgetValue {
             switch target {
             case .local: return .string("local")
@@ -22,6 +30,7 @@ public enum ApprovalSubject {
             ]
             if let run = command.run { fields["run"] = .string(run) }
             if let script = command.script { fields["script"] = .string(script) }
+            if !environment.isEmpty { fields["env"] = .object(environment.mapValues(WidgetValue.string)) }
             return WidgetValue.object(fields).canonicalJSON
         case let .prompt(prompt):
             return WidgetValue.object([
@@ -35,8 +44,8 @@ public enum ApprovalSubject {
         }
     }
 
-    public static func hash(_ source: WidgetSource) -> String? {
-        canonicalJSON(source).map { text in
+    public static func hash(_ source: WidgetSource, environment: [String: String] = [:]) -> String? {
+        canonicalJSON(source, environment: environment).map { text in
             SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
         }
     }
