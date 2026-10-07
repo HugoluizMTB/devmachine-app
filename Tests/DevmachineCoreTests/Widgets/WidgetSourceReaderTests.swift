@@ -366,7 +366,7 @@ final class WidgetSourceReaderTests: XCTestCase {
         XCTAssertEqual(problem(["kind": .string("url"), "url": .string("https://example.com")])?.path, ["every"])
         XCTAssertEqual(problem(["kind": .string("prompt"), "harness": .string("gemini"), "prompt": .string("x")])?.path, ["harness"])
         XCTAssertEqual(problem(["kind": .string("prompt"), "harness": .string("claude"), "every": .string("1m"),
-                                "prompt": .string("x")])?.message, "source.every 1m is below the prompt minimum of 15m")
+                                "prompt": .string("x")])?.message, "source.every 1m is below the prompt minimum of 5m")
         XCTAssertEqual(problem(["kind": .string("session"), "every": .string("2s")])?.path, ["session"])
     }
 

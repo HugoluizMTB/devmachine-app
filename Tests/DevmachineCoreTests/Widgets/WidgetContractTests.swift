@@ -181,7 +181,7 @@ final class WidgetContractTests: XCTestCase {
         XCTAssertEqual(contract.minimumInterval(forSource: "command"), 5)
         XCTAssertEqual(contract.minimumInterval(forSource: "url"), 5)
         XCTAssertEqual(contract.minimumInterval(forSource: "session"), 2)
-        XCTAssertEqual(contract.minimumInterval(forSource: "prompt"), 900)
+        XCTAssertEqual(contract.minimumInterval(forSource: "prompt"), 300)
         XCTAssertNil(contract.minimumInterval(forSource: "provider"))
     }
 

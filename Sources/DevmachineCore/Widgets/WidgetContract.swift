@@ -485,7 +485,7 @@ extension WidgetContract {
                 "timeout": timeout,
                 "parse": FieldSpec(type: "enum", defaultValue: .string("status"), values: ["status", "text", "json"]),
             ]),
-            "prompt": SourceSpec(minEvery: "15m", approval: true, fields: [
+            "prompt": SourceSpec(minEvery: "5m", approval: true, fields: [
                 "harness": FieldSpec(type: "enum", required: true, values: ["claude", "codex"]),
                 "permission_mode": FieldSpec(
                     type: "enum-by-harness",

@@ -157,7 +157,7 @@ final class SourceScheduleTests: XCTestCase {
             (command(every: .interval(1)), 5),
             (.url(URLSource(url: "https://example.com", every: .interval(1), timeout: 30, parse: .status)), 5),
             (.session(SessionSource(target: .local, session: "main", every: .interval(1))), 2),
-            (.prompt(PromptSource(harness: .claude, prompt: "hi", target: .local, every: .interval(60), timeout: 300)), 900),
+            (.prompt(PromptSource(harness: .claude, prompt: "hi", target: .local, every: .interval(60), timeout: 300)), 300),
         ]
         for (source, floor) in cases {
             XCTAssertEqual(sourceJob(source).every, .interval(floor), source.kind)
