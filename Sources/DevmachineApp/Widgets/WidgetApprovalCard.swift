@@ -119,9 +119,10 @@ struct SourceWidgetCard: View {
             viewKind: source.view.kind
         ) {
         case .approval:
+            let shown = Self.shownHash(approval)
             WidgetApprovalCard(
                 kind: source.source.kind, prompt: controller.approvalPrompt(for: source), state: approval == .notNeeded ? .waiting(hash: "") : approval, size: size,
-                onAllow: { controller.approve(id) }, onDeny: { controller.deny(id) })
+                onAllow: { controller.approve(id, hash: shown) }, onDeny: { controller.deny(id, hash: shown) })
         case .demo:
             WidgetPlaceholderView(icon: "play.slash", title: title, detail: "Demo mode never runs widget commands.")
         case .content:
@@ -140,5 +141,12 @@ struct SourceWidgetCard: View {
         guard case let .session(session) = source.source else { return nil }
         if case .machine = session.target { return nil }
         return { onOpenSession(session.target, session.session) }
+    }
+
+    static func shownHash(_ approval: ApprovalState) -> String {
+        switch approval {
+        case let .waiting(hash), let .denied(hash): return hash
+        case .notNeeded, .allowed: return ""
+        }
     }
 }

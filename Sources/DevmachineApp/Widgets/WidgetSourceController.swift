@@ -127,13 +127,14 @@ final class WidgetSourceController: ObservableObject {
     func setContext(_ next: [String: String]) {
         let filtered = next.filter { contextKeys.contains($0.key) }
         guard filtered != context else { return }
+        objectWillChange.send()
         let old = context
         context = filtered
         for (id, entry) in entries where entry.source.values(context: old) != entry.source.values(context: filtered) {
             cancelRun(id)
             stopStream(id)
             heldStreams.remove(id)
-            states[id] = nil
+            if states[id] != nil { states[id] = nil }
             hashes[id] = approvalHash(entry)
         }
         replaceJobs()
@@ -191,12 +192,14 @@ final class WidgetSourceController: ObservableObject {
             .mapError { $0 as? SourceError ?? .unreadable($0.localizedDescription) }
     }
 
-    func approve(_ id: String) { decide(.allowed, id) }
-    func deny(_ id: String) { decide(.denied, id) }
+    /// A decision counts only for the hash the card showed: if the context
+    /// moved on since, the card redraws and asks for the new values.
+    func approve(_ id: String, hash: String) { decide(.allowed, id, shown: hash) }
+    func deny(_ id: String, hash: String) { decide(.denied, id, shown: hash) }
 
-    private func decide(_ decision: ApprovalDecision, _ id: String) {
+    private func decide(_ decision: ApprovalDecision, _ id: String, shown: String) {
         guard let entry = entries[id], entry.source.needsApproval,
-              case let .success(hash?) = hashes[id], !hash.isEmpty
+              case let .success(hash?) = hashes[id], !hash.isEmpty, hash == shown
         else { return }
         approvals.record(decision, hash: hash, summary: approvalPrompt(for: entry.source).summary, at: now())
         do {

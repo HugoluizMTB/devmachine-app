@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import DevmachineApp
 @testable import DevmachineCore
@@ -27,11 +28,12 @@ final class WidgetSourceControllerTests: XCTestCase {
     }
 
     private func makeController(
-        isDemo: Bool = false, surface: String = "home", context: [String: String] = [:]
+        isDemo: Bool = false, surface: String = "home", context: [String: String] = [:], runner: (any SourceRunner)? = nil
     ) -> WidgetSourceController {
         let environment = SourceRunEnvironment(
             cli: { CLIInvocationContext(executable: "/opt/homebrew/bin/devmachine", environment: [:]) },
             localEnvironment: [:], home: "/Users/alice", isExecutable: { _ in true })
+        let command: any SourceRunner = runner ?? self.command
         let runners = SourceRunners(
             command: command, url: command, prompt: command, session: command, launcher: launcher, environment: environment)
         let made = WidgetSourceController(
@@ -69,7 +71,7 @@ final class WidgetSourceControllerTests: XCTestCase {
         sidebar.update([listing])
         XCTAssertEqual(sidebar.approvalPrompt(for: listing.source).what, "ls alice-dev")
         XCTAssertEqual(controller.approvalPrompt(for: listing.source).what, "ls ''")
-        sidebar.approve("disk")
+        sidebar.approve("disk", hash: shown(sidebar, "disk"))
         let stored = try XCTUnwrap(sidebar.approvals.entries.values.first)
         XCTAssertEqual(stored.summary, "ls alice-dev on this Mac, every 1m")
         guard case let .success(hash?) = Result(catching: {
@@ -105,7 +107,7 @@ final class WidgetSourceControllerTests: XCTestCase {
     func testAllowRunsItAndRemembersTheChoice() async {
         controller.start()
         controller.update([entry()])
-        controller.approve("disk")
+        controller.approve("disk", hash: shown(controller, "disk"))
         await waitUntil { self.controller.state("disk").output == .text("ok") }
         XCTAssertEqual(command.calls, 1)
         XCTAssertEqual(command.requests.first?.approvals, controller.approvals)
@@ -117,7 +119,7 @@ final class WidgetSourceControllerTests: XCTestCase {
     func testDenyKeepsItPaused() async {
         controller.start()
         controller.update([entry()])
-        controller.deny("disk")
+        controller.deny("disk", hash: shown(controller, "disk"))
         clock = clock.addingTimeInterval(600)
         controller.tick()
         controller.runNow("disk")
@@ -129,7 +131,7 @@ final class WidgetSourceControllerTests: XCTestCase {
     func testAChangedCommandWaitsAgain() async {
         controller.start()
         controller.update([entry()])
-        controller.approve("disk")
+        controller.approve("disk", hash: shown(controller, "disk"))
         await waitUntil { self.command.calls == 1 }
         controller.update([entry(run: "du")])
         guard case .waiting = controller.approvalState("disk") else { return XCTFail() }
@@ -170,7 +172,7 @@ final class WidgetSourceControllerTests: XCTestCase {
         controller.tick()
         try? await Task.sleep(for: .milliseconds(30))
         XCTAssertEqual(command.calls, 1)
-        controller.approve("disk")
+        controller.approve("disk", hash: shown(controller, "disk"))
         await waitUntil { self.command.calls == 3 }
         XCTAssertEqual(Set(command.requests.map(\.instanceID)), ["pkg", "disk"])
     }
@@ -246,9 +248,10 @@ final class WidgetSourceControllerTests: XCTestCase {
         controller = makeController()
         controller.start()
         controller.update([entry()])
-        controller.approve("disk")
+        let hash = shown(controller, "disk")
+        controller.approve("disk", hash: hash)
         await waitUntil { self.command.calls == 1 }
-        controller.deny("disk")
+        controller.deny("disk", hash: hash)
         XCTAssertFalse(controller.state("disk").isRunning)
         command.release()
         await waitUntil { self.command.cancelled == 1 }
@@ -260,7 +263,7 @@ final class WidgetSourceControllerTests: XCTestCase {
     func testASourceWhoseHashCannotBeBuiltNeverRuns() async {
         controller.start()
         controller.update([entry(run: "echo hi", shell: true, args: ["x"])])
-        controller.approve("disk")
+        controller.approve("disk", hash: shown(controller, "disk"))
         clock = clock.addingTimeInterval(600)
         controller.tick()
         controller.runNow("disk")
@@ -317,9 +320,10 @@ final class WidgetSourceControllerTests: XCTestCase {
         controller.update([entry("log", mode: .stream)])
         try? await Task.sleep(for: .milliseconds(30))
         XCTAssertEqual(launcher.processes.count, 0)
-        controller.approve("log")
+        let hash = shown(controller, "log")
+        controller.approve("log", hash: hash)
         await waitUntil { self.launcher.processes.count == 1 }
-        controller.deny("log")
+        controller.deny("log", hash: hash)
         XCTAssertTrue(launcher.processes[0].isTerminated)
     }
 
@@ -447,7 +451,7 @@ final class WidgetSourceControllerTests: XCTestCase {
         board.start()
         board.update([contextEntry(inline: true)])
         guard case .waiting = board.approvalState("here") else { return XCTFail("\(board.approvalState("here"))") }
-        board.approve("here")
+        board.approve("here", hash: shown(board, "here"))
         XCTAssertEqual(board.approvalState("here").canRun, true)
         board.setContext(["path": "/home/alice/web"])
         guard case .waiting = board.approvalState("here") else { return XCTFail("\(board.approvalState("here"))") }
@@ -478,5 +482,104 @@ final class WidgetSourceControllerTests: XCTestCase {
         board.setContext(["path": "/home/alice/web"])
         await waitUntil { board.history("load").count == 2 }
         XCTAssertEqual(board.history("load").map(\.value), [42, 7])
+    }
+
+    private func shown(_ board: WidgetSourceController, _ id: String) -> String {
+        SourceWidgetCard.shownHash(board.approvalState(id))
+    }
+
+    private var approvalsFile: URL { folder.appendingPathComponent("approvals.json") }
+
+    func testAllowForTheOldContextsHashAllowsNothingAfterASwitch() async {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"])
+        board.start()
+        board.update([contextEntry(inline: true)])
+        let apiHash = shown(board, "here")
+        board.setContext(["path": "/home/alice/web"])
+        board.approve("here", hash: apiHash)
+        guard case let .waiting(webHash) = board.approvalState("here") else { return XCTFail("\(board.approvalState("here"))") }
+        XCTAssertNotEqual(webHash, apiHash)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: approvalsFile.path))
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 0)
+
+        board.approve("here", hash: webHash)
+        XCTAssertEqual(board.approvalState("here"), .allowed)
+        await waitUntil { self.command.calls == 1 }
+        XCTAssertEqual(command.requests[0].context["path"], "/home/alice/web")
+    }
+
+    func testDenyForTheOldContextsHashDeniesNothingAfterASwitch() {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"])
+        board.start()
+        board.update([contextEntry(inline: true)])
+        let apiHash = shown(board, "here")
+        board.setContext(["path": "/home/alice/web"])
+        board.deny("here", hash: apiHash)
+        guard case .waiting = board.approvalState("here") else { return XCTFail("\(board.approvalState("here"))") }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: approvalsFile.path))
+    }
+
+    func testASessionSwitchRedrawsAnAllowedWidgetThatHasNotRunYet() {
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"])
+        board.update([contextEntry(inline: true)])
+        board.approve("here", hash: shown(board, "here"))
+        XCTAssertEqual(board.approvalState("here"), .allowed)
+        var changes = 0
+        let watching = board.objectWillChange.sink { changes += 1 }
+        board.setContext(["path": "/home/alice/web"])
+        watching.cancel()
+        XCTAssertGreaterThan(changes, 0)
+        guard case .waiting = board.approvalState("here") else { return XCTFail("\(board.approvalState("here"))") }
+    }
+
+    func testALateAnswerForTheOldContextNeverShows() async {
+        let stubborn = StubbornSourceRunner()
+        defer { stubborn.releaseAll() }
+        let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api"], runner: stubborn)
+        board.start()
+        board.update([contextEntry()])
+        await waitUntil { stubborn.calls == 1 }
+        board.setContext(["path": "/home/alice/web"])
+        await waitUntil { stubborn.calls == 2 }
+        stubborn.release(1)
+        await waitUntil { board.state("here").output == .text("/home/alice/web") }
+        stubborn.release(0)
+        await waitUntil { stubborn.answered == 2 }
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(board.state("here").output, .text("/home/alice/web"))
+    }
+}
+
+private final class StubbornSourceRunner: SourceRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private var held: [CheckedContinuation<Void, Never>?] = []
+    private var received: [SourceRunRequest] = []
+    private var done = 0
+
+    func fetch(_ request: SourceRunRequest) async throws -> SourceRunResult {
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                received.append(request)
+                held.append(continuation)
+            }
+        }
+        lock.withLock { done += 1 }
+        return .output(.text(request.context["path"] ?? ""))
+    }
+
+    var calls: Int { lock.withLock { received.count } }
+    var answered: Int { lock.withLock { done } }
+
+    func release(_ index: Int) {
+        let continuation: CheckedContinuation<Void, Never>? = lock.withLock {
+            defer { held[index] = nil }
+            return held[index]
+        }
+        continuation?.resume()
+    }
+
+    func releaseAll() {
+        for index in 0..<lock.withLock({ held.count }) { release(index) }
     }
 }
