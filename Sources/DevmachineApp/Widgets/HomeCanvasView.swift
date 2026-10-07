@@ -29,6 +29,7 @@ struct HomeCanvasView: View {
     @State private var canvasSize: CGSize = .zero
     @State private var inWindow: CGRect = .zero
     @State private var clockRect: CGRect?
+    @State private var editing: WidgetEditRequest?
 
     init(controller: HomeBoardController) {
         self.controller = controller
@@ -42,7 +43,8 @@ struct HomeCanvasView: View {
             ZStack(alignment: .topLeading) {
                 if let store = controller.store {
                     BoardCanvasLayer(
-                        controller: controller, store: store, catalog: catalog, canvasSize: size, clockRect: $clockRect)
+                        controller: controller, store: store, catalog: catalog, canvasSize: size, clockRect: $clockRect,
+                        editing: $editing)
                         .offset(y: topInset)
                 }
                 catalogFailure
@@ -58,6 +60,9 @@ struct HomeCanvasView: View {
         .background(WallpaperBackground(mapPlacement: mapPlacement))
         .clipped()
         .overlay(alignment: .topTrailing) { addButton }
+        .sheet(item: $editing) { request in
+            WidgetEditorSheet(request: request, target: controller, onDone: { editing = nil })
+        }
         .onChange(of: showsGallery) { _, open in if open { catalog.reloadSoon() } }
         .onChange(of: model.pendingWidgetGallery, initial: true) { _, pending in
             guard pending else { return }
@@ -90,7 +95,12 @@ struct HomeCanvasView: View {
                 WidgetGalleryPopover(
                     controller: controller, catalog: catalog,
                     canvasWidth: Int(canvasSize.width / m.pt(1)),
-                    onAdded: { showsGallery = false })
+                    onAdded: { showsGallery = false },
+                    onNewWidget: { template in
+                        showsGallery = false
+                        // The sheet waits for the popover, whose menu sent this, to be gone.
+                        DispatchQueue.main.async { editing = .new(template) }
+                    })
             }
     }
 
@@ -140,6 +150,7 @@ private struct WidgetGalleryPopover: View {
     @ObservedObject var catalog: WidgetCatalogStore
     let canvasWidth: Int
     let onAdded: () -> Void
+    let onNewWidget: (InlineWidgetTemplate) -> Void
 
     var body: some View {
         if let store = controller.store {
@@ -157,7 +168,9 @@ private struct WidgetGalleryPopover: View {
             failure: failureMessage,
             blockedReason: { _ in controller.addBlockedReason },
             onAdd: { widget in if controller.add(widget, canvasWidth: canvasWidth) { onAdded() } },
-            onRetry: { catalog.reloadSoon() })
+            onRetry: { catalog.reloadSoon() },
+            templates: InlineWidgetTemplate.offered(on: WidgetContract.current.layout(of: DefaultBoard.surface)),
+            onNewWidget: onNewWidget)
     }
 
     private var failureMessage: String? {
@@ -179,6 +192,7 @@ private struct BoardCanvasLayer: View {
     @ObservedObject var catalog: WidgetCatalogStore
     let canvasSize: CGSize
     @Binding var clockRect: CGRect?
+    @Binding var editing: WidgetEditRequest?
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var usage: HarnessUsageStore
     @EnvironmentObject private var model: AppModel
@@ -275,7 +289,8 @@ private struct BoardCanvasLayer: View {
             choices: controller.choices(for: widget.id),
             onChoose: { choice in
                 choosing = WidgetChoiceRequest(entryID: widget.id, input: choice, title: title(widget, resolution))
-            })
+            },
+            onEdit: controller.offersEdit(widget.id) ? { editing = .edit(widget.id) } : nil)
         .offset(x: display.minX, y: display.minY)
     }
 

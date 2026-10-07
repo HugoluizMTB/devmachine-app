@@ -34,13 +34,31 @@ struct WidgetGalleryView: View {
     let blockedReason: (CatalogWidget) -> String?
     let onAdd: (CatalogWidget) -> Void
     let onRetry: () -> Void
+    var templates: [InlineWidgetTemplate] = []
+    var onNewWidget: (InlineWidgetTemplate) -> Void = { _ in }
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
         let sharedReason = WidgetGalleryReasons.shared(entries, blockedReason)
         return VStack(alignment: .leading, spacing: m.space.md) {
-            Text(verbatim: "Add a widget")
-                .font(.dm(13, weight: .semibold))
+            HStack {
+                Text(verbatim: "Add a widget").font(.dm(13, weight: .semibold))
+                Spacer()
+                if !templates.isEmpty {
+                    Menu {
+                        ForEach(templates) { template in
+                            Button { onNewWidget(template) } label: {
+                                Text(verbatim: template.title)
+                            }
+                        }
+                    } label: {
+                        Text(verbatim: "New widget")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .disabled(sharedReason != nil)
+                }
+            }
             if let sharedReason {
                 Text(verbatim: sharedReason)
                     .font(.dm(11))

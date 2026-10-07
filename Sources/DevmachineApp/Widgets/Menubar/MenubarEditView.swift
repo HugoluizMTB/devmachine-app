@@ -34,6 +34,11 @@ private struct MenubarChoosing: Equatable {
     let request: WidgetChoiceRequest
 }
 
+private struct MenubarEditing: Equatable {
+    let surface: String
+    let request: WidgetEditRequest
+}
+
 /// The popover's Edit mode: both areas as lists. Add opens the gallery in
 /// place, because a popover from inside the menu bar window is not reliable.
 struct MenubarEditView: View {
@@ -41,10 +46,14 @@ struct MenubarEditView: View {
     @ObservedObject var panel: StackBoardController
     @State private var adding: String?
     @State private var choosing: MenubarChoosing?
+    @State private var editing: MenubarEditing?
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        if let choosing, let board = [slots, panel].first(where: { $0.surface == choosing.surface }) {
+        if let editing, let board = [slots, panel].first(where: { $0.surface == editing.surface }) {
+            WidgetEditorSheet(request: editing.request, target: board, onDone: { self.editing = nil })
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else if let choosing, let board = [slots, panel].first(where: { $0.surface == choosing.surface }) {
             WidgetChoiceSheet(request: choosing.request, target: board, onDone: { self.choosing = nil })
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else if let surface = adding, let board = [slots, panel].first(where: { $0.surface == surface }) {
@@ -53,7 +62,12 @@ struct MenubarEditView: View {
                 WidgetGalleryView(
                     surface: board.surface, catalog: board.catalog.catalog, entries: board.galleryEntries(),
                     failure: galleryFailure(board), blockedReason: { board.addBlockedReason(for: $0) },
-                    onAdd: { if board.add($0) { adding = nil } }, onRetry: { board.catalog.reloadSoon() })
+                    onAdd: { if board.add($0) { adding = nil } }, onRetry: { board.catalog.reloadSoon() },
+                    templates: InlineWidgetTemplate.offered(on: WidgetContract.current.layout(of: board.surface)),
+                    onNewWidget: { template in
+                        adding = nil
+                        editing = MenubarEditing(surface: board.surface, request: .new(template))
+                    })
             }
             .padding(m.space.md)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -89,7 +103,7 @@ struct MenubarEditView: View {
                             }
                         }
                         Spacer(minLength: m.space.sm)
-                        if !row.choices.isEmpty {
+                        if !row.choices.isEmpty || board.offersEdit(row.id) {
                             Menu {
                                 ForEach(row.choices) { choice in
                                     Button {
@@ -100,15 +114,20 @@ struct MenubarEditView: View {
                                         Text(verbatim: choice.menuTitle)
                                     }
                                 }
+                                if board.offersEdit(row.id) {
+                                    Button("Edit…") {
+                                        editing = MenubarEditing(surface: board.surface, request: .edit(row.id))
+                                    }
+                                }
                             } label: {
-                                Image(systemName: "slider.horizontal.3")
+                                Image(systemName: "ellipsis")
                             }
                             .menuStyle(.borderlessButton)
                             .menuIndicator(.hidden)
                             .fixedSize()
                             .disabled(!board.canEdit)
-                            .help(Text(verbatim: "Choose"))
-                            .accessibilityLabel("Choose")
+                            .help(Text(verbatim: "More"))
+                            .accessibilityLabel("More")
                         }
                         DMIconButton(systemImage: "chevron.up") { board.moveUp(row.id) }
                             .disabled(!board.canEdit || !row.canMoveUp)

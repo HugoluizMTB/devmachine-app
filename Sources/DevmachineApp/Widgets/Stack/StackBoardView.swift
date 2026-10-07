@@ -39,6 +39,7 @@ struct StackBoardView: View {
     @State private var showsGallery = false
     @State private var drag: StackDrag?
     @State private var choosing: WidgetChoiceRequest?
+    @State private var editing: WidgetEditRequest?
     @State private var heights: [String: CGFloat] = [:]
     @State private var addRowHeight: CGFloat = 0
     @State private var bannerHeight: CGFloat = 0
@@ -81,6 +82,9 @@ struct StackBoardView: View {
         .scrollIndicators(style.indicators)
         .sheet(item: $choosing) { request in
             WidgetChoiceSheet(request: request, target: controller, onDone: { choosing = nil })
+        }
+        .sheet(item: $editing) { request in
+            WidgetEditorSheet(request: request, target: controller, onDone: { editing = nil })
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: {
             viewport = $0.height
@@ -220,7 +224,7 @@ struct StackBoardView: View {
             onRemove: { controller.remove(entry.id) },
             choices: controller.choices(for: entry.id),
             onChoose: { choice in choosing = WidgetChoiceRequest(entryID: entry.id, input: choice, title: row.title) },
-            onEdit: nil,
+            onEdit: controller.offersEdit(entry.id) ? { editing = .edit(entry.id) } : nil,
             onDragChanged: { translation in
                 if drag == nil { drag = StackDrag(id: entry.id, entries: controller.board.entries, translation: 0) }
                 drag?.translation = translation
@@ -289,7 +293,13 @@ struct StackBoardView: View {
                     entries: controller.galleryEntries(), failure: galleryFailure,
                     blockedReason: { controller.addBlockedReason(for: $0) },
                     onAdd: { if controller.add($0) { showsGallery = false } },
-                    onRetry: { controller.catalog.reloadSoon() })
+                    onRetry: { controller.catalog.reloadSoon() },
+                    templates: InlineWidgetTemplate.offered(on: WidgetContract.current.layout(of: controller.surface)),
+                    onNewWidget: { template in
+                        showsGallery = false
+                        // The sheet waits for the popover, whose menu sent this, to be gone.
+                        DispatchQueue.main.async { editing = .new(template) }
+                    })
             }
             .onChange(of: showsGallery) { _, open in if open { controller.catalog.reloadSoon() } }
     }

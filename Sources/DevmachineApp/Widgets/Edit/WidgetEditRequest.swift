@@ -36,3 +36,22 @@ struct WidgetChoiceRequest: Identifiable, Equatable {
 
     var id: String { entryID + "/" + input.name }
 }
+
+enum WidgetEditRequest: Identifiable, Equatable {
+    case new(InlineWidgetTemplate)
+    case edit(String)
+
+    var id: String {
+        switch self {
+        case let .new(template): return "new/" + template.rawValue
+        case let .edit(entry): return "edit/" + entry
+        }
+    }
+}
+
+extension WidgetEditTarget {
+    func offersEdit(_ id: String) -> Bool {
+        guard let entry = editableEntry(id) else { return false }
+        return entry.inline != nil || editCatalog?.widget(named: entry.type) != nil
+    }
+}
