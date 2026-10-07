@@ -15,10 +15,14 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", revision: "9fc2d2fc627f291727e82d5449ec22df76320671"),
         .package(path: "Packages/HighlightSwift"),
-        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0")
+        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0"),
+        .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.0")
     ],
     targets: [
-        .target(name: "DevmachineCore"),
+        .target(
+            name: "DevmachineCore",
+            dependencies: [.product(name: "Yams", package: "Yams")]
+        ),
         .target(name: "HarnessUsageKit"),
         .executableTarget(
             name: "DevmachineApp",
@@ -32,7 +36,8 @@ let package = Package(
         ),
         .testTarget(
             name: "DevmachineCoreTests",
-            dependencies: ["DevmachineCore"]
+            dependencies: ["DevmachineCore"],
+            exclude: ["Fixtures"]
         ),
         .testTarget(
             name: "HarnessUsageKitTests",
