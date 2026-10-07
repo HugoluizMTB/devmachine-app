@@ -277,8 +277,9 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         widget = try c.decode(String.self, forKey: .widget)
         origin = try c.decodeIfPresent(String.self, forKey: .origin) ?? ""
         packageSource = try? c.decodeIfPresent(CatalogPackageSource.self, forKey: .packageSource)
-        trust = WidgetTrust.decode(from: c, origin: origin)
-        packageProvider = try c.decodeIfPresent(PackageProviderSpec.self, forKey: .packageProvider)
+        packageProvider = try? c.decodeIfPresent(PackageProviderSpec.self, forKey: .packageProvider)
+        trust = c.contains(.packageProvider) && packageProvider == nil
+            ? .thirdParty : WidgetTrust.decode(from: c, origin: origin)
         version = try c.decodeIfPresent(String.self, forKey: .version) ?? ""
         path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
         summary = try c.decodeIfPresent(String.self, forKey: .summary) ?? ""

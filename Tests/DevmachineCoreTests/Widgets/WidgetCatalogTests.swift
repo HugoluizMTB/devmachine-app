@@ -337,6 +337,17 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertEqual(try decodedTrust("", origin: "local"), .local)
     }
 
+    func testAMalformedWidgetProviderSpecReadsNilAndThirdParty() throws {
+        let json = #"""
+        {"engine": "1.3", "widgets": [{"name": "devmachine-app/machine-stats", "package": "devmachine-app",
+          "widget": "machine-stats", "origin": "release", "trust": "official", "provider": {"returns": 42},
+          "source": {"kind": "provider", "name": "devmachine-app/stats", "every": "60s"}, "view": {"kind": "gauge"}}]}
+        """#
+        let widget = try XCTUnwrap(WidgetCatalog.decode(Data(json.utf8)).widgets.first)
+        XCTAssertNil(widget.packageProvider)
+        XCTAssertEqual(widget.trust, .thirdParty)
+    }
+
     func testAMalformedProviderIsLeftOutAndTheRestRead() throws {
         let json = #"""
         {"engine": "1.3", "widgets": [], "providers": {
