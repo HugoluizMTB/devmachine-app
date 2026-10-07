@@ -1792,8 +1792,8 @@ final class AppModel: ObservableObject {
             sessionProblems[alias] = nil
         }
         if let pause = pollPauses[alias] {
-            if pause.reason == .unreachable, let machine = pause.machine {
-                clearUnreachablePauses(onMachine: machine)
+            if pause.reason.coversMachine, let machine = pause.machine {
+                clearMachinePauses(onMachine: machine)
             }
             pollPauses[alias] = nil
         }
@@ -1898,10 +1898,12 @@ final class AppModel: ObservableObject {
     }
 
     // Any answer ends the workspace's pause; a refused login or an
-    // unreachable host starts a new one.
+    // unreachable host starts a new one. The old one stays until then, so a
+    // pause that only goes on is not announced again.
     private func apply(_ outcome: Result<[TmuxSession], Error>, alias: String) {
         markAnswered(alias)
-        if pollPauses[alias] != nil { pollPauses[alias] = nil }
+        var pausesAgain = false
+        defer { if !pausesAgain, pollPauses[alias] != nil { pollPauses[alias] = nil } }
         switch outcome {
         case .success(let result):
             // Assign only on a real change: every write to a @Published
@@ -1917,7 +1919,7 @@ final class AppModel: ObservableObject {
                 offlineAliases.remove(alias)
             }
             if sessionProblems[alias] != nil { sessionProblems[alias] = nil }
-            if let machine = machine(forAlias: alias) { clearUnreachablePauses(onMachine: machine) }
+            if let machine = machine(forAlias: alias) { clearMachinePauses(onMachine: machine) }
             syncContext()
         case .failure(let error):
             let failure = (error as? SessionStoreError)?.failure
@@ -1961,7 +1963,10 @@ final class AppModel: ObservableObject {
             } else if !offlineAliases.contains(alias) {
                 offlineAliases.insert(alias)
             }
-            if let failure { pausePolling(alias: alias, after: failure) }
+            if let failure, failure != .hostKeyRejected {
+                pausesAgain = true
+                pausePolling(alias: alias, after: failure)
+            }
             syncContext()
         }
     }
@@ -2033,16 +2038,28 @@ final class AppModel: ObservableObject {
     /// every workspace on it; with no known machine, only this one.
     private func pausePolling(alias: String, after failure: SSHFailure) {
         let machine = machine(forAlias: alias)
+        let entering = pollPauses[alias] == nil
         switch failure {
         case .hostKeyRejected:
             return
         case .authDenied:
-            setPause(PollPause(.loginRefused, machine: machine, from: pauseClock()), alias: alias)
+            if let machine, workspaces(onMachine: machine).contains(where: {
+                $0.alias != alias && isPollingPaused(alias: $0.alias) && pollPauses[$0.alias]?.reason != .unreachable
+            }) {
+                let pause = PollPause(.machineLoginsRefused, machine: machine, from: pauseClock())
+                for ws in workspaces(onMachine: machine) { setPause(pause, alias: ws.alias) }
+                announce(pause, alias: alias)
+                return
+            }
+            let pause = PollPause(.loginRefused, machine: machine, from: pauseClock())
+            setPause(pause, alias: alias)
+            if entering { announce(pause, alias: alias) }
         case .unreachable:
             let pause = PollPause(.unreachable, machine: machine, from: pauseClock())
             setPause(pause, alias: alias)
+            if entering { announce(pause, alias: alias) }
             guard let machine else { return }
-            for ws in visibleWorkspaces where ws.alias != alias && self.machine(forAlias: ws.alias) == machine {
+            for ws in workspaces(onMachine: machine) where ws.alias != alias {
                 setPause(pause, alias: ws.alias)
                 if !offlineAliases.contains(ws.alias) { offlineAliases.insert(ws.alias) }
                 if sessionProblems[ws.alias] == nil {
@@ -2061,12 +2078,23 @@ final class AppModel: ObservableObject {
         pollPauses[alias] = pause
     }
 
-    /// The machine answered: its other workspaces are reachable again, and
-    /// the next sweep or selection poll reads them.
-    private func clearUnreachablePauses(onMachine machine: String) {
-        for (alias, pause) in pollPauses where pause.reason == .unreachable && pause.machine == machine {
+    /// The machine answered: its other workspaces are free again, and the
+    /// next sweep or selection poll reads them.
+    private func clearMachinePauses(onMachine machine: String) {
+        for (alias, pause) in pollPauses where pause.reason.coversMachine && pause.machine == machine {
             pollPauses[alias] = nil
         }
+    }
+
+    private func workspaces(onMachine machine: String) -> [Workspace] {
+        visibleWorkspaces.filter { self.machine(forAlias: $0.alias) == machine }
+    }
+
+    /// Once, when a workspace or machine starts a pause: the sidebar card
+    /// stays, and this reaches someone whose sidebar is closed.
+    private func announce(_ pause: PollPause, alias: String) {
+        let name = visibleWorkspaces.first { $0.alias == alias }?.name ?? alias
+        flashToast(pause.notice(workspace: name))
     }
 
     /// Provider context polls only while its tab is actually on screen.

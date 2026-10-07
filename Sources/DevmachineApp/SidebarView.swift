@@ -126,15 +126,15 @@ struct SidebarView: View {
         return machine
     }
 
-    /// A paused workspace says so under its name. An unreachable machine
-    /// pauses all of its workspaces, so it gets one card, under the first of
-    /// them the sidebar shows.
+    /// A paused workspace says so under its name. A machine paused as a
+    /// whole (unreachable, or several refused logins) gets one card, under the
+    /// first of its workspaces the sidebar shows.
     private func pollPauseCard(for workspace: Workspace) -> PollPause? {
         guard let pause = model.pollPauses[workspace.alias] else { return nil }
-        guard pause.reason == .unreachable, let machine = pause.machine else { return pause }
+        guard pause.reason.coversMachine, let machine = pause.machine else { return pause }
         let first = model.visibleWorkspaces.first {
             let other = model.pollPauses[$0.alias]
-            return other?.reason == .unreachable && other?.machine == machine
+            return other?.reason == pause.reason && other?.machine == machine
         }
         return first?.alias == workspace.alias ? pause : nil
     }

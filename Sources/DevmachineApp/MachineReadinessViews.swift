@@ -190,7 +190,7 @@ struct PollPauseSidebarCard: View {
 
     var body: some View {
         HStack(spacing: m.space.sm) {
-            Image(systemName: reason == .loginRefused ? "pause.circle" : "wifi.exclamationmark")
+            Image(systemName: reason == .unreachable ? "wifi.exclamationmark" : "pause.circle")
                 .foregroundStyle(.orange)
             Text(verbatim: notice)
                 .font(.dm(11.5, weight: .semibold))
