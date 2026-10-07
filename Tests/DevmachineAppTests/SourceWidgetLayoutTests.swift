@@ -277,4 +277,41 @@ final class SourceWidgetLayoutTests: XCTestCase {
             every: .interval(60), timeout: 30, mode: .poll, keep: 200, parse: .text))
         XCTAssertEqual(ApprovalCopy.what(script), "scripts/disk.sh --all")
     }
+
+    func testTheCardNamesAThirdPartySourceAndAPackageProvider() {
+        let provider = WidgetSource.packageProvider(PackageProviderSource(
+            name: "acme-tools/load", with: [:], target: .machine("main"), every: .interval(30), timeout: 30))
+        XCTAssertEqual(WidgetApprovalText.kind(provider), "package provider")
+        XCTAssertEqual(WidgetApprovalText.headline(kind: WidgetApprovalText.kind(provider), denied: false),
+                       "Allow this package provider widget to run?")
+        let command = WidgetSource.command(CommandSource(
+            run: "df", script: nil, args: [], shell: false, target: .local, every: .interval(60), timeout: 30,
+            mode: .poll, keep: 200, parse: .text))
+        XCTAssertEqual(WidgetApprovalText.kind(command), "command")
+        XCTAssertEqual(WidgetApprovalText.thirdParty(url: "https://example.com/acme/acme-tools.git"),
+                       "From a third-party package: https://example.com/acme/acme-tools.git")
+        XCTAssertEqual(WidgetApprovalText.thirdParty(url: ""), "From a third-party package.")
+    }
+
+    @MainActor
+    func testTheThirdPartyCardFitsAtTheSmallSize() throws {
+        let small = try XCTUnwrap(CanvasLayout.presetSize("small"))
+        let resolved = ResolvedSource(
+            source: .packageProvider(PackageProviderSource(
+                name: "acme-tools/load", with: ["window": "5m"], target: .machine("main"), every: .interval(30), timeout: 30)),
+            view: WidgetView(kind: "number"), every: .interval(30), needsApproval: true, package: "acme-tools",
+            packagePath: nil, trust: .thirdParty, packageCommit: String(repeating: "1", count: 40),
+            packageSourceURL: "https://example.com/acme/a-very-long-path/that-keeps-going/acme-tools.git")
+        let prompt = ApprovalPrompt(resolved, context: [:])
+        for scale in DMFitCheck.scales {
+            let m = DMMetrics(scale: scale)
+            let size = CGSize(width: m.pt(CGFloat(small.w)), height: m.pt(CGFloat(small.h)))
+            let result = DMFitCheck.render(width: CGFloat(small.w), scale: scale) {
+                WidgetApprovalCard(
+                    kind: WidgetApprovalText.kind(resolved.source), prompt: prompt, state: .waiting(hash: "h"),
+                    surface: "home", size: size, onAllow: {}, onDeny: {})
+            }
+            XCTAssertEqual(result.spilledPixels, 0, "the card spills out at \(scale)")
+        }
+    }
 }

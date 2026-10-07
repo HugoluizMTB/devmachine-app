@@ -38,6 +38,15 @@ enum WidgetApprovalText {
         "Runs \(prompt.place), \(prompt.howOften)."
     }
 
+    static func kind(_ source: WidgetSource) -> String {
+        if case .packageProvider = source { return "package provider" }
+        return source.kind
+    }
+
+    static func thirdParty(url: String) -> String {
+        url.isEmpty ? "From a third-party package." : "From a third-party package: \(url)"
+    }
+
     static func warning(surface: String) -> String {
         "It was written into \(surface).yml, by you or an agent. Allow it only if you know what it does."
     }
@@ -85,7 +94,19 @@ struct WidgetApprovalCard: View {
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
                 .lineLimit(2)
-            if !denied, WidgetDensity.of(width: size.width / m.pt(1), height: size.height / m.pt(1)) == .full {
+            if let origin = prompt.thirdPartySource {
+                Label {
+                    Text(verbatim: WidgetApprovalText.thirdParty(url: origin))
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .help(Text(verbatim: origin))
+                } icon: {
+                    Image(systemName: "shippingbox")
+                }
+                .font(.dm(10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+            } else if !denied, WidgetDensity.of(width: size.width / m.pt(1), height: size.height / m.pt(1)) == .full {
                 Text(verbatim: WidgetApprovalText.warning(surface: surface))
                     .font(.dm(10))
                     .foregroundStyle(Color.dmMuted)
@@ -124,7 +145,7 @@ struct SourceWidgetCard: View {
         case .approval:
             let shown = Self.shownHash(approval)
             WidgetApprovalCard(
-                kind: source.source.kind, prompt: controller.approvalPrompt(for: source), state: approval == .notNeeded ? .waiting(hash: "") : approval,
+                kind: WidgetApprovalText.kind(source.source), prompt: controller.approvalPrompt(for: source), state: approval == .notNeeded ? .waiting(hash: "") : approval,
                 surface: controller.surface, size: size,
                 onAllow: { controller.approve(id, hash: shown) }, onDeny: { controller.deny(id, hash: shown) })
         case .demo:
