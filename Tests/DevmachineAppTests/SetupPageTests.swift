@@ -120,6 +120,17 @@ final class SetupPageTests: XCTestCase {
         XCTAssertTrue(body.contains("model.visibleWorkspaces"))
         XCTAssertFalse(body.contains("ForEach(model.workspaces)"))
     }
+
+    func testAppearanceOffersTheHomeResetUnderTheWallpaper() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("Sources/DevmachineApp/SetupPage.swift"),
+            encoding: .utf8)
+        let wallpaper = try XCTUnwrap(source.range(of: "            wallpaperBlock\n"))
+        let home = try XCTUnwrap(source.range(of: "subsection(\"Home\") { homeLayoutBlock }"))
+        XCTAssertLessThan(wallpaper.lowerBound, home.lowerBound)
+        XCTAssertTrue(source.contains("DMButton(\"Reset Home layout\""))
+    }
 }
 
 final class SetupPageWallpaperTests: XCTestCase {

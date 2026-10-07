@@ -121,6 +121,8 @@ struct SetupPage: View {
     @State private var operatorProgram: SessionLaunchChoice?
     @State private var operatorSessionEnabled = true
     @State private var harnessErrors: [HarnessID: String] = [:]
+    @State private var confirmsHomeReset = false
+    @State private var homeResetError: String?
     /// Bumped once the CLIs on this Mac were looked up again, to redraw
     /// what depends on them.
     @State private var cliAvailabilityRead = 0
@@ -418,7 +420,33 @@ struct SetupPage: View {
     private var appearanceBlock: some View {
         VStack(alignment: .leading, spacing: m.pt(28)) {
             wallpaperBlock
+            subsection("Home") { homeLayoutBlock }
             subsection("Terminal") { terminalBlock }
+        }
+    }
+
+    private var homeLayoutBlock: some View {
+        VStack(alignment: .leading, spacing: m.space.md) {
+            note(HomeBoardCopy.resetHint)
+            DMButton("Reset Home layout", variant: .dangerOutline, size: .small) { confirmsHomeReset = true }
+            if let homeResetError {
+                DMErrorStateView(state: DMErrorState(title: "Could not reset Home", message: homeResetError))
+            }
+        }
+        .confirmationDialog("Reset Home layout?", isPresented: $confirmsHomeReset) {
+            Button("Reset", role: .destructive) { resetHome() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(verbatim: HomeBoardCopy.resetConfirmation)
+        }
+    }
+
+    private func resetHome() {
+        do {
+            try HomeBoardController.shared.resetHome()
+            homeResetError = nil
+        } catch {
+            homeResetError = error.localizedDescription
         }
     }
 
