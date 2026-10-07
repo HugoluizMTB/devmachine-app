@@ -100,9 +100,15 @@ public enum BoardCodec {
         let with: [String: BoardScalar]
         let inline: InlineWidget?
         let fields: [String: Node]
+        let keyLines: [String: Int]
     }
 
-    private static func entryCore(_ node: Node, envelope: Envelope, contract: WidgetContract) throws -> EntryCore {
+    /// `placement` runs before the inline widget is read, so a key that does
+    /// not belong to the area is reported first, as the CLI orders it.
+    private static func entryCore(
+        _ node: Node, envelope: Envelope, contract: WidgetContract,
+        placement: (_ id: String, _ fields: [String: Node], _ keyLines: [String: Int]) throws -> Void
+    ) throws -> EntryCore {
         guard let mapping = node.mapping else {
             throw BoardProblem(line: line(node), message: "each widget is a mapping with id, type and frame")
         }
@@ -114,6 +120,11 @@ public enum BoardCodec {
             throw BoardProblem(
                 line: line(idNode), message: "id \"\(id)\" may use only a-z, 0-9 and -, and starts with a letter or digit")
         }
+        var keyLines: [String: Int] = [:]
+        for (keyNode, _) in mapping {
+            if let key = keyNode.scalar?.string, let keyLine = line(keyNode) { keyLines[key] = keyLine }
+        }
+        try placement(id, fields, keyLines)
         let writesInline = fields["source"] != nil || fields["view"] != nil
         if fields["type"] != nil, writesInline {
             throw BoardProblem(line: line(node), message: "a widget has either a type or a source and a view, not both")
@@ -135,17 +146,18 @@ public enum BoardCodec {
             type = typeName
             with = try fields["with"].map { try scalars($0, owner: id) } ?? [:]
         }
-        return EntryCore(id: id, type: type, with: with, inline: inline, fields: fields)
+        return EntryCore(id: id, type: type, with: with, inline: inline, fields: fields, keyLines: keyLines)
     }
 
     private static func decodeWidget(_ node: Node, envelope: Envelope, contract: WidgetContract) throws -> BoardWidget {
-        let core = try entryCore(node, envelope: envelope, contract: contract)
+        let core = try entryCore(node, envelope: envelope, contract: contract) { id, _, keyLines in
+            if let collapsedLine = keyLines["collapsed"] {
+                throw BoardProblem(
+                    line: collapsedLine, message: "\(id): a widget on a canvas folds with minimized: true, not collapsed")
+            }
+        }
         let fields = core.fields
         let id = core.id
-        if let collapsedNode = fields["collapsed"] {
-            throw BoardProblem(
-                line: line(collapsedNode), message: "\(id): a widget on a canvas folds with minimized: true, not collapsed")
-        }
         guard let frameNode = fields["frame"] else {
             throw BoardProblem(line: line(node), message: "widget \"\(id)\" needs a frame: {x: , y: , w: , h: }")
         }
@@ -180,18 +192,19 @@ public enum BoardCodec {
     /// Only the rules the file alone shows; what needs the catalog (fit,
     /// single, auto on a typed view) is left to resolution.
     private static func decodeStackEntry(_ node: Node, envelope: Envelope, contract: WidgetContract) throws -> StackEntry {
-        let core = try entryCore(node, envelope: envelope, contract: contract)
-        let id = core.id
-        for key in contract.stackEntry.forbids {
-            if let found = core.fields[key] {
+        let core = try entryCore(node, envelope: envelope, contract: contract) { id, _, keyLines in
+            for key in contract.stackEntry.forbids {
+                if let keyLine = keyLines[key] {
+                    throw BoardProblem(
+                        line: keyLine, message: "\(id): a widget in a sidebar has no \(key); its place is its position in the list")
+                }
+            }
+            if let minimizedLine = keyLines["minimized"] {
                 throw BoardProblem(
-                    line: line(found), message: "\(id): a widget in a sidebar has no \(key); its place is its position in the list")
+                    line: minimizedLine, message: "\(id): a widget in a sidebar folds with collapsed: true, not minimized")
             }
         }
-        if let minimizedNode = core.fields["minimized"] {
-            throw BoardProblem(
-                line: line(minimizedNode), message: "\(id): a widget in a sidebar folds with collapsed: true, not minimized")
-        }
+        let id = core.id
         var collapsed = false
         if let collapsedNode = core.fields["collapsed"] {
             guard let value = bool(collapsedNode) else {
@@ -199,11 +212,18 @@ public enum BoardCodec {
             }
             collapsed = value
         }
-        if let inline = core.inline, let fitsNode = core.fields["fits"], !inline.fits.isEmpty,
-           !inline.fits.contains(stackLayout) {
-            throw BoardProblem(
-                line: line(fitsNode),
-                message: "\(id): fits \(inline.fits.joined(separator: ", ")), and this board's area is laid out as \(stackLayout)")
+        if let inline = core.inline {
+            if !inline.fits.isEmpty, !inline.fits.contains(stackLayout) {
+                throw BoardProblem(
+                    line: core.keyLines["fits"] ?? line(node),
+                    message: "\(id): fits \(inline.fits.joined(separator: ", ")), and this board's area is laid out as \(stackLayout)")
+            }
+            let kind = inline.view.kind
+            if let layouts = contract.views[kind]?.layouts, !layouts.isEmpty, !layouts.contains(stackLayout) {
+                throw BoardProblem(
+                    line: core.keyLines["view"] ?? line(node),
+                    message: "\(id): the \(kind) view is drawn only in \(layouts.joined(separator: ", ")), and this board's area is laid out as \(stackLayout)")
+            }
         }
         let size = try core.fields["size"].map { try stackSize($0, core: core, contract: contract) }
         return StackEntry(id: id, type: core.type, with: core.with, inline: core.inline, size: size, collapsed: collapsed)

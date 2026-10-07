@@ -167,6 +167,100 @@ final class BoardCodecStackTests: XCTestCase {
             line: 8, message: "disk: fits canvas, and this board's area is laid out as stack"))
     }
 
+    private func contract(textLayouts: [String]) -> WidgetContract {
+        let c = WidgetContract.current
+        var views = c.views
+        let text = views["text"]!
+        views["text"] = WidgetContract.ViewSpec(accepts: text.accepts, fields: text.fields, layouts: textLayouts, grows: text.grows)
+        return WidgetContract(
+            engine: c.engine, layouts: c.layouts, unit: c.unit, snap: c.snap, presets: c.presets, stackRow: c.stackRow,
+            stackEntry: c.stackEntry, surfaces: c.surfaces, contextTypes: c.contextTypes, providers: c.providers,
+            views: views, sourceKinds: c.sourceKinds, sources: c.sources, formats: c.formats)
+    }
+
+    func testAnInlineViewDrawnOnlyOnACanvasIsRefused() throws {
+        let fixed = inlineDisk.replacingOccurrences(of: "    size: auto\n", with: "")
+        XCTAssertThrowsError(try BoardCodec.decodeStack(fixed, contract: contract(textLayouts: ["canvas"]))) { error in
+            XCTAssertEqual(error as? BoardProblem, BoardProblem(
+                line: 7, message: "disk: the text view is drawn only in canvas, and this board's area is laid out as stack"))
+        }
+        XCTAssertNoThrow(try BoardCodec.decodeStack(fixed, contract: contract(textLayouts: ["canvas", "stack"])))
+    }
+
+    func testAHandWrittenInlineEntryKeepsItsSourceAndViewAsWritten() throws {
+        let handWritten = """
+            format: 1
+            surface: context-sidebar
+            widgets:
+              - id: probe
+                title: "Probe #1"
+                source:
+                  every: 30s   # poll often
+                  # the health page
+                  url: "https://example.com/health?a=1"
+                  kind: url
+                  parse: json
+                view:
+                  item:
+                    subtitle: 'state: {{item.state}}'
+                    title: "{{item.name}}"
+                    link: "{{item.url}}"
+                  kind: list
+                fits: [stack, canvas]
+                size: large
+                collapsed: true
+
+            """
+        let rewritten = """
+            format: 1
+            surface: context-sidebar
+            widgets:
+              - id: probe
+                title: 'Probe #1'
+                source:
+                  every: 30s
+                  url: "https://example.com/health?a=1"
+                  kind: url
+                  parse: json
+                view:
+                  item:
+                    subtitle: 'state: {{item.state}}'
+                    title: "{{item.name}}"
+                    link: "{{item.url}}"
+                  kind: list
+                fits: [stack, canvas]
+                size: large
+                collapsed: true
+
+            """
+        let once = BoardCodec.encodeStack(try BoardCodec.decodeStack(handWritten))
+        XCTAssertEqual(once, rewritten)
+        XCTAssertEqual(BoardCodec.encodeStack(try BoardCodec.decodeStack(once)), once)
+        let home = try BoardCodec.decode(
+            handWritten.replacingOccurrences(of: "context-sidebar", with: "home")
+                .replacingOccurrences(of: "    size: large\n    collapsed: true\n", with: "    frame: {x: 0, y: 0, w: 320, h: 320}\n"))
+        let homeText = BoardCodec.encode(home)
+        let body = { (text: String) in text.components(separatedBy: "\n").drop { !$0.contains("source:") }.prefix(10).joined(separator: "\n") }
+        XCTAssertEqual(body(once), body(homeText))
+    }
+
+    func testAnUnknownSizeOrFitInAnInlineEntryNamesItsLine() {
+        let sizes = inlineDisk.replacingOccurrences(of: "    size: auto", with: "    sizes: [small, huge]")
+        XCTAssertEqual(problem(sizes), BoardProblem(
+            line: 8, message: "size \"huge\" of widget \"disk\" is not one of small, medium, large, wide, tall"))
+        let fits = inlineDisk.replacingOccurrences(of: "    size: auto", with: "    fits: [stack, shelf]")
+        XCTAssertEqual(problem(fits), BoardProblem(
+            line: 8, message: "fits \"shelf\" of widget \"disk\" is not one of canvas, stack, slot"))
+    }
+
+    func testAFrameIsReportedBeforeAnInlineProblem() {
+        let both = inlineDisk.replacingOccurrences(of: "    title: Disk\n", with: "    frame: {x: 0, y: 0, w: 1, h: 1}\n")
+        XCTAssertEqual(problem(both), BoardProblem(
+            line: 5, message: "disk: a widget in a sidebar has no frame; its place is its position in the list"))
+        let blockFrame = typed("    frame:\n      x: 0\n      y: 0\n      w: 1\n      h: 1\n")
+        XCTAssertEqual(problem(blockFrame)?.line, 6)
+    }
+
     func testInlineContextKeysAreTheArea() throws {
         let path = """
             format: 1
