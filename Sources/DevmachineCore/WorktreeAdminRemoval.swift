@@ -9,15 +9,18 @@ public enum WorktreeAdminRemoval {
     public struct Machine: Equatable, Sendable {
         public let name: String
         public let isSelf: Bool
+        /// `linux` or `macos` as the CLI last read it; nil when it has not.
+        public let platform: String?
 
-        public init(name: String, isSelf: Bool) {
+        public init(name: String, isSelf: Bool, platform: String? = nil) {
             self.name = name
             self.isSelf = isSelf
+            self.platform = platform
         }
     }
 
     public enum ManualReason: Equatable, Sendable {
-        case thisMac, selfMachine, noCLI, outsideHome
+        case thisMac, selfMachine, noCLI, outsideHome, macMachine
 
         public var text: String {
             switch self {
@@ -25,6 +28,7 @@ public enum WorktreeAdminRemoval {
             case .selfMachine: return "This machine is this computer, so the app does not act as its admin."
             case .noCLI: return "The devmachine CLI can't reach this machine's admin from here."
             case .outsideHome: return "The worktree is outside the account's home folder."
+            case .macMachine: return "On a Mac machine the app doesn't delete as its admin yet."
             }
         }
     }
@@ -38,6 +42,7 @@ public enum WorktreeAdminRemoval {
         isLocalSession: Bool, machine: Machine?, user: String, path: String, mainWorktree: String
     ) -> Route {
         if isLocalSession { return .manual(.thisMac) }
+        if let machine, !machine.isSelf, machine.platform == "macos" { return .manual(.macMachine) }
         guard isInsideHome(path, user: user), isInsideHome(mainWorktree, user: user),
               WorktreeRemoval.isRemovablePath(path, mainWorktree: mainWorktree)
         else { return .manual(.outsideHome) }
@@ -129,9 +134,9 @@ public enum WorktreeAdminRemoval {
 
     /// What to run by hand when the app will not: GNU `rm` stays on one file
     /// system; the Mac's `rm` has no such flag.
-    public static func manualSteps(path: String, mainWorktree: String, isLocalSession: Bool) -> ManualSteps {
+    public static func manualSteps(path: String, mainWorktree: String, onAMac: Bool) -> ManualSteps {
         ManualSteps(
-            asAdmin: "sudo rm -rf" + (isLocalSession ? "" : " --one-file-system") + " -- \(quote(path))",
+            asAdmin: "sudo rm -rf" + (onAMac ? "" : " --one-file-system") + " -- \(quote(path))",
             asUser: "git -C \(quote(mainWorktree)) worktree prune")
     }
 

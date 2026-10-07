@@ -203,7 +203,7 @@ struct PackagesSettingsView: View {
     private func rowPanel(
         _ entry: PackageEntry, snapshot: PackagesSnapshot, statuses: [PackageTarget: [String: PackageStatus]]
     ) -> some View {
-        let fitting = snapshot.targets.filter { PackageBatch.fits(entry, on: $0) }
+        let fitting = snapshot.targets.filter { PackageBatch.fits(entry, on: $0, platform: snapshot.platform(of: $0)) }
         return VStack(alignment: .leading, spacing: m.space.md) {
             if fitting.isEmpty {
                 Text(verbatim: "No machine or workspace here can take this package.")
@@ -396,7 +396,7 @@ struct PackagesSettingsView: View {
                      snapshot: PackagesSnapshot) -> PackageBatch {
         PackageBatch.plan(
             packages: packages, targets: targets, action: action, entries: snapshot.entries,
-            statuses: { snapshot.statuses(for: $0) })
+            statuses: { snapshot.statuses(for: $0) }, platform: { snapshot.platform(of: $0) })
     }
 
     static func buttonTitle(_ action: PackageAction, batch: PackageBatch) -> String {

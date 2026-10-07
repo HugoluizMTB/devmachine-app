@@ -9,9 +9,15 @@ struct PackagesSnapshot: Equatable, Sendable {
     var lock: PackagesLock?
     var cliVersion: SemanticVersion?
     var configDirectory: String?
+    /// Each machine's `linux` or `macos`, for the machines the CLI has read.
+    var platforms: [String: String] = [:]
 
     func statuses(for target: PackageTarget) -> [String: PackageStatus] {
         PackageStatusCheck.evaluate(entries: entries, target: target, lock: lock)
+    }
+
+    func platform(of target: PackageTarget) -> String? {
+        platforms[target.syncMachine]
     }
 }
 
@@ -32,8 +38,12 @@ enum PackagesReader {
         }
         let targets = show.machines.map { PackageTarget.machine($0.name, isSelf: $0.isSelf) }
             + show.workspaces.map { PackageTarget.workspace($0.name, machine: $0.machine) }
+        let platforms = Dictionary(
+            show.machines.compactMap { machine in machine.platform.map { (machine.name, $0) } },
+            uniquingKeysWith: { first, _ in first })
         return PackagesSnapshot(
-            entries: entries, targets: targets, lock: lock, cliVersion: version, configDirectory: directory)
+            entries: entries, targets: targets, lock: lock, cliVersion: version, configDirectory: directory,
+            platforms: platforms)
     }
 
     static let liveRead: @Sendable () async throws -> PackagesSnapshot = {

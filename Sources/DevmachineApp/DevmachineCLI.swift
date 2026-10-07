@@ -58,9 +58,12 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
     var packages: [String]?
     /// Where the machine is (CLI 0.7.30+); nil from an older CLI.
     var location: String?
+    /// `linux` or `macos`, as a command last read it; nil from an older CLI
+    /// or for a machine nothing has read yet.
+    var platform: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, hosts, workspaces, port, packages, location
+        case name, hosts, workspaces, port, packages, location, platform
         case adminUser = "admin_user"
         case isSelf = "self"
     }
@@ -75,6 +78,7 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
         isSelf = try c.decodeIfPresent(Bool.self, forKey: .isSelf) ?? false
         packages = try c.decodeIfPresent([String].self, forKey: .packages)
         location = try c.decodeIfPresent(String.self, forKey: .location)
+        platform = try c.decodeIfPresent(String.self, forKey: .platform)
     }
 }
 

@@ -38,7 +38,8 @@ public struct PackageBatch: Equatable, Sendable {
 
     public static func plan(
         packages: [String], targets: [PackageTarget], action: PackageAction,
-        entries: [PackageEntry], statuses: (PackageTarget) -> [String: PackageStatus]
+        entries: [PackageEntry], statuses: (PackageTarget) -> [String: PackageStatus],
+        platform: (PackageTarget) -> String? = { _ in nil }
     ) -> PackageBatch {
         let byName = Dictionary(entries.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         var edits: [(PackageTarget, PackageChanges)] = []
@@ -49,7 +50,8 @@ public struct PackageBatch: Equatable, Sendable {
             for package in packages.sorted() {
                 guard let entry = byName[package] else { continue }
                 let status = current[package] ?? .available
-                if let reason = skipReason(entry: entry, status: status, target: target, action: action) {
+                if let reason = skipReason(
+                    entry: entry, status: status, target: target, platform: platform(target), action: action) {
                     skips.append(PackageSkip(package: package, target: target, reason: reason))
                 } else {
                     names.append(package)
@@ -65,9 +67,9 @@ public struct PackageBatch: Equatable, Sendable {
     }
 
     private static func skipReason(
-        entry: PackageEntry, status: PackageStatus, target: PackageTarget, action: PackageAction
+        entry: PackageEntry, status: PackageStatus, target: PackageTarget, platform: String?, action: PackageAction
     ) -> String? {
-        if let block = PackageAvailability.block(entry: entry, status: status, target: target) {
+        if let block = PackageAvailability.block(entry: entry, status: status, target: target, platform: platform) {
             return block.message
         }
         switch (action, status) {
@@ -79,8 +81,8 @@ public struct PackageBatch: Equatable, Sendable {
     }
 
     /// The targets a package can go on at all, before what each one has.
-    public static func fits(_ entry: PackageEntry, on target: PackageTarget) -> Bool {
-        switch PackageAvailability.block(entry: entry, status: .available, target: target) {
+    public static func fits(_ entry: PackageEntry, on target: PackageTarget, platform: String? = nil) -> Bool {
+        switch PackageAvailability.block(entry: entry, status: .available, target: target, platform: platform) {
         case .noRecipe, .wrongScope, .macOnly, .serverOnly, .account: return false
         default: return true
         }
