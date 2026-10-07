@@ -72,7 +72,16 @@ final class CommandTargetTests: XCTestCase {
 
         let call = try XCTUnwrap(local.recorded.first)
         XCTAssertEqual(call.0, "/bin/sh")
-        XCTAssertEqual(call.1, ["-c", "cd \"$1\" && git status", "sh", "/Users/alice/it's $(x)"])
+        XCTAssertEqual(call.1, ["-c", "cd -- \"$1\" && git status", "sh", "/Users/alice/it's $(x)"])
+    }
+
+    func testAFolderThatLooksLikeAnOptionIsNeverReadAsOne() throws {
+        let host = HostRunner(remote: RemoteService(runner: CapturingRunner()), local: ProcessRunner())
+
+        let result = try host.runCapturingWithFolderArgument(.local(session: "notes", path: "-P"), "pwd")
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertEqual(result.stdout, "")
     }
 
     func testARemoteFolderArgumentReadIsTheSessionFolderRead() throws {

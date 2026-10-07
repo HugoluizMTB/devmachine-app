@@ -75,7 +75,7 @@ struct HostRunner: Sendable {
             return try runCapturing(target, command)
         case let .local(_, path):
             return try local.runCapturing(
-                executable: "/bin/sh", args: ["-c", "cd \"$1\" && " + command, "sh", path],
+                executable: "/bin/sh", args: ["-c", "cd -- \"$1\" && " + command, "sh", path],
                 environment: LocalContext.environment())
         }
     }
