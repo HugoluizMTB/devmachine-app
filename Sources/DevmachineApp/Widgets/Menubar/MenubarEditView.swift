@@ -108,6 +108,7 @@ struct MenubarEditView: View {
                             .fixedSize()
                             .disabled(!board.canEdit)
                             .help(Text(verbatim: "Choose"))
+                            .accessibilityLabel("Choose")
                         }
                         DMIconButton(systemImage: "chevron.up") { board.moveUp(row.id) }
                             .disabled(!board.canEdit || !row.canMoveUp)

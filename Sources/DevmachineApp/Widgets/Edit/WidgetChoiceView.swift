@@ -1,11 +1,28 @@
 import SwiftUI
 import DevmachineCore
 
+enum WidgetChoiceOutcome: Equatable {
+    case saved
+    case refused(String)
+
+    var closes: Bool { self == .saved }
+
+    var message: String? {
+        if case let .refused(message) = self { return message }
+        return nil
+    }
+}
+
 enum WidgetChoiceModel {
     @MainActor
-    static func save(_ selection: ChoiceSelection, request: WidgetChoiceRequest, to target: WidgetEditTarget) -> Bool {
-        guard target.canEdit else { return false }
-        return target.apply(.input(name: request.input.name, value: selection.value), to: request.entryID)
+    static func save(
+        _ selection: ChoiceSelection, request: WidgetChoiceRequest, to target: WidgetEditTarget
+    ) -> WidgetChoiceOutcome {
+        guard target.canEdit else { return .refused("This board cannot change right now.") }
+        let edit = EntryEdit.input(name: request.input.name, value: selection.value)
+        if let problem = target.problem(with: edit, for: request.entryID) { return .refused(problem) }
+        guard target.apply(edit, to: request.entryID) else { return .refused("The change could not be saved.") }
+        return .saved
     }
 }
 
@@ -13,17 +30,21 @@ enum WidgetChoiceModel {
 /// picker for one value. It reads only the input and its options.
 struct WidgetChoiceView: View {
     let request: WidgetChoiceRequest
-    let onSave: (BoardScalar?) -> Void
+    let options: [ChoiceOption]
+    let onSave: (ChoiceSelection) -> Void
+    let error: String?
     let onCancel: () -> Void
     @State private var selection: ChoiceSelection
     @Environment(\.dmMetrics) private var m
 
     init(
-        request: WidgetChoiceRequest, current: BoardScalar?, options: [ChoiceOption],
-        onSave: @escaping (BoardScalar?) -> Void, onCancel: @escaping () -> Void
+        request: WidgetChoiceRequest, current: BoardScalar?, options: [ChoiceOption], error: String? = nil,
+        onSave: @escaping (ChoiceSelection) -> Void, onCancel: @escaping () -> Void
     ) {
         self.request = request
+        self.options = options
         self.onSave = onSave
+        self.error = error
         self.onCancel = onCancel
         _selection = State(initialValue: ChoiceSelection(input: request.input, current: current, options: options))
     }
@@ -61,14 +82,18 @@ struct WidgetChoiceView: View {
                 }
                 .pickerStyle(.radioGroup)
             }
+            if let error { DMBanner(message: error) {} }
             HStack {
                 Spacer()
                 DMButton("Cancel", variant: .outline, size: .small, action: onCancel)
-                DMButton("Save", variant: .primary, size: .small) { onSave(selection.value) }
+                DMButton("Save", variant: .primary, size: .small) { onSave(selection) }
             }
         }
         .padding(m.space.lg)
-        .frame(width: m.card.sheet)
+        .frame(minWidth: 0, idealWidth: m.card.sheet, maxWidth: m.card.sheet)
+        .onChange(of: options) { _, fresh in
+            selection = ChoiceSelection(input: request.input, current: selection.value, options: fresh)
+        }
     }
 }
 
@@ -78,14 +103,16 @@ struct WidgetChoiceSheet: View {
     let target: WidgetEditTarget
     let onDone: () -> Void
     @Environment(\.widgetOptionSources) private var options
+    @State private var error: String?
 
     var body: some View {
         WidgetChoiceView(
             request: request, current: target.value(of: request.input.name, in: request.entryID),
-            options: options.options(request.input.source),
-            onSave: { value in
-                _ = target.apply(.input(name: request.input.name, value: value), to: request.entryID)
-                onDone()
+            options: options.options(request.input.source), error: error,
+            onSave: { selection in
+                let outcome = WidgetChoiceModel.save(selection, request: request, to: target)
+                error = outcome.message
+                if outcome.closes { onDone() }
             },
             onCancel: onDone)
     }

@@ -14,7 +14,12 @@ final class FakeEditTarget: WidgetEditTarget {
 
     func editableEntry(_ id: String) -> EditableEntry? { entries[id] }
 
+    var refusal: String?
+
+    func problem(with edit: EntryEdit, for id: String) -> String? { refusal }
+
     func apply(_ edit: EntryEdit, to id: String) -> Bool {
+        if refusal != nil { return false }
         applied.append((edit, id))
         return true
     }
@@ -38,7 +43,7 @@ final class WidgetEditorModelTests: XCTestCase {
         ])
         selection.toggle("here")
         let request = WidgetChoiceRequest(entryID: "m", input: machines, title: "Machines")
-        XCTAssertTrue(WidgetChoiceModel.save(selection, request: request, to: target))
+        XCTAssertEqual(WidgetChoiceModel.save(selection, request: request, to: target), .saved)
         XCTAssertEqual(target.applied.first?.0, .input(name: "machines", value: .list(["main"])))
         XCTAssertEqual(target.applied.first?.1, "m")
     }
@@ -47,8 +52,30 @@ final class WidgetEditorModelTests: XCTestCase {
         let target = FakeEditTarget()
         target.canEdit = false
         let selection = ChoiceSelection(input: machines, current: nil, options: [])
-        XCTAssertFalse(WidgetChoiceModel.save(
-            selection, request: WidgetChoiceRequest(entryID: "m", input: machines, title: "Machines"), to: target))
+        let outcome = WidgetChoiceModel.save(
+            selection, request: WidgetChoiceRequest(entryID: "m", input: machines, title: "Machines"), to: target)
+        XCTAssertNotEqual(outcome, .saved)
+        XCTAssertNotNil(outcome.message)
         XCTAssertTrue(target.applied.isEmpty)
+    }
+
+    func testARefusedChoiceKeepsItsMessageAndDoesNotClose() {
+        let target = FakeEditTarget()
+        target.refusal = "every needs a unit"
+        let selection = ChoiceSelection(input: machines, current: nil, options: [])
+        let outcome = WidgetChoiceModel.save(
+            selection, request: WidgetChoiceRequest(entryID: "m", input: machines, title: "Machines"), to: target)
+        XCTAssertEqual(outcome, .refused("every needs a unit"))
+        XCTAssertFalse(outcome.closes)
+        XCTAssertTrue(target.applied.isEmpty)
+    }
+
+    func testAValidChoiceCloses() {
+        let target = FakeEditTarget()
+        let selection = ChoiceSelection(input: machines, current: nil, options: [])
+        let outcome = WidgetChoiceModel.save(
+            selection, request: WidgetChoiceRequest(entryID: "m", input: machines, title: "Machines"), to: target)
+        XCTAssertTrue(outcome.closes)
+        XCTAssertNil(outcome.message)
     }
 }
