@@ -191,6 +191,28 @@ final class SourceRunnerTests: XCTestCase {
         XCTAssertTrue(launcher.invocations.isEmpty)
     }
 
+    func testALocalPackageScriptThatLinksOutsideThePackageIsRefused() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("bin"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createSymbolicLink(atPath: folder.appendingPathComponent("escape.sh").path, withDestinationPath: "/bin/df")
+        try Data("#!/bin/sh\n".utf8).write(to: folder.appendingPathComponent("bin/real.sh"))
+        try FileManager.default.createSymbolicLink(atPath: folder.appendingPathComponent("inside.sh").path, withDestinationPath: "bin/real.sh")
+        let runner = CommandSourceRunner(
+            launcher: launcher,
+            environment: SourceRunEnvironment(cli: { throw SourceError.cannotStart("no CLI") }, localEnvironment: [:],
+                                              home: "/Users/alice", isExecutable: { _ in true }))
+
+        let escaped = await failure {
+            try await runner.fetch(request(commandSource(run: nil, script: "escape.sh", args: []), package: "acme", packagePath: folder.path))
+        }
+        XCTAssertEqual(escaped, .refused("script escape.sh leads outside the package through a link"))
+        XCTAssertTrue(launcher.invocations.isEmpty)
+
+        _ = try await runner.fetch(request(commandSource(run: nil, script: "inside.sh", args: []), package: "acme", packagePath: folder.path))
+        XCTAssertEqual(launcher.invocations.count, 1)
+    }
+
     func testARemotePackageScriptGoesThroughRunPackage() async throws {
         let source = commandSource(.machine("main"), run: nil, script: "disk.sh", args: ["/"])
         _ = try await runner().fetch(request(source, package: "acme", packagePath: "/opt/acme/widgets"))

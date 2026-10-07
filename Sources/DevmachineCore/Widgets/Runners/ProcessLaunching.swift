@@ -30,7 +30,7 @@ public enum ProcessLaunchError: Error, Equatable {
 
 /// Spawns a widget's process with stdin at end of file, hands stdout over
 /// as it comes, keeps the first 16 KB of stderr, and stops it with SIGTERM,
-/// then SIGKILL when it is still running after the grace.
+/// then SIGKILL to its whole process group after the grace.
 public struct FoundationProcessLauncher: ProcessLaunching {
     public static let defaultKillGrace: TimeInterval = 5
 
@@ -58,6 +58,8 @@ final class LaunchedProcess: RunningProcess, @unchecked Sendable {
     private var openPipes = 2
     private var result: ProcessExit?
     private var waiters: [CheckedContinuation<ProcessExit, Never>] = []
+    private let pipeLock = NSLock()
+    private var readEnds: [FileHandle] = []
 
     init(_ invocation: ProcessInvocation, killGrace: TimeInterval, onStdout: @escaping @Sendable (Data) -> Void) throws {
         // Under XCTest a real ssh must never run: ~/.ssh/config maps fixture
@@ -77,23 +79,12 @@ final class LaunchedProcess: RunningProcess, @unchecked Sendable {
         let err = Pipe()
         process.standardOutput = out
         process.standardError = err
+        readEnds = [out.fileHandleForReading, err.fileHandleForReading]
         out.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            if data.isEmpty {
-                handle.readabilityHandler = nil
-                self?.pipeClosed()
-            } else {
-                onStdout(data)
-            }
+            self?.read(handle, then: onStdout)
         }
         err.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            if data.isEmpty {
-                handle.readabilityHandler = nil
-                self?.pipeClosed()
-            } else {
-                self?.appendStderr(data)
-            }
+            self?.read(handle) { self?.appendStderr($0) }
         }
         process.terminationHandler = { [weak self] finished in
             self?.terminated(finished.terminationStatus)
@@ -101,17 +92,20 @@ final class LaunchedProcess: RunningProcess, @unchecked Sendable {
         try process.run()
     }
 
+    /// SIGTERM goes to the process alone, so `devmachine run` stops its
+    /// remote command itself. The SIGKILL after the grace goes to the whole
+    /// group: Foundation starts the child as a group leader, and a shell that
+    /// ignored SIGTERM would otherwise leave its children running.
     func terminate() {
-        let running: Bool = lock.withLock {
-            stopped = true
-            return status == nil
+        let firstStop: Bool = lock.withLock {
+            defer { stopped = true }
+            return !stopped
         }
-        guard running, process.isRunning else { return }
-        process.terminate()
-        let pid = process.processIdentifier
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + killGrace) { [weak self] in
-            guard let self, self.lock.withLock({ self.status == nil }) else { return }
-            kill(pid, SIGKILL)
+        guard firstStop else { return }
+        if process.isRunning { process.terminate() }
+        let group = -process.processIdentifier
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + killGrace) {
+            kill(group, SIGKILL)
         }
     }
 
@@ -133,18 +127,41 @@ final class LaunchedProcess: RunningProcess, @unchecked Sendable {
         }
     }
 
+    private func read(_ handle: FileHandle, then deliver: (Data) -> Void) {
+        let data: Data? = pipeLock.withLock {
+            guard readEnds.contains(where: { $0 === handle }) else { return nil }
+            let data = handle.availableData
+            if data.isEmpty { closeLocked(handle) }
+            return data
+        }
+        guard let data else { return }
+        if data.isEmpty { pipeClosed() } else { deliver(data) }
+    }
+
+    private func closeLocked(_ handle: FileHandle) {
+        handle.readabilityHandler = nil
+        try? handle.close()
+        readEnds.removeAll { $0 === handle }
+    }
+
+    private func closeRemainingPipes() {
+        pipeLock.withLock { readEnds.forEach(closeLocked) }
+    }
+
     private func pipeClosed() {
         lock.withLock { openPipes -= 1 }
         finishIfReady(force: false)
     }
 
     /// A child the process left behind can hold the pipes open for good, so
-    /// the exit is reported at most a second after the process itself ended.
+    /// the exit is reported at most a second after the process itself ended,
+    /// and the read ends are closed then instead of staying open with it.
     private func terminated(_ code: Int32) {
         lock.withLock { status = code }
         finishIfReady(force: false)
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) { [weak self] in
             self?.finishIfReady(force: true)
+            self?.closeRemainingPipes()
         }
     }
 
