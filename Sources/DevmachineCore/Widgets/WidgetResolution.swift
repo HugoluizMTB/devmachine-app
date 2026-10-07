@@ -141,6 +141,8 @@ public enum WidgetResolution: Equatable, Sendable {
     case needsPackage(package: String, reason: String)
     case notFound(type: String)
     case needsNewerApp(type: String, reason: String)
+    /// The entry exists but cannot sit in its area; the reason is the CLI's.
+    case refused(type: String, reason: String)
 
     public static func resolve(
         _ instance: BoardWidget, in catalog: WidgetCatalog, contract: WidgetContract = .current
@@ -255,6 +257,7 @@ public enum WidgetResolutionCopy {
         case let .needsPackage(package, _): return "Needs the \(package) package"
         case .notFound: return "Widget not found"
         case .needsNewerApp: return "Needs a newer app"
+        case .refused: return "Cannot go here"
         }
     }
 
@@ -267,6 +270,8 @@ public enum WidgetResolutionCopy {
             return "\(type) is not in packages release \(release) or in your own packages folder."
         case let .needsNewerApp(_, reason):
             return "This app cannot draw it: \(reason)."
+        case let .refused(_, reason):
+            return reason + "."
         }
     }
 }

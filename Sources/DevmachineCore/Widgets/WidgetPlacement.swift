@@ -92,6 +92,15 @@ public struct WidgetPlacementsFile: Sendable {
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: fileURL, options: .atomic)
     }
+
+    /// Replaces only `surface`'s set in the file, so Home and each sidebar
+    /// never write over one another's placements.
+    public func save(_ placements: WidgetPlacements, surface: String) throws {
+        var merged = load()
+        merged.reset(surface)
+        for widget in placements.placed[surface] ?? [] { merged.insert(widget, on: surface) }
+        try save(merged)
+    }
 }
 
 public struct PlacementResult: Equatable, Sendable {
