@@ -15,6 +15,9 @@ struct StackWidgetChrome {
     let onMoveDown: () -> Void
     let onSize: (StackSize) -> Void
     let onRemove: () -> Void
+    let choices: [ChoiceInput]
+    let onChoose: (ChoiceInput) -> Void
+    let onEdit: (() -> Void)?
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: () -> Void
 }
@@ -109,6 +112,13 @@ private struct StackWidgetMenu: View {
                 }
             }
             .pickerStyle(.inline)
+        }
+        ForEach(chrome.choices) { choice in
+            Button { chrome.onChoose(choice) } label: { Text(verbatim: choice.menuTitle) }
+                .disabled(!chrome.canEdit)
+        }
+        if let onEdit = chrome.onEdit {
+            Button("Edit…") { onEdit() }.disabled(!chrome.canEdit)
         }
         Divider()
         Button(role: .destructive) { chrome.onRemove() } label: {

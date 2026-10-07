@@ -19,4 +19,16 @@ final class MenubarEditRowTests: XCTestCase {
         let rows = MenubarEditRow.rows(board: board, resolve: { _ in refused }, catalog: nil)
         XCTAssertEqual(rows.first?.detail, WidgetResolutionCopy.detail(refused, release: ""))
     }
+
+    func testARowCarriesItsChoices() {
+        let board = StackBoard(surface: "menubar-panel", entries: [
+            StackEntry(id: "usage", type: "devmachine-app/usage"),
+            StackEntry(id: "other", type: "acme/other"),
+        ])
+        let harness = ChoiceInput(name: "harness", input: CatalogInput(type: "choice", defaultValue: nil, summary: "", from: "harnesses"))!
+        let rows = MenubarEditRow.rows(
+            board: board, resolve: { _ in nil }, catalog: nil,
+            choices: { $0.id == "usage" ? [harness] : [] })
+        XCTAssertEqual(rows.map(\.choices), [[harness], []])
+    }
 }

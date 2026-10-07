@@ -7,9 +7,11 @@ struct MenubarEditRow: Equatable, Identifiable {
     let detail: String?
     let canMoveUp: Bool
     let canMoveDown: Bool
+    let choices: [ChoiceInput]
 
     static func rows(
-        board: StackBoard, resolve: (StackEntry) -> WidgetResolution?, catalog: WidgetCatalog?
+        board: StackBoard, resolve: (StackEntry) -> WidgetResolution?, catalog: WidgetCatalog?,
+        choices: (StackEntry) -> [ChoiceInput] = { _ in [] }
     ) -> [MenubarEditRow] {
         board.entries.enumerated().map { index, entry in
             let resolution = resolve(entry)
@@ -21,9 +23,15 @@ struct MenubarEditRow: Equatable, Identifiable {
             }
             return MenubarEditRow(
                 id: entry.id, title: MenubarTitles.title(entry, resolution: resolution, catalog: catalog), detail: detail,
-                canMoveUp: index > 0, canMoveDown: index < board.entries.count - 1)
+                canMoveUp: index > 0, canMoveDown: index < board.entries.count - 1,
+                choices: choices(entry))
         }
     }
+}
+
+private struct MenubarChoosing: Equatable {
+    let surface: String
+    let request: WidgetChoiceRequest
 }
 
 /// The popover's Edit mode: both areas as lists. Add opens the gallery in
@@ -32,10 +40,14 @@ struct MenubarEditView: View {
     @ObservedObject var slots: StackBoardController
     @ObservedObject var panel: StackBoardController
     @State private var adding: String?
+    @State private var choosing: MenubarChoosing?
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        if let surface = adding, let board = [slots, panel].first(where: { $0.surface == surface }) {
+        if let choosing, let board = [slots, panel].first(where: { $0.surface == choosing.surface }) {
+            WidgetChoiceSheet(request: choosing.request, target: board, onDone: { self.choosing = nil })
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else if let surface = adding, let board = [slots, panel].first(where: { $0.surface == surface }) {
             VStack(alignment: .leading, spacing: m.space.sm) {
                 DMButton("Back", systemImage: "chevron.left", variant: .ghost, size: .small) { adding = nil }
                 WidgetGalleryView(
@@ -59,7 +71,8 @@ struct MenubarEditView: View {
 
     private func section(_ title: String, hint: String, board: StackBoardController) -> some View {
         let rows = MenubarEditRow.rows(
-            board: board.board, resolve: { board.resolution(of: $0) }, catalog: board.catalog.catalog)
+            board: board.board, resolve: { board.resolution(of: $0) }, catalog: board.catalog.catalog,
+            choices: { board.choices(for: $0.id) })
         return VStack(alignment: .leading, spacing: m.space.sm) {
             DMSectionLabel(text: title)
             Text(verbatim: hint).font(.dm(11)).foregroundStyle(Color.dmMuted)
@@ -76,6 +89,26 @@ struct MenubarEditView: View {
                             }
                         }
                         Spacer(minLength: m.space.sm)
+                        if !row.choices.isEmpty {
+                            Menu {
+                                ForEach(row.choices) { choice in
+                                    Button {
+                                        choosing = MenubarChoosing(
+                                            surface: board.surface,
+                                            request: WidgetChoiceRequest(entryID: row.id, input: choice, title: row.title))
+                                    } label: {
+                                        Text(verbatim: choice.menuTitle)
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "slider.horizontal.3")
+                            }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .fixedSize()
+                            .disabled(!board.canEdit)
+                            .help(Text(verbatim: "Choose"))
+                        }
                         DMIconButton(systemImage: "chevron.up") { board.moveUp(row.id) }
                             .disabled(!board.canEdit || !row.canMoveUp)
                             .help(Text(verbatim: "Move up"))

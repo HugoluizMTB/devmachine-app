@@ -38,6 +38,7 @@ struct StackBoardView: View {
     @State private var panelHovered = false
     @State private var showsGallery = false
     @State private var drag: StackDrag?
+    @State private var choosing: WidgetChoiceRequest?
     @State private var heights: [String: CGFloat] = [:]
     @State private var addRowHeight: CGFloat = 0
     @State private var bannerHeight: CGFloat = 0
@@ -78,6 +79,9 @@ struct StackBoardView: View {
             .coordinateSpace(name: Self.space)
         }
         .scrollIndicators(style.indicators)
+        .sheet(item: $choosing) { request in
+            WidgetChoiceSheet(request: request, target: controller, onDone: { choosing = nil })
+        }
         .onGeometryChange(for: CGSize.self) { $0.size } action: {
             viewport = $0.height
             width = $0.width
@@ -214,6 +218,9 @@ struct StackBoardView: View {
             onMoveDown: { controller.moveDown(entry.id) },
             onSize: { controller.setSize(entry.id, $0) },
             onRemove: { controller.remove(entry.id) },
+            choices: controller.choices(for: entry.id),
+            onChoose: { choice in choosing = WidgetChoiceRequest(entryID: entry.id, input: choice, title: row.title) },
+            onEdit: nil,
             onDragChanged: { translation in
                 if drag == nil { drag = StackDrag(id: entry.id, entries: controller.board.entries, translation: 0) }
                 drag?.translation = translation

@@ -49,6 +49,9 @@ struct WidgetChromeView: View {
     var onPillSize: (CGSize) -> Void = { _ in }
     var sources: WidgetSourceController?
     var onOpenSession: (WidgetTarget, String) -> Void = { _, _ in }
+    var choices: [ChoiceInput] = []
+    var onChoose: (ChoiceInput) -> Void = { _ in }
+    var onEdit: (() -> Void)? = nil
 
     @State private var hovering = false
     @State private var pillDragged = false
@@ -209,6 +212,13 @@ struct WidgetChromeView: View {
         }
         Button("Minimize") { onMinimize(true) }
         Button("Refresh") { onRefresh() }
+        ForEach(choices) { choice in
+            Button { onChoose(choice) } label: { Text(verbatim: choice.menuTitle) }
+                .disabled(!editable)
+        }
+        if let onEdit {
+            Button("Edit…") { onEdit() }.disabled(!editable)
+        }
         Divider()
         Button("Remove from Home", role: .destructive) { onRemove() }
     }

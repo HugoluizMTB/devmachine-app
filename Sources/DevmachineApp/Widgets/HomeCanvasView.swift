@@ -186,6 +186,7 @@ private struct BoardCanvasLayer: View {
     @Environment(\.dmMetrics) private var m
     @State private var drag: CanvasDrag?
     @State private var pillSizes: [String: CGSize] = [:]
+    @State private var choosing: WidgetChoiceRequest?
 
     /// Before a pill has been drawn and measured, in points at 100%.
     private static let pillFallback = CGSize(width: 120, height: 28)
@@ -221,6 +222,9 @@ private struct BoardCanvasLayer: View {
             }
         }
         .frame(width: canvasSize.width, height: canvasSize.height, alignment: .topLeading)
+        .sheet(item: $choosing) { request in
+            WidgetChoiceSheet(request: request, target: controller, onDone: { choosing = nil })
+        }
         .overlay(alignment: .topLeading) { guides }
         .overlay(alignment: .top) { problemBanner }
         .onChange(
@@ -267,7 +271,11 @@ private struct BoardCanvasLayer: View {
             onRemove: { controller.remove(widget.id) },
             onPillSize: { pillSizes[widget.id] = $0 },
             sources: controller.sources,
-            onOpenSession: openSession)
+            onOpenSession: openSession,
+            choices: controller.choices(for: widget.id),
+            onChoose: { choice in
+                choosing = WidgetChoiceRequest(entryID: widget.id, input: choice, title: title(widget, resolution))
+            })
         .offset(x: display.minX, y: display.minY)
     }
 
