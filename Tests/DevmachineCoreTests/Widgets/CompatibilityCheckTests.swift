@@ -73,4 +73,9 @@ final class CompatibilityCheckTests: XCTestCase {
         XCTAssertEqual(WidgetAppManifest.current.engine, WidgetContract.current.engine)
         XCTAssertNotNil(WidgetAppManifest.current.requiresPackages)
     }
+
+    func testTheCurrentManifestNeedsTheReleasesThatShipEngine16() {
+        XCTAssertEqual(WidgetAppManifest.current.requiresCLI, SemanticVersion(major: 0, minor: 10, patch: 0))
+        XCTAssertEqual(WidgetAppManifest.current.requiresPackagesTag, "v41")
+    }
 }

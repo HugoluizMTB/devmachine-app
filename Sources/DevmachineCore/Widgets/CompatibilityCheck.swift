@@ -17,8 +17,8 @@ public struct WidgetAppManifest: Equatable, Sendable {
 
     public static let current = WidgetAppManifest(
         engine: WidgetContract.current.engine,
-        requiresCLI: SemanticVersion(major: 0, minor: 9, patch: 0),
-        requiresPackagesTag: "v39")
+        requiresCLI: SemanticVersion(major: 0, minor: 10, patch: 0),
+        requiresPackagesTag: "v41")
 }
 
 public struct CompatibilityGap: Equatable, Sendable {
