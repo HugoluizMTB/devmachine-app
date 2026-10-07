@@ -26,6 +26,27 @@ enum WidgetGalleryContent: Equatable {
     }
 }
 
+/// "New widget" lists its templates as rows of their own above the catalog.
+/// A pop-up menu beside the heading read as part of the heading and was
+/// missed.
+struct WidgetGalleryNewWidgets: Equatable {
+    let templates: [InlineWidgetTemplate]
+    let enabled: Bool
+
+    static func of(templates: [InlineWidgetTemplate], canMake: Bool, sharedReason: String?) -> WidgetGalleryNewWidgets? {
+        guard !templates.isEmpty else { return nil }
+        return WidgetGalleryNewWidgets(templates: templates, enabled: canMake && sharedReason == nil)
+    }
+
+    static var homeTemplates: [InlineWidgetTemplate] {
+        InlineWidgetTemplate.offered(on: WidgetContract.current.layout(of: DefaultBoard.surface))
+    }
+
+    static func home(canEdit: Bool, sharedReason: String?) -> WidgetGalleryNewWidgets? {
+        of(templates: homeTemplates, canMake: canEdit, sharedReason: sharedReason)
+    }
+}
+
 struct WidgetGalleryView: View {
     let surface: String
     let catalog: WidgetCatalog?
@@ -42,29 +63,16 @@ struct WidgetGalleryView: View {
     var body: some View {
         let sharedReason = WidgetGalleryReasons.shared(entries, blockedReason)
         return VStack(alignment: .leading, spacing: m.space.md) {
-            HStack {
-                Text(verbatim: "Add a widget").font(.dm(13, weight: .semibold))
-                Spacer()
-                if !templates.isEmpty {
-                    Menu {
-                        ForEach(templates) { template in
-                            Button { onNewWidget(template) } label: {
-                                Text(verbatim: template.title)
-                            }
-                        }
-                    } label: {
-                        Text(verbatim: "New widget")
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .disabled(!canMakeWidgets || sharedReason != nil)
-                }
-            }
+            Text(verbatim: "Add a widget").font(.dm(13, weight: .semibold))
             if let sharedReason {
                 Text(verbatim: sharedReason)
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if let newWidgets = WidgetGalleryNewWidgets.of(
+                templates: templates, canMake: canMakeWidgets, sharedReason: sharedReason) {
+                newWidgetSection(newWidgets)
             }
             switch WidgetGalleryContent.of(hasCatalog: catalog != nil, entries: entries.count, failure: failure) {
             case let .list(failure, loading):
@@ -89,6 +97,21 @@ struct WidgetGalleryView: View {
         .padding(m.space.lg)
         .frame(width: m.card.sheet)
         .frame(maxHeight: m.pt(480))
+    }
+
+    private func newWidgetSection(_ offer: WidgetGalleryNewWidgets) -> some View {
+        VStack(alignment: .leading, spacing: m.space.xs) {
+            DMSectionLabel(text: "NEW WIDGET")
+            FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
+                ForEach(offer.templates) { template in
+                    DMButton(template.title, systemImage: "plus", variant: .outline, size: .small) {
+                        onNewWidget(template)
+                    }
+                    .help(Text(verbatim: template.summary))
+                }
+            }
+            .disabled(!offer.enabled)
+        }
     }
 
     private func row(_ widget: CatalogWidget, in catalog: WidgetCatalog?, showsReason: Bool) -> some View {

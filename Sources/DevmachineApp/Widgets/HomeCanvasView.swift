@@ -167,7 +167,7 @@ private struct WidgetGalleryPopover: View {
             blockedReason: { _ in controller.addBlockedReason },
             onAdd: { widget in if controller.add(widget, canvasWidth: canvasWidth) { onAdded() } },
             onRetry: { catalog.reloadSoon() },
-            templates: InlineWidgetTemplate.offered(on: WidgetContract.current.layout(of: DefaultBoard.surface)),
+            templates: WidgetGalleryNewWidgets.homeTemplates,
             canMakeWidgets: controller.canEdit,
             onNewWidget: onNewWidget)
     }
