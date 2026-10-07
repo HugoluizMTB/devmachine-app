@@ -100,6 +100,10 @@ extension WidgetSource {
             source.session = plain(source.session)
             source.target = target(source.target)
             return .session(source)
+        case var .packageProvider(source):
+            source.with = source.with.mapValues(plain)
+            source.target = target(source.target)
+            return .packageProvider(source)
         }
     }
 }

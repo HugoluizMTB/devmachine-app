@@ -9,6 +9,7 @@ struct SourceRunners: Sendable {
     var session: any SourceRunner
     var launcher: any ProcessLaunching
     var environment: SourceRunEnvironment
+    var packageProvider: (any SourceRunner)? = nil
 
     func runner(for source: WidgetSource) -> (any SourceRunner)? {
         switch source {
@@ -16,6 +17,7 @@ struct SourceRunners: Sendable {
         case .url: return url
         case .prompt: return prompt
         case .session: return session
+        case .packageProvider: return packageProvider
         case .provider: return nil
         }
     }

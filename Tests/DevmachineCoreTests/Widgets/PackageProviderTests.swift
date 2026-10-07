@@ -11,7 +11,8 @@ final class PackageProviderTests: XCTestCase {
 
     func testTheAppPrefixAndOddNamesAreNotPackageProviders() {
         for name in ["app/clock", "acme", "acme/load/x", "-x/load", "acme/-rf", "Acme/load", "acme/", "/load",
-                     "{{inputs.p}}/load", "acme/load; rm -rf ~", "acme /load", ""] {
+                     "{{inputs.p}}/load", "acme/load; rm -rf ~", "acme /load", "", "0acme/load", "acme.tools/load",
+                     "acme/load.sh", "acme/9load"] {
             XCTAssertNil(PackageProviderName.parts(name), name)
         }
     }
@@ -38,13 +39,18 @@ final class PackageProviderTests: XCTestCase {
     func testACompleteIndexNamesWhatIsMissing() {
         let index = PackageProviderIndex(
             providers: ["acme-tools/load": PackageProviderSpec(returns: [:], minEvery: "10s")],
-            packages: ["acme-tools"], isComplete: true)
+            packages: ["acme-tools", "mine"], isComplete: true)
         XCTAssertThrowsError(try index.spec(for: "ghost/load")) {
-            XCTAssertEqual(($0 as? WidgetSpecProblem)?.message, "no package ghost")
+            XCTAssertEqual(($0 as? WidgetSpecProblem)?.message,
+                           "source.name ghost/load: no package ghost in the release or your own packages")
             XCTAssertEqual(($0 as? WidgetSpecProblem)?.path, ["name"])
         }
         XCTAssertThrowsError(try index.spec(for: "acme-tools/nope")) {
-            XCTAssertEqual(($0 as? WidgetSpecProblem)?.message, "acme-tools has no provider nope")
+            XCTAssertEqual(($0 as? WidgetSpecProblem)?.message,
+                           "source.name acme-tools/nope: acme-tools has no provider nope; its providers: load")
+        }
+        XCTAssertThrowsError(try index.spec(for: "mine/load")) {
+            XCTAssertEqual(($0 as? WidgetSpecProblem)?.message, "source.name mine/load: mine has no provider load; its providers: none")
         }
     }
 }

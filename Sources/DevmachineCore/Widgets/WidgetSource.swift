@@ -120,10 +120,11 @@ public enum WidgetSource: Hashable, Sendable {
     case url(URLSource)
     case prompt(PromptSource)
     case session(SessionSource)
+    case packageProvider(PackageProviderSource)
 
     public var kind: String {
         switch self {
-        case .provider: return "provider"
+        case .provider, .packageProvider: return "provider"
         case .command: return "command"
         case .url: return "url"
         case .prompt: return "prompt"
@@ -140,6 +141,7 @@ public enum WidgetSource: Hashable, Sendable {
         case let .url(source): return source.parse.rawValue
         case .prompt: return "text"
         case .session: return nil
+        case .packageProvider: return ParseMode.json.rawValue
         }
     }
 
@@ -150,6 +152,7 @@ public enum WidgetSource: Hashable, Sendable {
         case let .url(source): return source.every
         case let .prompt(source): return source.every
         case let .session(source): return source.every
+        case let .packageProvider(source): return source.every
         }
     }
 
@@ -159,6 +162,16 @@ public enum WidgetSource: Hashable, Sendable {
         case let .command(source): return source.target
         case let .prompt(source): return source.target
         case let .session(source): return source.target
+        case let .packageProvider(source): return source.target
+        }
+    }
+
+    /// Runs a program somewhere, so a widget from code the owner did not
+    /// write asks before it does.
+    public var runsCode: Bool {
+        switch self {
+        case .command, .prompt, .session, .packageProvider: return true
+        case .provider, .url: return false
         }
     }
 }

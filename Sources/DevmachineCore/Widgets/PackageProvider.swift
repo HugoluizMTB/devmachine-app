@@ -5,12 +5,24 @@ import Foundation
 /// never be read as a flag.
 public enum PackageProviderName {
     static var pattern: Regex<(Substring, Substring, Substring)> {
-        /([a-z0-9][a-z0-9._-]*)\/([a-z0-9][a-z0-9._-]*)/
+        /([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_-]*)/
     }
 
     public static func parts(_ name: String) -> (package: String, command: String)? {
         guard let match = name.wholeMatch(of: pattern), match.1 != "app" else { return nil }
         return (String(match.1), String(match.2))
+    }
+
+    /// The CLI's SplitProviderName: any `<a>/<b>` outside a reserved prefix
+    /// is a package provider, so a malformed one is refused by its shape
+    /// instead of reading as an unknown app provider.
+    public static func claims(_ name: String, reserved: [String]) -> Bool {
+        let pieces = name.split(separator: "/", omittingEmptySubsequences: false)
+        return pieces.count == 2 && !pieces[0].isEmpty && !pieces[1].isEmpty && !reserved.contains(String(pieces[0]))
+    }
+
+    static func shapeProblem(_ name: String) -> String {
+        "source.name \(name): is written <package>/<command>, each in lower case letters, digits, dashes and underscores, starting with a letter"
     }
 }
 
@@ -74,7 +86,13 @@ public struct PackageProviderIndex: Equatable, Sendable {
     public func spec(for name: String) throws -> PackageProviderSpec? {
         if let spec = providers[name] { return spec }
         guard isComplete, let parts = PackageProviderName.parts(name) else { return nil }
-        guard packages.contains(parts.package) else { throw WidgetSpecProblem(["name"], "no package \(parts.package)") }
-        throw WidgetSpecProblem(["name"], "\(parts.package) has no provider \(parts.command)")
+        guard packages.contains(parts.package) else {
+            throw WidgetSpecProblem(["name"], "source.name \(name): no package \(parts.package) in the release or your own packages")
+        }
+        let prefix = parts.package + "/"
+        let declared = providers.keys.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }.sorted()
+        let list = declared.isEmpty ? "none" : declared.joined(separator: ", ")
+        throw WidgetSpecProblem(
+            ["name"], "source.name \(name): \(parts.package) has no provider \(parts.command); its providers: \(list)")
     }
 }

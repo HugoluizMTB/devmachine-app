@@ -161,4 +161,35 @@ final class WidgetApprovalsTests: XCTestCase {
         let refused = resolved(command { $0.run = "{{inputs.tool}}" }, inputs: ["tool": "rm"])
         XCTAssertEqual(ApprovalPrompt(refused, context: [:]).what, "{{inputs.tool}} -h /")
     }
+
+    private func load(with: [String: String] = ["window": "5m"], target: WidgetTarget = .machine("main")) -> WidgetSource {
+        .packageProvider(PackageProviderSource(name: "acme-tools/load", with: with, target: target, every: .interval(30), timeout: 30))
+    }
+
+    func testAPackageProvidersSubjectIsTheArgvItRuns() {
+        XCTAssertEqual(ApprovalSubject.canonicalJSON(load()),
+                       #"{"args":["--window","5m"],"kind":"provider","name":"acme-tools/load","target":{"machine":"main"}}"#)
+        XCTAssertNotEqual(ApprovalSubject.hash(load()), ApprovalSubject.hash(load(with: ["window": "1m"])))
+        XCTAssertNotEqual(ApprovalSubject.hash(load()), ApprovalSubject.hash(load(target: .workspace("alice-dev"))))
+        XCTAssertNil(ApprovalSubject.hash(load(with: ["x; rm": "v"])))
+    }
+
+    func testAPackageCommitJoinsTheSubjectOnlyWhenGiven() {
+        XCTAssertEqual(
+            ApprovalSubject.canonicalJSON(command(), packageCommit: "1111"),
+            #"{"args":["-h","/"],"kind":"command","package_commit":"1111","run":"df","shell":false,"target":{"workspace":"alice"}}"#)
+        XCTAssertEqual(
+            ApprovalSubject.canonicalJSON(command()),
+            #"{"args":["-h","/"],"kind":"command","run":"df","shell":false,"target":{"workspace":"alice"}}"#)
+        XCTAssertNotEqual(ApprovalSubject.hash(load(), packageCommit: ""), ApprovalSubject.hash(load()))
+        XCTAssertNotEqual(ApprovalSubject.hash(load(), packageCommit: "1111"), ApprovalSubject.hash(load(), packageCommit: "2222"))
+        XCTAssertNil(ApprovalSubject.hash(.url(URLSource(url: "https://example.com", every: .interval(30), timeout: 30, parse: .status)),
+                                          packageCommit: "1111"))
+    }
+
+    func testTheCardReadsAPackageProviderAsItsCommandLine() {
+        XCTAssertEqual(ApprovalCopy.what(load(with: ["path": "/var/log/system log", "all": "yes"])),
+                       "acme-tools/load --all yes --path '/var/log/system log'")
+        XCTAssertEqual(ApprovalCopy.place(load().target), "on machine main")
+    }
 }

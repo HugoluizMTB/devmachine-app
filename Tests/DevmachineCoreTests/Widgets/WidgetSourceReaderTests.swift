@@ -95,8 +95,8 @@ final class WidgetSourceReaderTests: XCTestCase {
             ("below minimum", with(["every": .string("1s")]), ["every"], "source.every 1s is below the command minimum of 5s"),
             ("no every", with(["every": nil]), ["every"], "needs source.every"),
             ("bad every", with(["every": .string("soon")]), ["every"], "a duration such as 60s, or manual"),
-            ("timeout too long", with(["timeout": .string("11m")]), ["timeout"], "above the maximum of 10m"),
-            ("zero timeout", with(["timeout": .string("0s")]), ["timeout"], "above 0"),
+            ("timeout too long", with(["timeout": .string("11m")]), ["timeout"], "source.timeout 11m is above the 10m maximum"),
+            ("zero timeout", with(["timeout": .string("0s")]), ["timeout"], "source.timeout 0s must be above zero"),
             ("stream with every", with(["mode": .string("stream")]), ["every"],
              "a stream runs while the widget is on screen: remove source.every"),
             ("keep without stream", with(["keep": .int(5)]), ["keep"], "source.keep is only for mode: stream"),
@@ -367,5 +367,141 @@ final class WidgetSourceReaderTests: XCTestCase {
         XCTAssertEqual(problem(["kind": .string("prompt"), "harness": .string("claude"), "every": .string("1m"),
                                 "prompt": .string("x")])?.message, "source.every 1m is below the prompt minimum of 15m")
         XCTAssertEqual(problem(["kind": .string("session"), "every": .string("2s")])?.path, ["session"])
+    }
+
+    private let acme = PackageProviderIndex(
+        providers: ["acme-tools/load": PackageProviderSpec(returns: ["load": "number"], minEvery: "10s")],
+        packages: ["acme-tools"], isComplete: true)
+
+    private func packageProblem(_ fields: [String: WidgetValue], index: PackageProviderIndex = .unknown) -> WidgetSpecProblem? {
+        do {
+            _ = try WidgetSourceReader.read(.object(fields), scope: .inline(contextKeys: ["machine"]), packageProviders: index)
+            return nil
+        } catch let problem as WidgetSpecProblem {
+            return problem
+        } catch {
+            XCTFail("unexpected \(error)")
+            return nil
+        }
+    }
+
+    func testAPackageProviderReadsItsTargetWithEveryAndTimeout() throws {
+        let source = try WidgetSourceReader.read(object([
+            "kind": .string("provider"), "name": .string("acme-tools/load"),
+            "with": .object(["window": .string("5m"), "count": .int(3)]),
+            "target": .object(["machine": .string("{{context.machine}}")]), "every": .string("30s"), "timeout": .string("1m"),
+        ]), scope: .inline(contextKeys: ["machine"]), packageProviders: acme)
+        XCTAssertEqual(source, .packageProvider(PackageProviderSource(
+            name: "acme-tools/load", with: ["window": "5m", "count": "3"], target: .machine("{{context.machine}}"),
+            every: .interval(30), timeout: 60, returns: ["load": "number"])))
+        XCTAssertEqual(source.kind, "provider")
+        XCTAssertEqual(source.outputToken, "json")
+        XCTAssertEqual(source.every, .interval(30))
+        XCTAssertTrue(source.runsCode)
+        XCTAssertEqual(source.target, .machine("{{context.machine}}"))
+    }
+
+    func testAPackageProviderMayBeManualAndTakesTheDefaultTimeout() throws {
+        let source = try WidgetSourceReader.read(object([
+            "kind": .string("provider"), "name": .string("acme-tools/load"),
+            "target": .object(["workspace": .string("alice-dev")]), "every": .string("manual"),
+        ]), scope: inline)
+        guard case let .packageProvider(provider) = source else { return XCTFail("\(source)") }
+        XCTAssertEqual(provider.every, .manual)
+        XCTAssertEqual(provider.timeout, 30)
+        XCTAssertEqual(provider.returns, [:])
+    }
+
+    func testOnlySourcesThatRunSomethingRunCode() throws {
+        let clock = try WidgetSourceReader.read(
+            object(["kind": .string("provider"), "name": .string("app/clock"), "every": .string("60s")]), scope: inline)
+        XCTAssertFalse(clock.runsCode)
+        XCTAssertFalse(WidgetSource.url(URLSource(url: "https://example.com", every: .manual, timeout: 30, parse: .status)).runsCode)
+        XCTAssertTrue(WidgetSource.session(SessionSource(target: .local, session: "main", every: .manual)).runsCode)
+    }
+
+    func testAnIncompleteIndexLeavesAnUnknownPackageToTheCLI() throws {
+        let source = try WidgetSourceReader.read(object([
+            "kind": .string("provider"), "name": .string("ghost/load"),
+            "target": .object(["machine": .string("main")]), "every": .string("5s"),
+        ]), scope: inline)
+        XCTAssertEqual(source.kind, "provider")
+        XCTAssertEqual(source.outputToken, "json")
+    }
+
+    func testThePackageProviderRulesSayWhatTheCLISays() {
+        let base: [String: WidgetValue] = [
+            "kind": .string("provider"), "name": .string("acme-tools/load"),
+            "target": .object(["machine": .string("main")]), "every": .string("30s"),
+        ]
+        func with(_ changes: [String: WidgetValue?]) -> [String: WidgetValue] {
+            var fields = base
+            for (key, value) in changes { fields[key] = value }
+            return fields
+        }
+        let shape = "is written <package>/<command>, each in lower case letters, digits, dashes and underscores, starting with a letter"
+        let onTarget = "a package provider runs on a machine or workspace: write source.target: {machine: <name>} or {workspace: <name>}"
+        let cases: [(String, [String: WidgetValue], PackageProviderIndex, [String], String)] = [
+            ("no target", with(["target": nil]), .unknown, [], "source.name acme-tools/load: \(onTarget)"),
+            ("local", with(["target": .string("local")]), .unknown, ["target"], "source.name acme-tools/load: \(onTarget)"),
+            ("no package", with(["name": .string("ghost/load")]), acme, ["name"],
+             "source.name ghost/load: no package ghost in the release or your own packages"),
+            ("no provider", with(["name": .string("acme-tools/nope")]), acme, ["name"],
+             "source.name acme-tools/nope: acme-tools has no provider nope; its providers: load"),
+            ("below its minimum", with(["every": .string("5s")]), acme, ["every"],
+             "source.every 5s is below the acme-tools/load minimum of 10s"),
+            ("below the floor", with(["every": .string("2s")]), .unknown, ["every"],
+             "source.every 2s is below the acme-tools/load minimum of 5s"),
+            ("no every", with(["every": nil]), .unknown, ["every"],
+             "every widget needs source.every, at least 5s for acme-tools/load, or manual"),
+            ("no every, known minimum", with(["every": nil]), acme, ["every"],
+             "every widget needs source.every, at least 10s for acme-tools/load, or manual"),
+            ("bad every", with(["every": .string("soon")]), .unknown, ["every"],
+             "source.every \"soon\" is neither a duration nor manual: write it like 60s, 5m or manual"),
+            ("context in the name", with(["name": .string("{{context.machine}}/load")]), .unknown, ["name"],
+             "source.name {{context.machine}}/load: \(shape)"),
+            ("inputs in the name", with(["name": .string("{{inputs.pkg}}/load")]), .unknown, ["name"],
+             "source.name {{inputs.pkg}}/load: \(shape)"),
+            ("a flag for a command", with(["name": .string("acme-tools/-rf")]), .unknown, ["name"],
+             "source.name acme-tools/-rf: \(shape)"),
+            ("upper case", with(["name": .string("Acme/load")]), .unknown, ["name"], "source.name Acme/load: \(shape)"),
+            ("a space", with(["name": .string("acme tools/load")]), .unknown, ["name"], "source.name acme tools/load: \(shape)"),
+            ("a flag name", with(["with": .object(["x; rm": .string("v")])]), .unknown, ["with", "x; rm"],
+             "source.with.x; rm: acme-tools/load gets it as --x; rm, so write the key in lower case letters, digits, dashes and underscores, starting with a letter"),
+            ("a list value", with(["with": .object(["path": .list([.string("a")])])]), .unknown, ["with", "path"],
+             "source.with.path must be one value"),
+            ("inputs in with", with(["with": .object(["path": .string("{{inputs.path}}")])]), .unknown, ["with", "path"],
+             "template {{inputs.path}} in source.with.path: a widget written in a board has no inputs"),
+            ("timeout", with(["timeout": .string("11m")]), .unknown, ["timeout"], "source.timeout 11m is above the 10m maximum"),
+        ]
+        for (name, fields, index, path, message) in cases {
+            let found = packageProblem(fields, index: index)
+            XCTAssertEqual(found?.path, path, name)
+            XCTAssertEqual(found?.message, message, name)
+        }
+    }
+
+    func testAnAppProviderTakesNoTargetOrTimeout() {
+        let clock: [String: WidgetValue] = ["kind": .string("provider"), "name": .string("app/clock"), "every": .string("60s")]
+        func with(_ key: String, _ value: WidgetValue) -> [String: WidgetValue] {
+            clock.merging([key: value]) { _, new in new }
+        }
+        XCTAssertEqual(packageProblem(with("target", .object(["machine": .string("main")])))?.message,
+                       "source.target: app/clock is the app's own data, so it takes no target")
+        XCTAssertEqual(packageProblem(with("target", .string("local")))?.message,
+                       "source.target: app/clock is the app's own data, so it takes no target")
+        XCTAssertEqual(packageProblem(with("timeout", .string("30s")))?.message,
+                       "source.timeout: app/clock is the app's own data, so it takes no timeout")
+    }
+
+    func testTemplatesFillWithAndTargetOnce() throws {
+        let source = WidgetSource.packageProvider(PackageProviderSource(
+            name: "acme-tools/load", with: ["path": "{{inputs.path}}"], target: .machine("{{context.machine}}"),
+            every: .interval(30), timeout: 30))
+        let filled = try source.resolved(with: TemplateValues(
+            inputs: ["path": "{{context.machine}}"], context: ["machine": "main"]))
+        XCTAssertEqual(filled, .packageProvider(PackageProviderSource(
+            name: "acme-tools/load", with: ["path": "{{context.machine}}"], target: .machine("main"),
+            every: .interval(30), timeout: 30)))
     }
 }

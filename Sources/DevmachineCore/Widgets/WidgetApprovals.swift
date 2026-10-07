@@ -27,7 +27,11 @@ public enum ApprovalSubject {
         try hash(resolved.source, values: resolved.values(context: context))
     }
 
-    public static func canonicalJSON(_ source: WidgetSource, environment: [String: String] = [:]) -> String? {
+    /// A third-party widget's subject carries its package's commit, so code
+    /// that changed under an unchanged widget asks again.
+    public static func canonicalJSON(
+        _ source: WidgetSource, environment: [String: String] = [:], packageCommit: String? = nil
+    ) -> String? {
         func target(_ target: WidgetTarget) -> WidgetValue {
             switch target {
             case .local: return .string("local")
@@ -35,32 +39,40 @@ public enum ApprovalSubject {
             case let .workspace(name): return .object(["workspace": .string(name)])
             }
         }
+        var fields: [String: WidgetValue]
         switch source {
         case .provider, .url:
             return nil
         case let .command(command):
-            var fields: [String: WidgetValue] = [
+            fields = [
                 "kind": .string("command"), "args": .list(command.args.map(WidgetValue.string)),
                 "shell": .bool(command.shell), "target": target(command.target),
             ]
             if let run = command.run { fields["run"] = .string(run) }
             if let script = command.script { fields["script"] = .string(script) }
             if !environment.isEmpty { fields["env"] = .object(environment.mapValues(WidgetValue.string)) }
-            return WidgetValue.object(fields).canonicalJSON
         case let .prompt(prompt):
-            return WidgetValue.object([
+            fields = [
                 "kind": .string("prompt"), "harness": .string(prompt.harness.rawValue), "prompt": .string(prompt.prompt),
                 "target": target(prompt.target),
-            ]).canonicalJSON
+            ]
         case let .session(session):
-            return WidgetValue.object([
-                "kind": .string("session"), "session": .string(session.session), "target": target(session.target),
-            ]).canonicalJSON
+            fields = ["kind": .string("session"), "session": .string(session.session), "target": target(session.target)]
+        case let .packageProvider(provider):
+            guard case let .packageCommand(package, command, args)? = try? ArgvBuilder.packageProvider(provider) else {
+                return nil
+            }
+            fields = [
+                "kind": .string("provider"), "name": .string("\(package)/\(command)"),
+                "args": .list(args.map(WidgetValue.string)), "target": target(provider.target),
+            ]
         }
+        if let packageCommit { fields["package_commit"] = .string(packageCommit) }
+        return WidgetValue.object(fields).canonicalJSON
     }
 
-    public static func hash(_ source: WidgetSource, environment: [String: String] = [:]) -> String? {
-        canonicalJSON(source, environment: environment).map { text in
+    public static func hash(_ source: WidgetSource, environment: [String: String] = [:], packageCommit: String? = nil) -> String? {
+        canonicalJSON(source, environment: environment, packageCommit: packageCommit).map { text in
             SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
         }
     }
@@ -180,6 +192,11 @@ public enum ApprovalCopy {
             return "Read the screen of session \(session.session)"
         case let .url(url):
             return url.url
+        case let .packageProvider(provider):
+            guard case let .packageCommand(package, command, args)? = try? ArgvBuilder.packageProvider(provider) else {
+                return provider.name
+            }
+            return (["\(package)/\(command)"] + args.map(word)).joined(separator: " ")
         case let .provider(provider):
             return provider.name
         }

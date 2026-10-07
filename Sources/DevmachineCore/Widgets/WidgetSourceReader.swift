@@ -15,7 +15,8 @@ public enum WidgetSourceReader {
     }
 
     public static func read(
-        _ value: WidgetValue, scope: WidgetScope, contract: WidgetContract = .current
+        _ value: WidgetValue, scope: WidgetScope, contract: WidgetContract = .current,
+        packageProviders: PackageProviderIndex = .unknown
     ) throws -> WidgetSource {
         guard let fields = value.object else {
             throw WidgetSpecProblem([], "source must be a mapping with a kind")
@@ -30,10 +31,10 @@ public enum WidgetSourceReader {
         for key in fields.keys.sorted() where key != "kind" && spec.fields[key] == nil {
             throw WidgetSpecProblem([key], "source.\(key) is not a field of a \(kind) source")
         }
-        try checkTemplates(fields.filter { $0.key != "script" }, path: [], scope: scope)
+        try checkTemplates(fields.filter { $0.key != "script" && $0.key != "name" }, path: [], scope: scope)
         let reader = Fields(fields: fields, spec: spec, kind: kind, contract: contract)
         switch kind {
-        case "provider": return .provider(try reader.provider())
+        case "provider": return try reader.provider(index: packageProviders)
         case "command": return .command(try reader.command(scope: scope))
         case "url": return .url(try reader.url())
         case "prompt": return .prompt(try reader.prompt())
@@ -179,11 +180,11 @@ public enum WidgetSourceReader {
             let field = spec.fields["timeout"]
             let text = try text("timeout") ?? field?.defaultValue?.string ?? "30s"
             guard let seconds = GoDuration.seconds(text) else {
-                throw WidgetSpecProblem(["timeout"], "source.timeout \"\(text)\" is a duration such as 30s")
+                throw WidgetSpecProblem(["timeout"], "source.timeout \"\(text)\" is not a duration: write it like 30s or 5m")
             }
-            guard seconds > 0 else { throw WidgetSpecProblem(["timeout"], "source.timeout must be above 0") }
+            guard seconds > 0 else { throw WidgetSpecProblem(["timeout"], "source.timeout \(text) must be above zero") }
             if let maxText = field?.max?.string, let max = GoDuration.seconds(maxText), seconds > max {
-                throw WidgetSpecProblem(["timeout"], "source.timeout \(text) is above the maximum of \(maxText)")
+                throw WidgetSpecProblem(["timeout"], "source.timeout \(text) is above the \(maxText) maximum")
             }
             return seconds
         }
@@ -218,12 +219,21 @@ public enum WidgetSourceReader {
             }
         }
 
-        func provider() throws -> ProviderSource {
+        func provider(index: PackageProviderIndex) throws -> WidgetSource {
             let name = try text("name") ?? ""
+            if PackageProviderName.claims(name, reserved: contract.packageProvider.reserved) {
+                return .packageProvider(try packageProvider(name: name, index: index))
+            }
             guard let provider = contract.providers[name] else {
                 let known = contract.providers.keys.sorted().joined(separator: ", ")
                 throw WidgetSpecProblem(
                     ["name"], "source.name \"\(name)\" is not a provider engine \(contract.engine) knows: \(known)")
+            }
+            if given("target") != nil {
+                throw WidgetSpecProblem(["target"], "source.target: \(name) is the app's own data, so it takes no target")
+            }
+            if given("timeout") != nil {
+                throw WidgetSpecProblem(["timeout"], "source.timeout: \(name) is the app's own data, so it takes no timeout")
             }
             var with: [String: String] = [:]
             if let value = given("with") {
@@ -254,7 +264,64 @@ public enum WidgetSourceReader {
                 throw WidgetSpecProblem(
                     ["every"], "source.every \(every) is below the \(name) minimum of \(provider.minEvery)")
             }
-            return ProviderSource(name: name, with: with, every: every)
+            return .provider(ProviderSource(name: name, with: with, every: every))
+        }
+
+        /// The CLI's checkPackageProvider, in its order: the name's shape, the
+        /// package and its provider, the target, the flags, the timeout, every.
+        func packageProvider(name: String, index: PackageProviderIndex) throws -> PackageProviderSource {
+            guard PackageProviderName.parts(name) != nil else {
+                throw WidgetSpecProblem(["name"], PackageProviderName.shapeProblem(name))
+            }
+            let spec = try index.spec(for: name)
+            let minimum = spec?.minEvery ?? contract.packageProvider.minEvery
+            guard given("target") != nil else {
+                throw WidgetSpecProblem([], Self.machineOrWorkspace(name))
+            }
+            let target = try target()
+            guard target != .local else { throw WidgetSpecProblem(["target"], Self.machineOrWorkspace(name)) }
+            var with: [String: String] = [:]
+            if let value = given("with") {
+                guard let arguments = value.object else {
+                    throw WidgetSpecProblem(["with"], "source.with is a mapping of flag names to values")
+                }
+                for key in arguments.keys.sorted() {
+                    guard key.wholeMatch(of: ArgvBuilder.flagName) != nil else {
+                        throw WidgetSpecProblem(
+                            ["with", key],
+                            "source.with.\(key): \(name) gets it as --\(key), so write the key in lower case letters, digits, "
+                                + "dashes and underscores, starting with a letter")
+                    }
+                    guard let text = arguments[key].flatMap(Self.scalar) else {
+                        throw WidgetSpecProblem(["with", key], "source.with.\(key) must be one value")
+                    }
+                    with[key] = text
+                }
+            }
+            let timeout = try timeout()
+            guard let every = try text("every") else {
+                throw WidgetSpecProblem(["every"], "every widget needs source.every, at least \(minimum) for \(name), or manual")
+            }
+            let interval: WidgetEvery
+            if every == "manual" {
+                interval = .manual
+            } else {
+                guard let seconds = GoDuration.seconds(every) else {
+                    throw WidgetSpecProblem(
+                        ["every"], "source.every \"\(every)\" is neither a duration nor manual: write it like 60s, 5m or manual")
+                }
+                if let floor = GoDuration.seconds(minimum), seconds < floor {
+                    throw WidgetSpecProblem(["every"], "source.every \(every) is below the \(name) minimum of \(minimum)")
+                }
+                interval = .interval(seconds)
+            }
+            return PackageProviderSource(
+                name: name, with: with, target: target, every: interval, timeout: timeout, returns: spec?.returns ?? [:])
+        }
+
+        private static func machineOrWorkspace(_ name: String) -> String {
+            "source.name \(name): a package provider runs on a machine or workspace: "
+                + "write source.target: {machine: <name>} or {workspace: <name>}"
         }
 
         func command(scope: WidgetScope) throws -> CommandSource {
