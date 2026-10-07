@@ -105,6 +105,9 @@ struct MachineSettingsRow: View {
                 Button("Credentials missing") {
                     Task { await details.toggle(.credentials, machine: machine.name, isSelf: false) }
                 }
+                Button("SSH password login") {
+                    Task { await details.toggle(.passwordLogin, machine: machine.name, isSelf: false) }
+                }
                 Button("Host key…", action: handlers.hostKey)
             }
             Button("Edit location…") { editingLocation = true }
@@ -271,6 +274,7 @@ struct MachinePanelView: View {
         case .check: return machine.isSelf ? "devmachine machine doctor" : "devmachine doctor --machine \(machine.name)"
         case .addresses: return "devmachine resolve --machine \(machine.name)"
         case .credentials: return "devmachine credentials list --machine \(machine.name)"
+        case .passwordLogin: return "devmachine machines password-login \(machine.name)"
         }
     }
 
@@ -280,6 +284,10 @@ struct MachinePanelView: View {
         case .check: read(details.checks[machine.name]) { checks($0) }
         case .addresses: read(details.addresses[machine.name]) { addresses($0) }
         case .credentials: read(details.credentials[machine.name]) { credentials($0) }
+        case .passwordLogin:
+            read(details.passwordLogins[machine.name]) {
+                MachinePasswordLoginPanel(report: $0, machine: machine, details: details)
+            }
         }
     }
 
@@ -374,5 +382,73 @@ struct MachinePanelView: View {
             .font(.dm(11))
             .foregroundStyle(Color.dmMuted)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Who logs in over SSH with a password, as the machine's sshd says, and the
+/// change: tick the accounts that keep it, or give it back to everybody.
+struct MachinePasswordLoginPanel: View {
+    @Environment(\.dmMetrics) private var m
+    let report: MachinePasswordLogin
+    let machine: ConfiguredMachine
+    @ObservedObject var details: MachineDetailsStore
+    @State private var kept: Set<String> = []
+
+    private var hasHardening: Bool { machine.packages.contains("ssh_hardening") }
+    private var changing: Bool { details.changingPasswordLogin == machine.name }
+    private var chosen: [String] { report.accounts.map(\.user).filter(kept.contains) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            Text(verbatim: report.summary)
+                .font(.dm(11.5, weight: .medium))
+                .foregroundStyle(Color.dmRowText)
+            Text(verbatim: "Only SSH. The login window, sudo and Screen Sharing keep their passwords. "
+                + "The CLI makes the change over \(machine.adminUser)'s key.")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            if report.accounts.isEmpty {
+                Text(verbatim: "No account people log in with was found.")
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+            }
+            ForEach(report.accounts, id: \.user) { account in
+                HStack(spacing: m.space.sm) {
+                    Toggle(isOn: Binding(
+                        get: { kept.contains(account.user) },
+                        set: { if $0 { kept.insert(account.user) } else { kept.remove(account.user) } })) {
+                        Text(verbatim: account.user)
+                            .font(.dm(11.5, design: .monospaced))
+                            .foregroundStyle(Color.dmRowText)
+                    }
+                    .toggleStyle(.checkbox)
+                    DMPill(text: account.allowed ? "PASSWORD OR KEY" : "KEY ONLY",
+                           color: account.allowed ? .orange : Color.dmMuted)
+                }
+            }
+            if let error = details.passwordLoginError[machine.name] {
+                Text(verbatim: error)
+                    .font(.dm(11))
+                    .foregroundStyle(Color.orange)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: m.space.sm) {
+                DMButton(chosen.isEmpty ? "Off for every account" : "Off, except the ticked accounts",
+                         variant: .primary, size: .small, isLoading: changing) {
+                    Task { await details.changePasswordLogin(.keep(chosen), machine: machine.name) }
+                }
+                DMButton("On for every account", variant: .outline, size: .small) {
+                    Task { await details.changePasswordLogin(.on, machine: machine.name) }
+                }
+                .disabled(hasHardening || changing)
+                .help(hasHardening
+                    ? "ssh_hardening turns it off again on every sync. Tick accounts instead, or remove the package."
+                    : "Takes the CLI's file away, so the system's own setting applies again.")
+            }
+        }
+        .onAppear { kept = Set(report.accounts.filter(\.allowed).map(\.user)) }
+        .onChange(of: report) { _, new in kept = Set(new.accounts.filter(\.allowed).map(\.user)) }
     }
 }

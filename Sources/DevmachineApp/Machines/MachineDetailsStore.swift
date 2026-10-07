@@ -22,6 +22,8 @@ struct MachineDetailsService: Sendable {
     var addresses: @Sendable (_ machine: String) async throws -> MachineAddresses
     var credentials: @Sendable (_ machine: String) async throws -> MachineCredentials
     var editLocation: @Sendable (_ machine: String, _ location: String) async throws -> Void
+    var passwordLogin: @Sendable (_ machine: String) async throws -> MachinePasswordLogin
+    var changePasswordLogin: @Sendable (_ machine: String, _ change: PasswordLoginChange) async throws -> Void
 
     static let live = MachineDetailsService(
         doctor: { machine, isSelf in
@@ -39,6 +41,13 @@ struct MachineDetailsService: Sendable {
         editLocation: { machine, location in
             try await Task.detached { try DevmachineCLI.resolve().editLocation(machine: machine, location: location) }
                 .value
+        },
+        passwordLogin: { machine in
+            try await Task.detached { try DevmachineCLI.resolve().passwordLogin(machine: machine) }.value
+        },
+        changePasswordLogin: { machine, change in
+            try await Task.detached { try DevmachineCLI.resolve().changePasswordLogin(machine: machine, to: change) }
+                .value
         })
 }
 
@@ -50,7 +59,7 @@ final class MachineDetailsStore: ObservableObject {
     static let shared = MachineDetailsStore(service: DemoMode.isActive ? DemoData.machineDetailsService : .live)
 
     enum Panel: String, CaseIterable, Identifiable {
-        case check, addresses, credentials
+        case check, addresses, credentials, passwordLogin
 
         var id: String { rawValue }
 
@@ -59,6 +68,7 @@ final class MachineDetailsStore: ObservableObject {
             case .check: return "Check"
             case .addresses: return "Addresses"
             case .credentials: return "Credentials"
+            case .passwordLogin: return "SSH password login"
             }
         }
     }
@@ -67,6 +77,9 @@ final class MachineDetailsStore: ObservableObject {
     @Published private(set) var checks: [String: MachineRead<DevmachineCLI.DoctorOutcome>] = [:]
     @Published private(set) var addresses: [String: MachineRead<MachineAddresses>] = [:]
     @Published private(set) var credentials: [String: MachineRead<MachineCredentials>] = [:]
+    @Published private(set) var passwordLogins: [String: MachineRead<MachinePasswordLogin>] = [:]
+    @Published private(set) var changingPasswordLogin: String?
+    @Published var passwordLoginError: [String: String] = [:]
     @Published private(set) var savingLocation: String?
     @Published var locationError: [String: String] = [:]
 
@@ -100,7 +113,30 @@ final class MachineDetailsStore: ObservableObject {
         case .credentials:
             credentials[machine] = .loading
             credentials[machine] = await result { try await self.service.credentials(machine) }
+        case .passwordLogin:
+            passwordLogins[machine] = .loading
+            passwordLogins[machine] = await result { try await self.service.passwordLogin(machine) }
         }
+    }
+
+    /// Changes who logs in over SSH with a password, then asks sshd again:
+    /// the answer shown is the machine's, never the one that was asked for.
+    func changePasswordLogin(_ change: PasswordLoginChange, machine: String) async {
+        guard changingPasswordLogin == nil else { return }
+        guard !DemoMode.isActive else {
+            passwordLoginError[machine] = "Demo mode never changes a machine."
+            return
+        }
+        changingPasswordLogin = machine
+        defer { changingPasswordLogin = nil }
+        do {
+            try await service.changePasswordLogin(machine, change)
+            passwordLoginError[machine] = nil
+            reload()
+        } catch {
+            passwordLoginError[machine] = PackageGateMessage.friendly(for: error)
+        }
+        await read(.passwordLogin, machine: machine, isSelf: false)
     }
 
     /// `machines edit --location` writes this Mac's configuration only.

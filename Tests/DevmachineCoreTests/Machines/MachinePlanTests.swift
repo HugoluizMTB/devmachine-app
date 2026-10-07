@@ -35,6 +35,42 @@ final class MachinePlanTests: XCTestCase {
         ])
     }
 
+    func testPasswordLoginOffForEveryoneAddsNoFlag() {
+        let unattended = MachinePlan.steps(for: server, unattended: true).first?.arguments ?? []
+        XCTAssertFalse(unattended.contains("--no-harden"))
+        XCTAssertFalse(unattended.contains("--keep-password-login"))
+    }
+
+    func testPasswordLoginKeptForSomeAccountsBecomesOneFlag() {
+        var draft = server
+        draft.passwordLogin = .keepSome
+        draft.keepPasswordLoginAccounts = " alice, bob ,alice"
+        XCTAssertEqual(draft.keptPasswordLoginAccounts, ["alice", "bob"])
+        for unattended in [true, false] {
+            let arguments = MachinePlan.steps(for: draft, unattended: unattended).first?.arguments ?? []
+            let flag = try? XCTUnwrap(arguments.firstIndex(of: "--keep-password-login"))
+            XCTAssertEqual(flag.map { arguments[$0 + 1] }, "alice,bob", "unattended \(unattended)")
+        }
+    }
+
+    func testPasswordLoginLeftOnIsNoHarden() {
+        var draft = server
+        draft.passwordLogin = .leaveOn
+        XCTAssertTrue(MachinePlan.steps(for: draft, unattended: true).first?.arguments.contains("--no-harden") ?? false)
+        XCTAssertTrue(MachinePlan.steps(for: draft).first?.arguments.contains("--no-harden") ?? false)
+    }
+
+    func testKeepingSomeAccountsNeedsAtLeastOneValidName() {
+        var draft = server
+        draft.passwordLogin = .keepSome
+        draft.keepPasswordLoginAccounts = ""
+        XCTAssertTrue(draft.problems(existingMachines: []).contains { $0.field == .passwordLogin })
+        draft.keepPasswordLoginAccounts = "alice,*"
+        XCTAssertTrue(draft.problems(existingMachines: []).contains { $0.field == .passwordLogin })
+        draft.keepPasswordLoginAccounts = "alice"
+        XCTAssertFalse(draft.problems(existingMachines: []).contains { $0.field == .passwordLogin })
+    }
+
     func testAPasswordServerIsAddedByTheCLIsOwnQuestions() {
         var draft = server
         draft.login = .password
@@ -110,6 +146,9 @@ final class MachinePlanTests: XCTestCase {
         XCTAssertTrue(MachinePlan.terminalAnswers(for: password)
             .contains(MachinePlan.Answer(question: "address", answer: "203.0.113.10")))
         XCTAssertEqual(MachinePlan.terminalAnswers(for: server), [])
+        XCTAssertEqual(MachinePlan.terminalAnswers(for: password).last?.answer, "1, off for every account")
+        password.passwordLogin = .leaveOn
+        XCTAssertFalse(MachinePlan.terminalAnswers(for: password).contains { $0.question.hasPrefix("SSH password") })
     }
 
     func testTheScriptShowsTheCommandRunsItAndPrintsItsMarker() {

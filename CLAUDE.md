@@ -1245,9 +1245,23 @@ once may fail there.
   has `~/.local/bin` first for an app-installed Lima. "Packages on this
   machine" opens Settings → Packages through `AppModel.openPackages`.
 - `DEVMACHINE_DEMO_WALK=machines-map` (`DemoMachinesMap`) captures
-  `160`–`170`: the fleet, a selection, each panel, a Lima start in the
-  corner, one and eight machines, the location editor, and the wizard's
-  field on a current and an older CLI. Nothing runs.
+  `160`–`172`: the fleet, a selection, each panel, a Lima start in the
+  corner, one and eight machines, the location editor, the wizard's
+  field on a current and an older CLI, the SSH password login panel, and
+  the wizard keeping one account's password.
+  Nothing runs.
+
+## SSH password login
+- SSH has one password setting for the whole machine, so turning it off
+  reaches every account: on a Mac, the people who use it too. The wizard
+  asks (`PasswordLoginChoice`): off for every account (no flag), off except
+  some (`--keep-password-login`, CLI 0.8.2+, hidden on an older one), or
+  left as it is (`--no-harden`).
+- The machine's "SSH password login" panel reads `machines password-login
+  --format json` and changes it with `--keep`/`--off`/`--on --yes`, then
+  reads the machine again: what it shows is sshd's answer. "On for every
+  account" is disabled while the machine has `ssh_hardening`, which turns
+  it off again on every sync.
 
 ## Machine jobs
 - **Every `devmachine` run against a machine is a machine job** (`MachineJobCenter`,

@@ -307,8 +307,8 @@ struct AddMachineDetailsView: View {
                 keyChoice
             } else {
                 field("Password", .password,
-                      hint: "Goes to the CLI on its standard input, once, to install a key; then password login "
-                        + "is turned off. It is never saved, logged or put in a command line.") {
+                      hint: "Goes to the CLI on its standard input, once, to install a key. "
+                        + "It is never saved, logged or put in a command line.") {
                     SecureField("The root password from your provider", text: draft.password.value).dmField()
                 }
             }
@@ -317,9 +317,32 @@ struct AddMachineDetailsView: View {
             keyFileField
             fingerprintField
         } else {
-            AddMachineNote(text: "The CLI asks for the password in the terminal on the last step, "
-                + "uses it once to install a key, then turns password login off. The app never sees it.")
+            AddMachineNote(text: "The CLI asks for the password in the terminal on the last step "
+                + "and uses it once to install a key. The app never sees it.")
             fingerprintField
+        }
+        passwordLoginFields
+    }
+
+    /// What happens to SSH password login once the key works. Off for every
+    /// account is the default; on a Mac that is every account on it.
+    @ViewBuilder
+    private var passwordLoginFields: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            label("SSH password login, once the key works")
+            DMTabStrip(
+                tabs: state.wizard.passwordLoginChoices, selection: draft.passwordLogin,
+                title: { $0.title }, fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
+            Text(verbatim: AddMachineContent.passwordLoginHint)
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if state.wizard.draft.passwordLogin == .keepSome {
+            field("Accounts that keep their password", .passwordLogin,
+                  hint: "Separated by commas. Every other account logs in with a key only.") {
+                TextField("alice, bob", text: draft.keepPasswordLoginAccounts).dmField()
+            }
         }
     }
 
@@ -837,6 +860,10 @@ enum AddMachineContent {
     static let defaultSizeNote = "This devmachine CLI makes the machine at its own size: 2 CPUs, 4 GiB of "
         + "memory, a 20 GiB disk. Version \(LocalMachineSizing.minimumCLIVersion) or newer lets you choose it here."
 
+    static let passwordLoginHint = "SSH has one setting for the whole machine. On a Mac that is every account "
+        + "on it: whoever logs in over SSH with a password needs a key afterwards, unless they keep it here. "
+        + "The login window, sudo and Screen Sharing keep their passwords."
+
     static let workspaceHint = "A workspace is an account on the machine where your sessions run. "
         + "Name it after your project, like acme. It gets the default workspace packages."
 
@@ -867,7 +894,7 @@ enum AddMachineContent {
             return "Lima creates a virtual machine on this Mac, then devmachine sets it up and installs "
                 + "what you chose. It takes a few minutes."
         case .server:
-            return "devmachine connects to \(draft.address), installs a key, turns password login off, "
+            return "devmachine connects to \(draft.address), installs a key, \(draft.passwordLoginPhrase), "
                 + "installs Ansible\(draft.sync ? " and the packages you chose" : ""). "
                 + "Nothing else on the server is changed."
         }
@@ -881,7 +908,7 @@ enum AddMachineContent {
         case .localVM:
             return "create-local takes a few minutes the first time." + sync + retry
         case .server:
-            return "The first command changes the server: a key goes in and password login goes off. "
+            return "The first command changes the server: a key goes in and it \(draft.passwordLoginPhrase). "
                 + "The package commands only write the configuration on this Mac." + sync + retry
         }
     }

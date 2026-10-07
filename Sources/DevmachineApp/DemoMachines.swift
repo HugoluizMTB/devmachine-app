@@ -222,5 +222,13 @@ extension DemoData {
                   "fix":"devmachine login gh --workspace acme"}]}
                 """)!
         },
-        editLocation: { _, _ in })
+        editLocation: { _, _ in },
+        passwordLogin: { machine in
+            MachinePasswordLogin.parse("""
+                {"machine":"\(machine)","default":false,"drop_in":true,
+                 "accounts":[{"user":"alice","password_login":true},{"user":"bob","password_login":false}],
+                 "keep":["alice"]}
+                """)!
+        },
+        changePasswordLogin: { _, _ in })
 }

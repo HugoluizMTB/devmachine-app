@@ -248,7 +248,8 @@ final class AddMachineModel: ObservableObject {
             firstRun: firstRun,
             sizeLimits: LocalMachineSizing.isSupported(cliVersion: machines.snapshot?.cliVersion) ? macLimits() : nil,
             skillAgentOptions: firstRun ? Self.skillAgentOptions(cliVersion: machines.snapshot?.cliVersion) : [],
-            takesLocation: machines.snapshot?.takesLocation ?? false)
+            takesLocation: machines.snapshot?.takesLocation ?? false,
+            takesKeepPasswordLogin: PasswordLoginChoice.keepIsSupported(cliVersion: machines.snapshot?.cliVersion))
         wizard.draft.localSize = wizard.sizeLimits?.defaultSize
         wizard.draft.hasConfiguration = machines.snapshot?.hasConfiguration ?? true
         wizard.draft.packages = MachinePackageCatalog.suggested(from: machines.packageCards)
