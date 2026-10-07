@@ -938,7 +938,7 @@ Rules:
   `YAMLScalarStyle.swift`, kept compatible with the CLI's `yaml.v3`. Cross-writer
   tests guard that: change the quoting and they fail.
 - **The golden fixture is the CLI's file.**
-  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.5.json` must stay
+  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.6.json` must stay
   byte-identical to `internal/widgets/testdata/contract.json` in the CLI repo.
   Change one, copy it to the other. `widgets schema --json` prints the same
   document re-indented, so the live test compares it as sorted-key JSON.
@@ -977,7 +977,7 @@ Rules:
   by SHA-256 (hex) of the canonical JSON (keys sorted, no spaces) of what
   runs, taken at run time with the area's real context
   (`ApprovalSubject.hash(for:context:)`): kind, run/script/args, shell,
-  target, harness, prompt, session, and for `shell: true` the `DM_` values it
+  target, harness, prompt, permission mode (only when set, so older approvals stay valid), session, and for `shell: true` the `DM_` values it
   reads (only the `$DM_CONTEXT_<KEY>` the line names is exported and hashed) — never `every`, `timeout`, `mode`, `keep` or `parse`. The card and
   the stored summary read `ApprovalPrompt`, built from that same filled
   source and `DM_` values, so the owner approves exactly what the hash
@@ -1179,7 +1179,7 @@ Rules:
   `frame`.
 
 ## Choosing and editing widgets
-Engine 1.5. One mechanism for every widget, on Home, the sidebars and the
+Engine 1.6. One mechanism for every widget, on Home, the sidebars and the
 menu bar; the app has no code for a particular widget's choices.
 
 - **A `choice` input declares its list.** `inputs.<name>: {type: choice,
@@ -1230,6 +1230,19 @@ menu bar; the app has no code for a particular widget's choices.
 - **Approval is unchanged.** An edit that changes what runs (command,
   arguments, target, prompt, session) asks again; title and `every` never
   do (`WidgetEditApprovalTests`).
+- **A prompt's permission mode comes from the contract.**
+  `PromptSource.permissionMode` holds the harness's own name, nil for its
+  default; `PermissionModes` is the only code that reads the contract's
+  `permission_mode` field (names per harness, the `dangerous` list, the
+  CLI's two messages). `ArgvBuilder.prompt` turns it into the harness's
+  flag (Claude `--permission-mode <m>`; Codex `--sandbox <m>`, or
+  `--approve-for-me` / `--dangerously-bypass-approvals-and-sandbox`), and
+  no mode keeps the old argv byte for byte. The mode is in the approval
+  hash, the card names it, and a mode with no checks shows a red line.
+  Such a mode never runs on a timer: the reader refuses it, an `every`
+  override refuses it, and the Prompt form sets Every to manual and
+  locks it. Never write a mode list in Swift: the picker reads
+  `InlineWidgetForm.permissionModes()`.
 - **Sheets on Home and in the sidebars, in place in the menu bar.** A
   sheet or nested popover from the `MenuBarExtra` window is not reliable, so
   the menubar Edit mode swaps its body for the chooser or the editor.
