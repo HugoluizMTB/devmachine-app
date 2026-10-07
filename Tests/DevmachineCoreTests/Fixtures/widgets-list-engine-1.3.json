@@ -1,0 +1,83 @@
+{
+  "engine": "1.3",
+  "packages_release": "v41",
+  "providers": {
+    "devmachine-app/stats": {"package": "devmachine-app", "command": "stats", "scope": "machine", "trust": "official",
+      "returns": {"cpu": "number", "memory": "number", "disk": "number", "uptime": "string?"}, "min_every": "30s"},
+    "acme-tools/load": {"package": "acme-tools", "command": "load", "scope": "workspace", "trust": "third-party",
+      "returns": {"load": "number"}, "min_every": "10s"}
+  },
+  "widgets": [
+    {
+      "name": "acme-tools/disk", "package": "acme-tools", "widget": "disk",
+      "origin": "local", "trust": "third-party", "version": "",
+      "path": "/Users/alice/.config/devmachine/packages/acme-tools/widgets/disk",
+      "package_path": "/Users/alice/.config/devmachine/packages/acme-tools",
+      "package_source": {"url": "https://example.com/acme/acme-tools.git", "ref": "v1.2.0", "commit": "1111111111111111111111111111111111111111"},
+      "summary": "Disk usage.", "requires_engine": ">= 1.1", "fits": ["canvas"], "context": {},
+      "inputs": {"machine": {"type": "machine", "default": "main", "summary": "Which machine."}},
+      "source": {"kind": "command", "script": "scripts/disk.sh", "target": {"machine": "{{inputs.machine}}"}, "every": "60s"},
+      "view": {"kind": "text"},
+      "sizes": ["medium"], "default_size": "medium", "places": [], "single": false, "surfaces": ["home"],
+      "available": true, "unavailable_reason": ""
+    },
+    {
+      "name": "acme-tools/health", "package": "acme-tools", "widget": "health",
+      "origin": "local", "trust": "third-party", "version": "",
+      "path": "/Users/alice/.config/devmachine/packages/acme-tools/widgets/health",
+      "package_path": "/Users/alice/.config/devmachine/packages/acme-tools",
+      "package_source": {"url": "https://example.com/acme/acme-tools.git", "ref": "v1.2.0", "commit": "1111111111111111111111111111111111111111"},
+      "summary": "Is the site up.", "requires_engine": ">= 1.1", "fits": ["canvas"], "context": {}, "inputs": {},
+      "source": {"kind": "url", "url": "https://example.com/health", "every": "60s"},
+      "view": {"kind": "status"},
+      "sizes": ["small"], "default_size": "small", "places": [], "single": false, "surfaces": ["home"],
+      "available": true, "unavailable_reason": ""
+    },
+    {
+      "name": "acme-tools/load", "package": "acme-tools", "widget": "load",
+      "origin": "local", "trust": "third-party", "version": "",
+      "path": "/Users/alice/.config/devmachine/packages/acme-tools/widgets/load",
+      "package_path": "/Users/alice/.config/devmachine/packages/acme-tools",
+      "package_source": {"url": "https://example.com/acme/acme-tools.git", "ref": "v1.2.0", "commit": "1111111111111111111111111111111111111111"},
+      "provider": {"returns": {"load": "number"}, "min_every": "10s"},
+      "summary": "Load of a workspace.", "requires_engine": ">= 1.3", "fits": ["canvas", "stack"], "context": {},
+      "inputs": {
+        "workspace": {"type": "workspace", "default": "alice-dev", "summary": "Which workspace."},
+        "window": {"type": "string", "default": "5m", "summary": "Averaging window."}
+      },
+      "source": {"kind": "provider", "name": "acme-tools/load", "with": {"window": "{{inputs.window}}"},
+                 "target": {"workspace": "{{inputs.workspace}}"}, "every": "30s"},
+      "view": {"kind": "number", "value": "{{json.load}}"},
+      "sizes": ["small"], "default_size": "small", "places": [], "single": false, "surfaces": ["home"],
+      "available": true, "unavailable_reason": ""
+    },
+    {
+      "name": "devmachine-app/machine-stats", "package": "devmachine-app", "widget": "machine-stats",
+      "origin": "release", "trust": "official",
+      "provider": {"returns": {"cpu": "number", "memory": "number", "disk": "number", "uptime": "string?"}, "min_every": "30s"},
+      "version": "v41",
+      "path": "/Users/alice/.config/devmachine/cache/packages/v41/packages/devmachine-app/widgets/machine-stats",
+      "package_path": "/Users/alice/.config/devmachine/cache/packages/v41/packages/devmachine-app",
+      "summary": "CPU, memory and disk of one machine.", "requires_engine": ">= 1.3",
+      "fits": ["canvas", "stack"], "context": {},
+      "inputs": {"machine": {"type": "machine", "default": "main", "summary": "Which machine."}},
+      "source": {"kind": "provider", "name": "devmachine-app/stats", "target": {"machine": "{{inputs.machine}}"}, "every": "60s"},
+      "view": {"kind": "gauge", "value": "{{json.cpu}}", "unit": "%"},
+      "sizes": ["small", "medium"], "default_size": "small", "places": [], "single": false,
+      "surfaces": ["home", "sidebar", "context-sidebar"], "available": true, "unavailable_reason": ""
+    },
+    {
+      "name": "mine/uptime", "package": "mine", "widget": "uptime",
+      "origin": "local", "trust": "local", "version": "",
+      "path": "/Users/alice/.config/devmachine/packages/mine/widgets/uptime",
+      "package_path": "/Users/alice/.config/devmachine/packages/mine",
+      "summary": "Uptime.", "requires_engine": ">= 1.1", "fits": ["canvas"], "context": {},
+      "inputs": {"machine": {"type": "machine", "default": "main", "summary": "Which machine."}},
+      "source": {"kind": "command", "run": "uptime", "target": {"machine": "{{inputs.machine}}"}, "every": "60s"},
+      "view": {"kind": "text"},
+      "sizes": ["small"], "default_size": "small", "places": [], "single": false, "surfaces": ["home"],
+      "available": true, "unavailable_reason": ""
+    }
+  ],
+  "problems": []
+}

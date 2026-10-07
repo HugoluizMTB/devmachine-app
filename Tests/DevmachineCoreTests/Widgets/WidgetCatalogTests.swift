@@ -267,4 +267,75 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.widget(named: "devmachine-app/links")?.single, false)
         XCTAssertFalse(CatalogWidget.inline(id: "a", title: "A", sizes: [], fits: [], viewKind: "text").single)
     }
+
+    private func catalog(_ name: String) throws -> WidgetCatalog {
+        try WidgetCatalog.decode(fixture(name))
+    }
+
+    func testEachWidgetSaysWhereItsCodeComesFrom() throws {
+        let catalog = try catalog("widgets-list-engine-1.3.json")
+        XCTAssertEqual(catalog.widget(named: "devmachine-app/machine-stats")?.trust, .official)
+        XCTAssertEqual(catalog.widget(named: "mine/uptime")?.trust, .local)
+        let load = try XCTUnwrap(catalog.widget(named: "acme-tools/load"))
+        XCTAssertEqual(load.trust, .thirdParty)
+        XCTAssertEqual(load.packageSource, CatalogPackageSource(
+            url: "https://example.com/acme/acme-tools.git", ref: "v1.2.0",
+            commit: "1111111111111111111111111111111111111111"))
+        XCTAssertNil(catalog.widget(named: "mine/uptime")?.packageSource)
+    }
+
+    func testAPackageProviderWidgetCarriesItsProvidersSpec() throws {
+        let catalog = try catalog("widgets-list-engine-1.3.json")
+        XCTAssertEqual(catalog.widget(named: "acme-tools/load")?.packageProvider,
+                       PackageProviderSpec(returns: ["load": "number"], minEvery: "10s"))
+        XCTAssertNil(catalog.widget(named: "acme-tools/disk")?.packageProvider)
+        XCTAssertEqual(catalog.providers?.map(\.name), ["acme-tools/load", "devmachine-app/stats"])
+        XCTAssertEqual(catalog.providers?.first?.spec, PackageProviderSpec(returns: ["load": "number"], minEvery: "10s"))
+    }
+
+    func testTheIndexIsCompleteOnlyWhenTheCLIListedEveryProvider() throws {
+        let index = try catalog("widgets-list-engine-1.3.json").packageProviderIndex
+        XCTAssertTrue(index.isComplete)
+        XCTAssertEqual(try index.spec(for: "devmachine-app/stats")?.minEvery, "30s")
+        XCTAssertTrue(index.packages.isSuperset(of: ["acme-tools", "devmachine-app", "mine"]))
+        XCTAssertThrowsError(try index.spec(for: "ghost/load"))
+        XCTAssertThrowsError(try index.spec(for: "mine/load"))
+
+        let older = try catalog("widgets-list-engine-1.1.json").packageProviderIndex
+        XCTAssertFalse(older.isComplete)
+        XCTAssertNil(try older.spec(for: "ghost/load"))
+    }
+
+    func testAnEmptyProviderListStillMakesTheIndexComplete() throws {
+        let json = #"{"engine": "1.3", "providers": {}, "widgets": []}"#
+        let catalog = try WidgetCatalog.decode(Data(json.utf8))
+        XCTAssertEqual(catalog.providers, [])
+        XCTAssertTrue(catalog.packageProviderIndex.isComplete)
+    }
+
+    func testAGoNullReturnsAndAMissingOriginFileStillDecode() throws {
+        let json = #"""
+        {"engine": "1.3", "providers": {"mine/load": {"package": "mine", "command": "load", "returns": null, "min_every": ""}},
+         "widgets": [{"name": "acme-tools/disk", "package": "acme-tools", "widget": "disk", "origin": "local",
+           "trust": "third-party", "source": {"kind": "url", "url": "https://example.com", "every": "60s"},
+           "view": {"kind": "status"}}]}
+        """#
+        let catalog = try WidgetCatalog.decode(Data(json.utf8))
+        XCTAssertEqual(catalog.providers?.first?.spec, PackageProviderSpec(returns: [:], minEvery: ""))
+        let disk = try XCTUnwrap(catalog.widget(named: "acme-tools/disk"))
+        XCTAssertEqual(disk.trust, .thirdParty)
+        XCTAssertNil(disk.packageSource)
+    }
+
+    func testTrustFallsBackByOriginAndAnUnknownWordIsThirdParty() throws {
+        let older = try catalog("widgets-list-engine-1.1.json")
+        XCTAssertTrue(older.widgets.allSatisfy { $0.trust == .local })
+        XCTAssertEqual(WidgetTrust.read(nil, origin: "release"), .official)
+        XCTAssertEqual(WidgetTrust.read(nil, origin: "local"), .local)
+        XCTAssertEqual(WidgetTrust.read("official", origin: "local"), .official)
+        XCTAssertEqual(WidgetTrust.read("third-party", origin: "release"), .thirdParty)
+        XCTAssertEqual(WidgetTrust.read("community", origin: "release"), .thirdParty)
+        XCTAssertEqual(CatalogFixtures.clock.trust, .official)
+        XCTAssertEqual(CatalogWidget.inline(id: "a", title: "A", sizes: [], fits: [], viewKind: "text").trust, .local)
+    }
 }

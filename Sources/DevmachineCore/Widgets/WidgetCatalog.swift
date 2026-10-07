@@ -8,17 +8,24 @@ public struct WidgetCatalog: Decodable, Equatable, Sendable {
     public let packagesRelease: String
     public let widgets: [CatalogWidget]
     public let problems: [CatalogProblem]
+    /// Every package provider the CLI found, sorted by name; nil from a CLI
+    /// older than engine 1.3, which lists none.
+    public let providers: [CatalogProvider]?
 
     enum CodingKeys: String, CodingKey {
-        case engine, widgets, problems
+        case engine, widgets, problems, providers
         case packagesRelease = "packages_release"
     }
 
-    public init(engine: String, packagesRelease: String, widgets: [CatalogWidget], problems: [CatalogProblem] = []) {
+    public init(
+        engine: String, packagesRelease: String, widgets: [CatalogWidget], problems: [CatalogProblem] = [],
+        providers: [CatalogProvider]? = nil
+    ) {
         self.engine = engine
         self.packagesRelease = packagesRelease
         self.widgets = widgets
         self.problems = problems
+        self.providers = providers
     }
 
     public init(from decoder: Decoder) throws {
@@ -27,6 +34,20 @@ public struct WidgetCatalog: Decodable, Equatable, Sendable {
         packagesRelease = try c.decodeIfPresent(String.self, forKey: .packagesRelease) ?? ""
         widgets = try c.decodeIfPresent([CatalogWidget].self, forKey: .widgets) ?? []
         problems = try c.decodeIfPresent([CatalogProblem].self, forKey: .problems) ?? []
+        providers = try c.decodeIfPresent([String: PackageProviderSpec].self, forKey: .providers)?
+            .map { CatalogProvider(name: $0.key, spec: $0.value) }
+            .sorted { $0.name < $1.name }
+    }
+
+    public var packageProviderIndex: PackageProviderIndex {
+        var specs: [String: PackageProviderSpec] = [:]
+        for widget in widgets {
+            if let spec = widget.packageProvider { specs[widget.source.name] = spec }
+        }
+        for provider in providers ?? [] { specs[provider.name] = provider.spec }
+        let packages = Set(widgets.map(\.package))
+            .union(specs.keys.compactMap { PackageProviderName.parts($0)?.package })
+        return PackageProviderIndex(providers: specs, packages: packages, isComplete: providers != nil)
     }
 
     public static func decode(_ data: Data) throws -> WidgetCatalog {
@@ -35,6 +56,18 @@ public struct WidgetCatalog: Decodable, Equatable, Sendable {
 
     public func widget(named name: String) -> CatalogWidget? {
         widgets.first { $0.name == name }
+    }
+}
+
+/// One entry of the catalog's top-level `providers`, the list a widget
+/// written in a board is checked against.
+public struct CatalogProvider: Equatable, Sendable {
+    public let name: String
+    public let spec: PackageProviderSpec
+
+    public init(name: String, spec: PackageProviderSpec) {
+        self.name = name
+        self.spec = spec
     }
 }
 
@@ -104,6 +137,42 @@ public struct CatalogSource: Decodable, Equatable, Sendable {
     }
 }
 
+/// Where a widget's code comes from. Only `thirdParty` code asks before it
+/// runs: an official release and a hand-written package are the owner's own.
+public enum WidgetTrust: String, Sendable {
+    case official
+    case local
+    case thirdParty = "third-party"
+
+    /// An older CLI writes no trust; a word this app does not know asks.
+    public static func read(_ text: String?, origin: String) -> WidgetTrust {
+        guard let text else { return origin == "release" ? .official : .local }
+        return WidgetTrust(rawValue: text) ?? .thirdParty
+    }
+}
+
+/// `.devmachine-source.yml` of a package installed from a git URL.
+public struct CatalogPackageSource: Decodable, Equatable, Sendable {
+    public let url: String
+    public let ref: String
+    public let commit: String
+
+    public init(url: String, ref: String, commit: String) {
+        self.url = url
+        self.ref = ref
+        self.commit = commit
+    }
+
+    enum CodingKeys: String, CodingKey { case url, ref, commit }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        url = try c.decodeIfPresent(String.self, forKey: .url) ?? ""
+        ref = try c.decodeIfPresent(String.self, forKey: .ref) ?? ""
+        commit = try c.decodeIfPresent(String.self, forKey: .commit) ?? ""
+    }
+}
+
 public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
     public var id: String { name }
 
@@ -129,6 +198,9 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
     public var surfaces: [String]
     public var available: Bool
     public var unavailableReason: String
+    public var trust: WidgetTrust
+    public var packageSource: CatalogPackageSource?
+    public var packageProvider: PackageProviderSpec?
 
     public init(
         name: String, summary: String = "", requiresEngine: String = ">= 1.0",
@@ -137,7 +209,8 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         sizes: [String], defaultSize: String, places: [String] = ["home"], surfaces: [String] = ["home"],
         available: Bool = true, unavailableReason: String = "",
         origin: String = "release", version: String = "", path: String = "",
-        view: WidgetValue? = nil, packagePath: String = "", single: Bool = false
+        view: WidgetValue? = nil, packagePath: String = "", single: Bool = false,
+        trust: WidgetTrust? = nil, packageSource: CatalogPackageSource? = nil, packageProvider: PackageProviderSpec? = nil
     ) {
         let parts = name.split(separator: "/", maxSplits: 1).map(String.init)
         self.name = name
@@ -162,11 +235,16 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         self.view = view ?? .object(["kind": .string(viewKind)])
         self.packagePath = packagePath
         self.single = single
+        self.trust = trust ?? WidgetTrust.read(nil, origin: origin)
+        self.packageSource = packageSource
+        self.packageProvider = packageProvider
     }
 
     enum CodingKeys: String, CodingKey {
         case name, package, widget, origin, version, path, summary, fits, context, inputs, source, view
-        case sizes, places, single, surfaces, available
+        case sizes, places, single, surfaces, available, trust
+        case packageSource = "package_source"
+        case packageProvider = "provider"
         case requiresEngine = "requires_engine"
         case defaultSize = "default_size"
         case unavailableReason = "unavailable_reason"
@@ -179,6 +257,9 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         package = try c.decode(String.self, forKey: .package)
         widget = try c.decode(String.self, forKey: .widget)
         origin = try c.decodeIfPresent(String.self, forKey: .origin) ?? ""
+        trust = WidgetTrust.read(try c.decodeIfPresent(String.self, forKey: .trust), origin: origin)
+        packageSource = try c.decodeIfPresent(CatalogPackageSource.self, forKey: .packageSource)
+        packageProvider = try c.decodeIfPresent(PackageProviderSpec.self, forKey: .packageProvider)
         version = try c.decodeIfPresent(String.self, forKey: .version) ?? ""
         path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
         summary = try c.decodeIfPresent(String.self, forKey: .summary) ?? ""

@@ -41,6 +41,12 @@ public struct PackageProviderSpec: Decodable, Hashable, Sendable {
         self.minEvery = minEvery
     }
 
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        returns = try c.decodeIfPresent([String: String].self, forKey: .returns) ?? [:]
+        minEvery = try c.decodeIfPresent(String.self, forKey: .minEvery) ?? ""
+    }
+
     public var requiredFields: [String] {
         returns.filter { !$0.value.hasSuffix("?") }.keys.sorted()
     }
