@@ -7,6 +7,10 @@ public enum HomeBoardCopy {
         + "The current layout is kept beside it as home.yml.bak."
     public static let resetConfirmation = "Home goes back to its first layout. The current file is saved as home.yml.bak."
 
+    public static func placementsSaveFailed(_ error: String) -> String {
+        "Couldn't save which widgets were placed: \(error)"
+    }
+
     public static func invalidCause(_ problem: BoardProblem) -> String {
         let sentence = problem.message.hasSuffix(".") ? problem.message : problem.message + "."
         return problem.line.map { "Line \($0): \(sentence)" } ?? sentence

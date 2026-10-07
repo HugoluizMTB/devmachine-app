@@ -19,6 +19,11 @@ extension DemoData {
             sizes: ["medium", "large", "tall"], defaultSize: "large"),
         demoUsage(package: "claude-code", harness: "claude"),
         demoUsage(package: "codex", harness: "codex"),
+        CatalogWidget(
+            name: "github/open-prs", summary: "Pull requests waiting on you.",
+            source: CatalogSource(name: "github/open-prs", every: "5m"), viewKind: "list",
+            sizes: ["medium", "tall"], defaultSize: "medium", available: false,
+            unavailableReason: "add the package: devmachine packages add github --machine <name>"),
     ])
 
     private static func demoUsage(package: String, harness: String) -> CatalogWidget {

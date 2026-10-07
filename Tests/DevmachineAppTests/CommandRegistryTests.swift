@@ -233,4 +233,10 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(command?.badgeText, "0.8.0")
         XCTAssertEqual(command?.action, .openSettings(.about))
     }
+
+    func testAddingAWidgetIsAlwaysOffered() {
+        let command = CommandRegistry.commands(in: context()).first { $0.id == "action.add-widget" }
+        XCTAssertEqual(command?.title, "Add a widget to Home…")
+        XCTAssertEqual(command?.action, .addWidget)
+    }
 }

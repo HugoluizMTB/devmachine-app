@@ -153,4 +153,22 @@ public enum WidgetGallery {
             .filter { $0.surfaces.contains(surface) }
             .sorted { ($0.available ? 0 : 1, $0.name) < ($1.available ? 0 : 1, $1.name) }
     }
+
+    public struct UnavailableHint: Equatable, Sendable {
+        public let advice: String
+        public let command: String?
+
+        public init(advice: String, command: String?) {
+            self.advice = advice
+            self.command = command
+        }
+    }
+
+    /// The CLI writes `unavailable_reason` as "advice: devmachine …"; the
+    /// command part is offered on its own so it can be copied and run.
+    public static func hint(_ reason: String) -> UnavailableHint {
+        guard let range = reason.range(of: ": devmachine ") else { return UnavailableHint(advice: reason, command: nil) }
+        let command = String(reason[reason.index(range.lowerBound, offsetBy: 2)...])
+        return UnavailableHint(advice: String(reason[..<range.lowerBound]), command: command)
+    }
 }

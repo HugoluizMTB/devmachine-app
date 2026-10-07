@@ -110,6 +110,10 @@ enum CommandRegistry {
                     systemImage: "plus.circle", keywords: subdomainKeywords,
                     action: .addSubdomain(machine: context.subdomainsMachine)),
                 isAvailable: { $0.hasCaddyMachine && !$0.machines.isEmpty }),
+            Entry(command: PaletteCommand(
+                id: "action.add-widget", title: "Add a widget to Home…", subtitle: "", category: .action,
+                systemImage: "square.grid.2x2", keywords: ["widget", "home", "dashboard", "board", "canvas"],
+                action: .addWidget)),
             Entry(
                 command: PaletteCommand(
                     id: "action.open-preview", title: "Open preview…", subtitle: "",

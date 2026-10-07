@@ -12,8 +12,10 @@ struct HomeCanvasView: View {
     @ObservedObject private var catalog: WidgetCatalogStore
     @EnvironmentObject private var usage: HarnessUsageStore
     @EnvironmentObject private var stats: StatsStore
+    @EnvironmentObject private var model: AppModel
     @Environment(\.dmMetrics) private var m
     @Environment(\.collapsedSidebarButtonFrame) private var sidebarButton
+    @State private var showsGallery = false
     @State private var canvasSize: CGSize = .zero
     @State private var inWindow: CGRect = .zero
     @State private var clockRect: CGRect?
@@ -45,6 +47,13 @@ struct HomeCanvasView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WallpaperBackground(mapPlacement: mapPlacement))
         .clipped()
+        .overlay(alignment: .topTrailing) { addButton }
+        .onChange(of: showsGallery) { _, open in if open { catalog.reloadSoon() } }
+        .onChange(of: model.pendingWidgetGallery, initial: true) { _, pending in
+            guard pending else { return }
+            model.pendingWidgetGallery = false
+            showsGallery = true
+        }
         .onAppear {
             controller.start()
             controller.runtime.providers = AppWidgetProviders(usage: usage, stats: stats)
@@ -52,6 +61,27 @@ struct HomeCanvasView: View {
             stats.start()
         }
         .onDisappear { controller.runtime.stop() }
+    }
+
+    private var addButton: some View {
+        DMButton(icon: "plus", label: "Add a widget") { showsGallery = true }
+            .dmGlass(radius: DMRadius.pill)
+            .padding(m.pt(HomeCanvasMetrics.padding))
+            .popover(isPresented: $showsGallery, arrowEdge: .bottom) {
+                WidgetGalleryView(
+                    catalog: catalog.catalog,
+                    failure: catalogFailureMessage,
+                    onAdd: { widget in
+                        controller.add(widget, canvasWidth: Int(canvasSize.width / m.pt(1)))
+                        showsGallery = false
+                    },
+                    onRetry: { catalog.reloadSoon() })
+            }
+    }
+
+    private var catalogFailureMessage: String? {
+        if case let .failed(message) = catalog.state { return message }
+        return nil
     }
 
     /// Moves the canvas down so the floating button that reopens the
@@ -309,8 +339,40 @@ private struct BoardCanvasLayer: View {
         }
     }
 
-    @ViewBuilder
     private var problemBanner: some View {
+        VStack(spacing: m.space.sm) {
+            boardProblem
+            placementsWarning
+        }
+        .padding(.top, m.space.xl)
+    }
+
+    @ViewBuilder
+    private var placementsWarning: some View {
+        if let error = controller.placementsError {
+            HStack(alignment: .top, spacing: m.space.sm) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                Text(verbatim: HomeBoardCopy.placementsSaveFailed(error))
+                    .font(.dm(11))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: m.space.sm)
+                DMIconButton(systemImage: "xmark", size: 9, hitSize: DMHitSize.compact) {
+                    controller.dismissPlacementsError()
+                }
+                .accessibilityLabel("Dismiss")
+            }
+            .frame(width: m.card.sheet, alignment: .leading)
+            .padding(.horizontal, m.space.lg)
+            .padding(.vertical, m.space.md)
+            .dmGlass(radius: DMRadius.toast)
+        }
+    }
+
+    @ViewBuilder
+    private var boardProblem: some View {
         if case let .invalid(problem) = store.status {
             VStack(alignment: .leading, spacing: m.space.sm) {
                 DMErrorStateView(
@@ -325,13 +387,11 @@ private struct BoardCanvasLayer: View {
             .frame(width: m.card.sheet, alignment: .leading)
             .padding(m.space.lg)
             .dmGlass(radius: DMRadius.toast)
-            .padding(.top, m.space.xl)
         } else if let error = store.writeError {
             DMErrorStateView(state: DMErrorState(title: "Could not save home.yml", message: error))
                 .frame(width: m.card.sheet, alignment: .leading)
                 .padding(m.space.lg)
                 .dmGlass(radius: DMRadius.toast)
-                .padding(.top, m.space.xl)
         }
     }
 }

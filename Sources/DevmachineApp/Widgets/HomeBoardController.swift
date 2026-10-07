@@ -186,6 +186,10 @@ final class HomeBoardController: ObservableObject {
         savePlacements(next)
     }
 
+    func dismissPlacementsError() {
+        placementsError = nil
+    }
+
     func resetHome() throws {
         guard let store else { throw HomeBoardError.noConfiguration }
         try store.reset()

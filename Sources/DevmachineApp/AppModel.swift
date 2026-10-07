@@ -572,6 +572,7 @@ final class AppModel: ObservableObject {
     @Published var pendingPublishWorkspace: String?
     /// Asks the Subdomains page to open its Add subdomain sheet once shown.
     @Published var pendingAddSubdomain = false
+    @Published var pendingWidgetGallery = false
     /// Settings → Workspaces should open its New workspace form.
     @Published var pendingNewWorkspace = false
     /// The Settings pane to open on, read once by the Settings page.
@@ -1334,6 +1335,12 @@ final class AppModel: ObservableObject {
     func requestAddSubdomain() {
         activePage = .subdomains
         pendingAddSubdomain = true
+    }
+
+    /// Home opens its widget gallery (`HomeCanvasView` takes the request).
+    func requestWidgetGallery() {
+        goHome()
+        pendingWidgetGallery = true
     }
 
     /// Opens the host key review over the current screen, which stays as it is.

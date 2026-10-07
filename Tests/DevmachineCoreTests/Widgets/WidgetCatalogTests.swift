@@ -162,6 +162,19 @@ final class WidgetCatalogTests: XCTestCase {
             ["devmachine-app/clock", "devmachine-app/machines", "acme/usage"])
     }
 
+    func testTheGalleryHintSplitsTheCommandFromTheAdvice() {
+        XCTAssertEqual(
+            WidgetGallery.hint("add the package: devmachine packages add acme --machine <name>"),
+            WidgetGallery.UnavailableHint(
+                advice: "add the package", command: "devmachine packages add acme --machine <name>"))
+        XCTAssertEqual(
+            WidgetGallery.hint("sync to install the package: devmachine sync"),
+            WidgetGallery.UnavailableHint(advice: "sync to install the package", command: "devmachine sync"))
+        XCTAssertEqual(
+            WidgetGallery.hint("needs a newer app"), WidgetGallery.UnavailableHint(advice: "needs a newer app", command: nil))
+        XCTAssertEqual(WidgetGallery.hint(""), WidgetGallery.UnavailableHint(advice: "", command: nil))
+    }
+
     func testAPackageNameWithAnUnderscoreKeepsItWhole() {
         let status = CatalogWidget(
             name: "ssh_hardening/status", source: CatalogSource(name: "ssh_hardening/status", every: "60s"),

@@ -11,4 +11,9 @@ final class HomeBoardCopyTests: XCTestCase {
         XCTAssertEqual(
             HomeBoardCopy.invalidNote, "Home keeps the last good layout and saves nothing until the file is fixed.")
     }
+
+    func testAFailedPlacementsSaveSaysWhatWasLost() {
+        XCTAssertEqual(
+            HomeBoardCopy.placementsSaveFailed("disk full"), "Couldn't save which widgets were placed: disk full")
+    }
 }

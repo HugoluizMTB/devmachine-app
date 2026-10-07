@@ -189,6 +189,22 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertNil(controller.placementsError)
     }
 
+    func testDismissingThePlacementsErrorHidesIt() throws {
+        let folder = root.appendingPathComponent("support")
+        try Data("x".utf8).write(to: folder)
+        let catalogStore = WidgetCatalogStore(read: { DemoData.widgetCatalog })
+        catalogStore.seed(DemoData.widgetCatalog)
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: folder.appendingPathComponent("widget-placements.json")),
+            catalog: catalogStore)
+        controller.defaultBoard = { DefaultBoard.make(usage: []) }
+        controller.open(configDirectory: root.appendingPathComponent("config").path)
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude"])
+        XCTAssertNotNil(controller.placementsError)
+        controller.dismissPlacementsError()
+        XCTAssertNil(controller.placementsError)
+    }
+
     func testReloadOpensTheBoardOnceTheConfigurationIsKnown() async throws {
         let configPath = root.appendingPathComponent("config").path
         let answers = ConfigAnswers([nil, configPath])
