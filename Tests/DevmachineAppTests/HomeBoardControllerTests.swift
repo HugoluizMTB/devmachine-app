@@ -24,7 +24,7 @@ final class HomeBoardControllerTests: XCTestCase {
         let controller = HomeBoardController(
             placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
             catalog: catalogStore, configPath: { nil })
-        controller.defaultBoard = { DefaultBoard.make(harnesses: ["claude"]) }
+        controller.defaultBoard = { DefaultBoard.make(harnesses: ["claude"], canvasWidth: $0) }
         controller.open(configDirectory: root.appendingPathComponent("config").path)
         return controller
     }
@@ -281,6 +281,19 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertEqual(controller.store?.board?.widgets.count, 0)
     }
 
+    func testTheDefaultBoardIsLaidOutForTheCanvasWidthKnownWhenItIsWritten() throws {
+        let catalogStore = WidgetCatalogStore(read: { DemoData.widgetCatalog })
+        catalogStore.seed(DemoData.widgetCatalog)
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
+            catalog: catalogStore, configPath: { nil })
+        controller.defaultBoard = { DefaultBoard.make(harnesses: ["claude"], canvasWidth: $0) }
+        controller.canvasWidth = 2000
+        controller.open(configDirectory: root.appendingPathComponent("config").path)
+        let clock = try XCTUnwrap(controller.store?.board?.widgets.first { $0.id == "clock" })
+        XCTAssertEqual(clock.frame.x + clock.frame.w, 1976)
+    }
+
     func testOpeningWritesTheDefaultBoard() throws {
         let controller = makeController()
         XCTAssertEqual(controller.store?.board?.widgets.map(\.id), ["machines", "clock", "summary", "claude-usage"])
@@ -430,7 +443,7 @@ final class HomeBoardControllerTests: XCTestCase {
         let controller = HomeBoardController(
             placementsFile: WidgetPlacementsFile(fileURL: blocker.appendingPathComponent("widget-placements.json")),
             catalog: catalogStore)
-        controller.defaultBoard = { DefaultBoard.make(harnesses: []) }
+        controller.defaultBoard = { _ in DefaultBoard.make(harnesses: []) }
         controller.open(configDirectory: root.appendingPathComponent("config").path)
         XCTAssertNil(controller.placementsError)
         controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
@@ -449,7 +462,7 @@ final class HomeBoardControllerTests: XCTestCase {
         let controller = HomeBoardController(
             placementsFile: WidgetPlacementsFile(fileURL: folder.appendingPathComponent("widget-placements.json")),
             catalog: catalogStore)
-        controller.defaultBoard = { DefaultBoard.make(harnesses: []) }
+        controller.defaultBoard = { _ in DefaultBoard.make(harnesses: []) }
         controller.open(configDirectory: root.appendingPathComponent("config").path)
         controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude"])
         XCTAssertNotNil(controller.placementsError)
@@ -466,7 +479,7 @@ final class HomeBoardControllerTests: XCTestCase {
         let controller = HomeBoardController(
             placementsFile: WidgetPlacementsFile(fileURL: folder.appendingPathComponent("widget-placements.json")),
             catalog: catalogStore)
-        controller.defaultBoard = { DefaultBoard.make(harnesses: []) }
+        controller.defaultBoard = { _ in DefaultBoard.make(harnesses: []) }
         controller.open(configDirectory: root.appendingPathComponent("config").path)
         controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude"])
         XCTAssertNotNil(controller.placementsError)
@@ -511,7 +524,7 @@ final class HomeBoardControllerTests: XCTestCase {
             placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
             catalog: catalogStore,
             configPath: { answers.next() })
-        controller.defaultBoard = { DefaultBoard.make(harnesses: []) }
+        controller.defaultBoard = { _ in DefaultBoard.make(harnesses: []) }
         controller.start()
         try await waitUntil { answers.calls == 1 }
         try await Task.sleep(nanoseconds: 50_000_000)
@@ -548,7 +561,7 @@ final class HomeBoardControllerTests: XCTestCase {
         let placementsURL = support.appendingPathComponent("widget-placements.json")
         let controller = HomeBoardController(
             placementsFile: WidgetPlacementsFile(fileURL: placementsURL), catalog: catalogStore)
-        controller.defaultBoard = { DefaultBoard.make(harnesses: []) }
+        controller.defaultBoard = { _ in DefaultBoard.make(harnesses: []) }
         controller.open(configDirectory: root.appendingPathComponent("config").path)
         controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
         XCTAssertNotNil(controller.placementsError)

@@ -51,8 +51,10 @@ struct HomeCanvasView: View {
                 catalogFailure
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-            .onAppear { canvasSize = proxy.size }
-            .onChange(of: proxy.size) { _, next in canvasSize = next }
+            .onChange(of: proxy.size, initial: true) { _, next in
+                canvasSize = next
+                startOnceSized(next)
+            }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(windowSpace)) } action: {
                 inWindow = $0
             }
@@ -71,16 +73,23 @@ struct HomeCanvasView: View {
             showsGallery = true
         }
         .onAppear {
-            controller.start()
+            stats.start()
             controller.runtime.providers = AppWidgetProviders(usage: usage, stats: stats, prs: prStore)
             controller.runtime.start()
             controller.sources.start()
-            stats.start()
         }
         .onDisappear {
             controller.runtime.stop()
             controller.sources.stop()
         }
+    }
+
+    /// A missing `home.yml` is written when the board opens, so the board
+    /// opens only once the canvas has a width to lay the default out for.
+    private func startOnceSized(_ size: CGSize) {
+        guard size.width > 0 else { return }
+        controller.canvasWidth = Int(size.width / m.pt(1))
+        controller.start()
     }
 
     private var addButton: some View {

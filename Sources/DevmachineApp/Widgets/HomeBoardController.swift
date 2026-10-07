@@ -27,7 +27,7 @@ final class HomeBoardController: ObservableObject {
     let catalog: WidgetCatalogStore
     let runtime = WidgetRuntimeDriver()
     var canvasWidth = 1280
-    var defaultBoard: @MainActor () -> Board = { DefaultBoard.make(harnesses: []) }
+    var defaultBoard: @MainActor (_ canvasWidth: Int) -> Board = { DefaultBoard.make(harnesses: [], canvasWidth: $0) }
 
     private let placementsFile: WidgetPlacementsFile
     private var placements: WidgetPlacements
@@ -99,7 +99,10 @@ final class HomeBoardController: ObservableObject {
     func open(configDirectory: String) {
         let store = BoardStore(
             fileURL: BoardStore.homeFileURL(configDirectory: configDirectory),
-            makeDefault: { [weak self] in self?.defaultBoard() ?? DefaultBoard.make(harnesses: []) })
+            makeDefault: { [weak self] in
+                guard let self else { return DefaultBoard.make(harnesses: []) }
+                return self.defaultBoard(self.canvasWidth)
+            })
         watcher = nil
         watchedFolder = nil
         self.store = store

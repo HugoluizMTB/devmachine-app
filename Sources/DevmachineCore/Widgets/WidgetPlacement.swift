@@ -1,48 +1,104 @@
 import Foundation
 
-/// The board written when `home.yml` is missing or reset: the Home the app
-/// drew before widgets, laid out at a 1280 x 800 reference in board points.
+/// The board written when `home.yml` is missing or reset, laid out for the
+/// canvas width known at that moment (1280 when none is): every machine in a
+/// row at the top, the usage cards side by side under it, and the clock with
+/// the summary pill under it on the right edge.
 public enum DefaultBoard {
     public static let surface = "home"
-    public static let reference = (width: 1280, height: 800)
-    public static let usageCell = CanvasSize(w: 384, h: 288)
+    public static let fallbackWidth = 1280
+    /// `MachineStatsCard.width`, `MachinesWidgetView.nominalCardHeight` and
+    /// `cardSpacing`, which Core cannot import; a test keeps them equal.
+    public static let machineCard = CanvasSize(w: 184, h: 132)
+    public static let machineCardSpacing = 12
+    public static let fallbackMachines = 3
+    /// The tallest usage card drawn with a typical snapshot (Claude's three
+    /// windows, daily chart and three models) is 591 points at any width.
+    public static let usageContentHeight = 600
+    public static let usageWidth = 384
+    public static let usageMinWidth = 336
+    public static let usageMaxWidth = 480
+    /// The summary pill drawn with two-digit counts.
+    public static let summaryPillWidth = 336
+    public static let summaryHeight = 160
+    public static let clockMaxWidth = 416
     private static let padding = 24
     private static let gap = 16
-    private static let usageTop = 360
-    private static let clockSize = CanvasSize(w: 320, h: 160)
+    private static let snap = 8
+    private static let machineRowsMax = 2
 
-    public static func make(harnesses: [String]) -> Board {
-        let columns = harnesses.count >= 2 ? 2 : 1
-        let cardsMaxX = padding + columns * usageCell.w + (columns - 1) * gap
-        let left = cardsMaxX + padding
-        let free = reference.width - padding - left
-        let clockX = (left + (free - clockSize.w) / 2) / 8 * 8
+    public static func make(
+        harnesses: [String], canvasWidth: Int = fallbackWidth, machines: Int = fallbackMachines
+    ) -> Board {
+        let width = canvasWidth > 0 ? canvasWidth : fallbackWidth
+        let rightEdge = down(width - padding)
+        let inner = rightEdge - padding
+        let pairWidth = max(0, span(min(harnesses.count, 2), usageWidth, gap))
+        let columnWidth = min(clockMaxWidth, max(summaryPillWidth, down(inner - gap - pairWidth)))
+        let columnX = rightEdge - columnWidth
+        let leftWidth = columnX - gap - padding
+
+        let clock = clockFrame(x: columnX, width: columnWidth)
+        let machinesRow = machinesSize(count: machines > 0 ? machines : fallbackMachines, within: leftWidth)
         var board = Board(surface: surface, widgets: [
             BoardWidget(
                 id: "machines", type: "devmachine-app/machines",
-                frame: BoardFrame(x: padding, y: padding, w: usageCell.w, h: 320), size: BoardWidget.customSize, z: 1),
-            BoardWidget(
-                id: "clock", type: "devmachine-app/clock",
-                frame: BoardFrame(x: clockX, y: 320, w: clockSize.w, h: clockSize.h), size: "medium", z: 2),
+                frame: BoardFrame(x: padding, y: padding, w: machinesRow.w, h: machinesRow.h),
+                size: BoardWidget.customSize, z: 1),
+            BoardWidget(id: "clock", type: "devmachine-app/clock", frame: clock, size: BoardWidget.customSize, z: 2),
             BoardWidget(
                 id: "summary", type: "devmachine-app/summary",
                 frame: BoardFrame(
-                    x: reference.width - padding - clockSize.w, y: reference.height - padding - clockSize.h,
-                    w: clockSize.w, h: clockSize.h),
-                size: "medium", z: 3),
+                    x: rightEdge - summaryPillWidth, y: clock.y + clock.h + gap, w: summaryPillWidth, h: summaryHeight),
+                size: BoardWidget.customSize, z: 3),
         ])
+        let columns = usageColumns(count: harnesses.count, within: leftWidth)
+        let cardWidth = columns > 0 ? min(usageMaxWidth, down((leftWidth - (columns - 1) * gap) / columns)) : 0
+        let usageTop = padding + machinesRow.h + gap
         for (index, harness) in harnesses.enumerated() {
             let column = index % columns
             let row = index / columns
             board.widgets.append(BoardWidget(
                 id: board.uniqueID(base: "\(harness)-usage"), type: "devmachine-app/usage", with: ["harness": .string(harness)],
                 frame: BoardFrame(
-                    x: padding + column * (usageCell.w + gap), y: usageTop + row * (usageCell.h + gap),
-                    w: usageCell.w, h: usageCell.h),
+                    x: padding + column * (cardWidth + gap), y: usageTop + row * (usageContentHeight + gap),
+                    w: cardWidth, h: usageContentHeight),
                 size: BoardWidget.customSize, z: 4 + index))
         }
         return board
     }
+
+    /// Tall enough that the clock's font is held back by its width, never
+    /// its height (`ClockWidgetSizing` takes the smaller of the two).
+    private static func clockFrame(x: Int, width: Int) -> BoardFrame {
+        let font = min(150, Int(Double(width) / 2.8))
+        return BoardFrame(x: x, y: padding, w: width, h: up(font * 2))
+    }
+
+    /// Past one row a second one, and past that the widget's own "+N more".
+    private static func machinesSize(count: Int, within width: Int) -> CanvasSize {
+        var columns = max(1, min(count, (width + machineCardSpacing) / (machineCard.w + machineCardSpacing)))
+        while columns > 1 && up(span(columns, machineCard.w, machineCardSpacing)) > width { columns -= 1 }
+        let rows = min(machineRowsMax, (count + columns - 1) / columns)
+        return CanvasSize(
+            w: up(span(columns, machineCard.w, machineCardSpacing)), h: up(span(rows, machineCard.h, machineCardSpacing)))
+    }
+
+    /// Two side by side whenever two fit at the narrowest width, so a second
+    /// harness never drops to its own row on a small window.
+    private static func usageColumns(count: Int, within width: Int) -> Int {
+        guard count > 0 else { return 0 }
+        let roomy = (width + gap) / (usageWidth + gap)
+        let narrow = min(2, (width + gap) / (usageMinWidth + gap))
+        return min(count, max(1, roomy, narrow))
+    }
+
+    private static func span(_ count: Int, _ item: Int, _ spacing: Int) -> Int {
+        count * item + (count - 1) * spacing
+    }
+
+    private static func down(_ value: Int) -> Int { value / snap * snap }
+    private static func up(_ value: Int) -> Int { (value + snap - 1) / snap * snap }
 }
 
 /// Which widgets each surface already received through `places`, so one

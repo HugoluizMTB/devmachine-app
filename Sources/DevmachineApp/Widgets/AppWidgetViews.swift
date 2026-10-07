@@ -61,7 +61,7 @@ struct SummaryWidgetView: View {
         .padding(.vertical, m.space.md)
         .padding(.horizontal, m.space.lg)
         .dmGlass(radius: DMRadius.pill)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 

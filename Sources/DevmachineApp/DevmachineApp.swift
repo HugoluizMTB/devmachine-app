@@ -32,12 +32,14 @@ struct DevmachineApp: App {
         _statsStore = StateObject(wrappedValue: stats)
         let facade = HarnessSettingsFacade()
         harnessSettingsFacade = facade
-        HomeBoardController.shared.defaultBoard = {
+        HomeBoardController.shared.defaultBoard = { canvasWidth in
             let settings = SettingsStore.shared.settings ?? .empty
             let ids = DemoMode.isActive
                 ? DemoData.usageProviders.map(\.harnessID)
                 : facade.usageRegistrations(for: settings).map(\.descriptor.id.rawValue)
-            return DefaultBoard.make(harnesses: WidgetContract.current.allowed(ids, from: "harnesses"))
+            return DefaultBoard.make(
+                harnesses: WidgetContract.current.allowed(ids, from: "harnesses"), canvasWidth: canvasWidth,
+                machines: stats.machines.count)
         }
         WidgetCompatibilityStore.shared.onUpdated = {
             HomeBoardController.shared.reload()

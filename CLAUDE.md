@@ -600,12 +600,20 @@ Rules:
   inside its field. WebKit's "Open Link in New Window" reads "New Tab".
 
 ## Home layout
-- **The default Home board is the old Home** (`DefaultBoard.make(harnesses:)`,
-  1280 x 800 board points): machines at the left, one
-  `devmachine-app/usage` per enabled harness under them (two columns from
-  two harnesses, 384 x 288 so the full card shows), the clock centred in the
-  space beside them, the summary at the bottom right. `DefaultHomeBoardTests`
-  pins it; the `HomeLayout` notes below describe the pre-widget view it copies.
+- **The default Home board is laid out for the canvas it opens on**
+  (`DefaultBoard.make(harnesses:canvasWidth:machines:)`). `HomeCanvasView`
+  opens the board only once the canvas has a width, so a missing `home.yml`
+  is written for the real window; 1280 is the fallback. Every machine sits
+  side by side in one row at the top (sized from `MachineStatsCard.width` and
+  `MachinesWidgetView`'s spacing, for the machine count `StatsStore` knows, 3
+  when none), one `devmachine-app/usage` per enabled harness under it (two
+  across from two harnesses, 336-480 wide, 600 tall: the full card with a
+  typical snapshot measures 591, at any width, so it never scrolls), and on
+  the right edge a 336-416 column with the clock and the summary pill under
+  it. The pill sits at the top of its widget so it reads as part of the
+  clock. `DefaultHomeBoardTests` pins the frames; `DefaultHomeBoardFitTests`
+  draws the real cards at those frames. The `HomeLayout` notes below describe
+  the pre-widget view.
 - **`HomeLayout.plan` decides from Home's width alone**; showing or hiding
   the sidebar only changes that width. The clock sits in the middle of all of
   Home when, there, it still clears the cards column by the gap
