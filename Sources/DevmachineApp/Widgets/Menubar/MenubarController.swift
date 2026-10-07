@@ -36,6 +36,7 @@ final class MenubarController: ObservableObject {
     private var triggers: [String: StackJobsTrigger] = [:]
     private var cancellables: Set<AnyCancellable> = []
     private var slotSourcesChange: AnyCancellable?
+    private var configObserver: NSObjectProtocol?
     private static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
 
     init(slots: StackBoardController, panel: StackBoardController) {
@@ -60,6 +61,12 @@ final class MenubarController: ObservableObject {
         prs.$openCount.removeDuplicates()
             .sink { [weak self] _ in self?.queueRefresh() }
             .store(in: &cancellables)
+        configObserver = NotificationCenter.default.addObserver(
+            forName: ConfigDirectoryWatcher.changed, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadSlotApprovals() }
+        }
+        panel.setVisibleEntries([])
         slots.start()
         panel.start()
         slots.setVisible(true)
@@ -76,6 +83,7 @@ final class MenubarController: ObservableObject {
     func setPanelOpen(_ open: Bool) {
         guard open != isPanelOpen else { return }
         isPanelOpen = open
+        if open { reloadSlotApprovals() }
         if open { panel.runtime.start() } else { panel.runtime.stop() }
         panel.setVisible(open)
         panel.runtime.setJobs(panel.runtimeJobs())
@@ -125,6 +133,10 @@ final class MenubarController: ObservableObject {
                     : (source.needsApproval ? .waiting(hash: "") : .notNeeded)
             }))
         if items != label.items { label.items = items }
+    }
+
+    private func reloadSlotApprovals() {
+        if slots.hasSources { slots.sources.reloadApprovals() }
     }
 
     private func queueRefresh() {

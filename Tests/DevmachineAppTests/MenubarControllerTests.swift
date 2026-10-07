@@ -146,6 +146,104 @@ final class MenubarControllerTests: XCTestCase {
         XCTAssertEqual(command.calls, 1)
     }
 
+    private func writeTwoTabs() throws {
+        try write("""
+            format: 1
+            surface: menubar-panel
+            widgets:
+              - id: one
+                type: acme/one
+              - id: two
+                type: acme/two
+
+            """, "menubar-panel")
+    }
+
+    private var twoTabWidgets: [CatalogWidget] {
+        [widget("acme/one", fits: "tabs", surface: "menubar-panel"), widget("acme/two", fits: "tabs", surface: "menubar-panel")]
+    }
+
+    func testNoTabRunsUntilOneIsShown() async throws {
+        try writeTwoTabs()
+        let (menubar, _) = makeMenubar(twoTabWidgets)
+        menubar.setPanelOpen(true)
+        try? await Task.sleep(for: .milliseconds(50))
+        menubar.panel.sources.runNow("one")
+        menubar.panel.sources.runNow("two")
+        XCTAssertEqual(command.calls, 0)
+        menubar.showTab("one")
+        await waitUntil { self.command.calls == 1 }
+        XCTAssertEqual(command.requests.map(\.instanceID), ["one"])
+    }
+
+    func testSwitchingTabsWhileOpenRunsOnlyTheNewTab() async throws {
+        command = ScriptedSourceRunner([.success(.output(.text("log"))), .success(.output(.text("log")))])
+        try writeTwoTabs()
+        let (menubar, _) = makeMenubar(twoTabWidgets)
+        menubar.showTab("one")
+        menubar.setPanelOpen(true)
+        await waitUntil { self.command.calls == 1 }
+        menubar.showTab("two")
+        await waitUntil { self.command.calls == 2 }
+        XCTAssertEqual(command.requests.map(\.instanceID), ["one", "two"])
+        menubar.panel.sources.runNow("one")
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 2)
+    }
+
+    func testNoTabShownRunsNothing() async throws {
+        try writeTwoTabs()
+        let (menubar, _) = makeMenubar(twoTabWidgets)
+        menubar.showTab("one")
+        menubar.setPanelOpen(true)
+        await waitUntil { self.command.calls == 1 }
+        menubar.showTab(nil)
+        XCTAssertEqual(menubar.panel.visibleEntries, [])
+        menubar.panel.sources.runNow("one")
+        menubar.panel.sources.runNow("two")
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 1)
+    }
+
+    private func writeWaitingLabel() throws {
+        try placeBuiltIns()
+        try write("""
+            format: 1
+            surface: menubar
+            widgets:
+              - id: mine
+                title: Mine
+                source: {kind: command, run: uptime, every: 30s}
+                view: {kind: text}
+
+            """, "menubar")
+    }
+
+    private func allowElsewhere(_ menubar: MenubarController) throws {
+        guard case let .waiting(hash) = menubar.slots.sources.approvalState("mine") else { return XCTFail("not waiting") }
+        var approvals = WidgetApprovals()
+        approvals.record(.allowed, hash: hash, summary: "uptime", at: Date())
+        try WidgetApprovalsFile(fileURL: root.appendingPathComponent("approvals.json")).save(approvals)
+    }
+
+    func testOpeningThePopoverReadsADecisionMadeElsewhere() async throws {
+        try writeWaitingLabel()
+        let (menubar, _) = makeMenubar()
+        await waitUntil { menubar.label.items == [.waiting] }
+        try allowElsewhere(menubar)
+        menubar.setPanelOpen(true)
+        await waitUntil { menubar.label.items == [.text("0.42")] }
+    }
+
+    func testAConfigurationChangeReadsADecisionMadeElsewhere() async throws {
+        try writeWaitingLabel()
+        let (menubar, _) = makeMenubar()
+        await waitUntil { menubar.label.items == [.waiting] }
+        try allowElsewhere(menubar)
+        NotificationCenter.default.post(name: ConfigDirectoryWatcher.changed, object: nil)
+        await waitUntil { menubar.label.items == [.text("0.42")] }
+    }
+
     func testALabelWidgetWaitingForApprovalShowsAMarkAndIsListed() async throws {
         try placeBuiltIns()
         try write("""

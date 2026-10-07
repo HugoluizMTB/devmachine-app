@@ -159,12 +159,7 @@ final class WidgetSourceController: ObservableObject {
     func start() {
         guard !isStarted else { return }
         isStarted = true
-        let stored = approvalsFile.load()
-        if stored != approvals {
-            approvals = stored
-            schedule.resumeAll()
-            replaceJobs()
-        }
+        readApprovals()
         if startsTimer {
             timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
                 guard let self else { return timer.invalidate() }
@@ -172,6 +167,21 @@ final class WidgetSourceController: ObservableObject {
             }
         }
         tick()
+    }
+
+    /// Every area writes the same approvals file. Sources that never stop,
+    /// as the menu bar title's, read it again here to see another area's decision.
+    func reloadApprovals() {
+        readApprovals()
+        tick()
+    }
+
+    private func readApprovals() {
+        let stored = approvalsFile.load()
+        guard stored != approvals else { return }
+        approvals = stored
+        schedule.resumeAll()
+        replaceJobs()
     }
 
     func stop() {
