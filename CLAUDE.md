@@ -818,6 +818,11 @@ Rules:
   waiting in the configuration behind a button that says Prepare, and an older
   CLI's tagged sync wrote the whole plan into the lock. Never move the
   packages pin from the app: it is shared by every machine.
+- **A new workspace on a machine without `devmachine-app` is one sidebar
+  card, not two** (`SessionProblem.mergesIntoFirstSync`): its account and the
+  package both wait for the first sync, so the card says
+  `devmachine sync --machine <m>` instead of offering Prepare, which would fix
+  only the package. Home keeps the machine's own card. Demo shot `79`.
 - **A session list never fails silently** (`SessionListProblem`): ssh looking
   the alias itself up as a hostname means no Host entry, exit 127 means no
   tmux. Neither stops the sweep or pauses polling; both show in the sidebar

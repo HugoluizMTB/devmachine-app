@@ -38,7 +38,7 @@ extension DemoData {
 
     /// Workspace packages for the Workspaces page, named like the release's.
     static let workspacePackages: [CLIPackage] = [
-        workspacePackage("workspace", "Foundation", "The Linux account a person works in: a home nobody else can "
+        workspacePackage("workspace", "Foundation", "The account a person works in: a home nobody else can "
             + "read, a git identity and ~/dev.", on: ["acme", "globex", "initech", "umbrella"]),
         workspacePackage("dev", "Foundation", "The tools a workspace is expected to have: the GitHub CLI, bun "
             + "and Node through mise.", on: ["acme", "globex", "initech"]),

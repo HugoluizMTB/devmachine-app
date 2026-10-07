@@ -101,7 +101,7 @@ enum DemoPackages {
             entry("redis", category: "databases", summary: "Redis on localhost.",
                   on: saved ? [] : ["machine main"]),
             entry("tailscale", category: "network", summary: "Joins the machine to the tailnet.", on: ["machine main"]),
-            entry("workspace", scope: "workspace", category: "base", summary: "The workspace's Linux account."),
+            entry("workspace", scope: "workspace", category: "base", summary: "The workspace's account."),
             entry("acme-tools", source: "local", category: "tools", summary: "acme's own scripts."),
         ]
         var main = ["caddy", "docker", "essentials", "git"]

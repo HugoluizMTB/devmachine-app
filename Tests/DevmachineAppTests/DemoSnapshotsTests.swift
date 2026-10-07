@@ -309,10 +309,10 @@ final class DemoSnapshotsTests: XCTestCase {
 
     func testTheMachineReadyWalkIsItsOwnSet() {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "machine-ready"]).map(\.id), [
-            "ready-home", "ready-running", "ready-failed", "ready-done", "ready-old-cli", "ready-outdated",
-            "install-cli", "install-cli-running", "install-cli-failed",
+            "ready-home", "ready-running", "ready-failed", "ready-done", "ready-first-sync", "ready-old-cli",
+            "ready-outdated", "install-cli", "install-cli-running", "install-cli-failed",
         ])
-        XCTAssertEqual(Set(DemoSnapshots.machineReadyScreens.map(\.fileName)).count, 9)
+        XCTAssertEqual(Set(DemoSnapshots.machineReadyScreens.map(\.fileName)).count, 10)
     }
 
     func testThePackagesWalkIsItsOwnSet() {

@@ -33,6 +33,33 @@ final class PackageAvailabilityTests: XCTestCase {
                        .serverOnly)
     }
 
+    func testMacPackageFitsARemoteMac() {
+        XCTAssertNil(PackageAvailability.block(entry: entry("brew", platforms: ["macos"]), status: .available,
+                                               target: server, platform: "macos"))
+    }
+
+    func testLinuxOnlyOnARemoteMac() {
+        XCTAssertEqual(PackageAvailability.block(entry: entry("docker", platforms: ["linux"]), status: .available,
+                                                 target: server, platform: "macos"), .serverOnly)
+    }
+
+    func testLinuxOnlyWorkspacePackageOnAMacMachine() {
+        let dash = PackageTarget.workspace("dash", machine: "studio")
+        let remoteControl = entry("claude-remote-control", scope: "workspace", platforms: ["linux"])
+        XCTAssertEqual(PackageAvailability.block(entry: remoteControl, status: .available, target: dash,
+                                                 platform: "macos"), .serverOnly)
+        XCTAssertNil(PackageAvailability.block(entry: remoteControl, status: .available, target: dash,
+                                               platform: "linux"))
+    }
+
+    func testUnknownPlatformKeepsTheOldGuess() {
+        let dash = PackageTarget.workspace("dash", machine: "studio")
+        let remoteControl = entry("claude-remote-control", scope: "workspace", platforms: ["linux"])
+        XCTAssertNil(PackageAvailability.block(entry: remoteControl, status: .available, target: dash, platform: nil))
+        XCTAssertEqual(PackageAvailability.block(entry: entry("brew", platforms: ["macos"]), status: .available,
+                                                 target: server, platform: nil), .macOnly)
+    }
+
     func testEssentialsCannotBeRemoved() {
         XCTAssertEqual(PackageAvailability.block(entry: entry("essentials"), status: .applied, target: server), .essentials)
         XCTAssertNil(PackageAvailability.block(entry: entry("essentials"), status: .available, target: server))

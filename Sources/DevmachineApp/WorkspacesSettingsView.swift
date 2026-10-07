@@ -193,7 +193,7 @@ struct WorkspacesSettingsView: View {
                 Text(verbatim: row.name)
                     .font(.dm(13, weight: .semibold))
                     .foregroundStyle(Color.dmRowText.opacity(row.isActive ? 1 : 0.55))
-                Text(verbatim: row.summary.map { "Linux account \($0.user)" } ?? (row.alias ?? ""))
+                Text(verbatim: row.summary.map { "account \($0.user)" } ?? (row.alias ?? ""))
                     .font(.dm(10.5, design: .monospaced))
                     .foregroundStyle(Color.dmMuted)
             }
@@ -460,9 +460,9 @@ private struct WorkspaceEditForm: View {
             }
             WorkspaceSyncToggle(sync: $flow.sync, machine: flow.machine)
             AddMachineNote(text: logins == nil
-                ? "The machine, the Linux account and shared logins are not changed here: "
+                ? "The machine, the account and shared logins are not changed here: "
                     + "use devmachine workspaces edit --user or --share in a terminal."
-                : "The machine and the Linux account are not changed here: use devmachine workspaces edit "
+                : "The machine and the account are not changed here: use devmachine workspaces edit "
                     + "--machine or --user in a terminal.")
         }
     }
@@ -779,7 +779,7 @@ private struct WorkspaceForgetForm: View {
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
             VStack(alignment: .leading, spacing: m.space.sm) {
-                bullet("The Linux account \(flow.current?.user ?? flow.name), its home and its files stay on "
+                bullet("The account \(flow.current?.user ?? flow.name), its home and its files stay on "
                     + "\(flow.machine).")
                 bullet("Its sessions keep running there. The app stops listing them once the sidebar reloads.")
                 bullet("A sync no longer manages it, and nothing on the machine is changed now.")
@@ -821,7 +821,7 @@ private struct WorkspaceDestroyForm: View {
                 }
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.red)
-                bullet("The account \(user) and everything under /home/\(user).")
+                bullet("The account \(user) and everything in its home folder.")
                 bullet("Its published sites: Caddy stops answering for them.")
                 bullet(flow.keepDNS
                     ? "Not the DNS records of those sites: --keep-dns leaves them, and the CLI prints how to "
@@ -943,10 +943,10 @@ private extension WorkspaceFlow {
 }
 
 enum WorkspacesContent {
-    static let explanation = "A workspace is a Linux account on a machine, where your sessions run. "
+    static let explanation = "A workspace is an account on a machine, where your sessions run. "
         + "Make one per project or client, like acme, each with its own home, logins and tools."
 
-    static let nameHint = "A Linux account on the machine where your sessions run. Name it after your "
+    static let nameHint = "An account on the machine where your sessions run. Name it after your "
         + "project, like acme: lower-case letters, digits, - and _."
 
     static let preselectionNote = "Ticked: what devmachine setup makes every new workspace get (dev, zsh, mise). "
@@ -982,7 +982,7 @@ enum WorkspacesContent {
     static func subtitle(_ flow: WorkspaceFlow?) -> String {
         switch flow?.action {
         case nil: return explanation
-        case .new: return "A Linux account on a machine, with the packages you choose."
+        case .new: return "An account on a machine, with the packages you choose."
         case .edit: return "On \(flow?.machine ?? ""). Its settings and logins, then a sync applies them."
         case .forget: return "The account stays on \(flow?.machine ?? ""); only this configuration forgets it."
         case .destroy: return "Deletes the account, its home and its sites on \(flow?.machine ?? "")."
