@@ -113,13 +113,28 @@ struct ContextPanel: View {
             .overlay(alignment: .bottom) {
                 if stacks.needsSessionContext, store.state != nil { staleBanner }
             }
-            .onChange(of: bridgeFacts, initial: true) { _, facts in stacks.setContext(facts.values) }
-            .onChange(of: GitProbeTrigger(target: commandTarget?.key, cwd: store.state?.cwd, needed: stacks.needsGitContext), initial: true) { _, trigger in
-                gitContext.refresh(trigger.needed ? commandTarget : nil, cwd: trigger.cwd)
+            .onChange(of: readyFacts, initial: true) { _, facts in
+                if let facts { stacks.setContext(facts.values) }
             }
+            .onChange(of: gitTrigger, initial: true) { _, trigger in
+                gitContext.refresh(trigger.needed ? commandTarget : nil, cwd: trigger.cwd, revision: trigger.revision)
+            }
+            .onAppear { gitContext.appeared() }
             .onChange(of: stacks.needsSessionContext, initial: true) { _, needed in
                 model.contextBoardNeedsSessionContext = needed
             }
+    }
+
+    private var gitTrigger: GitProbeTrigger {
+        GitProbeTrigger(
+            target: commandTarget?.key, cwd: store.state?.cwd, revision: store.state?.updatedAt,
+            needed: stacks.needsGitContext)
+    }
+
+    private var readyFacts: SessionContextFacts? {
+        guard ContextPushGate.ready(status: store.status, hasState: store.state != nil, gitPending: gitContext.isPending)
+        else { return nil }
+        return bridgeFacts
     }
 
     private var bridgeFacts: SessionContextFacts {
@@ -184,6 +199,7 @@ struct ContextPanel: View {
 private struct GitProbeTrigger: Equatable {
     let target: String?
     let cwd: String?
+    let revision: String?
     let needed: Bool
 }
 

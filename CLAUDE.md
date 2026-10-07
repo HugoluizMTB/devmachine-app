@@ -1023,9 +1023,18 @@ Rules:
 - **`repo` and `branch` cost a probe, so they run only when read.**
   `ContextGitProbe` (`git rev-parse --abbrev-ref HEAD` and
   `remote.origin.url`) runs through `HostRunner.runCapturingWithFolderArgument`
-  (the folder is `$1` after `cd --`, never spliced into the line), once per
-  session and folder, only while an expanded widget reads `repo` or `branch`
-  (`StackBoardController.needsGitContext`). No timer.
+  (the folder is `$1` after `cd --`, never spliced into the line), only
+  while an expanded widget reads `repo` or `branch`
+  (`StackBoardController.needsGitContext`). It probes on a new session or
+  folder, on each new session-context read (`ContextState.updatedAt`, so a
+  `git checkout` shows within a poll), and when the Context tab appears,
+  keeping the last answer meanwhile. A failure is retried once on the next
+  read; a second in a row waits for the tab or a new folder. No timer of its
+  own (`ContextGitStatusStore`).
+- **A session switch hands over its context once, whole**
+  (`ContextPushGate`): while the new session's first context read or git
+  probe is out, the board keeps the old keys, so no widget runs on empty
+  `path`/`branch` first and no approval card flashes for them.
 - **A context change stops what it touches.** A widget whose read values
   change is stopped, what it showed is cleared (it belonged to the other
   session; sparkline history stays) and its approval hash is taken again: an

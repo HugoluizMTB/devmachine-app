@@ -45,4 +45,17 @@ final class ContextBridgeTests: XCTestCase {
         XCTAssertEqual(facts.machine, "")
         XCTAssertEqual(facts.session, "api")
     }
+
+    func testTheContextWaitsForTheFirstReadOfANewSession() {
+        XCTAssertFalse(ContextPushGate.ready(status: .loading, hasState: false, gitPending: false))
+        XCTAssertTrue(ContextPushGate.ready(status: .loading, hasState: true, gitPending: false))
+        XCTAssertTrue(ContextPushGate.ready(status: .idle, hasState: false, gitPending: false))
+        XCTAssertTrue(ContextPushGate.ready(status: .failed("offline"), hasState: false, gitPending: false))
+        XCTAssertTrue(ContextPushGate.ready(status: .empty, hasState: false, gitPending: false))
+    }
+
+    func testTheContextWaitsForTheGitProbeOfANewSession() {
+        XCTAssertFalse(ContextPushGate.ready(status: .loaded, hasState: true, gitPending: true))
+        XCTAssertFalse(ContextPushGate.ready(status: .idle, hasState: false, gitPending: true))
+    }
 }

@@ -25,3 +25,13 @@ enum ContextBridge {
         return facts
     }
 }
+
+/// A session switch hands the widgets its context once, whole: not while
+/// its first read or git probe is still out, which would run each widget
+/// on empty keys first and flash an approval card for them.
+enum ContextPushGate {
+    static func ready(status: ContextLoadStatus, hasState: Bool, gitPending: Bool) -> Bool {
+        let firstReadOut = status == .loading && !hasState
+        return !firstReadOut && !gitPending
+    }
+}
