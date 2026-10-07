@@ -457,13 +457,13 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: m.space.md) {
             note(StackBoardCopy.resetHint)
             HStack(spacing: m.space.md) {
-                ForEach(DefaultStackBoard.surfaces, id: \.self) { surface in
+                ForEach(DefaultStackBoard.surfaces + DefaultStackBoard.menubarSurfaces, id: \.self) { surface in
                     DMButton(StackBoardCopy.resetTitle(surface), variant: .dangerOutline, size: .small) {
                         confirmsStackReset = surface
                     }
                 }
             }
-            ForEach(DefaultStackBoard.surfaces, id: \.self) { surface in
+            ForEach(DefaultStackBoard.surfaces + DefaultStackBoard.menubarSurfaces, id: \.self) { surface in
                 if let error = stackResetErrors[surface] {
                     DMErrorStateView(state: DMErrorState(title: StackBoardCopy.resetFailed(surface), message: error))
                 }
@@ -486,6 +486,8 @@ struct SetupPage: View {
         switch surface {
         case DefaultStackBoard.sidebar: controller = .sidebar
         case DefaultStackBoard.contextSidebar: controller = .contextSidebar
+        case DefaultStackBoard.menubar: controller = MenubarController.shared.slots
+        case DefaultStackBoard.menubarPanel: controller = MenubarController.shared.panel
         default: return
         }
         do {

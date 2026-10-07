@@ -1,0 +1,102 @@
+import SwiftUI
+import DevmachineCore
+
+struct MenubarEditRow: Equatable, Identifiable {
+    let id: String
+    let title: String
+    let detail: String?
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+
+    static func rows(
+        board: StackBoard, resolve: (StackEntry) -> WidgetResolution?, catalog: WidgetCatalog?
+    ) -> [MenubarEditRow] {
+        board.entries.enumerated().map { index, entry in
+            let resolution = resolve(entry)
+            var detail: String?
+            if let resolution, case .ready = resolution {
+                detail = nil
+            } else if let resolution {
+                detail = WidgetResolutionCopy.detail(resolution, release: catalog?.packagesRelease ?? "")
+            }
+            return MenubarEditRow(
+                id: entry.id, title: MenubarTitles.title(entry, resolution: resolution, catalog: catalog), detail: detail,
+                canMoveUp: index > 0, canMoveDown: index < board.entries.count - 1)
+        }
+    }
+}
+
+/// The popover's Edit mode: both areas as lists. Add opens the gallery in
+/// place, because a popover from inside the menu bar window is not reliable.
+struct MenubarEditView: View {
+    @ObservedObject var slots: StackBoardController
+    @ObservedObject var panel: StackBoardController
+    @State private var adding: String?
+    @Environment(\.dmMetrics) private var m
+
+    var body: some View {
+        if let surface = adding, let board = [slots, panel].first(where: { $0.surface == surface }) {
+            VStack(alignment: .leading, spacing: m.space.sm) {
+                DMButton("Back", systemImage: "chevron.left", variant: .ghost, size: .small) { adding = nil }
+                WidgetGalleryView(
+                    surface: board.surface, catalog: board.catalog.catalog, entries: board.galleryEntries(),
+                    failure: galleryFailure(board), blockedReason: { board.addBlockedReason(for: $0) },
+                    onAdd: { if board.add($0) { adding = nil } }, onRetry: { board.catalog.reloadSoon() })
+            }
+            .padding(m.space.md)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .onAppear { board.catalog.reloadSoon() }
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: m.space.lg) {
+                    section("MENU BAR", hint: "Up to 3 widgets, left to right.", board: slots)
+                    section("TABS", hint: "One widget per tab, in this order.", board: panel)
+                }
+                .padding(m.space.lg)
+            }
+        }
+    }
+
+    private func section(_ title: String, hint: String, board: StackBoardController) -> some View {
+        let rows = MenubarEditRow.rows(
+            board: board.board, resolve: { board.resolution(of: $0) }, catalog: board.catalog.catalog)
+        return VStack(alignment: .leading, spacing: m.space.sm) {
+            DMSectionLabel(text: title)
+            Text(verbatim: hint).font(.dm(11)).foregroundStyle(Color.dmMuted)
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                DMTableRow(index: index) {
+                    HStack(spacing: m.space.sm) {
+                        VStack(alignment: .leading, spacing: m.space.xxs) {
+                            Text(verbatim: row.title).font(.dm(12, weight: .semibold))
+                            if let detail = row.detail {
+                                Text(verbatim: detail)
+                                    .font(.dm(11))
+                                    .foregroundStyle(Color.dmMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        Spacer(minLength: m.space.sm)
+                        DMIconButton(systemImage: "chevron.up") { board.moveUp(row.id) }
+                            .disabled(!board.canEdit || !row.canMoveUp)
+                            .help(Text(verbatim: "Move up"))
+                        DMIconButton(systemImage: "chevron.down") { board.moveDown(row.id) }
+                            .disabled(!board.canEdit || !row.canMoveDown)
+                            .help(Text(verbatim: "Move down"))
+                        DMIconButton(systemImage: "trash") { board.remove(row.id) }
+                            .disabled(!board.canEdit)
+                            .help(Text(verbatim: "Remove"))
+                    }
+                    .padding(.horizontal, m.space.sm)
+                    .padding(.vertical, m.space.xs)
+                }
+            }
+            DMButton("Add widget", systemImage: "plus", variant: .ghost, size: .small) { adding = board.surface }
+                .disabled(!board.canEdit)
+        }
+    }
+
+    private func galleryFailure(_ board: StackBoardController) -> String? {
+        if case let .failed(message) = board.catalog.state { return message }
+        return nil
+    }
+}

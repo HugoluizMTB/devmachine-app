@@ -67,6 +67,7 @@ struct MenuBarPanel: View {
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @Environment(\.openWindow) private var openWindow
     @State private var tab: MenubarTabID?
+    @State private var editing = false
     private let initialTab: MenuBarTab
     private let height: CGFloat?
 
@@ -96,8 +97,12 @@ struct MenuBarPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             banners
-            tabBar
-            content
+            if editing {
+                MenubarEditView(slots: menubar.slots, panel: menubar.panel)
+            } else {
+                tabBar
+                content
+            }
             footer
                 .background(Color.dmBand)
         }
@@ -110,7 +115,10 @@ struct MenuBarPanel: View {
             menubar.showTab(MenubarTabs.entryID(tab))
             menubar.setPanelOpen(true)
         }
-        .onDisappear { menubar.setPanelOpen(false) }
+        .onDisappear {
+            menubar.setPanelOpen(false)
+            editing = false
+        }
         .onChange(of: tabs) { _, next in tab = MenubarTabs.keeping(tab, in: next) }
         .onChange(of: tab) { _, next in menubar.showTab(MenubarTabs.entryID(next)) }
     }
@@ -193,6 +201,9 @@ struct MenuBarPanel: View {
             }
             DMButton(icon: "eyedropper", label: "Pick a color", size: .small) {
                 ScreenColorPicker.pick(onCopy: model.announceCopiedColor)
+            }
+            DMButton(icon: editing ? "checkmark" : "pencil", label: editing ? "Done" : "Edit", size: .small) {
+                editing.toggle()
             }
             Spacer()
             footerButton("power", help: "Quit") {
