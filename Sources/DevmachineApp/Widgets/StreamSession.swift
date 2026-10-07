@@ -17,6 +17,20 @@ private final class StreamInbox: @unchecked Sendable {
     }
 }
 
+private final class RunningSlot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: (any RunningProcess)?
+
+    func set(_ next: (any RunningProcess)?) { lock.withLock { process = next } }
+
+    func take() -> (any RunningProcess)? {
+        lock.withLock {
+            defer { process = nil }
+            return process
+        }
+    }
+}
+
 /// One `mode: stream` command: its last `keep` lines, delivered in 250 ms
 /// batches (a hop per line froze the window for machine jobs), and a stop
 /// that is SIGTERM and nothing else, whose exit is never shown as an error.
@@ -32,13 +46,20 @@ final class StreamSession {
     private let launcher: any ProcessLaunching
     private var ring: LineRing
     private let inbox = StreamInbox()
-    private var process: (any RunningProcess)?
+    private let running = RunningSlot()
     private var flushTask: Task<Void, Never>?
     private var stopping = false
 
     init(launcher: any ProcessLaunching, keep: Int) {
         self.launcher = launcher
         ring = LineRing(capacity: Self.lineLimit(keep))
+    }
+
+    /// A session dropped without `stop()` would leave its `tail -f` running
+    /// until the app quits. `isolated deinit` aborts at run time on the
+    /// macOS 14 target, so the process sits in a lock-guarded slot.
+    deinit {
+        running.take()?.terminate()
     }
 
     static func lineLimit(_ keep: Int) -> Int {
@@ -49,14 +70,14 @@ final class StreamSession {
 
     func start(_ invocation: ProcessInvocation, remote: Bool) {
         let inbox = self.inbox
-        let running: any RunningProcess
+        let process: any RunningProcess
         do {
-            running = try launcher.launch(invocation) { inbox.append($0) }
+            process = try launcher.launch(invocation) { inbox.append($0) }
         } catch {
             onEnd(.cannotStart("\(invocation.executable): \(error.localizedDescription)"))
             return
         }
-        process = running
+        running.set(process)
         flushTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.batchInterval)
@@ -65,7 +86,7 @@ final class StreamSession {
             }
         }
         Task { [weak self] in
-            let exit = await running.wait()
+            let exit = await process.wait()
             self?.ended(exit, remote: remote)
         }
     }
@@ -73,7 +94,7 @@ final class StreamSession {
     func stop() {
         stopping = true
         flushTask?.cancel()
-        process?.terminate()
+        running.take()?.terminate()
     }
 
     func flushNow() {
@@ -84,6 +105,7 @@ final class StreamSession {
     }
 
     private func ended(_ exit: ProcessExit, remote: Bool) {
+        running.set(nil)
         flushTask?.cancel()
         guard !stopping, !exit.stoppedByCaller else { return }
         inbox.finish()

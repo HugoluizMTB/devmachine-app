@@ -55,6 +55,19 @@ final class StreamSessionTests: XCTestCase {
         }
         try? await Task.sleep(for: .milliseconds(300))
         XCTAssertNil(freed)
+        XCTAssertTrue(launcher.processes[0].isTerminated)
+    }
+
+    func testAFreedSessionDoesNotStopAProcessThatAlreadyEnded() async {
+        var ended = false
+        do {
+            let session = StreamSession(launcher: launcher, keep: 10)
+            session.onEnd = { _ in ended = true }
+            session.start(tail, remote: false)
+            launcher.processes[0].finish(ProcessExit(status: 0, stderr: "", stoppedByCaller: false))
+            await waitUntil { ended }
+        }
+        XCTAssertFalse(launcher.processes[0].isTerminated)
     }
 
     func testStopSendsSIGTERMAndIgnoresTheExit() async {
