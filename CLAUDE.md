@@ -1120,8 +1120,23 @@ Rules:
   `local` run as before; `third-party` (a package with
   `.devmachine-source.yml`) asks before any code-running widget (`command`,
   `prompt`, `session`, package provider) runs. An older catalog without
-  `trust` reads `release` as official, anything else as local; an unknown
-  word reads as third-party. An inline package-provider widget always asks.
+  `trust` reads `release` as official, anything else as local. Each of these
+  reads as third-party: an unknown or unreadable `trust` word, a
+  `package_source` with no `trust`, and a widget `provider` key that does not
+  read as a provider spec. An inline package-provider widget always asks.
+- **No package-provider widget written in a board runs before a catalog
+  loads.** Until then it resolves to `.waitingForCatalog` ("Waiting for the
+  widget catalog…"): no job and no Allow button, so no approval without the
+  package commit can be stored. Once the catalog loads it gets its trust and
+  commit from the top-level `providers` map.
+- **A failed catalog reload marks the kept catalog stale** (`isStale`).
+  Third-party code widgets (catalog and inline) then wait as above until a
+  read works, as the commits it holds may be older than what
+  `packages update` installed. Official, local and `url` widgets keep running.
+- **The provider index is complete only when a packages release was read**
+  and `providers` is there, as `widgets validate` decides it. Without a
+  release an unknown package is left to `devmachine run`; a package the
+  catalog lists still refuses a provider it does not declare.
 - **A third-party hash carries the package commit** (`package_commit` in the
   canonical JSON, even when empty), so `packages update` to a new commit asks
   again for every such widget. That holds for a catalog widget (its
