@@ -331,3 +331,29 @@ final class StackBoardController: ObservableObject {
         Self.log.error("widget placements file did not decode; moved it to \(broken.path, privacy: .public)")
     }
 }
+
+extension StackBoardController: WidgetEditTarget {
+    var editSurface: String { surface }
+    var editFileName: String { StackArea.fileName(surface) }
+    var editCatalog: WidgetCatalog? { StackCatalog.merged(catalog.catalog) }
+
+    func editableEntry(_ id: String) -> EditableEntry? {
+        board.entries.first { $0.id == id }.map(EditableEntry.init)
+    }
+
+    @discardableResult
+    func apply(_ edit: EntryEdit, to id: String) -> Bool {
+        guard let store, store.canEdit, let index = board.index(of: id) else { return false }
+        var entry = board.entries[index]
+        guard edit.apply(to: &entry) else { return false }
+        store.update { $0.entries[index] = entry }
+        return true
+    }
+
+    func addInline(_ inline: InlineWidget, title: String, preset: String) -> String? {
+        guard let store, store.canEdit, !StackGallery.isFull(board) else { return nil }
+        let id = board.uniqueID(base: title)
+        store.update { _ = $0.insert(StackEntry(id: id, type: "", inline: inline), at: .end) }
+        return id
+    }
+}

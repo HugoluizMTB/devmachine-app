@@ -26,6 +26,7 @@ final class HomeBoardController: ObservableObject {
     @Published private(set) var placementsError: String?
     let catalog: WidgetCatalogStore
     let runtime = WidgetRuntimeDriver()
+    var canvasWidth = 1280
     var defaultBoard: @MainActor () -> Board = { DefaultBoard.make(harnesses: []) }
 
     private let placementsFile: WidgetPlacementsFile
@@ -148,6 +149,7 @@ final class HomeBoardController: ObservableObject {
     }
 
     func applyPlaces(canvasWidth: Int, enabledHarnesses: Set<String>) {
+        self.canvasWidth = canvasWidth
         guard let store, store.canEdit, let board = store.board, let catalog = catalog.catalog else { return }
         let shown = Set(board.widgets.compactMap { widget -> String? in
             guard case let .ready(resolved)? = resolution(of: widget), resolved.provider == "app/harness-usage" else { return nil }
@@ -275,5 +277,36 @@ final class HomeBoardController: ObservableObject {
             Self.log.error("saving widget placements failed: \(error.localizedDescription, privacy: .public)")
             placementsError = error.localizedDescription
         }
+    }
+}
+
+extension HomeBoardController: WidgetEditTarget {
+    var editSurface: String { DefaultBoard.surface }
+    var editFileName: String { "home.yml" }
+    var canEdit: Bool { store?.canEdit ?? false }
+    var editCatalog: WidgetCatalog? { catalog.catalog }
+
+    func editableEntry(_ id: String) -> EditableEntry? {
+        store?.board?.widgets.first { $0.id == id }.map(EditableEntry.init)
+    }
+
+    @discardableResult
+    func apply(_ edit: EntryEdit, to id: String) -> Bool {
+        guard let store, store.canEdit, let board = store.board,
+              let index = board.widgets.firstIndex(where: { $0.id == id })
+        else { return false }
+        var widget = board.widgets[index]
+        guard edit.apply(to: &widget) else { return false }
+        store.update { $0.widgets[index] = widget }
+        return true
+    }
+
+    func addInline(_ inline: InlineWidget, title: String, preset: String) -> String? {
+        guard let store, store.canEdit, let board = store.board else { return nil }
+        let id = board.uniqueID(base: title)
+        let widget = InlineEntryPlacement.canvasWidget(
+            id: id, inline: inline, preset: preset, on: board, canvasWidth: canvasWidth)
+        store.update { $0.widgets.append(widget) }
+        return id
     }
 }
