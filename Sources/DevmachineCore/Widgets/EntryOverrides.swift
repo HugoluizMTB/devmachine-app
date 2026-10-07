@@ -31,6 +31,7 @@ public enum InputShapes {
 /// A board's `title` and `every` on a typed entry. `every` never goes below
 /// what the widget's source allows, a stream has none, and an app provider
 /// runs on a schedule, so it takes no `manual`.
+/// A prompt in a mode with no checks takes only manual.
 public enum EntryOverrideRules {
     public static func floorText(
         of resolved: ResolvedWidget, catalog: WidgetCatalog? = nil, contract: WidgetContract = .current
@@ -68,6 +69,9 @@ public enum EntryOverrideRules {
             return readsProvider
                 ? "\(id): every \"\(text)\" is not a duration: write it like 60s or 5m"
                 : "\(id): every \"\(text)\" is neither a duration nor manual: write it like 60s, 5m or manual"
+        }
+        if case let .prompt(prompt)? = resolved.source?.source, let mode = prompt.permissionMode, PermissionModes.isDangerous(mode) {
+            return "\(id): " + PermissionModes.timerProblem(mode)
         }
         let least = floor(of: resolved, catalog: catalog, contract: contract)
         guard seconds >= least else {

@@ -23,9 +23,16 @@ final class EntryOverrideTests: XCTestCase {
             "mode": .string("stream"),
         ])),
         viewKind: "text", sizes: ["medium"], defaultSize: "medium", origin: "local")
+    private let yolo = CatalogWidget(
+        name: "acme/yolo", fits: ["canvas", "stack"],
+        source: CatalogSource(raw: .object([
+            "kind": .string("prompt"), "harness": .string("claude"), "prompt": .string("Search the web."),
+            "permission_mode": .string("bypassPermissions"),
+        ])),
+        viewKind: "markdown", sizes: ["large"], defaultSize: "large", origin: "local")
 
     private var catalog: WidgetCatalog {
-        WidgetCatalog(engine: "1.5", packagesRelease: "2026.10.07", widgets: [machines, usage, disk, tail])
+        WidgetCatalog(engine: "1.5", packagesRelease: "2026.10.07", widgets: [machines, usage, disk, tail, yolo])
     }
 
     private func entry(
@@ -153,5 +160,19 @@ final class EntryOverrideTests: XCTestCase {
             return XCTFail("expected ready")
         }
         XCTAssertEqual(resolved.source?.every, .interval(30))
+    }
+
+    func testAModeWithNoChecksTakesOnlyAManualEvery() throws {
+        XCTAssertEqual(
+            WidgetResolution.resolve(entry("acme/yolo", every: "30m"), in: catalog),
+            .refused(
+                type: "acme/yolo",
+                reason: "w: permission_mode bypassPermissions runs without any check, so it runs only when you press refresh: "
+                    + "write every: manual"))
+        XCTAssertEqual(try ready(entry("acme/yolo", every: "manual")).source?.every, .manual)
+        XCTAssertEqual(try ready(entry("acme/yolo")).source?.every, .manual)
+        XCTAssertEqual(
+            WidgetResolution.resolve(entry("acme/yolo", every: "soon"), in: catalog),
+            .refused(type: "acme/yolo", reason: "w: every \"soon\" is neither a duration nor manual: write it like 60s, 5m or manual"))
     }
 }
