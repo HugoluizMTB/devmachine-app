@@ -61,14 +61,14 @@ final class TypedEntryFormTests: XCTestCase {
     func testAnEveryThatIsNotADurationLandsOnTheEveryField() {
         var form = form()
         form.every = "soon"
-        guard case let .failure(problem) = form.edit(surface: "home", catalog: catalog) else { return XCTFail() }
+        guard case let .failure(problem) = form.edit(surface: "home", catalog: catalog) else { return XCTFail("expected a problem") }
         XCTAssertEqual(problem.field, "every")
     }
 
     func testAStreamTakesNoEvery() {
         var form = form("acme/tail", with: [:])
         form.every = "60s"
-        guard case let .failure(problem) = form.edit(surface: "home", catalog: catalog) else { return XCTFail() }
+        guard case let .failure(problem) = form.edit(surface: "home", catalog: catalog) else { return XCTFail("expected a problem") }
         XCTAssertEqual(problem.field, "every")
     }
 
@@ -92,5 +92,86 @@ final class TypedEntryFormTests: XCTestCase {
         XCTAssertEqual(form.plainInputs.map(\.name), ["compact", "label", "limit"])
         XCTAssertEqual(form.choiceInputs.map(\.name), ["machines"])
         XCTAssertEqual(form.everyPlaceholder, "90s")
+    }
+
+    private func titled(_ type: String = "acme/status") -> TypedEntryForm {
+        let widget = BoardWidget(
+            id: "w", type: type, with: [:], frame: BoardFrame(x: 0, y: 0, w: 1, h: 1), size: "medium", z: 0,
+            titleOverride: "Mine")
+        return TypedEntryForm(entry: EditableEntry(widget), widget: catalog.widget(named: type)!)
+    }
+
+    func testAnEmptyOrBlankTitleClearsTheOverride() throws {
+        for blank in ["", "   ", " \n "] {
+            var form = titled()
+            form.title = blank
+            XCTAssertEqual(try form.edit(surface: "home", catalog: catalog).get(), .typed(title: nil, with: [:], every: nil), blank)
+        }
+    }
+
+    func testABelowFloorEveryDoesNotSaveWhenTheWidgetIsNotReady() {
+        let missing = CatalogWidget(
+            name: "acme/gone", fits: ["canvas", "stack"],
+            source: CatalogSource(name: "app/machines", with: [:], every: "90s"),
+            viewKind: "app.machines", sizes: ["medium"], defaultSize: "medium",
+            available: false, unavailableReason: "Add the acme package.")
+        let cat = WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [missing])
+        let widget = BoardWidget(id: "w", type: "acme/gone", with: [:], frame: BoardFrame(x: 0, y: 0, w: 1, h: 1), size: "medium", z: 0)
+        var form = TypedEntryForm(entry: EditableEntry(widget), widget: missing)
+        form.every = "1s"
+        guard case let .failure(problem) = form.edit(surface: "home", catalog: cat) else { return XCTFail("expected a problem") }
+        XCTAssertEqual(problem.field, "every")
+    }
+
+    func testManualIsRefusedOnAProviderWidget() {
+        var form = form()
+        form.every = "manual"
+        guard case let .failure(problem) = form.edit(surface: "home", catalog: catalog) else { return XCTFail("expected a problem") }
+        XCTAssertEqual(problem.field, "every")
+    }
+
+    func testAnEmptyListAndUndeclaredChoicesWriteNothing() throws {
+        var form = form(with: [:])
+        form.choices["machines"] = .list([])
+        form.choices["ghost"] = .string("x")
+        XCTAssertEqual(try form.edit(surface: "home", catalog: catalog).get(), .typed(title: nil, with: [:], every: nil))
+    }
+
+    func testAChoiceEditReplacesTheList() throws {
+        var form = form(with: ["machines": .list(["a"])])
+        form.choices["machines"] = .list(["b", "c"])
+        XCTAssertEqual(
+            try form.edit(surface: "home", catalog: catalog).get(), .typed(title: nil, with: ["machines": .list(["b", "c"])], every: nil))
+    }
+
+    func testABooleanBackToItsDefaultWritesNothing() throws {
+        var form = form(with: ["compact": .bool(true)])
+        XCTAssertEqual(form.flags["compact"], true)
+        form.flags["compact"] = false
+        XCTAssertEqual(try form.edit(surface: "home", catalog: catalog).get(), .typed(title: nil, with: [:], every: nil))
+    }
+
+    func testNanAndInfinityAreNotNumbers() {
+        for text in ["nan", "inf", "-inf", "Infinity"] {
+            var form = form()
+            form.texts["limit"] = text
+            guard case let .failure(problem) = form.edit(surface: "home", catalog: catalog) else { return XCTFail("\(text) accepted") }
+            XCTAssertEqual(problem.field, "input.limit")
+        }
+    }
+
+    func testANumberEqualToTheDefaultWritesNothing() throws {
+        var form = form(with: [:])
+        form.texts["limit"] = "5.0"
+        XCTAssertEqual(try form.edit(surface: "home", catalog: catalog).get(), .typed(title: nil, with: [:], every: nil))
+    }
+
+    func testAnInputNamedLikeAnEntryKeyMapsToItsInputField() {
+        let text = "widgets:\n  - id: w\n    title: T\n    with:\n      title: x\n      every: y\n    every: 5m\n"
+        XCTAssertEqual(TypedEntryForm.field(atLine: 5, in: text), "input.title")
+        XCTAssertEqual(TypedEntryForm.field(atLine: 6, in: text), "input.every")
+        XCTAssertEqual(TypedEntryForm.field(atLine: 3, in: text), "title")
+        XCTAssertEqual(TypedEntryForm.field(atLine: 7, in: text), "every")
+        XCTAssertNil(TypedEntryForm.field(atLine: 2, in: text))
     }
 }
