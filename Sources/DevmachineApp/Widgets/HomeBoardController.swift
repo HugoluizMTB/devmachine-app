@@ -26,7 +26,7 @@ final class HomeBoardController: ObservableObject {
     @Published private(set) var placementsError: String?
     let catalog: WidgetCatalogStore
     let runtime = WidgetRuntimeDriver()
-    var defaultBoard: @MainActor () -> Board = { DefaultBoard.make(usage: []) }
+    var defaultBoard: @MainActor () -> Board = { DefaultBoard.make(harnesses: []) }
 
     private let placementsFile: WidgetPlacementsFile
     private var placements: WidgetPlacements
@@ -98,7 +98,7 @@ final class HomeBoardController: ObservableObject {
     func open(configDirectory: String) {
         let store = BoardStore(
             fileURL: BoardStore.homeFileURL(configDirectory: configDirectory),
-            makeDefault: { [weak self] in self?.defaultBoard() ?? DefaultBoard.make(usage: []) })
+            makeDefault: { [weak self] in self?.defaultBoard() ?? DefaultBoard.make(harnesses: []) })
         watcher = nil
         watchedFolder = nil
         self.store = store
@@ -149,9 +149,16 @@ final class HomeBoardController: ObservableObject {
 
     func applyPlaces(canvasWidth: Int, enabledHarnesses: Set<String>) {
         guard let store, store.canEdit, let board = store.board, let catalog = catalog.catalog else { return }
+        let shown = Set(board.widgets.compactMap { widget -> String? in
+            guard case let .ready(resolved)? = resolution(of: widget), resolved.provider == "app/harness-usage" else { return nil }
+            return resolved.arguments["harness"]
+        })
         let result = WidgetPlacer.place(
             on: board, catalog: catalog, placements: placements, canvasWidth: canvasWidth,
-            isEligible: { widget in WidgetPlacer.harness(of: widget).map(enabledHarnesses.contains) ?? true })
+            isEligible: { widget in
+                guard let harness = WidgetPlacer.harness(of: widget) else { return true }
+                return enabledHarnesses.contains(harness) && !shown.contains(harness)
+            })
         if result.boardChanged { store.update { $0 = result.board } }
         if result.placementsChanged { savePlacements(result.placements) }
     }

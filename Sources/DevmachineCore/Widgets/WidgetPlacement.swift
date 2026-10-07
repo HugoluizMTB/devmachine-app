@@ -1,35 +1,45 @@
 import Foundation
 
-public struct UsageHarness: Equatable, Sendable {
-    public let harness: String
-    public let package: String
-
-    public init(harness: String, package: String) {
-        self.harness = harness
-        self.package = package
-    }
-}
-
-/// The board written when `home.yml` is missing or reset: today's Home.
+/// The board written when `home.yml` is missing or reset: the Home the app
+/// drew before widgets, laid out at a 1280 x 800 reference in board points.
 public enum DefaultBoard {
     public static let surface = "home"
+    public static let reference = (width: 1280, height: 800)
+    public static let usageCell = CanvasSize(w: 384, h: 288)
+    private static let padding = 24
+    private static let gap = 16
+    private static let usageTop = 360
+    private static let clockSize = CanvasSize(w: 320, h: 160)
 
-    public static func make(usage: [UsageHarness]) -> Board {
+    public static func make(harnesses: [String]) -> Board {
+        let columns = harnesses.count >= 2 ? 2 : 1
+        let cardsMaxX = padding + columns * usageCell.w + (columns - 1) * gap
+        let left = cardsMaxX + padding
+        let free = reference.width - padding - left
+        let clockX = (left + (free - clockSize.w) / 2) / 8 * 8
         var board = Board(surface: surface, widgets: [
             BoardWidget(
+                id: "machines", type: "devmachine-app/machines",
+                frame: BoardFrame(x: padding, y: padding, w: usageCell.w, h: 320), size: BoardWidget.customSize, z: 1),
+            BoardWidget(
                 id: "clock", type: "devmachine-app/clock",
-                frame: BoardFrame(x: 368, y: 24, w: 320, h: 160), size: "medium", z: 1),
+                frame: BoardFrame(x: clockX, y: 320, w: clockSize.w, h: clockSize.h), size: "medium", z: 2),
             BoardWidget(
                 id: "summary", type: "devmachine-app/summary",
-                frame: BoardFrame(x: 368, y: 200, w: 640, h: 160), size: "wide", z: 2),
-            BoardWidget(
-                id: "machines", type: "devmachine-app/machines",
-                frame: BoardFrame(x: 24, y: 24, w: 320, h: 320), size: "large", z: 3),
+                frame: BoardFrame(
+                    x: reference.width - padding - clockSize.w, y: reference.height - padding - clockSize.h,
+                    w: clockSize.w, h: clockSize.h),
+                size: "medium", z: 3),
         ])
-        for (index, entry) in usage.enumerated() {
+        for (index, harness) in harnesses.enumerated() {
+            let column = index % columns
+            let row = index / columns
             board.widgets.append(BoardWidget(
-                id: board.uniqueID(base: "\(entry.harness)-usage"), type: "\(entry.package)/usage",
-                frame: BoardFrame(x: 24, y: 360 + index * 176, w: 320, h: 160), size: "medium", z: 4 + index))
+                id: board.uniqueID(base: "\(harness)-usage"), type: "devmachine-app/usage", with: ["harness": .string(harness)],
+                frame: BoardFrame(
+                    x: padding + column * (usageCell.w + gap), y: usageTop + row * (usageCell.h + gap),
+                    w: usageCell.w, h: usageCell.h),
+                size: BoardWidget.customSize, z: 4 + index))
         }
         return board
     }

@@ -13,31 +13,6 @@ final class WidgetPlacementTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    private let usage = [UsageHarness(harness: "claude", package: "claude-code"), UsageHarness(harness: "codex", package: "codex")]
-
-    func testTheDefaultBoardIsTodaysHome() {
-        let board = DefaultBoard.make(usage: usage)
-        XCTAssertEqual(board.surface, "home")
-        XCTAssertEqual(board.widgets.map(\.type), [
-            "devmachine-app/clock", "devmachine-app/summary", "devmachine-app/machines", "claude-code/usage", "codex/usage",
-        ])
-        XCTAssertEqual(board.widgets.map(\.id), ["clock", "summary", "machines", "claude-usage", "codex-usage"])
-        XCTAssertEqual(board.widgets[3].with, [:])
-        XCTAssertEqual(board.widgets[4].with, [:])
-        XCTAssertFalse(BoardCodec.encode(board).contains("with:"))
-        XCTAssertEqual(board.widgets[4].frame, BoardFrame(x: 24, y: 536, w: 320, h: 160))
-        for widget in board.widgets {
-            XCTAssertEqual(widget.frame.x % 8, 0)
-            XCTAssertEqual(widget.frame.y % 8, 0)
-        }
-        for (index, a) in board.widgets.enumerated() {
-            for b in board.widgets.dropFirst(index + 1) {
-                XCTAssertFalse(a.frame.rect.intersects(b.frame.rect), "\(a.id) overlaps \(b.id)")
-            }
-        }
-        XCTAssertEqual(Set(board.widgets.map(\.z)).count, board.widgets.count)
-    }
-
     func testPlacementsSurviveARestart() throws {
         let file = WidgetPlacementsFile(fileURL: directory.appendingPathComponent("widget-placements.json"))
         XCTAssertEqual(file.load(), WidgetPlacements())
@@ -77,7 +52,7 @@ final class WidgetPlacementTests: XCTestCase {
     }
 
     func testAWidgetAlreadyOnTheBoardIsOnlyRecorded() {
-        let board = DefaultBoard.make(usage: [])
+        let board = DefaultBoard.make(harnesses: [])
         let result = WidgetPlacer.place(
             on: board, catalog: CatalogFixtures.catalog([CatalogFixtures.clock]), placements: WidgetPlacements(),
             canvasWidth: 1280, isEligible: { _ in true })

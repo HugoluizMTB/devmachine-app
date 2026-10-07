@@ -37,10 +37,7 @@ struct DevmachineApp: App {
             let ids = DemoMode.isActive
                 ? DemoData.usageProviders.map(\.harnessID)
                 : facade.usageRegistrations(for: settings).map(\.descriptor.id.rawValue)
-            let usage = ids.compactMap { id in
-                facade.descriptor(for: HarnessID(rawValue: id))?.packageName.map { UsageHarness(harness: id, package: $0) }
-            }
-            return DefaultBoard.make(usage: usage)
+            return DefaultBoard.make(harnesses: ids)
         }
         WidgetCompatibilityStore.shared.onUpdated = {
             HomeBoardController.shared.reload()

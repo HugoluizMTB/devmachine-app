@@ -41,7 +41,7 @@ final class BoardStoreTests: XCTestCase {
     private var fileURL: URL { BoardStore.homeFileURL(configDirectory: config.path) }
 
     private func makeStore() -> BoardStore {
-        BoardStore(fileURL: fileURL, timer: timer, makeDefault: { DefaultBoard.make(usage: []) })
+        BoardStore(fileURL: fileURL, timer: timer, makeDefault: { DefaultBoard.make(harnesses: []) })
     }
 
     private func writeFile(_ text: String) throws {
@@ -67,19 +67,19 @@ final class BoardStoreTests: XCTestCase {
         let store = makeStore()
         store.load()
         XCTAssertEqual(store.status, .ready)
-        XCTAssertEqual(store.board, DefaultBoard.make(usage: []))
-        XCTAssertEqual(try readFile(), BoardCodec.encode(DefaultBoard.make(usage: [])))
+        XCTAssertEqual(store.board, DefaultBoard.make(harnesses: []))
+        XCTAssertEqual(try readFile(), BoardCodec.encode(DefaultBoard.make(harnesses: [])))
     }
 
     func testWithoutAConfigurationFolderTheDefaultWaitsInMemory() throws {
         try FileManager.default.removeItem(at: config)
         let store = makeStore()
         store.load()
-        XCTAssertEqual(store.board, DefaultBoard.make(usage: []))
+        XCTAssertEqual(store.board, DefaultBoard.make(harnesses: []))
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
         try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
         store.load()
-        XCTAssertEqual(try readFile(), BoardCodec.encode(DefaultBoard.make(usage: [])))
+        XCTAssertEqual(try readFile(), BoardCodec.encode(DefaultBoard.make(harnesses: [])))
     }
 
     func testAnInvalidFirstReadShowsTheProblemAndNoBoard() throws {
@@ -165,7 +165,7 @@ final class BoardStoreTests: XCTestCase {
         try store.reset()
         XCTAssertEqual(try String(contentsOf: store.backupURL, encoding: .utf8), broken)
         XCTAssertEqual(store.backupURL.lastPathComponent, "home.yml.bak")
-        XCTAssertEqual(try readFile(), BoardCodec.encode(DefaultBoard.make(usage: [])))
+        XCTAssertEqual(try readFile(), BoardCodec.encode(DefaultBoard.make(harnesses: [])))
         XCTAssertEqual(store.status, .ready)
     }
 
@@ -203,8 +203,8 @@ final class BoardStoreTests: XCTestCase {
         store.load()
         try FileManager.default.removeItem(at: fileURL)
         store.load()
-        XCTAssertEqual(store.board, DefaultBoard.make(usage: []))
-        XCTAssertEqual(try readFile(), BoardCodec.encode(DefaultBoard.make(usage: [])))
+        XCTAssertEqual(store.board, DefaultBoard.make(harnesses: []))
+        XCTAssertEqual(try readFile(), BoardCodec.encode(DefaultBoard.make(harnesses: [])))
     }
 
     func testAFileForAnotherSurfaceIsInvalidHere() throws {

@@ -31,7 +31,7 @@ final class BoardFileWatcherTests: XCTestCase {
     func testARenamedFileReachesTheStore() async throws {
         let fileURL = BoardStore.homeFileURL(configDirectory: config.path)
         try Data(board(id: "before").utf8).write(to: fileURL, options: .atomic)
-        let store = BoardStore(fileURL: fileURL, makeDefault: { DefaultBoard.make(usage: []) })
+        let store = BoardStore(fileURL: fileURL, makeDefault: { DefaultBoard.make(harnesses: []) })
         store.load()
         let watcher = BoardFileWatcher(fileURL: fileURL) { store.load() }
         XCTAssertTrue(watcher.isWatching)
@@ -43,7 +43,7 @@ final class BoardFileWatcherTests: XCTestCase {
     func testAnInPlaceEditIsSeenToo() async throws {
         let fileURL = BoardStore.homeFileURL(configDirectory: config.path)
         try Data(board(id: "before").utf8).write(to: fileURL, options: .atomic)
-        let store = BoardStore(fileURL: fileURL, makeDefault: { DefaultBoard.make(usage: []) })
+        let store = BoardStore(fileURL: fileURL, makeDefault: { DefaultBoard.make(harnesses: []) })
         store.load()
         let watcher = BoardFileWatcher(fileURL: fileURL) { store.load() }
         try board(id: "edited").write(to: fileURL, atomically: false, encoding: .utf8)
@@ -55,7 +55,7 @@ final class BoardFileWatcherTests: XCTestCase {
     func testEveryRenameIsSeenNotOnlyTheFirst() async throws {
         let fileURL = BoardStore.homeFileURL(configDirectory: config.path)
         try Data(board(id: "first").utf8).write(to: fileURL, options: .atomic)
-        let store = BoardStore(fileURL: fileURL, makeDefault: { DefaultBoard.make(usage: []) })
+        let store = BoardStore(fileURL: fileURL, makeDefault: { DefaultBoard.make(harnesses: []) })
         store.load()
         let watcher = BoardFileWatcher(fileURL: fileURL) { store.load() }
         for id in ["second", "third", "fourth"] {
