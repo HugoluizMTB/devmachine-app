@@ -1010,9 +1010,10 @@ Rules:
   the end, drawn (and hit-testable) only while the pointer is over the panel.
   An app widget with nothing to show (no pull requests, no links, a section
   before the first read, Shortcuts with no session, Publish a port with no
-  Caddy) is 0 pt at rest, as before; while the pointer is over the panel it
-  draws `StackEmptyWidgetHeader`, its title row with the controls its row
-  style gives, so it can still be collapsed, moved or removed.
+  Caddy) takes no space at rest or on a plain hover, as before; only while
+  ⌥ is held over the panel (the `.bare` rule) does it draw
+  `StackEmptyWidgetHeader`, its title row with the controls, so it can still
+  be collapsed, moved or removed (`StackRowModel.showsEmptyHeader`).
 - **One session-context section leads** (`ContextSectionLead`): before the
   first read, the board's first expanded one draws the status view; after
   it, the first that draws something carries the age label.
@@ -1035,10 +1036,11 @@ Rules:
   while an expanded widget reads `repo` or `branch`
   (`StackBoardController.needsGitContext`). It probes on a new session or
   folder, on each new session-context read (`ContextState.updatedAt`, so a
-  `git checkout` shows within a poll), and when the Context tab appears,
-  keeping the last answer meanwhile. A failure is retried once on the next
-  read; a second in a row waits for the tab or a new folder. No timer of its
-  own (`ContextGitStatusStore`).
+  `git checkout` shows), and when the Context tab appears, keeping the last
+  answer meanwhile. A new read probes at most once per 30 s for the same
+  session and folder (`GitProbeThrottle`); a new session or folder, or the
+  tab appearing, probes at once. A failure is retried on the first read
+  30 s later, not sooner. No timer of its own (`ContextGitStatusStore`).
 - **A session switch hands over its context once, whole**
   (`ContextPushGate`): while the new session's first context read or git
   probe is out, the board keeps the old keys, so no widget runs on empty

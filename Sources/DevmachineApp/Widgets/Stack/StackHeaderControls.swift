@@ -131,19 +131,20 @@ struct StackTitleHeader: View {
 }
 
 /// The title row of an app widget that has nothing to show; it draws only
-/// while `StackRowModel.showsEmptyHeader` says so, with the controls its
-/// row style gives; a bare row already has its ⌥ pill over it.
+/// while `StackRowModel.showsEmptyHeader` says so (⌥ held over the panel),
+/// with its controls; a bare row already has its ⌥ pill over it.
 struct StackEmptyWidgetHeader: View {
     @Environment(\.stackWidgetChrome) private var chrome
 
     var body: some View {
         if let chrome, StackRowModel.showsEmptyHeader(
-            panelHovered: chrome.isPanelHovered, dragging: chrome.isDragging, canEdit: chrome.canEdit) {
+            panelHovered: chrome.isPanelHovered, optionHeld: chrome.isOptionHeld, dragging: chrome.isDragging,
+            canEdit: chrome.canEdit) {
             DMSection(
                 padding: EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14),
                 label: { DMSectionLabel(text: chrome.model.title.uppercased()) },
                 trailing: {
-                    if chrome.model.header != .bare { StackHeaderControls() }
+                    if chrome.model.header != .bare { StackHeaderControls(alwaysShown: true) }
                 })
         }
     }

@@ -211,10 +211,12 @@ final class StackRowModelTests: XCTestCase {
         XCTAssertFalse(ContextSectionLead.isLead(.monitors, preceding: [.pullRequests], state: withPRs))
     }
 
-    func testAnEmptyAppWidgetShowsItsTitleRowOnlyWhileThePanelIsHoveredAndEditable() {
-        XCTAssertFalse(StackRowModel.showsEmptyHeader(panelHovered: false, dragging: false, canEdit: true))
-        XCTAssertTrue(StackRowModel.showsEmptyHeader(panelHovered: true, dragging: false, canEdit: true))
-        XCTAssertTrue(StackRowModel.showsEmptyHeader(panelHovered: false, dragging: true, canEdit: true))
-        XCTAssertFalse(StackRowModel.showsEmptyHeader(panelHovered: true, dragging: false, canEdit: false))
+    func testAnEmptyAppWidgetShowsItsTitleRowOnlyWhileOptionIsHeldOverThePanel() {
+        XCTAssertFalse(StackRowModel.showsEmptyHeader(panelHovered: false, optionHeld: false, dragging: false, canEdit: true))
+        XCTAssertFalse(StackRowModel.showsEmptyHeader(panelHovered: true, optionHeld: false, dragging: false, canEdit: true))
+        XCTAssertFalse(StackRowModel.showsEmptyHeader(panelHovered: false, optionHeld: true, dragging: false, canEdit: true))
+        XCTAssertTrue(StackRowModel.showsEmptyHeader(panelHovered: true, optionHeld: true, dragging: false, canEdit: true))
+        XCTAssertTrue(StackRowModel.showsEmptyHeader(panelHovered: false, optionHeld: false, dragging: true, canEdit: true))
+        XCTAssertFalse(StackRowModel.showsEmptyHeader(panelHovered: true, optionHeld: true, dragging: false, canEdit: false))
     }
 }

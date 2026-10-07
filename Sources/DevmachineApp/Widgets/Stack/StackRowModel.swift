@@ -84,11 +84,12 @@ struct StackRowModel: Equatable {
             canMoveUp: index > 0, canMoveDown: index < count - 1, isCollapsed: entry.collapsed)
     }
 
-    /// An app widget with nothing to show stays 0 pt at rest, as before the
-    /// stack; while the pointer is over the panel it shows its title row, so
-    /// it can still be collapsed, moved or removed.
-    static func showsEmptyHeader(panelHovered: Bool, dragging: Bool, canEdit: Bool) -> Bool {
-        canEdit && (panelHovered || dragging)
+    /// An app widget with nothing to show takes no space at rest or on a
+    /// plain hover, as before the stack; with ⌥ held over the panel (the
+    /// `.bare` rule) it shows its title row, so it can still be collapsed,
+    /// moved or removed.
+    static func showsEmptyHeader(panelHovered: Bool, optionHeld: Bool, dragging: Bool, canEdit: Bool) -> Bool {
+        canEdit && (dragging || (panelHovered && optionHeld))
     }
 
     /// A row without its own header has nowhere to put the controls but over

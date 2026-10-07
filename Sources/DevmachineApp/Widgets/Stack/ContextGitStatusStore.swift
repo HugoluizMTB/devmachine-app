@@ -1,26 +1,46 @@
 import DevmachineCore
 import Foundation
 
+/// When the git probe may run. A new session or folder, or the Context tab
+/// coming back, probes at once; a new context read (every 5 s poll) only
+/// once 30 s have passed since the last probe, failed or not, so a widget
+/// showing the branch never costs an ssh round trip per poll.
+enum GitProbeThrottle {
+    enum Reason {
+        case newTarget, appeared, newRead
+    }
+
+    static let interval: TimeInterval = 30
+
+    static func allows(_ reason: Reason, lastProbe: Date?, now: Date) -> Bool {
+        switch reason {
+        case .newTarget, .appeared: return true
+        case .newRead: return lastProbe.map { now.timeIntervalSince($0) >= interval } ?? true
+        }
+    }
+}
+
 /// Reads `repo` and `branch` for the context sidebar, only while a widget on
-/// the board reads them. It probes when the session or folder changes, on
-/// each new session-context read (`revision`), and when the Context tab
-/// comes back; never on a timer of its own. After a failure the next read
-/// retries once; a second failure in a row waits for the tab or a new folder.
+/// the board reads them, when `GitProbeThrottle` allows. Never on a timer
+/// of its own: a new read is the session-context poll's (`revision`).
 @MainActor
 final class ContextGitStatusStore: ObservableObject {
     @Published private(set) var status: ContextGitStatus?
     private let run: @Sendable (CommandTarget, String) throws -> String
+    private let now: () -> Date
     private var current: (target: CommandTarget, key: String)?
     private var revision: String?
     private var inFlightKey: String?
-    private var failures = 0
+    private var lastProbe: Date?
 
-    private static let failuresBeforeWaiting = 2
-
-    init(run: @escaping @Sendable (CommandTarget, String) throws -> String = { target, body in
-        try HostRunner().runCapturingWithFolderArgument(target, body).stdout
-    }) {
+    init(
+        run: @escaping @Sendable (CommandTarget, String) throws -> String = { target, body in
+            try HostRunner().runCapturingWithFolderArgument(target, body).stdout
+        },
+        now: @escaping () -> Date = Date.init
+    ) {
         self.run = run
+        self.now = now
     }
 
     /// A new session or folder has no answer yet; the context waits for it
@@ -32,6 +52,7 @@ final class ContextGitStatusStore: ObservableObject {
             current = nil
             self.revision = nil
             inFlightKey = nil
+            lastProbe = nil
             if status != nil { status = nil }
             return
         }
@@ -39,22 +60,21 @@ final class ContextGitStatusStore: ObservableObject {
         if key != current?.key {
             current = (target, key)
             self.revision = revision
-            failures = 0
             if status != nil { status = nil }
-            probe()
+            probe(.newTarget)
         } else if revision != self.revision {
             self.revision = revision
-            if failures < Self.failuresBeforeWaiting { probe() }
+            probe(.newRead)
         }
     }
 
-    func appeared() {
-        failures = 0
-        probe()
-    }
+    func appeared() { probe(.appeared) }
 
-    private func probe() {
+    private func probe(_ reason: GitProbeThrottle.Reason) {
         guard let current, inFlightKey != current.key else { return }
+        let time = now()
+        guard GitProbeThrottle.allows(reason, lastProbe: lastProbe, now: time) else { return }
+        lastProbe = time
         let key = current.key
         let target = current.target
         inFlightKey = key
@@ -70,11 +90,9 @@ final class ContextGitStatusStore: ObservableObject {
         guard current?.key == key else { return }
         switch result {
         case let .success(stdout):
-            failures = 0
             let parsed = ContextGitProbe.parse(stdout)
             if status != parsed { status = parsed }
         case .failure:
-            failures += 1
             if status == nil { status = ContextGitProbe.parse("") }
         }
     }

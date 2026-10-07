@@ -77,59 +77,87 @@ final class ContextGitStatusStoreTests: XCTestCase {
 
     private struct Boom: Error {}
 
-    func testANewReadOfTheSameSessionProbesAgainAndKeepsTheLastAnswerMeanwhile() async {
+    private final class Clock {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        func advance(_ seconds: TimeInterval) { now = now.addingTimeInterval(seconds) }
+    }
+
+    func testTheThrottleLetsANewReadProbeOnlyThirtySecondsAfterTheLastProbe() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(GitProbeThrottle.allows(.newRead, lastProbe: nil, now: start))
+        XCTAssertFalse(GitProbeThrottle.allows(.newRead, lastProbe: start, now: start.addingTimeInterval(5)))
+        XCTAssertFalse(GitProbeThrottle.allows(.newRead, lastProbe: start, now: start.addingTimeInterval(29.9)))
+        XCTAssertTrue(GitProbeThrottle.allows(.newRead, lastProbe: start, now: start.addingTimeInterval(30)))
+    }
+
+    func testANewSessionOrFolderOrTheTabProbesAtOnce() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(GitProbeThrottle.allows(.newTarget, lastProbe: start, now: start.addingTimeInterval(1)))
+        XCTAssertTrue(GitProbeThrottle.allows(.appeared, lastProbe: start, now: start.addingTimeInterval(1)))
+    }
+
+    func testANewReadProbesAgainOnlyAfterThirtySecondsAndKeepsTheLastAnswerMeanwhile() async {
         let script = Script([.success("main\n\n"), .success("feature\n\n")])
-        let store = ContextGitStatusStore(run: { _, _ in try script.next() })
+        let clock = Clock()
+        let store = ContextGitStatusStore(run: { _, _ in try script.next() }, now: { clock.now })
         let target = CommandTarget.remote(alias: "alice-dev-devmachine", session: "api")
         store.refresh(target, cwd: "/home/alice/api", revision: "10:00:00")
         await waitUntil { store.status?.branch == "main" }
-        store.refresh(target, cwd: "/home/alice/api", revision: "10:00:00")
-        XCTAssertEqual(script.count, 1)
+        clock.advance(5)
         store.refresh(target, cwd: "/home/alice/api", revision: "10:00:05")
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(script.count, 1)
+        clock.advance(25)
+        store.refresh(target, cwd: "/home/alice/api", revision: "10:00:30")
         XCTAssertEqual(store.status?.branch, "main")
         XCTAssertFalse(store.isPending)
         await waitUntil { store.status?.branch == "feature" }
         XCTAssertEqual(script.count, 2)
     }
 
-    func testAFailedProbeIsRetriedOnceOnTheNextReadThenWaits() async {
-        let script = Script([.failure(Boom())])
-        let store = ContextGitStatusStore(run: { _, _ in try script.next() })
+    func testAFailedProbeIsRetriedOnTheNextReadAfterThirtySecondsNotSooner() async {
+        let script = Script([.failure(Boom()), .success("main\n\n")])
+        let clock = Clock()
+        let store = ContextGitStatusStore(run: { _, _ in try script.next() }, now: { clock.now })
         let target = CommandTarget.remote(alias: "alice-dev-devmachine", session: "api")
         store.refresh(target, cwd: nil, revision: "1")
         await waitUntil { store.status != nil }
+        XCTAssertEqual(store.status, ContextGitStatus(branch: "", repo: ""))
+        clock.advance(10)
         store.refresh(target, cwd: nil, revision: "2")
-        await waitUntil { script.count == 2 }
         try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(script.count, 1)
+        clock.advance(20)
         store.refresh(target, cwd: nil, revision: "3")
-        store.refresh(target, cwd: nil, revision: "4")
-        try? await Task.sleep(for: .milliseconds(30))
+        await waitUntil { store.status?.branch == "main" }
         XCTAssertEqual(script.count, 2)
-        store.appeared()
-        await waitUntil { script.count == 3 }
     }
 
     func testAFailedProbeAfterAGoodOneKeepsTheGoodAnswer() async {
         let script = Script([.success("main\ngit@example.com:acme/api.git\n"), .failure(Boom())])
-        let store = ContextGitStatusStore(run: { _, _ in try script.next() })
+        let clock = Clock()
+        let store = ContextGitStatusStore(run: { _, _ in try script.next() }, now: { clock.now })
         let target = CommandTarget.remote(alias: "alice-dev-devmachine", session: "api")
         store.refresh(target, cwd: nil, revision: "1")
         await waitUntil { store.status != nil }
+        clock.advance(30)
         store.refresh(target, cwd: nil, revision: "2")
         await waitUntil { script.count == 2 }
         try? await Task.sleep(for: .milliseconds(30))
         XCTAssertEqual(store.status, ContextGitStatus(branch: "main", repo: "acme/api"))
     }
 
-    func testTheTabComingBackProbesAgain() async {
+    func testTheTabComingBackProbesAtOnce() async {
         let script = Script([.success("main\n\n"), .success("feature\n\n")])
-        let store = ContextGitStatusStore(run: { _, _ in try script.next() })
+        let clock = Clock()
+        let store = ContextGitStatusStore(run: { _, _ in try script.next() }, now: { clock.now })
         store.appeared()
         XCTAssertEqual(script.count, 0)
         store.refresh(.local(session: "notes", path: "/Users/alice/notes"), cwd: nil)
         XCTAssertTrue(store.isPending)
         await waitUntil { store.status?.branch == "main" }
         XCTAssertFalse(store.isPending)
+        clock.advance(1)
         store.appeared()
         await waitUntil { store.status?.branch == "feature" }
     }
