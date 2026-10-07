@@ -972,7 +972,10 @@ Rules:
   its place is its index. Optional `size` is a preset (its rows × `stack_row`
   40 pt) or `auto` for a view that grows; with no `size` it draws `auto` when
   the view grows, else the widget's `default_size`, its first size, or
-  `medium` (`StackLayout.effectiveSize`). `collapsed: true` draws the header
+  `medium` (`StackLayout.effectiveSize`). A widget the app adds (gallery or
+  placement, `StackPlacer.newEntry`) is written with that size, `auto` or
+  the preset, as `devmachine widgets add --board` writes it, so the YAML is
+  the same whoever added it. `collapsed: true` draws the header
   only and runs nothing. Key order on write: typed `id, type, with, size,
   collapsed`; inline `id, title, source, view, sizes, fits, size, collapsed`;
   `size` only when set, `collapsed` only when true. Inline `source` and

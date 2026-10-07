@@ -160,6 +160,21 @@ final class WidgetPlacementTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: file.brokenFileURL, encoding: .utf8), "{not json")
     }
 
+    func testANewStackEntryTakesAutoWhenItGrowsElseItsDefaultSizeLikeTheCLI() {
+        let board = StackBoard(surface: "context-sidebar", entries: [])
+        var noDefault = CatalogFixtures.machines
+        noDefault.defaultSize = ""
+        var bare = CatalogFixtures.machines
+        bare.defaultSize = ""
+        bare.sizes = []
+        var links = CatalogFixtures.machines
+        links.viewKind = "app.links"
+        XCTAssertEqual(StackPlacer.newEntry(of: CatalogFixtures.machines, on: board).size, .preset("large"))
+        XCTAssertEqual(StackPlacer.newEntry(of: noDefault, on: board).size, .preset("medium"))
+        XCTAssertNil(StackPlacer.newEntry(of: bare, on: board).size)
+        XCTAssertEqual(StackPlacer.newEntry(of: links, on: board).size, .auto)
+    }
+
     func testAStackPlacesAWidgetOnceAtTheEnd() {
         var disk = CatalogFixtures.machines
         disk.places = ["context-sidebar"]
@@ -170,7 +185,7 @@ final class WidgetPlacementTests: XCTestCase {
         XCTAssertTrue(first.boardChanged)
         XCTAssertEqual(first.board.entries.last?.type, disk.name)
         XCTAssertEqual(first.board.entries.last?.id, "machines")
-        XCTAssertNil(first.board.entries.last?.size)
+        XCTAssertEqual(first.board.entries.last?.size, .preset("large"))
         XCTAssertTrue(first.placements.contains("devmachine-app/links", on: "context-sidebar"))
         var removed = first.board
         removed.remove("machines")

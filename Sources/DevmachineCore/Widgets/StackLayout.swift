@@ -94,8 +94,11 @@ public enum StackPlacer {
             board: board, placements: placements, boardChanged: boardChanged, placementsChanged: placementsChanged)
     }
 
+    /// The size written is the one `devmachine widgets add --board` writes:
+    /// auto when the view grows, else the widget's default size.
     public static func newEntry(of widget: CatalogWidget, on board: StackBoard) -> StackEntry {
-        let size: StackSize? = WidgetContract.current.viewGrows(widget.viewKind) ? .auto : nil
+        let preset = widget.defaultSize.isEmpty ? widget.sizes.first : widget.defaultSize
+        let size: StackSize? = WidgetContract.current.viewGrows(widget.viewKind) ? .auto : preset.map(StackSize.preset)
         return StackEntry(id: board.uniqueID(base: widget.widget), type: widget.name, size: size)
     }
 }
