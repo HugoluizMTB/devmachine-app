@@ -5,6 +5,8 @@ final class OwnershipTests: XCTestCase {
     func testTheHomeFolderNamesTheOwner() {
         XCTAssertEqual(Ownership.user(fromHome: "/home/acme/dev/site"), "acme")
         XCTAssertEqual(Ownership.user(fromHome: "/home/acme"), "acme")
+        XCTAssertEqual(Ownership.user(fromHome: "/Users/acme/dev/site"), "acme")
+        XCTAssertNil(Ownership.user(fromHome: "/Users/"))
         XCTAssertNil(Ownership.user(fromHome: "/opt/stack"))
         XCTAssertNil(Ownership.user(fromHome: "/home/"))
         XCTAssertNil(Ownership.user(fromHome: ""))

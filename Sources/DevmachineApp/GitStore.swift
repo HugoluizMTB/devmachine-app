@@ -17,7 +17,7 @@ struct CLIWorktreeAdmin: WorktreeAdmin {
               let name = try? cli.listWorkspaces().first(where: { $0.name == workspace })?.machine,
               let machine = try? cli.listConfigMachines().first(where: { $0.name == name })
         else { return nil }
-        return WorktreeAdminRemoval.Machine(name: machine.name, isSelf: machine.isSelf)
+        return WorktreeAdminRemoval.Machine(name: machine.name, isSelf: machine.isSelf, platform: machine.platform)
     }
 
     func run(machine: String, script: String) throws -> (stdout: String, stderr: String, exitCode: Int32) {

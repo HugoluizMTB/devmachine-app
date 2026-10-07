@@ -22,8 +22,35 @@ public enum ServerKeySource: String, CaseIterable, Equatable, Sendable {
     case agent
 }
 
+/// What happens to SSH password login once the key is proved. Off for every
+/// account is the CLI's default and adds no flag; a Mac somebody uses has
+/// people who log in with a password, so some may keep it
+/// (`--keep-password-login`, CLI 0.8.2+), or it is left as it is
+/// (`--no-harden`).
+public enum PasswordLoginChoice: String, CaseIterable, Equatable, Sendable {
+    case offForEveryone
+    case keepSome
+    case leaveOn
+
+    public static let keepMinimumCLIVersion = SemanticVersion(major: 0, minor: 8, patch: 2)
+
+    public static func keepIsSupported(cliVersion: SemanticVersion?) -> Bool {
+        guard let cliVersion else { return false }
+        return cliVersion >= keepMinimumCLIVersion
+    }
+
+    public var title: String {
+        switch self {
+        case .offForEveryone: return "Off for every account"
+        case .keepSome: return "Off, except some accounts"
+        case .leaveOn: return "Leave it as it is"
+        }
+    }
+}
+
 public enum MachineDraftField: Equatable, Sendable {
     case name, address, user, port, keyFile, agentKey, password, fingerprint, domain, workspace, size, location
+    case passwordLogin
 }
 
 public struct MachineDraftProblem: Equatable, Sendable {
@@ -83,6 +110,9 @@ public struct MachineDraft: Equatable, Sendable {
     public var hasConfiguration = true
     /// Where the machine is (`MachineLocation`), prefilled for its kind.
     public var location = MachineLocation.external
+    public var passwordLogin: PasswordLoginChoice = .offForEveryone
+    /// The accounts that keep SSH password login, separated by commas.
+    public var keepPasswordLoginAccounts = ""
 
     public init() {}
 
@@ -93,6 +123,35 @@ public struct MachineDraft: Equatable, Sendable {
     public var trimmedWorkspace: String { workspace.trimmingCharacters(in: .whitespaces) }
     public var trimmedAddress: String { address.trimmingCharacters(in: .whitespaces) }
     public var trimmedDomain: String { domain.trimmingCharacters(in: .whitespaces) }
+
+    public var keptPasswordLoginAccounts: [String] {
+        var names: [String] = []
+        for part in keepPasswordLoginAccounts.split(separator: ",") {
+            let name = part.trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty, !names.contains(name) { names.append(name) }
+        }
+        return names
+    }
+
+    /// The flags that say what happens to password login.
+    public var passwordLoginArguments: [String] {
+        switch passwordLogin {
+        case .offForEveryone: return []
+        case .keepSome: return ["--keep-password-login", keptPasswordLoginAccounts.joined(separator: ",")]
+        case .leaveOn: return ["--no-harden"]
+        }
+    }
+
+    /// What the first command does to password login, in a sentence's words.
+    public var passwordLoginPhrase: String {
+        switch passwordLogin {
+        case .offForEveryone: return "turns password login off"
+        case .keepSome where !keptPasswordLoginAccounts.isEmpty:
+            return "turns password login off except for " + keptPasswordLoginAccounts.joined(separator: ", ")
+        case .keepSome: return "turns password login off"
+        case .leaveOn: return "leaves password login as it is"
+        }
+    }
 
     /// The `SHA256:…` word in what was pasted: `ssh-keygen -lf` prints it
     /// between the key size and the comment.
@@ -163,7 +222,23 @@ public struct MachineDraft: Equatable, Sendable {
         if let message = MachineLocation.problem(location) {
             problems.append(.init(field: .location, message: message))
         }
+        if kind == .server, passwordLogin == .keepSome, let message = keptAccountsProblem {
+            problems.append(.init(field: .passwordLogin, message: message))
+        }
         return problems
+    }
+
+    /// The CLI's account name rule: a comma is a second account, a * or !
+    /// a pattern sshd would read.
+    static let accountPattern = "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$"
+
+    private var keptAccountsProblem: String? {
+        let names = keptPasswordLoginAccounts
+        if names.isEmpty { return "Name the accounts that keep their password, like alice, bob." }
+        if let bad = names.first(where: { !Self.matches($0, Self.accountPattern) }) {
+            return "\(bad) is not an account name: use letters, digits, '_', '.' and '-'."
+        }
+        return nil
     }
 
     /// The first workspace follows the same rule as any new one
@@ -195,7 +270,7 @@ public struct MachineDraft: Equatable, Sendable {
             problems.append(.init(field: .address, message: "Type an IP, a hostname, or tailscale:<name>."))
         }
         if !Self.matches(trimmedUser, Self.userPattern) {
-            problems.append(.init(field: .user, message: "Type a Linux account, like root."))
+            problems.append(.init(field: .user, message: "Type an account on the machine, like root."))
         }
         let validPort = Int(trimmedPort).map { (1...65535).contains($0) && String($0) == trimmedPort } ?? false
         if !validPort {

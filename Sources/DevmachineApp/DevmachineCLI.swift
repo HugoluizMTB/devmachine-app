@@ -58,9 +58,12 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
     var packages: [String]?
     /// Where the machine is (CLI 0.7.30+); nil from an older CLI.
     var location: String?
+    /// `linux` or `macos`, as a command last read it; nil from an older CLI
+    /// or for a machine nothing has read yet.
+    var platform: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, hosts, workspaces, port, packages, location
+        case name, hosts, workspaces, port, packages, location, platform
         case adminUser = "admin_user"
         case isSelf = "self"
     }
@@ -75,6 +78,7 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
         isSelf = try c.decodeIfPresent(Bool.self, forKey: .isSelf) ?? false
         packages = try c.decodeIfPresent([String].self, forKey: .packages)
         location = try c.decodeIfPresent(String.self, forKey: .location)
+        platform = try c.decodeIfPresent(String.self, forKey: .platform)
     }
 }
 
@@ -582,6 +586,24 @@ struct DevmachineCLI: Sendable {
             throw DevmachineCLIError.commandFailed("The CLI gave no credentials for \(machine).")
         }
         return report
+    }
+
+    /// `machines password-login`: logs in to ask sshd who can use a password.
+    func passwordLogin(machine: String) throws -> MachinePasswordLogin {
+        let result = try runner.runCapturing(
+            executable: executable, args: MachinePasswordLogin.arguments(machine: machine), environment: environment())
+        try requireSuccess(result)
+        guard let report = MachinePasswordLogin.parse(result.stdout) else {
+            throw DevmachineCLIError.commandFailed("The CLI said nothing about password login on \(machine).")
+        }
+        return report
+    }
+
+    /// `machines password-login --off|--keep|--on --yes`.
+    func changePasswordLogin(machine: String, to change: PasswordLoginChange) throws {
+        let result = try runner.runCapturing(
+            executable: executable, args: change.arguments(machine: machine), environment: environment())
+        try requireSuccess(result)
     }
 
     /// Every configured machine that is not this Mac — the set Stats and the

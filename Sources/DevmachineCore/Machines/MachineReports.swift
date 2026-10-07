@@ -83,6 +83,79 @@ public struct MachineCredentials: Equatable, Sendable, Decodable {
     }
 }
 
+/// `devmachine machines password-login --format json`: what the machine's
+/// sshd says, account by account, about logging in with a password. It logs
+/// in to the machine, so it is read only when asked for.
+public struct MachinePasswordLogin: Equatable, Sendable, Decodable {
+    public struct Account: Equatable, Sendable, Decodable {
+        public let user: String
+        public let allowed: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case user
+            case allowed = "password_login"
+        }
+    }
+
+    public let machine: String
+    /// The answer for an account no exception names.
+    public let allowedByDefault: Bool
+    /// Whether the CLI's own sshd file is there.
+    public let dropIn: Bool
+    public let accounts: [Account]
+    /// The accounts the configuration keeps a password for.
+    public let keep: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case machine, accounts, keep
+        case allowedByDefault = "default"
+        case dropIn = "drop_in"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        machine = try c.decode(String.self, forKey: .machine)
+        allowedByDefault = try c.decodeIfPresent(Bool.self, forKey: .allowedByDefault) ?? false
+        dropIn = try c.decodeIfPresent(Bool.self, forKey: .dropIn) ?? false
+        accounts = try c.decodeIfPresent([Account].self, forKey: .accounts) ?? []
+        keep = try c.decodeIfPresent([String].self, forKey: .keep) ?? []
+    }
+
+    public var summary: String {
+        if allowedByDefault {
+            return dropIn ? "On" : "On (the system's own setting)"
+        }
+        let kept = accounts.filter(\.allowed).map(\.user)
+        return kept.isEmpty ? "Off for every account" : "Off, except for \(kept.joined(separator: ", "))"
+    }
+
+    public static func arguments(machine: String) -> [String] {
+        ["--format", "json", "machines", "password-login", machine]
+    }
+
+    public static func parse(_ json: String) -> MachinePasswordLogin? {
+        try? JSONDecoder().decode(MachinePasswordLogin.self, from: Data(json.utf8))
+    }
+}
+
+/// A change to who logs in over SSH with a password. Keeping nobody is the
+/// same as off.
+public enum PasswordLoginChange: Equatable, Sendable {
+    case off
+    case keep([String])
+    case on
+
+    public func arguments(machine: String) -> [String] {
+        let base = ["machines", "password-login", machine]
+        switch self {
+        case .off: return base + ["--off", "--yes"]
+        case let .keep(accounts) where accounts.isEmpty: return base + ["--off", "--yes"]
+        case let .keep(accounts): return base + ["--keep", accounts.joined(separator: ","), "--yes"]
+        case .on: return base + ["--on", "--yes"]
+        }
+    }
+}
+
 /// What the CLI does to a Lima machine on this Mac. A bought server is not
 /// the CLI's to switch on or off; `delete` destroys the VM, where `machines
 /// rm` only forgets a machine.

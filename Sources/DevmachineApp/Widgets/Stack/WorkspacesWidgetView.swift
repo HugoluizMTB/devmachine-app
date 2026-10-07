@@ -46,7 +46,11 @@ struct WorkspacesWidgetView: View {
                     extraTopSpacing: index > 0
                 )
                 .sidebarDraggable(.workspace(ws.alias), dragging: $dragging, model: model)
-                if let machine = readinessCardMachine(for: ws) {
+                if let machine = firstSyncMachine(for: ws), let problem = model.sessionProblems[ws.alias] {
+                    SessionProblemView(
+                        presentation: problem.firstSyncPresentation(workspace: ws.name, machine: machine),
+                        retry: { model.retry(alias: ws.alias) })
+                } else if let machine = readinessCardMachine(for: ws) {
                     MachineReadinessCard(store: readiness, machine: machine, compact: true)
                         .dmSurface(Color.dmBand, radius: DMRadius.panel)
                         .padding(.horizontal, m.space.md)
@@ -70,6 +74,8 @@ struct WorkspacesWidgetView: View {
                     ForEach(model.localSessions) { s in
                         localSessionRow(session: s)
                     }
+                } else if firstSyncMachine(for: ws) != nil {
+                    EmptyView()
                 } else if let problem = model.sessionProblems[ws.alias], model.pollPauses[ws.alias] == nil,
                           !(problem.isHostKeyRejected && hostKeyMachine(for: ws) != nil),
                           (model.sessionsByAlias[ws.alias] ?? []).isEmpty {
@@ -99,6 +105,18 @@ struct WorkspacesWidgetView: View {
         else { return nil }
         let first = model.visibleWorkspaces.first { readiness.machine(forWorkspace: $0.name) == machine }
         return first?.alias == workspace.alias ? machine : nil
+    }
+
+    /// The machine whose readiness card would sit under `workspace`, when
+    /// that workspace's account and the machine's package both wait for the
+    /// first sync: the two become one card.
+    private func firstSyncMachine(for workspace: Workspace) -> String? {
+        guard let machine = readinessCardMachine(for: workspace),
+              SessionProblem.mergesIntoFirstSync(
+                  state: readiness.state(for: machine), status: readiness.prepareStatus(machine),
+                  problem: model.sessionProblems[workspace.alias])
+        else { return nil }
+        return machine
     }
 
     /// A paused workspace says so under its name. A machine paused as a
@@ -258,7 +276,7 @@ struct WorkspacesWidgetView: View {
                 }
                 if s.handle != Workspace.operatorSession {
                     Button("Remove", role: .destructive) {
-                        model.askToRemoveLocalSession(handle: s.handle)
+                        model.askToEndSession(.localSession(name: s.handle, path: s.path))
                     }
                 }
             }
@@ -317,7 +335,7 @@ struct WorkspacesWidgetView: View {
                     model.pendingRename = (alias: alias, old: s.name)
                 }
                 Button("Delete", role: .destructive) {
-                    model.pendingDelete = (alias: alias, name: s.name)
+                    model.askToEndSession(.session(alias: alias, name: s.name))
                 }
             }
         }

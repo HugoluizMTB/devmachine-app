@@ -165,6 +165,31 @@ final class WorktreeOwnershipTests: XCTestCase {
             .manual(.outsideHome))
     }
 
+    func testARemoteMacGetsTheStepsByHandNotTheLinuxScript() {
+        let studio = WorktreeAdminRemoval.Machine(name: "studio", isSelf: false, platform: "macos")
+        let macPath = "/Users/alice/dev/dash/.worktrees/old"
+        XCTAssertEqual(
+            WorktreeAdminRemoval.route(
+                isLocalSession: false, machine: studio, user: "alice", path: macPath,
+                mainWorktree: "/Users/alice/dev/dash"),
+            .manual(.macMachine))
+        XCTAssertEqual(
+            WorktreeAdminRemoval.route(
+                isLocalSession: false, machine: .init(name: "main", isSelf: false, platform: "linux"),
+                user: "alice", path: path, mainWorktree: main),
+            .admin(machine: "main"))
+    }
+
+    func testTheStepsByHandUseTheMacsRmOnEveryMac() {
+        XCTAssertTrue(WorktreeAdminRemoval.isOnAMac(reason: .thisMac, isLocalSession: true, path: path))
+        XCTAssertTrue(WorktreeAdminRemoval.isOnAMac(reason: .selfMachine, isLocalSession: false, path: path))
+        XCTAssertTrue(WorktreeAdminRemoval.isOnAMac(reason: .macMachine, isLocalSession: false, path: path))
+        XCTAssertTrue(WorktreeAdminRemoval.isOnAMac(
+            reason: .outsideHome, isLocalSession: false, path: "/Users/alice/dev/dash/.worktrees/old"))
+        XCTAssertFalse(WorktreeAdminRemoval.isOnAMac(reason: .outsideHome, isLocalSession: false, path: "/srv/dash/old"))
+        XCTAssertFalse(WorktreeAdminRemoval.isOnAMac(reason: .noCLI, isLocalSession: false, path: path))
+    }
+
     func testTheHomeGuardRefusesEveryWayOut() {
         XCTAssertTrue(WorktreeAdminRemoval.isInsideHome(path, user: "alice"))
         for outside in [
@@ -234,10 +259,10 @@ final class WorktreeOwnershipTests: XCTestCase {
     }
 
     func testTheManualStepsNameBothAccounts() {
-        let remoteSteps = WorktreeAdminRemoval.manualSteps(path: path, mainWorktree: main, isLocalSession: false)
+        let remoteSteps = WorktreeAdminRemoval.manualSteps(path: path, mainWorktree: main, onAMac: false)
         XCTAssertEqual(remoteSteps.asAdmin, "sudo rm -rf --one-file-system -- '/home/alice/dev/dash/.worktrees/old'")
         XCTAssertEqual(remoteSteps.asUser, "git -C '/home/alice/dev/dash' worktree prune")
-        let localSteps = WorktreeAdminRemoval.manualSteps(path: path, mainWorktree: main, isLocalSession: true)
+        let localSteps = WorktreeAdminRemoval.manualSteps(path: path, mainWorktree: main, onAMac: true)
         XCTAssertEqual(localSteps.asAdmin, "sudo rm -rf -- '/home/alice/dev/dash/.worktrees/old'")
     }
 }

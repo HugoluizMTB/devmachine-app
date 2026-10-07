@@ -38,7 +38,7 @@ extension DemoData {
 
     /// Workspace packages for the Workspaces page, named like the release's.
     static let workspacePackages: [CLIPackage] = [
-        workspacePackage("workspace", "Foundation", "The Linux account a person works in: a home nobody else can "
+        workspacePackage("workspace", "Foundation", "The account a person works in: a home nobody else can "
             + "read, a git identity and ~/dev.", on: ["acme", "globex", "initech", "umbrella"]),
         workspacePackage("dev", "Foundation", "The tools a workspace is expected to have: the GitHub CLI, bun "
             + "and Node through mise.", on: ["acme", "globex", "initech"]),
@@ -222,5 +222,13 @@ extension DemoData {
                   "fix":"devmachine login gh --workspace acme"}]}
                 """)!
         },
-        editLocation: { _, _ in })
+        editLocation: { _, _ in },
+        passwordLogin: { machine in
+            MachinePasswordLogin.parse("""
+                {"machine":"\(machine)","default":false,"drop_in":true,
+                 "accounts":[{"user":"alice","password_login":true},{"user":"bob","password_login":false}],
+                 "keep":["alice"]}
+                """)!
+        },
+        changePasswordLogin: { _, _ in })
 }

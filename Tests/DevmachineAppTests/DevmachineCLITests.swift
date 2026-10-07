@@ -529,6 +529,19 @@ final class DevmachineCLIAutoDetectEndpointsTests: XCTestCase {
         XCTAssertEqual(machines.map(\.location), ["hostinger", nil])
     }
 
+    func testAMachinesPlatformIsReadWhenTheCLIReportsIt() throws {
+        let body = #"""
+        [
+          {"name": "studio", "hosts": ["203.0.113.10"], "admin_user": "alice", "port": 22, "workspaces": [], "platform": "macos"},
+          {"name": "lab", "hosts": ["127.0.0.1"], "admin_user": "root", "port": 60022, "workspaces": []}
+        ]
+        """#
+        let machines = try DevmachineCLI(executable: "/x", runner: CLIRecordingRunner(result: (body, "", 0)))
+            .listConfigMachines()
+
+        XCTAssertEqual(machines.map(\.platform), ["macos", nil])
+    }
+
     func testALocationIsEditedThroughMachinesEdit() throws {
         let runner = CLIRecordingRunner(result: ("", "", 0))
 

@@ -29,6 +29,19 @@ final class PackageBatchTests: XCTestCase {
         ])
     }
 
+    func testALinuxOnlyPackageSkipsAMachineTheCLIReadAsAMac() {
+        let docker = PackageEntry(name: "docker", scope: "machine", source: "release", summary: "", category: nil,
+                                  platforms: ["linux"], needs: [], credentialNames: [], installedOn: [])
+        let batch = PackageBatch.plan(
+            packages: ["docker"], targets: [main, backup], action: .install,
+            entries: [docker], statuses: { _ in [:] }, platform: { $0 == backup ? "macos" : "linux" })
+
+        XCTAssertEqual(batch.edits.map(\.target), [main])
+        XCTAssertEqual(batch.skips, [
+            PackageSkip(package: "docker", target: backup, reason: "Only for a Linux machine."),
+        ])
+    }
+
     func testRemovingOnlyTouchesTargetsThatHaveIt() {
         let batch = PackageBatch.plan(
             packages: ["redis"], targets: [main, backup], action: .remove,

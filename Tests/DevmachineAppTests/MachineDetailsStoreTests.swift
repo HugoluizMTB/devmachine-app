@@ -24,7 +24,15 @@ final class MachineDetailsStoreTests: XCTestCase {
                 calls.log.append("credentials \(machine)")
                 return MachineCredentials.parse(#"{"credentials":[]}"#)!
             },
-            editLocation: { machine, location in calls.log.append("edit \(machine) \(location)") })
+            editLocation: { machine, location in calls.log.append("edit \(machine) \(location)") },
+            passwordLogin: { machine in
+                calls.log.append("password-login \(machine)")
+                return MachinePasswordLogin.parse(#"{"machine":"main","default":false,"drop_in":true,"accounts":[],"keep":[]}"#)!
+            },
+            changePasswordLogin: { machine, change in
+                calls.log.append("change \(machine) \(change.arguments(machine: machine).dropFirst(3).joined(separator: " "))")
+                if fail { throw Failure() }
+            })
         return MachineDetailsStore(service: service, reload: reloaded)
     }
 
@@ -47,6 +55,25 @@ final class MachineDetailsStoreTests: XCTestCase {
         await details.toggle(.credentials, machine: "main", isSelf: false)
         XCTAssertEqual(details.open, ["laptop": .check, "main": .credentials])
         XCTAssertEqual(calls.log, ["doctor laptop true", "resolve main", "credentials main"])
+    }
+
+    func testChangingPasswordLoginRunsTheCommandThenAsksTheMachineAgain() async {
+        let calls = Calls()
+        var reloads = 0
+        let details = store(calls, reloaded: { reloads += 1 })
+        await details.changePasswordLogin(.keep(["alice"]), machine: "main")
+        XCTAssertEqual(calls.log, ["change main --keep alice --yes", "password-login main"])
+        XCTAssertNotNil(details.passwordLogins["main"]?.value)
+        XCTAssertNil(details.passwordLoginError["main"])
+        XCTAssertEqual(reloads, 1)
+    }
+
+    func testAFailedPasswordLoginChangeSaysWhyAndStillReadsTheMachine() async {
+        let calls = Calls()
+        let details = store(calls, fail: true)
+        await details.changePasswordLogin(.on, machine: "main")
+        XCTAssertNotNil(details.passwordLoginError["main"])
+        XCTAssertEqual(calls.log.last, "password-login main")
     }
 
     func testAFailedReadSaysWhy() async {
