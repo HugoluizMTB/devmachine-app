@@ -1,14 +1,16 @@
 import Foundation
 
 /// How tall a widget is in a stack: a preset's rows, or as tall as its
-/// content (only for a view that grows).
+/// content (only for a view that grows). A tab never reads its size, so it
+/// keeps any other word as `written`, as the CLI keeps it.
 public enum StackSize: Hashable, Sendable {
     case preset(String)
     case auto
+    case written(String)
 
     public var text: String {
         switch self {
-        case let .preset(name): return name
+        case let .preset(name), let .written(name): return name
         case .auto: return "auto"
         }
     }
@@ -162,26 +164,35 @@ public struct StackBoard: Equatable, Sendable {
     }
 }
 
-/// The boards written when `sidebar.yml` or `context-sidebar.yml` is
-/// missing or reset: today's sidebar and Context tab, in today's order.
+/// The boards written when an ordered surface's file is missing or reset:
+/// today's sidebar, Context tab, menu bar title and popover, in today's order.
 public enum DefaultStackBoard {
     public static let package = "devmachine-app"
     public static let sidebar = "sidebar"
     public static let contextSidebar = "context-sidebar"
+    public static let menubar = "menubar"
+    public static let menubarPanel = "menubar-panel"
     public static let surfaces = [sidebar, contextSidebar]
+    public static let menubarSurfaces = [menubar, menubarPanel]
     public static let sidebarWidgets = ["workspaces"]
     public static let contextSidebarWidgets = [
         "shortcuts", "publish-port", "monitors", "shells", "sub-agents", "todo", "pull-requests", "links",
     ]
+    public static let menubarWidgets = ["brand", "open-pull-requests"]
+    public static let menubarPanelWidgets = ["pull-requests-panel", "usage-panel"]
 
-    public static func make(surface: String) -> StackBoard {
+    /// A stack entry is written with `size: auto`; a slot or a tab takes none.
+    public static func make(surface: String, contract: WidgetContract = .current) -> StackBoard {
         let names: [String]
         switch surface {
         case sidebar: names = sidebarWidgets
         case contextSidebar: names = contextSidebarWidgets
+        case menubar: names = menubarWidgets
+        case menubarPanel: names = menubarPanelWidgets
         default: names = []
         }
+        let size: StackSize? = contract.layout(of: surface) == "stack" ? .auto : nil
         return StackBoard(
-            surface: surface, entries: names.map { StackEntry(id: $0, type: "\(package)/\($0)", size: .auto) })
+            surface: surface, entries: names.map { StackEntry(id: $0, type: "\(package)/\($0)", size: size) })
     }
 }

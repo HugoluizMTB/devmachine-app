@@ -14,15 +14,18 @@ public enum StackLayout {
     public static func height(of entry: StackEntry, resolved: ResolvedWidget, contract: WidgetContract = .current) -> StackHeight {
         switch effectiveSize(of: entry, resolved: resolved, contract: contract) {
         case let .preset(name): return .points(rows(name, contract: contract) * contract.stackRow)
-        case .auto: return .auto
+        case .auto, .written: return .auto
         }
     }
 
     /// The size an entry draws at, written or not, so the Size menu ticks
     /// what the person sees.
     public static func effectiveSize(of entry: StackEntry, resolved: ResolvedWidget, contract: WidgetContract = .current) -> StackSize {
-        if let size = entry.size { return size }
-        return contract.viewGrows(resolved.viewKind) ? .auto : .preset(defaultPreset(resolved))
+        switch entry.size {
+        case let .preset(name)?: return .preset(name)
+        case .auto?: return .auto
+        case .written?, nil: return contract.viewGrows(resolved.viewKind) ? .auto : .preset(defaultPreset(resolved))
+        }
     }
 
     public static func placeholderHeight(contract: WidgetContract = .current) -> Int { 2 * contract.stackRow }

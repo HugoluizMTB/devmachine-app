@@ -10,6 +10,9 @@ public enum BoardCodec {
         "id", "type", "title", "with", "source", "view", "sizes", "fits", "frame", "size", "minimized", "collapsed", "z",
     ]
     private static let stackLayout = "stack"
+    private static let slotLayout = "slot"
+    private static let tabsLayout = "tabs"
+    private static let orderedLayouts: Set<String> = [stackLayout, slotLayout, tabsLayout]
     private static let frameKeys = ["x", "y", "w", "h"]
     private static let specialFloats: [String: Double] = [".inf": .infinity, "-.inf": -.infinity, ".nan": .nan]
 
@@ -29,7 +32,8 @@ public enum BoardCodec {
 
     public static func decodeStack(_ text: String, contract: WidgetContract = .current) throws -> StackBoard {
         let envelope = try envelope(text, contract: contract)
-        guard contract.surfaces[envelope.surface]?.layout == stackLayout else {
+        let layout = contract.layout(of: envelope.surface)
+        guard orderedLayouts.contains(layout) else {
             throw BoardProblem(
                 line: line(envelope.surfaceNode),
                 message: "surface \(envelope.surface) is a canvas; this file holds a stack of widgets")
@@ -37,7 +41,10 @@ public enum BoardCodec {
         var entries: [StackEntry] = []
         var seen: Set<String> = []
         for item in envelope.items {
-            let entry = try decodeStackEntry(item, envelope: envelope, contract: contract)
+            if layout == slotLayout, entries.count == contract.slotMax {
+                throw BoardProblem(line: line(item), message: "the menubar holds \(contract.slotMax) widgets: take one off")
+            }
+            let entry = try decodeStackEntry(item, envelope: envelope, layout: layout, contract: contract)
             guard seen.insert(entry.id).inserted else {
                 throw BoardProblem(line: line(item), message: "id \"\(entry.id)\" is used twice")
             }
@@ -190,9 +197,83 @@ public enum BoardCodec {
     }
 
     /// Only the rules the file alone shows; what needs the catalog (fit,
-    /// single, auto on a typed view) is left to resolution.
-    private static func decodeStackEntry(_ node: Node, envelope: Envelope, contract: WidgetContract) throws -> StackEntry {
+    /// single, auto on a typed view, a typed slot's view) is left to resolution.
+    private static func decodeStackEntry(
+        _ node: Node, envelope: Envelope, layout: String, contract: WidgetContract
+    ) throws -> StackEntry {
         let core = try entryCore(node, envelope: envelope, contract: contract) { id, _, keyLines in
+            try refuseOrderedKeys(id: id, keyLines: keyLines, layout: layout, contract: contract)
+        }
+        let id = core.id
+        var collapsed = false
+        if layout == stackLayout, let collapsedNode = core.fields["collapsed"] {
+            guard let value = bool(collapsedNode) else {
+                throw BoardProblem(line: line(collapsedNode), message: "collapsed of widget \"\(id)\" must be true or false")
+            }
+            collapsed = value
+        }
+        if let inline = core.inline {
+            try checkInlinePlace(inline, core: core, node: node, layout: layout, contract: contract)
+        }
+        let size = try core.fields["size"].map { sizeNode in
+            layout == stackLayout
+                ? try stackSize(sizeNode, core: core, contract: contract) : try tabSize(sizeNode, core: core, contract: contract)
+        }
+        return StackEntry(id: id, type: core.type, with: core.with, inline: core.inline, size: size, collapsed: collapsed)
+    }
+
+    /// The CLI's `DrawnIn`: a slot draws only `slot_entry.views`; elsewhere a
+    /// view with `layouts` is drawn only there.
+    private static func checkInlinePlace(
+        _ inline: InlineWidget, core: EntryCore, node: Node, layout: String, contract: WidgetContract
+    ) throws {
+        let id = core.id
+        if !inline.fits.isEmpty, !inline.fits.contains(layout) {
+            throw BoardProblem(
+                line: core.keyLines["fits"] ?? line(node),
+                message: "\(id): fits \(inline.fits.joined(separator: ", ")), and this board's area is laid out as \(layout)")
+        }
+        let kind = inline.view.kind
+        guard let view = contract.views[kind] else { return }
+        let viewLine = core.keyLines["view"] ?? line(node)
+        if layout == slotLayout {
+            if !contract.slotEntry.views.contains(kind) {
+                throw BoardProblem(line: viewLine, message: "\(id): the \(kind) view cannot be drawn in the menu bar")
+            }
+        } else if let layouts = view.layouts, !layouts.isEmpty, !layouts.contains(layout) {
+            throw BoardProblem(
+                line: viewLine,
+                message: "\(id): the \(kind) view is drawn only in \(layouts.joined(separator: ", ")), and this board's area is laid out as \(layout)")
+        }
+    }
+
+    /// A slot draws one line and a tab fills the popover, so neither takes a
+    /// placement key. The CLI lists every one; the codec stops at the first
+    /// by line, in the CLI's words.
+    private static func refuseOrderedKeys(
+        id: String, keyLines: [String: Int], layout: String, contract: WidgetContract
+    ) throws {
+        let forbids: [String]
+        let reason: (String) -> String
+        switch layout {
+        case slotLayout:
+            forbids = contract.slotEntry.forbids
+            reason = { key in
+                switch key {
+                case "size": return "a widget in the menu bar has no size: it is one line of text"
+                case "collapsed", "minimized": return "a widget in the menu bar does not fold: take it off with widgets remove"
+                default: return "a widget in the menu bar has no \(key); its place is its position in the list"
+                }
+            }
+        case tabsLayout:
+            forbids = contract.tabsEntry.forbids
+            reason = { key in
+                switch key {
+                case "collapsed", "minimized": return "a tab in the menu bar popover does not fold: take it off with widgets remove"
+                default: return "a tab in the menu bar popover has no \(key); its place is its position in the list"
+                }
+            }
+        default:
             for key in contract.stackEntry.forbids {
                 if let keyLine = keyLines[key] {
                     throw BoardProblem(
@@ -203,30 +284,21 @@ public enum BoardCodec {
                 throw BoardProblem(
                     line: minimizedLine, message: "\(id): a widget in a sidebar folds with collapsed: true, not minimized")
             }
+            return
         }
-        let id = core.id
-        var collapsed = false
-        if let collapsedNode = core.fields["collapsed"] {
-            guard let value = bool(collapsedNode) else {
-                throw BoardProblem(line: line(collapsedNode), message: "collapsed of widget \"\(id)\" must be true or false")
-            }
-            collapsed = value
+        let found = forbids.compactMap { key in keyLines[key].map { (key: key, line: $0) } }.min { $0.line < $1.line }
+        if let found {
+            throw BoardProblem(line: found.line, message: "\(id): " + reason(found.key))
         }
-        if let inline = core.inline {
-            if !inline.fits.isEmpty, !inline.fits.contains(stackLayout) {
-                throw BoardProblem(
-                    line: core.keyLines["fits"] ?? line(node),
-                    message: "\(id): fits \(inline.fits.joined(separator: ", ")), and this board's area is laid out as \(stackLayout)")
-            }
-            let kind = inline.view.kind
-            if let layouts = contract.views[kind]?.layouts, !layouts.isEmpty, !layouts.contains(stackLayout) {
-                throw BoardProblem(
-                    line: core.keyLines["view"] ?? line(node),
-                    message: "\(id): the \(kind) view is drawn only in \(layouts.joined(separator: ", ")), and this board's area is laid out as \(stackLayout)")
-            }
+    }
+
+    /// A tab fills the popover and never reads its size; the CLI keeps any
+    /// word there with a warning, so the codec keeps it too.
+    private static func tabSize(_ node: Node, core: EntryCore, contract: WidgetContract) throws -> StackSize {
+        guard let written = string(node) else {
+            throw BoardProblem(line: line(node), message: "\(core.id): size is one word, such as medium")
         }
-        let size = try core.fields["size"].map { try stackSize($0, core: core, contract: contract) }
-        return StackEntry(id: id, type: core.type, with: core.with, inline: core.inline, size: size, collapsed: collapsed)
+        return StackSize(text: written, contract: contract) ?? .written(written)
     }
 
     /// A typed entry's sizes and view are in the catalog, so it is checked
