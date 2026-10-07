@@ -23,7 +23,7 @@ private final class ChangingWorkspaceSource: WorkspaceSource, @unchecked Sendabl
     }
 }
 
-private final class AccountSessionSource: SessionSource, @unchecked Sendable {
+private final class AccountSessionSource: SessionListSource, @unchecked Sendable {
     private let lock = NSLock()
     private var accounts: Set<String>
     private var withoutTmux: Set<String> = []

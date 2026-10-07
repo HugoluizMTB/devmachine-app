@@ -2,7 +2,7 @@ import XCTest
 import DevmachineCore
 @testable import DevmachineApp
 
-private final class ListedSessionSource: SessionSource, @unchecked Sendable {
+private final class ListedSessionSource: SessionListSource, @unchecked Sendable {
     private let lock = NSLock()
     private var listed: [String: [String]]
     private var failing = false

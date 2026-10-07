@@ -6,13 +6,13 @@ struct LocalSessionSnapshot: Equatable, Sendable {
     let harnesses: [String: Set<HarnessID>]
 }
 
-protocol SessionSource: Sendable {
+protocol SessionListSource: Sendable {
     func sessions(for workspace: Workspace, settings: AppSettings) throws -> [TmuxSession]
     func localSessions(settings: AppSettings) throws -> LocalSessionSnapshot
 }
 
 /// Keeps today's SSH and local multiplexer transport behind domain snapshots.
-struct CommandSessionSource: SessionSource {
+struct CommandSessionSource: SessionListSource {
     let store: SessionStore
     let localRunner: any CommandRunner
     let zmxPath: String?
