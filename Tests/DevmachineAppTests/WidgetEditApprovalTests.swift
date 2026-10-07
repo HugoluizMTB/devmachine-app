@@ -24,6 +24,14 @@ final class WidgetEditApprovalTests: XCTestCase {
                 size: medium
                 minimized: false
                 z: 1
+              - id: ask
+                title: Go news
+                source: {kind: prompt, harness: claude, permission_mode: plan, prompt: Search the web.}
+                view: {kind: markdown}
+                frame: {x: 368, y: 24, w: 320, h: 320}
+                size: large
+                minimized: false
+                z: 2
 
             """.utf8).write(to: root.appendingPathComponent("config/boards/home.yml"))
         command = ScriptedSourceRunner()
@@ -56,20 +64,24 @@ final class WidgetEditApprovalTests: XCTestCase {
         controller.sources.update(controller.sourceEntries(isOnScreen: { _ in true }))
     }
 
-    private func allowDisk() async throws {
+    private func allow(_ id: String) async throws {
         sync()
-        guard case let .waiting(hash) = controller.sources.approvalState("disk") else { return XCTFail("expected waiting") }
-        controller.sources.approve("disk", hash: hash)
-        await waitUntil { self.controller.sources.approvalState("disk") == .allowed }
+        guard case let .waiting(hash) = controller.sources.approvalState(id) else { return XCTFail("expected waiting") }
+        controller.sources.approve(id, hash: hash)
+        await waitUntil { self.controller.sources.approvalState(id) == .allowed }
     }
 
-    private func edit(_ change: (inout InlineWidgetForm) -> Void) throws {
-        let old = try XCTUnwrap(controller.editableEntry("disk")?.inline)
+    private func allowDisk() async throws { try await allow("disk") }
+
+    private func edit(_ id: String, _ change: (inout InlineWidgetForm) -> Void) throws {
+        let old = try XCTUnwrap(controller.editableEntry(id)?.inline)
         var form = try XCTUnwrap(InlineWidgetForm(inline: old, surface: "home"))
         change(&form)
-        XCTAssertTrue(controller.apply(.inline(try form.read(surface: "home", id: "disk", keeping: old).get()), to: "disk"))
+        XCTAssertTrue(controller.apply(.inline(try form.read(surface: "home", id: id, keeping: old).get()), to: id))
         sync()
     }
+
+    private func edit(_ change: (inout InlineWidgetForm) -> Void) throws { try edit("disk", change) }
 
     func testChangingTheCommandAsksAgain() async throws {
         try await allowDisk()
@@ -93,5 +105,23 @@ final class WidgetEditApprovalTests: XCTestCase {
         try await allowDisk()
         try edit { $0.target = .machine("main") }
         guard case .waiting = controller.sources.approvalState("disk") else { return XCTFail("expected waiting again") }
+    }
+
+    func testChangingThePermissionModeAsksAgain() async throws {
+        try await allow("ask")
+        try edit("ask") { $0.choosePermissionMode("auto") }
+        guard case .waiting = controller.sources.approvalState("ask") else { return XCTFail("expected waiting again") }
+        try await allow("ask")
+        try edit("ask") { $0.choosePermissionMode("bypassPermissions") }
+        guard case .waiting = controller.sources.approvalState("ask") else { return XCTFail("expected waiting again") }
+        try await allow("ask")
+        try edit("ask") { $0.choosePermissionMode("") }
+        guard case .waiting = controller.sources.approvalState("ask") else { return XCTFail("expected waiting again") }
+    }
+
+    func testChangingOnlyThePromptsTitleKeepsTheDecision() async throws {
+        try await allow("ask")
+        try edit("ask") { $0.title = "Go releases" }
+        XCTAssertEqual(controller.sources.approvalState("ask"), .allowed)
     }
 }

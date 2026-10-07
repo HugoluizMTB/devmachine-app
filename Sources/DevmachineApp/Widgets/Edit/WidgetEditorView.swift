@@ -130,7 +130,7 @@ struct WidgetEditorView: View {
             }
         case .prompt:
             field("Harness", "harness") {
-                Picker(selection: Binding(get: { form.harness }, set: { v in set { $0.harness = v } })) {
+                Picker(selection: Binding(get: { form.harness }, set: { v in set { $0.chooseHarness(v) } })) {
                     ForEach(WidgetContract.current.sources["prompt"]?.fields["harness"]?.values ?? [], id: \.self) {
                         Text(verbatim: $0).tag($0)
                     }
@@ -138,12 +138,13 @@ struct WidgetEditorView: View {
                     EmptyView()
                 }
             }
+            permissionModePicker(form) { v in set { $0.choosePermissionMode(v) } }
             field("Prompt", "prompt") {
                 TextField("Summarise the log", text: Binding(get: { form.prompt }, set: { v in set { $0.prompt = v } }), axis: .vertical)
                     .lineLimit(3...8).dmField()
             }
             targetPicker(form.target) { v in set { $0.target = v } }
-            everyField(form.every) { v in set { $0.every = v } }
+            everyField(form.every, locked: form.everyLocked()) { v in set { $0.every = v } }
         case .session:
             targetPicker(form.target) { v in set { $0.target = v } }
             field("Session", "session") {
@@ -207,8 +208,15 @@ struct WidgetEditorView: View {
         }
     }
 
-    private func everyField(_ value: String, set: @escaping (String) -> Void) -> some View {
-        field("Every (60s, 5m or manual)", "every") { TextField("60s", text: Binding(get: { value }, set: set)).dmField() }
+    private func everyField(_ value: String, locked: Bool = false, set: @escaping (String) -> Void) -> some View {
+        field("Every (60s, 5m or manual)", "every") {
+            TextField("60s", text: Binding(get: { value }, set: set)).dmField().disabled(locked)
+            if locked {
+                Text(verbatim: "A mode with no checks runs only when you press ▶.")
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+            }
+        }
     }
 
     private func targetPicker(_ value: WidgetTarget, set: @escaping (WidgetTarget) -> Void) -> some View {
@@ -219,6 +227,25 @@ struct WidgetEditorView: View {
                 ForEach(options.options(.workspaces)) { Text(verbatim: "Workspace \($0.label)").tag(WidgetTarget.workspace($0.id)) }
             } label: {
                 EmptyView()
+            }
+        }
+    }
+
+    private func permissionModePicker(_ form: InlineWidgetForm, set: @escaping (String) -> Void) -> some View {
+        field("Permission mode", "permissionMode") {
+            Picker(selection: Binding(get: { form.permissionMode }, set: set)) {
+                Text(verbatim: "Harness default").tag("")
+                ForEach(form.permissionModes(), id: \.self) { mode in
+                    Text(verbatim: PermissionModes.isDangerous(mode) ? "\(mode) (no checks)" : mode).tag(mode)
+                }
+            } label: {
+                EmptyView()
+            }
+            if form.everyLocked(), let harness = PromptHarness(rawValue: form.harness) {
+                DMBanner(
+                    message: PermissionModes.warning(form.permissionMode, harness: harness),
+                    systemImage: "exclamationmark.octagon.fill", tint: .red, lineLimit: 4
+                ) { EmptyView() }
             }
         }
     }

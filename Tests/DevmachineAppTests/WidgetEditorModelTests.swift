@@ -333,4 +333,23 @@ final class WidgetEditorModelTests: XCTestCase {
         XCTAssertTrue(outcome.closes)
         XCTAssertNil(outcome.message)
     }
+
+    func testANewPromptSavesItsModeAndAModeWithNoChecksStaysManual() throws {
+        let target = FakeEditTarget()
+        let model = try XCTUnwrap(WidgetEditorModel(request: .new(.prompt), target: target))
+        guard case var .inline(form, nil) = model.form else { return XCTFail() }
+        XCTAssertTrue(model.shownFields.contains("permissionMode"))
+        form.title = "Go news"
+        form.prompt = "Search the web for this week's Go release notes."
+        form.chooseHarness("codex")
+        XCTAssertEqual(form.permissionModes(), WidgetContract.current.sources["prompt"]?.fields["permission_mode"]?.byHarness?["codex"])
+        form.choosePermissionMode("dangerously-bypass-approvals-and-sandbox")
+        XCTAssertTrue(form.everyLocked())
+        model.form = .inline(form, old: nil)
+        XCTAssertTrue(model.save(to: target))
+        guard case let .prompt(source)? = target.added.first?.0.source else { return XCTFail("\(target.added)") }
+        XCTAssertEqual(source.harness, .codex)
+        XCTAssertEqual(source.permissionMode, "dangerously-bypass-approvals-and-sandbox")
+        XCTAssertEqual(source.every, .manual)
+    }
 }
