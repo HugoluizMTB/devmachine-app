@@ -284,9 +284,9 @@ Rules:
   workspace alias with a pane on screen needs its own login (one login per
   machine cannot reach another account's tmux without root); what is
   limited is when. One ssh at a time, aliases grouped by machine, each
-  machine at most once per 5 minutes, nothing while polling is paused or
-  the sweep runs, and the first ssh-level failure ends the round and pauses
-  polling through `AppModel.noteSSHFailure`, the sweep's own backoff.
+  machine at most once per 5 minutes, never a paused workspace, nothing
+  while the sweep runs, and an ssh-level failure pauses through
+  `AppModel.noteSSHFailure`, the sweep's own rule (see Performance rules).
 - **A process starts only after its pane has the size it will be drawn at**
   (`viewDidSize`). Started earlier it learns a placeholder geometry, and a program
   that repaints only what changed never corrects it.
@@ -692,9 +692,19 @@ Rules:
   and cache with a cap. The network map wallpaper is drawn, not baked: its
   canvases are `Equatable` views, repainted only when the map or the size changes. Hidden `.opacity(0)` views still cost a full-window drawable —
   render only what is shown. No `.shadow` on full-window cards.
-- Session polling is a sequential sweep that stops at the first ssh-level failure and
-  pauses (5 min on `Permission denied`, 1 min unreachable): parallel auths against a
-  locked agent got this Mac banned by fail2ban. Keep it that way.
+- Session polling is a sequential sweep, one ssh at a time: parallel auths against a
+  locked agent got this Mac banned by fail2ban. Keep it that way. A failure pauses
+  only what it is about (`PollPause`, `AppModel.pollPauses`), so one broken workspace
+  never stalls the others: a refused login pauses that workspace for 5 min (fail2ban
+  counts failed logins per source IP on each machine; another account's working login
+  adds nothing), an unreachable machine pauses its own workspaces for 1 min (only that
+  workspace when the machine is unknown), a refused host key pauses nothing. A paused
+  workspace gets no automatic login at all: sweep, selection poll, context, Git, copy
+  mode check, the mosh watchdog's ssh. Try again and opening a session try once; a
+  refusal pauses again (a refused mosh-server login skips the ssh fallback, which would
+  be a second refusal). The sidebar shows each pause under the workspace
+  (`PollPauseSidebarCard`, one per machine when unreachable) and it clears on the next
+  answer.
 
 - Machine stats are the one app-wide poll, because Home shows them: `StatsStore`
   reads every non-self machine every 90s, staggered, one run per machine, backing

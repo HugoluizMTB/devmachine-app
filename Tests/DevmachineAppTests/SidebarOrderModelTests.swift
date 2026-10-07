@@ -184,7 +184,7 @@ final class SidebarOrderModelTests: XCTestCase {
 
         source.fail()
         model.refresh(alias: acme.alias)
-        try await waitFor { model.offlineAliases.contains(self.acme.alias) || model.isPollingPaused }
+        try await waitFor { model.offlineAliases.contains(self.acme.alias) || model.isPollingPaused(alias: self.acme.alias) }
 
         XCTAssertEqual(model.sidebarOrder, saved)
     }
