@@ -16,7 +16,7 @@ struct AppWidgetProviders {
         case "app/open-pull-requests", "app/pull-requests-panel":
             if force { prs?.refresh() }
         case "app/harness-usage":
-            usage.refresh(harnessID: key.args["harness"] ?? "", force: true)
+            usage.refresh(harnessID: UsageHarnessChoice.harness(key.args["harness"] ?? "", states: usage.states), force: true)
         case "app/machines":
             if force { stats.refresh() } else { stats.start() }
         default:

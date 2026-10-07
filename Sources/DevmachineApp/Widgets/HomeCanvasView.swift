@@ -180,6 +180,7 @@ private struct BoardCanvasLayer: View {
     let canvasSize: CGSize
     @Binding var clockRect: CGRect?
     @EnvironmentObject private var settingsStore: SettingsStore
+    @EnvironmentObject private var usage: HarnessUsageStore
     @EnvironmentObject private var model: AppModel
     @Environment(\.harnessSettingsFacade) private var facade
     @Environment(\.dmMetrics) private var m
@@ -360,7 +361,7 @@ private struct BoardCanvasLayer: View {
         if let inline = widget.inline { return inline.title }
         if case let .ready(resolved)? = resolution, let title = AppMenubarWidgets.boardTitles[resolved.viewKind] { return title }
         if case let .ready(resolved)? = resolution, resolved.viewKind == "app.harness-usage",
-           let descriptor = facade.descriptor(for: HarnessID(rawValue: resolved.arguments["harness"] ?? "")) {
+           let descriptor = facade.descriptor(for: HarnessID(rawValue: UsageHarnessChoice.harness(resolved.arguments["harness"] ?? "", states: usage.states))) {
             return "\(descriptor.shortTitle) usage"
         }
         return WidgetTitle.make(type: widget.type, in: catalog.catalog)

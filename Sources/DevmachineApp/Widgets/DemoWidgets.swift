@@ -15,8 +15,14 @@ extension DemoData {
             sizes: ["medium", "wide"], defaultSize: "wide"),
         CatalogWidget(
             name: "devmachine-app/machines", summary: "Each machine's load, memory and disk.",
-            source: CatalogSource(name: "app/machines", every: "90s"), viewKind: "app.machines",
-            sizes: ["medium", "large", "tall"], defaultSize: "large"),
+            inputs: ["machines": CatalogInput(type: "choice", defaultValue: nil, summary: "Machines to show.", from: "machines", many: true)],
+            source: CatalogSource(name: "app/machines", with: ["machines": "{{inputs.machines}}"], every: "90s"),
+            viewKind: "app.machines", sizes: ["medium", "large", "tall"], defaultSize: "large"),
+        CatalogWidget(
+            name: "devmachine-app/usage", summary: "A coding harness's usage windows.",
+            inputs: ["harness": CatalogInput(type: "choice", defaultValue: nil, summary: "Harness.", from: "harnesses")],
+            source: CatalogSource(name: "app/harness-usage", with: ["harness": "{{inputs.harness}}"], every: "60s"),
+            viewKind: "app.harness-usage", sizes: ["small", "medium", "wide"], defaultSize: "medium", places: []),
         demoUsage(package: "claude-code", harness: "claude"),
         demoUsage(package: "codex", harness: "codex"),
         CatalogWidget(

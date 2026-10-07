@@ -65,6 +65,25 @@ struct SummaryWidgetView: View {
     }
 }
 
+/// "Which machines" is a list of names; none means all, so a machine added
+/// later shows without a board edit. The store's order wins.
+enum MachinesFilter {
+    static func shown(_ machines: [StatsMachine], chosen: [String]) -> [StatsMachine] {
+        chosen.isEmpty ? machines : machines.filter { chosen.contains($0.name) }
+    }
+
+    static func shown(names: [String], chosen: [String]) -> [String] {
+        chosen.isEmpty ? names : names.filter(chosen.contains)
+    }
+}
+
+/// A usage widget with no harness chosen shows the first enabled one.
+enum UsageHarnessChoice {
+    static func harness(_ argument: String, states: [HarnessUsageState]) -> String {
+        argument.isEmpty ? states.first?.harnessID ?? "" : argument
+    }
+}
+
 struct MachinesWidgetView: View {
     static let cardSpacing: CGFloat = 12
     /// A stats card with a snapshot at 100%; the tallest card drawn replaces it.
@@ -74,6 +93,7 @@ struct MachinesWidgetView: View {
     static let moreChipAlignment: Alignment = .bottomLeading
 
     let size: CGSize
+    var chosen: [String] = []
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var stats: StatsStore
     @ObservedObject private var readiness = MachineReadinessStore.shared
@@ -81,8 +101,10 @@ struct MachinesWidgetView: View {
     @State private var cardHeight: CGFloat?
     @State private var attentionHeight: CGFloat = 0
 
+    private var machines: [StatsMachine] { MachinesFilter.shown(stats.machines, chosen: chosen) }
+
     var body: some View {
-        let attention = readiness.machinesNeedingAttention
+        let attention = MachinesFilter.shown(names: readiness.machinesNeedingAttention, chosen: chosen)
         let gridHeight = size.height - (attention.isEmpty ? 0 : attentionHeight + m.pt(Self.cardSpacing))
         let fit = CardGridFit.fit(
             in: CGSize(width: size.width, height: max(0, gridHeight)),
@@ -101,11 +123,11 @@ struct MachinesWidgetView: View {
             grid(fit)
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
-        .overlay(alignment: Self.moreChipAlignment) { moreChip(fit.hidden(of: stats.machines.count)) }
+        .overlay(alignment: Self.moreChipAlignment) { moreChip(fit.hidden(of: machines.count)) }
     }
 
     private func grid(_ fit: CardGridFit) -> some View {
-        let shown = Array(stats.machines.prefix(fit.shown(of: stats.machines.count)))
+        let shown = Array(machines.prefix(fit.shown(of: machines.count)))
         let columns = max(1, fit.columns)
         let rows = stride(from: 0, to: shown.count, by: columns).map { Array(shown[$0..<min($0 + columns, shown.count)]) }
         let spacing = m.pt(Self.cardSpacing) * fit.scale
@@ -165,12 +187,14 @@ enum UsageWidgetLayout {
 }
 
 struct HarnessUsageWidgetView: View {
-    let harness: String
+    let argument: String
     let size: CGSize
     @EnvironmentObject private var usage: HarnessUsageStore
     @EnvironmentObject private var model: AppModel
     @Environment(\.harnessSettingsFacade) private var facade
     @Environment(\.dmMetrics) private var m
+
+    private var harness: String { UsageHarnessChoice.harness(argument, states: usage.states) }
 
     var body: some View {
         let descriptor = facade.descriptor(for: HarnessID(rawValue: harness))
@@ -322,9 +346,9 @@ struct AppWidgetView: View {
         case "app.summary":
             SummaryWidgetView()
         case "app.machines":
-            MachinesWidgetView(size: size)
+            MachinesWidgetView(size: size, chosen: resolved.listArguments["machines"] ?? [])
         case "app.harness-usage":
-            HarnessUsageWidgetView(harness: resolved.arguments["harness"] ?? "", size: size)
+            HarnessUsageWidgetView(argument: resolved.arguments["harness"] ?? "", size: size)
         case "app.pull-requests-panel":
             PRsView()
                 .clipShape(RoundedRectangle(cornerRadius: DMRadius.card))
