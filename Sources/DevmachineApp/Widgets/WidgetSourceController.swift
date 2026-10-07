@@ -52,7 +52,7 @@ final class WidgetSourceController: ObservableObject {
     private let runners: SourceRunners
     private let approvalsFile: WidgetApprovalsFile
     private let historyStore: SparklineHistoryStore
-    private let surface: String
+    let surface: String
     private(set) var context: [String: String]
     private let contextKeys: Set<String>
     private let isDemo: Bool

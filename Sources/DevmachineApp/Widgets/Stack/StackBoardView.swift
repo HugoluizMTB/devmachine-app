@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import DevmachineCore
 import HarnessUsageKit
@@ -41,6 +42,8 @@ struct StackBoardView: View {
     @State private var bannerHeight: CGFloat = 0
     @State private var viewport: CGFloat = 0
     @State private var width: CGFloat = 0
+    @State private var optionHeld = false
+    @State private var flagsMonitor: Any?
 
     struct StackDrag: Equatable {
         let id: String
@@ -83,9 +86,12 @@ struct StackBoardView: View {
             controller.runtime.providers = AppWidgetProviders(usage: usage, stats: stats)
             controller.runtime.start()
             controller.setVisible(isVisible)
-            controller.runtime.setJobs(controller.runtimeJobs())
+            watchOptionKey()
         }
         .onDisappear {
+            if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
+            flagsMonitor = nil
+            optionHeld = false
             controller.runtime.stop()
             controller.setVisible(false)
             drag = nil
@@ -141,7 +147,9 @@ struct StackBoardView: View {
                 case .bare:
                     content(entry, rowModel, resolution)
                         .overlay(alignment: .topTrailing) {
-                            if chrome.canEdit, chrome.isHovered || chrome.isDragging {
+                            if rowModel.showsControls(
+                                hovering: chrome.isHovered, optionHeld: optionHeld, dragging: chrome.isDragging,
+                                canEdit: chrome.canEdit) {
                                 StackHeaderControls()
                                     .padding(.horizontal, m.space.sm)
                                     .frame(height: m.control.small)
@@ -196,7 +204,7 @@ struct StackBoardView: View {
 
     private func chrome(for row: StackRowModel, entry: StackEntry) -> StackWidgetChrome {
         StackWidgetChrome(
-            model: row, isHovered: hovered == entry.id, isDragging: drag?.id == entry.id,
+            model: row, isHovered: hovered == entry.id, isDragging: drag?.id == entry.id, isOptionHeld: optionHeld,
             canEdit: controller.canEdit, areaName: StackArea.name(controller.surface),
             onToggleCollapsed: { controller.setCollapsed(entry.id, !entry.collapsed) },
             onMoveUp: { controller.moveUp(entry.id) },
@@ -210,12 +218,23 @@ struct StackBoardView: View {
             onDragEnded: { endDrag() })
     }
 
+    private func watchOptionKey() {
+        optionHeld = NSEvent.modifierFlags.contains(.option)
+        guard flagsMonitor == nil else { return }
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+            optionHeld = event.modifierFlags.contains(.option)
+            return event
+        }
+    }
+
     private func endDrag() {
         guard let drag, let from = drag.entries.firstIndex(where: { $0.id == drag.id }) else { return }
         self.drag = nil
         let target = StackDragMath.targetIndex(
             from: from, translation: Double(drag.translation), heights: drag.entries.map { Double(heights[$0.id] ?? 0) })
-        if target != from { controller.move(drag.id, toIndex: target) }
+        if let position = StackDropTarget.position(of: drag.id, to: target, in: drag.entries) {
+            controller.move(drag.id, to: position)
+        }
     }
 
     @ViewBuilder

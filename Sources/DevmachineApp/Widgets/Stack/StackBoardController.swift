@@ -198,6 +198,7 @@ final class StackBoardController: ObservableObject {
     func moveUp(_ id: String) { edit { $0.moveUp(id) } }
     func moveDown(_ id: String) { edit { $0.moveDown(id) } }
     func move(_ id: String, toIndex index: Int) { edit { $0.move(id, toIndex: index) } }
+    func move(_ id: String, to position: StackPosition) { edit { $0.move(id, to: position) } }
     func setCollapsed(_ id: String, _ collapsed: Bool) { edit { $0.setCollapsed(id, collapsed) } }
     func setSize(_ id: String, _ size: StackSize?) { edit { $0.setSize(id, size) } }
     func remove(_ id: String) { edit { $0.remove(id) } }

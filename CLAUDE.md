@@ -960,6 +960,12 @@ Rules:
   `DEVMACHINE_WIDGETS_E2E=<binary>` runs `WidgetSourceLiveTests` through that
   CLI against a temp config whose only machine is `here` (`self: true`, this
   Mac), with `DEVMACHINE_KEYCHAIN=off`. It never targets a remote machine.
+- **Sidebar stack controls stay out of the way.** A widget with its own
+  section header shows grip, chevron and ⋯ in that header on hover. The
+  workspace list and Publish a port have no header, and a pill there would
+  cover the first workspace's buttons, so their pill shows only while the
+  pointer is over them **and ⌥ is held**: hold ⌥ over the workspace list to
+  move or remove it. The rule is `StackRowModel.showsControls`.
 
 ## Host keys
 - **ssh refusing a host key is its own problem** (`SSHFailure.hostKeyRejected`,

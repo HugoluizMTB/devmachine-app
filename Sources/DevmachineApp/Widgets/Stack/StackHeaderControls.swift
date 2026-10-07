@@ -6,6 +6,7 @@ struct StackWidgetChrome {
     let model: StackRowModel
     let isHovered: Bool
     let isDragging: Bool
+    let isOptionHeld: Bool
     let canEdit: Bool
     let areaName: String
     let onToggleCollapsed: () -> Void
@@ -50,7 +51,10 @@ struct StackHeaderControls: View {
 
     var body: some View {
         Group {
-            if let chrome, chrome.canEdit, alwaysShown || chrome.isHovered || chrome.isDragging || dragging {
+            if let chrome, chrome.model.showsControls(
+                hovering: chrome.isHovered, optionHeld: chrome.isOptionHeld, dragging: chrome.isDragging || dragging,
+                canEdit: chrome.canEdit, inTitleHeader: alwaysShown
+            ) {
                 HStack(spacing: m.space.xxs) {
                     grip(chrome)
                     DMIconButton(
@@ -96,7 +100,8 @@ private struct StackWidgetMenu: View {
         Button("Move down") { chrome.onMoveDown() }.disabled(!chrome.model.canMoveDown)
         if chrome.model.sizeChoices.count > 1 {
             Picker("Size", selection: Binding(
-                get: { chrome.model.size ?? chrome.model.sizeChoices[0] }, set: { chrome.onSize($0) }
+                get: { chrome.model.size ?? chrome.model.sizeChoices[0] },
+                set: { if $0 != chrome.model.size { chrome.onSize($0) } }
             )) {
                 ForEach(chrome.model.sizeChoices, id: \.self) { size in
                     Text(verbatim: StackWidgetMenuText.label(size)).tag(size)

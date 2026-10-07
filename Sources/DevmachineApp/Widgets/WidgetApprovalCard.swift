@@ -38,7 +38,9 @@ enum WidgetApprovalText {
         "Runs \(prompt.place), \(prompt.howOften)."
     }
 
-    static let warning = "It was written into home.yml, by you or an agent. Allow it only if you know what it does."
+    static func warning(surface: String) -> String {
+        "It was written into \(surface).yml, by you or an agent. Allow it only if you know what it does."
+    }
 }
 
 /// An inline widget that runs something waits here until the owner says
@@ -47,6 +49,7 @@ struct WidgetApprovalCard: View {
     let kind: String
     let prompt: ApprovalPrompt
     let state: ApprovalState
+    let surface: String
     let size: CGSize
     let onAllow: () -> Void
     let onDeny: () -> Void
@@ -83,7 +86,7 @@ struct WidgetApprovalCard: View {
                 .foregroundStyle(Color.dmMuted)
                 .lineLimit(2)
             if !denied, WidgetDensity.of(width: size.width / m.pt(1), height: size.height / m.pt(1)) == .full {
-                Text(verbatim: WidgetApprovalText.warning)
+                Text(verbatim: WidgetApprovalText.warning(surface: surface))
                     .font(.dm(10))
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -121,7 +124,8 @@ struct SourceWidgetCard: View {
         case .approval:
             let shown = Self.shownHash(approval)
             WidgetApprovalCard(
-                kind: source.source.kind, prompt: controller.approvalPrompt(for: source), state: approval == .notNeeded ? .waiting(hash: "") : approval, size: size,
+                kind: source.source.kind, prompt: controller.approvalPrompt(for: source), state: approval == .notNeeded ? .waiting(hash: "") : approval,
+                surface: controller.surface, size: size,
                 onAllow: { controller.approve(id, hash: shown) }, onDeny: { controller.deny(id, hash: shown) })
         case .demo:
             WidgetPlaceholderView(icon: "play.slash", title: title, detail: "Demo mode never runs widget commands.")

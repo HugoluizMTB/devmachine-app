@@ -25,6 +25,20 @@ final class StackLayoutTests: XCTestCase {
         XCTAssertEqual(StackLayout.approvalRows, 5)
     }
 
+    func testTheEffectiveSizeIsTheEntrysThenAutoForAGrowingViewThenTheDefaultPreset() {
+        let clock = resolved("x/c", view: "app.clock", sizes: ["small", "medium", "large"], defaultSize: "medium")
+        XCTAssertEqual(StackLayout.effectiveSize(of: StackEntry(id: "c", type: "x/c"), resolved: clock), .preset("medium"))
+        XCTAssertEqual(
+            StackLayout.effectiveSize(of: StackEntry(id: "c", type: "x/c", size: .preset("large")), resolved: clock),
+            .preset("large"))
+        let firstSize = resolved("x/c", view: "app.clock", sizes: ["large", "small"])
+        XCTAssertEqual(StackLayout.effectiveSize(of: StackEntry(id: "c", type: "x/c"), resolved: firstSize), .preset("large"))
+        let bare = resolved("x/t", view: "text", sizes: [])
+        XCTAssertEqual(StackLayout.effectiveSize(of: StackEntry(id: "t", type: "x/t"), resolved: bare), .preset("medium"))
+        let links = resolved("x/l", view: "app.links", sizes: [])
+        XCTAssertEqual(StackLayout.effectiveSize(of: StackEntry(id: "l", type: "x/l"), resolved: links), .auto)
+    }
+
     func testSizeChoicesAreAutoForGrowingViewsThenAllowedPresets() {
         XCTAssertEqual(
             StackLayout.sizeChoices(for: resolved("x/l", view: "app.links", sizes: ["small", "large"])),

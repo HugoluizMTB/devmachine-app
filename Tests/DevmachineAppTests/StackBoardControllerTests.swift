@@ -123,6 +123,21 @@ final class StackBoardControllerTests: XCTestCase {
         XCTAssertEqual(board.entries.first { $0.id == "monitors" }?.size, .preset("large"))
     }
 
+    func testPickingASizeOtherThanTheDefaultWritesIt() throws {
+        try write("format: 1\nsurface: context-sidebar\nwidgets:\n  - id: disk\n    type: acme/disk\n", "context-sidebar")
+        let controller = makeController("context-sidebar", catalog: catalog([disk]))
+        controller.setSize("disk", .preset("large"))
+        controller.store?.flush()
+        XCTAssertEqual(try read("context-sidebar").entries.first?.size, .preset("large"))
+    }
+
+    func testADropNextToANeighbourReachesTheFile() throws {
+        let controller = makeController("context-sidebar")
+        controller.move("links", to: .before("shortcuts"))
+        controller.store?.flush()
+        XCTAssertEqual(try read("context-sidebar").entries.first?.id, "links")
+    }
+
     func testRemovingWorkspacesLeavesAnEmptyStackAndTheGalleryOffersItOnce() throws {
         let controller = makeController("sidebar")
         let workspaces = try XCTUnwrap(controller.galleryEntries().first { $0.name == "devmachine-app/workspaces" })

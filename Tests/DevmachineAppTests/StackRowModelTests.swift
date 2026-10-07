@@ -82,6 +82,79 @@ final class StackRowModelTests: XCTestCase {
         XCTAssertFalse(model(context.entries[3]).isCollapsed)
     }
 
+    func testTheSizeMenuTicksTheDefaultPresetWhenTheEntryHasNoSize() {
+        let disk = CatalogWidget(
+            name: "acme/disk", fits: ["stack"], source: CatalogSource(name: "app/machines", every: "60s"),
+            viewKind: "app.machines", sizes: ["small", "medium", "large"], defaultSize: "medium",
+            surfaces: ["context-sidebar"])
+        let catalog = WidgetCatalog(engine: "1.2", packagesRelease: "2026.10.07", widgets: [disk])
+        let entry = StackEntry(id: "disk", type: "acme/disk")
+        let board = StackBoard(surface: "context-sidebar", entries: [entry])
+        let row = StackRowModel.make(
+            entry: entry, index: 0, count: 1, resolution: StackResolution.resolve(entry, on: board, catalog: catalog),
+            approval: nil, catalog: catalog)
+        XCTAssertEqual(row.size, .preset("medium"))
+        XCTAssertEqual(row.sizeChoices, [.preset("small"), .preset("medium"), .preset("large")])
+        XCTAssertEqual(row.height, .fixed(80))
+    }
+
+    func testAWidgetThatCannotResolveKeepsTheSizeItsEntryNames() {
+        let entry = StackEntry(id: "todo", type: "devmachine-app/todo", size: .auto)
+        XCTAssertEqual(model(entry, board: StackBoard(surface: "sidebar", entries: [entry])).size, .auto)
+    }
+
+    func testADroppedRowLandsNextToTheNeighbourItCrossed() {
+        let ids = ["a", "b", "c", "d"].map { StackEntry(id: $0, type: "x/\($0)") }
+        XCTAssertEqual(StackDropTarget.position(of: "a", to: 2, in: ids), .after("c"))
+        XCTAssertEqual(StackDropTarget.position(of: "d", to: 1, in: ids), .before("b"))
+        XCTAssertNil(StackDropTarget.position(of: "b", to: 1, in: ids))
+        XCTAssertNil(StackDropTarget.position(of: "a", to: 9, in: ids))
+        XCTAssertNil(StackDropTarget.position(of: "z", to: 1, in: ids))
+    }
+
+    func testTheApprovalWarningNamesTheFileTheWidgetIsWrittenIn() {
+        XCTAssertEqual(
+            WidgetApprovalText.warning(surface: "home"),
+            "It was written into home.yml, by you or an agent. Allow it only if you know what it does.")
+        XCTAssertEqual(
+            WidgetApprovalText.warning(surface: "sidebar"),
+            "It was written into sidebar.yml, by you or an agent. Allow it only if you know what it does.")
+        XCTAssertEqual(
+            WidgetApprovalText.warning(surface: "context-sidebar"),
+            "It was written into context-sidebar.yml, by you or an agent. Allow it only if you know what it does.")
+    }
+
+    func testABareRowShowsItsControlsOnlyWhileHoveredWithOptionHeld() {
+        let row = model(context.entries[1], index: 1, count: 8)
+        XCTAssertEqual(row.header, .bare)
+        XCTAssertFalse(row.showsControls(hovering: false, optionHeld: false, dragging: false, canEdit: true))
+        XCTAssertFalse(row.showsControls(hovering: true, optionHeld: false, dragging: false, canEdit: true))
+        XCTAssertFalse(row.showsControls(hovering: false, optionHeld: true, dragging: false, canEdit: true))
+        XCTAssertTrue(row.showsControls(hovering: true, optionHeld: true, dragging: false, canEdit: true))
+        XCTAssertTrue(row.showsControls(hovering: false, optionHeld: false, dragging: true, canEdit: true))
+        XCTAssertFalse(row.showsControls(hovering: true, optionHeld: true, dragging: false, canEdit: false))
+    }
+
+    func testARowWithItsOwnHeaderShowsItsControlsOnHover() {
+        let row = model(context.entries[2], index: 2, count: 8)
+        XCTAssertEqual(row.header, .own)
+        XCTAssertFalse(row.showsControls(hovering: false, optionHeld: true, dragging: false, canEdit: true))
+        XCTAssertTrue(row.showsControls(hovering: true, optionHeld: false, dragging: false, canEdit: true))
+        XCTAssertTrue(row.showsControls(hovering: false, optionHeld: false, dragging: true, canEdit: true))
+        XCTAssertFalse(row.showsControls(hovering: true, optionHeld: false, dragging: false, canEdit: false))
+    }
+
+    func testATitledRowAlwaysShowsItsControlsWhenTheBoardCanChange() {
+        let entry = StackEntry(id: "todo", type: "devmachine-app/todo")
+        let row = model(entry, board: StackBoard(surface: "sidebar", entries: [entry]))
+        XCTAssertEqual(row.header, .standard)
+        XCTAssertTrue(row.showsControls(hovering: false, optionHeld: false, dragging: false, canEdit: true))
+        XCTAssertFalse(row.showsControls(hovering: true, optionHeld: true, dragging: true, canEdit: false))
+        let collapsed = model(context.entries[1], index: 1, count: 8)
+        XCTAssertTrue(
+            collapsed.showsControls(hovering: false, optionHeld: false, dragging: false, canEdit: true, inTitleHeader: true))
+    }
+
     func testTheSizeMenuNamesEachPresetWithItsRows() {
         XCTAssertEqual(StackWidgetMenuText.label(.auto), "Auto")
         XCTAssertEqual(StackWidgetMenuText.label(.preset("small")), "Small · 2 rows")

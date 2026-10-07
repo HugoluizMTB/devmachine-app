@@ -58,12 +58,14 @@ struct StackRowModel: Equatable {
         var header = StackHeaderStyle.standard
         var height = StackRowHeight.fixed(CGFloat(StackLayout.placeholderHeight(contract: contract)))
         var choices: [StackSize] = []
+        var size = entry.size
         switch resolution {
         case let .ready(resolved)?:
             let appTitle = StackAppViewKind(viewKind: resolved.viewKind).flatMap { AppStackWidgets.titles[$0.rawValue] }
             title = entry.inline?.title ?? appTitle ?? title
             header = StackHeaderStyle.of(viewKind: resolved.viewKind)
             choices = StackLayout.sizeChoices(for: resolved, contract: contract)
+            size = StackLayout.effectiveSize(of: entry, resolved: resolved, contract: contract)
             switch StackLayout.height(of: entry, resolved: resolved, contract: contract) {
             case .auto: height = .content
             case let .points(points): height = .fixed(CGFloat(points))
@@ -78,8 +80,34 @@ struct StackRowModel: Equatable {
             break
         }
         return StackRowModel(
-            id: entry.id, title: title, header: header, height: height, sizeChoices: choices, size: entry.size,
+            id: entry.id, title: title, header: header, height: height, sizeChoices: choices, size: size,
             canMoveUp: index > 0, canMoveDown: index < count - 1, isCollapsed: entry.collapsed)
+    }
+
+    /// A row without its own header has nowhere to put the controls but over
+    /// its content, where they would cover the first workspace's buttons, so
+    /// it shows them only while ⌥ is held over it.
+    func showsControls(
+        hovering: Bool, optionHeld: Bool, dragging: Bool, canEdit: Bool, inTitleHeader: Bool = false
+    ) -> Bool {
+        guard canEdit else { return false }
+        if dragging || inTitleHeader { return true }
+        switch header {
+        case .standard: return true
+        case .own: return hovering
+        case .bare: return hovering && optionHeld
+        }
+    }
+}
+
+/// Where a dropped row goes, named by the neighbour it crossed in the list
+/// the drag froze; a board read again meanwhile still lands it there.
+enum StackDropTarget {
+    static func position(of id: String, to target: Int, in entries: [StackEntry]) -> StackPosition? {
+        guard let from = entries.firstIndex(where: { $0.id == id }), entries.indices.contains(target), target != from
+        else { return nil }
+        let neighbour = entries[target].id
+        return target > from ? .after(neighbour) : .before(neighbour)
     }
 }
 
