@@ -39,8 +39,108 @@ private final class ReadBox: @unchecked Sendable {
     func read() throws -> WidgetCatalog { try lock.withLock { next }.get() }
 }
 
+private final class HeldSleeps: @unchecked Sendable {
+    private let lock = NSLock()
+    private var asked: [TimeInterval] = []
+    private var held: [CheckedContinuation<Void, Never>] = []
+
+    var delays: [TimeInterval] { lock.withLock { asked } }
+    var waiting: Int { lock.withLock { held.count } }
+
+    func sleep(_ delay: TimeInterval) async {
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                asked.append(delay)
+                held.append(continuation)
+            }
+        }
+    }
+
+    func releaseNext() {
+        let next: CheckedContinuation<Void, Never>? = lock.withLock { held.isEmpty ? nil : held.removeFirst() }
+        next?.resume()
+    }
+
+    func releaseAll() {
+        let all: [CheckedContinuation<Void, Never>] = lock.withLock {
+            defer { held.removeAll() }
+            return held
+        }
+        all.forEach { $0.resume() }
+    }
+}
+
 @MainActor
 final class WidgetCatalogStoreTests: XCTestCase {
+    private var sleeps = HeldSleeps()
+
+    override func tearDown() async throws {
+        sleeps.releaseAll()
+    }
+
+    private func retryingStore(_ box: ReadBox, reads: ReadCounter = ReadCounter()) -> WidgetCatalogStore {
+        let sleeps = self.sleeps
+        return WidgetCatalogStore(
+            read: {
+                reads.increment()
+                return try box.read()
+            },
+            sleep: { await sleeps.sleep($0) })
+    }
+
+    func testAStaleCatalogIsReadAgainOnTheBackoffUntilAReadWorks() async {
+        let good = WidgetCatalog(engine: "1.3", packagesRelease: "v41", widgets: [])
+        let box = ReadBox(.success(good))
+        let store = retryingStore(box)
+        await store.reload()
+        XCTAssertEqual(sleeps.delays, [])
+        box.set(.failure(ReadError.offline))
+        await store.reload()
+        for expected in [[30], [30, 60], [30, 60, 120], [30, 60, 120, 300], [30, 60, 120, 300, 300]] as [[TimeInterval]] {
+            await waitUntil { self.sleeps.delays == expected && self.sleeps.waiting == 1 }
+            if expected.count < 5 { sleeps.releaseNext() }
+        }
+        box.set(.success(good))
+        sleeps.releaseNext()
+        await waitUntil { store.catalog?.isStale == false }
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(sleeps.delays.count, 5)
+        XCTAssertEqual(sleeps.waiting, 0)
+    }
+
+    func testHomeAndBothStacksFailingTogetherShareOneRetry() async {
+        let box = ReadBox(.success(WidgetCatalog(engine: "1.3", packagesRelease: "v41", widgets: [])))
+        let store = retryingStore(box)
+        await store.reload()
+        box.set(.failure(ReadError.offline))
+        await store.reload()
+        await store.reload()
+        await store.reload()
+        await waitUntil { self.sleeps.waiting == 1 }
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(sleeps.delays, [30])
+    }
+
+    func testNoCatalogYetMeansNoRetry() async {
+        let store = retryingStore(ReadBox(.failure(ReadError.offline)))
+        await store.reload()
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(sleeps.delays, [])
+    }
+
+    func testStoppingCancelsThePendingRetry() async {
+        let reads = ReadCounter()
+        let box = ReadBox(.success(WidgetCatalog(engine: "1.3", packagesRelease: "v41", widgets: [])))
+        let store = retryingStore(box, reads: reads)
+        await store.reload()
+        box.set(.failure(ReadError.offline))
+        await store.reload()
+        await waitUntil { self.sleeps.waiting == 1 }
+        store.stopRetrying()
+        sleeps.releaseNext()
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(reads.value, 2)
+    }
     private let json = #"{"engine":"1.0","packages_release":"v39","widgets":[],"problems":[]}"#
 
     func testTheCatalogComesFromWidgetsListInJSON() throws {

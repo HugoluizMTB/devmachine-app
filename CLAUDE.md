@@ -1133,6 +1133,10 @@ Rules:
   Third-party code widgets (catalog and inline) then wait as above until a
   read works, as the commits it holds may be older than what
   `packages update` installed. Official, local and `url` widgets keep running.
+  While it is stale, the shared `WidgetCatalogStore` reads `widgets list`
+  again on `CatalogRetrySchedule` (30s, 60s, 120s, then every 5 min): one
+  pending retry for Home and both sidebars, stopped by a good read, a seed
+  or app quit.
 - **The provider index is complete only when a packages release was read**
   and `providers` is there, as `widgets validate` decides it. Without a
   release an unknown package is left to `devmachine run`; a package the

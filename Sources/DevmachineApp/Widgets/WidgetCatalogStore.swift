@@ -1,8 +1,9 @@
-import Foundation
+import AppKit
 import DevmachineCore
 
 /// The widget catalog as the CLI resolves it. A failed read keeps the last
-/// good catalog, marked stale; with none, Home says it could not fetch packages.
+/// good catalog, marked stale, and reads again on `CatalogRetrySchedule`
+/// until one works; with none, Home says it could not fetch packages.
 @MainActor
 final class WidgetCatalogStore: ObservableObject {
     static let shared = WidgetCatalogStore()
@@ -21,9 +22,22 @@ final class WidgetCatalogStore: ObservableObject {
     private var running = false
     private var again = false
     private var pinned = false
+    private let sleep: @Sendable (TimeInterval) async -> Void
+    private var retry: Task<Void, Never>?
+    private var retryFailures = 0
+    private var quitObserver: NSObjectProtocol?
 
-    init(read: @escaping @Sendable () throws -> WidgetCatalog = { try WidgetCatalogStore.liveRead() }) {
+    init(
+        read: @escaping @Sendable () throws -> WidgetCatalog = { try WidgetCatalogStore.liveRead() },
+        sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
+    ) {
         self.read = read
+        self.sleep = sleep
+        quitObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopRetrying() }
+        }
     }
 
     nonisolated static func liveRead() throws -> WidgetCatalog {
@@ -63,9 +77,11 @@ final class WidgetCatalogStore: ObservableObject {
         case let .success(next):
             if catalog != next { catalog = next }
             state = .loaded
+            stopRetrying()
         case let .failure(error):
             if let current = catalog, !current.isStale { catalog = current.stale() }
             state = .failed(error.localizedDescription)
+            scheduleRetry()
         }
         if again {
             again = false
@@ -73,7 +89,29 @@ final class WidgetCatalogStore: ObservableObject {
         }
     }
 
+    /// One pending retry serves Home and both sidebars; a failure while it
+    /// waits does not start a second one.
+    private func scheduleRetry() {
+        guard retry == nil, catalog?.isStale == true else { return }
+        retryFailures += 1
+        guard let delay = CatalogRetrySchedule.delay(afterFailures: retryFailures) else { return }
+        let sleep = self.sleep
+        retry = Task { [weak self] in
+            await sleep(delay)
+            guard !Task.isCancelled, let self else { return }
+            self.retry = nil
+            await self.reload()
+        }
+    }
+
+    func stopRetrying() {
+        retry?.cancel()
+        retry = nil
+        retryFailures = 0
+    }
+
     func seed(_ catalog: WidgetCatalog) {
+        stopRetrying()
         self.catalog = catalog
         state = .loaded
     }
