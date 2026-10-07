@@ -343,14 +343,16 @@ extension StackBoardController: WidgetEditTarget {
 
     func problem(with edit: EntryEdit, for id: String) -> String? {
         guard let index = board.index(of: id) else { return nil }
-        var entry = board.entries[index]
-        guard edit.apply(to: &entry) else { return nil }
-        if let merged = editCatalog, let message = edit.undeclaredInput(for: entry.boardWidget, in: merged) { return message }
-        if entry.isInline { return nil }
-        if case let .refused(_, reason) = WidgetResolution.resolve(entry.boardWidget, in: StackCatalog.merged(catalog.catalog)) {
-            return reason
+        let old = board.entries[index]
+        var entry = old
+        guard edit.apply(to: &entry), !entry.isInline else { return nil }
+        let merged = StackCatalog.merged(catalog.catalog)
+        let reason = { (entry: StackEntry) -> String? in
+            if case let .refused(_, reason) = WidgetResolution.resolve(entry.boardWidget, in: merged) { return reason }
+            return nil
         }
-        return nil
+        let after = edit.undeclaredInput(for: entry.boardWidget, in: merged) ?? reason(entry)
+        return after == reason(old) ? nil : after
     }
 
     @discardableResult

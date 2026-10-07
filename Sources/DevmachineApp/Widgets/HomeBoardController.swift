@@ -291,12 +291,15 @@ extension HomeBoardController: WidgetEditTarget {
     }
 
     func problem(with edit: EntryEdit, for id: String) -> String? {
-        guard let catalog = catalog.catalog, var widget = store?.board?.widgets.first(where: { $0.id == id }),
-              edit.apply(to: &widget)
-        else { return nil }
-        if let message = edit.undeclaredInput(for: widget, in: catalog) { return message }
-        if case let .refused(_, reason) = WidgetResolution.resolve(widget, in: catalog) { return reason }
-        return nil
+        guard let catalog = catalog.catalog, let old = store?.board?.widgets.first(where: { $0.id == id }) else { return nil }
+        var widget = old
+        guard edit.apply(to: &widget) else { return nil }
+        let reason = { (widget: BoardWidget) -> String? in
+            if case let .refused(_, reason) = WidgetResolution.resolve(widget, in: catalog) { return reason }
+            return nil
+        }
+        let after = edit.undeclaredInput(for: widget, in: catalog) ?? reason(widget)
+        return after == reason(old) ? nil : after
     }
 
     @discardableResult

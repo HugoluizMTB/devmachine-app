@@ -283,4 +283,34 @@ final class BoardEditingControllerTests: XCTestCase {
         controller.store?.flush()
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("approvals.json").path))
     }
+
+    func testAnEntryRefusedForItsEveryCanStillTakeANewTitle() throws {
+        let controller = try home(homeBoard.replacingOccurrences(
+            of: "    type: devmachine-app/machines\n", with: "    type: devmachine-app/machines\n    every: 1s\n"))
+        let edit = EntryEdit.typed(title: "Servers", with: [:], every: "1s")
+        XCTAssertNil(controller.problem(with: edit, for: "machines"))
+        XCTAssertTrue(controller.apply(edit, to: "machines"))
+        XCTAssertNotNil(controller.problem(with: .typed(title: "Servers", with: [:], every: "2s"), for: "machines"))
+    }
+
+    func testAnEditThatFixesARefusalApplies() throws {
+        let controller = try home(homeBoard.replacingOccurrences(
+            of: "    type: devmachine-app/machines\n", with: "    type: devmachine-app/machines\n    with: {machines: main}\n"))
+        let fix = EntryEdit.input(name: "machines", value: .list(["main"]))
+        XCTAssertNil(controller.problem(with: fix, for: "machines"))
+        XCTAssertTrue(controller.apply(fix, to: "machines"))
+    }
+
+    func testAStackEntryRefusedForItsEveryCanStillTakeANewTitle() throws {
+        let controller = try stack("sidebar", """
+            format: 1
+            surface: sidebar
+            widgets:
+              - id: machines
+                type: devmachine-app/machines
+                every: 1s
+
+            """)
+        XCTAssertTrue(controller.apply(.typed(title: "Servers", with: [:], every: "1s"), to: "machines"))
+    }
 }
