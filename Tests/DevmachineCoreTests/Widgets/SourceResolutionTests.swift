@@ -327,4 +327,72 @@ final class SourceResolutionTests: XCTestCase {
                        .refused(type: "load", reason: "source.every 5s is below the acme-tools/load minimum of 10s"))
         guard case .ready = WidgetResolution.resolveInline(ghost) else { return XCTFail("no catalog yet must not refuse") }
     }
+
+    private let acmeLoad = #""returns": {"load": "number"}, "min_every": "10s"}"#
+
+    private func acmeLoadSource(commit: String) -> String {
+        #""returns": {"load": "number"}, "min_every": "10s", "package_source": {"url": "https://example.com/acme/acme-tools.git", "ref": "v1.2.0", "commit": ""# + commit + #""}}"#
+    }
+
+    private func loadWidget() throws -> BoardWidget {
+        try inline(["kind": .string("provider"), "name": .string("acme-tools/load"),
+                    "target": .object(["workspace": .string("alice-dev")]), "every": .string("60s")])
+    }
+
+    func testAnInlineThirdPartyPackageProviderCarriesItsPackageCommit() throws {
+        let catalog = try catalog13(replacing: acmeLoad, with: acmeLoadSource(commit: "1111"))
+        XCTAssertEqual(catalog.providers?.first { $0.name == "acme-tools/load" }?.packageSource?.commit, "1111")
+        let source = try XCTUnwrap(ready(WidgetResolution.resolveInline(try loadWidget(), catalog: catalog))?.source)
+        XCTAssertEqual(source.trust, .thirdParty)
+        XCTAssertEqual(source.packageCommit, "1111")
+        XCTAssertEqual(source.packageSourceURL, "https://example.com/acme/acme-tools.git")
+        XCTAssertTrue(source.needsApproval)
+        let later = try catalog13(replacing: acmeLoad, with: acmeLoadSource(commit: "2222"))
+        let moved = try XCTUnwrap(ready(WidgetResolution.resolveInline(try loadWidget(), catalog: later))?.source)
+        XCTAssertNotEqual(try ApprovalSubject.hash(for: source, context: [:]),
+                          try ApprovalSubject.hash(for: moved, context: [:]))
+    }
+
+    func testAnInlineThirdPartyPackageProviderWithoutASourceHasAnEmptyCommit() throws {
+        let source = try XCTUnwrap(ready(WidgetResolution.resolveInline(try loadWidget(), catalog: catalog13()))?.source)
+        XCTAssertEqual(source.trust, .thirdParty)
+        XCTAssertEqual(source.packageCommit, "")
+    }
+
+    func testAnInlinePackageProviderOfATrustThisAppDoesNotKnowCarriesACommit() throws {
+        let catalog = try catalog13(
+            replacing: #""scope": "workspace", "trust": "third-party""#, with: #""scope": "workspace", "trust": "someday""#)
+        let source = try XCTUnwrap(ready(WidgetResolution.resolveInline(try loadWidget(), catalog: catalog))?.source)
+        XCTAssertEqual(source.trust, .thirdParty)
+        XCTAssertEqual(source.packageCommit, "")
+    }
+
+    func testAnInlineOfficialPackageProviderKeepsItsHash() throws {
+        let widget = try inline([
+            "kind": .string("provider"), "name": .string("devmachine-app/stats"),
+            "target": .object(["machine": .string("main")]), "every": .string("60s"),
+        ], view: ["kind": .string("gauge"), "value": .string("{{json.cpu}}")])
+        let withCatalog = try XCTUnwrap(ready(WidgetResolution.resolveInline(widget, catalog: catalog13()))?.source)
+        let without = try XCTUnwrap(ready(WidgetResolution.resolveInline(widget))?.source)
+        XCTAssertNil(withCatalog.trust)
+        XCTAssertNil(withCatalog.packageCommit)
+        XCTAssertEqual(try ApprovalSubject.hash(for: withCatalog, context: [:]), try ApprovalSubject.hash(for: without, context: [:]))
+    }
+
+    func testAProviderWhosePackageSourceDoesNotReadStaysInTheCatalog() throws {
+        let catalog = try catalog13(replacing: acmeLoad, with: #""returns": {"load": "number"}, "min_every": "10s", "package_source": 7}"#)
+        let provider = try XCTUnwrap(catalog.providers?.first { $0.name == "acme-tools/load" })
+        XCTAssertNil(provider.packageSource)
+        XCTAssertEqual(provider.trust, .thirdParty)
+    }
+
+    func testACatalogWidgetReadsOnlyItsOwnPackagesProviders() throws {
+        let catalog = try catalog13(
+            replacing: #""name": "devmachine-app/stats", "target""#, with: #""name": "acme-tools/load", "target""#)
+        XCTAssertEqual(
+            WidgetResolution.resolve(entry("devmachine-app/machine-stats"), in: catalog),
+            .refused(
+                type: "devmachine-app/machine-stats",
+                reason: "source.name acme-tools/load: a package widget reads only its own package's providers, written devmachine-app/<command>"))
+    }
 }

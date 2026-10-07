@@ -35,7 +35,11 @@ public struct WidgetCatalog: Decodable, Equatable, Sendable {
         widgets = try c.decodeIfPresent([CatalogWidget].self, forKey: .widgets) ?? []
         problems = try c.decodeIfPresent([CatalogProblem].self, forKey: .problems) ?? []
         providers = try c.decodeIfPresent([String: LenientProviderSpec].self, forKey: .providers)?
-            .compactMap { entry in entry.value.spec.map { CatalogProvider(name: entry.key, spec: $0) } }
+            .compactMap { entry in
+                entry.value.spec.map {
+                    CatalogProvider(name: entry.key, spec: $0, trust: entry.value.trust, packageSource: entry.value.packageSource)
+                }
+            }
             .sorted { $0.name < $1.name }
     }
 
@@ -64,10 +68,17 @@ public struct WidgetCatalog: Decodable, Equatable, Sendable {
 public struct CatalogProvider: Equatable, Sendable {
     public let name: String
     public let spec: PackageProviderSpec
+    /// nil from a CLI that writes no trust for a provider.
+    public let trust: WidgetTrust?
+    public let packageSource: CatalogPackageSource?
 
-    public init(name: String, spec: PackageProviderSpec) {
+    public init(
+        name: String, spec: PackageProviderSpec, trust: WidgetTrust? = nil, packageSource: CatalogPackageSource? = nil
+    ) {
         self.name = name
         self.spec = spec
+        self.trust = trust
+        self.packageSource = packageSource
     }
 }
 
@@ -164,9 +175,23 @@ public enum WidgetTrust: String, Sendable {
 /// out instead of failing the whole catalog.
 private struct LenientProviderSpec: Decodable {
     let spec: PackageProviderSpec?
+    let trust: WidgetTrust?
+    let packageSource: CatalogPackageSource?
+
+    enum CodingKeys: String, CodingKey {
+        case trust
+        case packageSource = "package_source"
+    }
 
     init(from decoder: Decoder) throws {
         spec = try? PackageProviderSpec(from: decoder)
+        let c = try? decoder.container(keyedBy: CodingKeys.self)
+        packageSource = try? c?.decodeIfPresent(CatalogPackageSource.self, forKey: .packageSource)
+        if let c, c.contains(.trust) {
+            trust = WidgetTrust.read((try? c.decodeIfPresent(String.self, forKey: .trust)) ?? "", origin: "")
+        } else {
+            trust = c?.contains(.packageSource) == true ? .thirdParty : nil
+        }
     }
 }
 

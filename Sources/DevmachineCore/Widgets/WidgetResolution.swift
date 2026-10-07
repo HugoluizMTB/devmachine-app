@@ -188,6 +188,12 @@ public enum WidgetResolution: Equatable, Sendable {
     private static func resolveSource(
         _ instance: BoardWidget, widget: CatalogWidget, index: PackageProviderIndex, contract: WidgetContract
     ) -> WidgetResolution {
+        if widget.source.kind == "provider", let parts = PackageProviderName.parts(widget.source.name),
+           parts.package != widget.package {
+            return .refused(
+                type: widget.name,
+                reason: "source.name \(widget.source.name): a package widget reads only its own package's providers, written \(widget.package)/<command>")
+        }
         let scope = WidgetScope.package(inputs: Set(widget.inputs.keys), contextKeys: Set(widget.context.keys))
         let source: WidgetSource
         let view: WidgetView
@@ -251,13 +257,26 @@ public enum WidgetResolution: Equatable, Sendable {
             return .needsNewerApp(type: instance.id, reason: refused.message)
         }
         let every = floored(source.every, kind: source.kind, contract: contract)
+        let thirdParty = thirdPartyProvider(of: source, in: catalog)
         return .ready(ResolvedWidget(
             widget: widget, provider: "", viewKind: inline.view.kind, arguments: [:], every: every.seconds ?? 0,
             minimum: minimum,
             source: ResolvedSource(
                 source: source, view: inline.view, every: every,
-                needsApproval: source.runsCode || contract.needsApproval(source.kind), package: nil, packagePath: nil),
+                needsApproval: source.runsCode || contract.needsApproval(source.kind), package: nil, packagePath: nil,
+                trust: thirdParty.map { _ in .thirdParty }, packageCommit: thirdParty.map { $0.packageSource?.commit ?? "" },
+                packageSourceURL: thirdParty?.packageSource?.url),
             title: inline.title))
+    }
+
+    /// An inline widget of a third-party provider binds its approval to the
+    /// package's commit, as a catalog widget of that package does.
+    private static func thirdPartyProvider(of source: WidgetSource, in catalog: WidgetCatalog?) -> CatalogProvider? {
+        guard case let .packageProvider(provider) = source,
+              let entry = catalog?.providers?.first(where: { $0.name == provider.name }),
+              entry.trust == .thirdParty
+        else { return nil }
+        return entry
     }
 
     /// The CLI's BoardProviderProblems: the package, its provider and its
