@@ -46,6 +46,24 @@ final class MenubarTabsTests: XCTestCase {
         XCTAssertEqual(tabs(board).map(\.systemImage), [nil])
     }
 
+    func testEditingShowsNoTabSoNoTabRuns() {
+        XCTAssertNil(MenubarTabs.shownEntry(.entry("usage-panel"), editing: true))
+        XCTAssertEqual(MenubarTabs.shownEntry(.entry("usage-panel"), editing: false), "usage-panel")
+        XCTAssertNil(MenubarTabs.shownEntry(.approvals, editing: false))
+    }
+
+    func testTheWindowOpensAndClosesThePopoverOnceWhateverSignalComesFirst() {
+        XCTAssertEqual(MenubarPanelPresence.change(after: .appeared, isOpen: false), true)
+        XCTAssertEqual(MenubarPanelPresence.change(after: .becameKey, isOpen: false), true)
+        XCTAssertNil(MenubarPanelPresence.change(after: .becameKey, isOpen: true))
+        XCTAssertNil(MenubarPanelPresence.change(after: .appeared, isOpen: true))
+        XCTAssertEqual(MenubarPanelPresence.change(after: .disappeared, isOpen: true), false)
+        XCTAssertEqual(MenubarPanelPresence.change(after: .resignedKey(stillVisible: false), isOpen: true), false)
+        XCTAssertNil(MenubarPanelPresence.change(after: .resignedKey(stillVisible: true), isOpen: true))
+        XCTAssertNil(MenubarPanelPresence.change(after: .disappeared, isOpen: false))
+        XCTAssertNil(MenubarPanelPresence.change(after: .resignedKey(stillVisible: false), isOpen: false))
+    }
+
     func testEntryIDs() {
         XCTAssertEqual(MenubarTabs.entryID(.entry("a")), "a")
         XCTAssertNil(MenubarTabs.entryID(.approvals))

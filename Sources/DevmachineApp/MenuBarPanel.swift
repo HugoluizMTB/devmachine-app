@@ -74,6 +74,7 @@ struct MenuBarPanel: View {
     init(initialTab: MenuBarTab = .pullRequests, height: CGFloat? = nil) {
         self.initialTab = initialTab
         self.height = height
+        _tab = State(initialValue: .entry(initialTab.defaultEntryID))
     }
 
     private var panelWidth: CGFloat {
@@ -87,7 +88,7 @@ struct MenuBarPanel: View {
 
     private var approvals: [MenubarApproval] { menubar.approvals }
 
-    private var tabs: [MenubarTab] {
+    private func makeTabs() -> [MenubarTab] {
         let panel = menubar.panel
         return MenubarTabs.make(
             board: panel.board, resolve: { panel.resolution(of: $0) }, catalog: panel.catalog.catalog,
@@ -95,13 +96,14 @@ struct MenuBarPanel: View {
     }
 
     var body: some View {
+        let tabs = makeTabs()
         VStack(spacing: 0) {
             banners
             if editing {
                 MenubarEditView(slots: menubar.slots, panel: menubar.panel)
             } else {
-                tabBar
-                content
+                tabBar(tabs)
+                content(tabs)
             }
             footer
                 .background(Color.dmBand)
@@ -109,23 +111,32 @@ struct MenuBarPanel: View {
         .frame(width: panelWidth)
         .frame(height: height ?? MenuBarSizing.height(for: initialTab))
         .background(Color.dmContentBg)
+        .background(MenubarPanelWindowWatch { signal($0) })
         .animation(.easeInOut(duration: 0.15), value: tab)
-        .onAppear {
-            tab = MenubarTabs.opening(tabs, preferred: initialTab.defaultEntryID)
-            menubar.showTab(MenubarTabs.entryID(tab))
-            menubar.setPanelOpen(true)
-        }
-        .onDisappear {
-            menubar.setPanelOpen(false)
-            editing = false
-        }
+        .onAppear { signal(.appeared) }
+        .onDisappear { signal(.disappeared) }
         .onChange(of: tabs) { _, next in tab = MenubarTabs.keeping(tab, in: next) }
-        .onChange(of: tab) { _, next in menubar.showTab(MenubarTabs.entryID(next)) }
+        .onChange(of: tab) { _, next in menubar.showTab(MenubarTabs.shownEntry(next, editing: editing)) }
+        .onChange(of: editing) { _, now in menubar.showTab(MenubarTabs.shownEntry(tab, editing: now)) }
+    }
+
+    /// `onAppear` and `onDisappear` are not reliable for a `MenuBarExtra`
+    /// window kept alive between opens, so its key state counts too; the
+    /// first signal of an open or a close acts, the rest change nothing.
+    private func signal(_ signal: MenubarPanelSignal) {
+        guard let open = MenubarPanelPresence.change(after: signal, isOpen: menubar.isPanelOpen) else { return }
+        if open {
+            tab = MenubarTabs.opening(makeTabs(), preferred: initialTab.defaultEntryID)
+            menubar.showTab(MenubarTabs.shownEntry(tab, editing: editing))
+            menubar.setPanelOpen(true)
+        } else {
+            editing = false
+            menubar.setPanelOpen(false)
+        }
     }
 
     @ViewBuilder
-    private var tabBar: some View {
-        let tabs = self.tabs
+    private func tabBar(_ tabs: [MenubarTab]) -> some View {
         if tabs.count > 1 {
             DMTabStrip(
                 tabs: tabs.map(\.id),
@@ -135,7 +146,7 @@ struct MenuBarPanel: View {
             )
             .padding(m.space.md)
         } else if let onlyTab = tabs.first {
-            Text(onlyTab.title)
+            Text(verbatim: onlyTab.title)
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -144,7 +155,7 @@ struct MenuBarPanel: View {
     }
 
     @ViewBuilder
-    private var content: some View {
+    private func content(_ tabs: [MenubarTab]) -> some View {
         switch tab {
         case .approvals?:
             MenubarApprovalsView(approvals: approvals, panelWidth: panelWidth, sources: menubar.slots.sources)
@@ -153,6 +164,7 @@ struct MenuBarPanel: View {
                 MenubarTabContent(
                     entry: entry, title: tabs.first { $0.id == .entry(id) }?.title ?? "", panelWidth: panelWidth,
                     panel: menubar.panel)
+                .id(entry.id)
             } else {
                 Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
             }

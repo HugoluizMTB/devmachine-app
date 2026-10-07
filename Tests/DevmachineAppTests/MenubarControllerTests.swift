@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import DevmachineApp
 @testable import DevmachineCore
 import HarnessUsageKit
@@ -99,6 +100,20 @@ final class MenubarControllerTests: XCTestCase {
         prs.openCount = 3
         menubar.refresh()
         XCTAssertEqual(menubar.label.items, [.brand, .text("3")])
+    }
+
+    func testWithTheCatalogsOwnEntriesTheTitleIsStillTodays() throws {
+        let (menubar, prs) = makeMenubar(AppMenubarWidgets.all)
+        let fallback = PRStore(client: GHClient(runner: QuietRunner()))
+        for (count, expected) in [(0, [MenubarSlotItem.brand]), (7, [.brand, .text("7")]), (42, [.brand, .text("42")])] {
+            prs.openCount = count
+            fallback.openCount = count
+            menubar.refresh()
+            XCTAssertEqual(menubar.label.items, expected, "\(count)")
+            let drawn = try XCTUnwrap(ImageRenderer(content: MenuBarLabel(items: menubar.label.items)).cgImage)
+            let today = try XCTUnwrap(ImageRenderer(content: MenuBarLabel(prStore: fallback)).cgImage)
+            XCTAssertEqual(drawn.dataProvider?.data as Data?, today.dataProvider?.data as Data?, "\(count)")
+        }
     }
 
     func testThePullRequestCountFollowsOnItsOwn() async {

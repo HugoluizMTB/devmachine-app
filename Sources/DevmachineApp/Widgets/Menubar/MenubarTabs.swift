@@ -45,4 +45,9 @@ enum MenubarTabs {
         if case let .entry(entry)? = id { return entry }
         return nil
     }
+
+    /// Edit mode hides the tab, so its widget stops until Done.
+    static func shownEntry(_ id: MenubarTabID?, editing: Bool) -> String? {
+        editing ? nil : entryID(id)
+    }
 }
