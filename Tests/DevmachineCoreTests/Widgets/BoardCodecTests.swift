@@ -271,20 +271,239 @@ final class BoardCodecTests: XCTestCase {
         XCTAssertEqual(found, BoardProblem(line: 8, message: "\"port\" appears twice"))
     }
 
-    func testAWidgetWrittenInPlaceNeedsEngine11() {
-        let found = problem("""
+    private let cliInlineBoard = """
+        format: 1
+        surface: home
+        widgets:
+          - id: disk
+            title: Disk on alice
+            source:
+              kind: command
+              run: df
+              args: [-h, /]
+              target: {workspace: alice}
+              every: 60s
+            view: {kind: text, tail: 20}
+            sizes: [medium, wide]
+            frame: {x: 24, y: 24, w: 320, h: 160}
+            size: medium
+            minimized: false
+            z: 1
+          - id: clock
+            type: devmachine-app/clock
+            frame: {x: 352, y: 24, w: 320, h: 160}
+            size: medium
+            minimized: false
+            z: 2
+
+        """
+
+    private let cliBlockStyleBoard = """
+        format: 1
+        surface: home
+        widgets:
+          - id: disk
+            title: 'Disk: alice'
+            source:
+              kind: command
+              run: df
+              args:
+                - -h
+                - 'x; y'
+              every: 60s
+              parse: lines
+            view:
+              kind: list
+              item: {title: "{{item}}"}
+            frame: {x: 24, y: 24, w: 320, h: 160}
+            size: medium
+            minimized: false
+            z: 1
+
+        """
+
+    private let handWrittenMixedBoard = """
+        format: 1
+        surface: home
+        widgets:
+          - id: probe
+            title: "Probe #1"
+            source:
+              kind: url
+              url: "https://example.com/health?a=1"
+              every: 30s
+              parse: json
+            view:
+              kind: list
+              item:
+                title: "{{item.name}}"
+                subtitle: 'state: {{item.state}}'
+                link: "{{item.url}}"
+            sizes: [wide, large]
+            fits: [canvas]
+            frame: {x: 0, y: 0, w: 664, h: 160}
+            size: wide
+            minimized: true
+            z: 3
+          - id: tabs
+            title: Tabs
+            source: {kind: command, run: printf, args: ["a\\tb", '', "x"], parse: text, every: manual}
+            view:
+              kind: text
+            frame: {x: 0, y: 200, w: 320, h: 160}
+
+        """
+
+    private let cliRewriteOfMixedBoard = """
+        format: 1
+        surface: home
+        widgets:
+          - id: probe
+            title: 'Probe #1'
+            source:
+              kind: url
+              url: "https://example.com/health?a=1"
+              every: 30s
+              parse: json
+            view:
+              kind: list
+              item:
+                title: "{{item.name}}"
+                subtitle: 'state: {{item.state}}'
+                link: "{{item.url}}"
+            sizes: [wide, large]
+            fits: [canvas]
+            frame: {x: 0, y: 0, w: 664, h: 160}
+            size: wide
+            minimized: true
+            z: 3
+          - id: tabs
+            title: Tabs
+            source: {kind: command, run: printf, args: ["a\\tb", '', "x"], parse: text, every: manual}
+            view:
+              kind: text
+            frame: {x: 0, y: 200, w: 320, h: 160}
+            size: custom
+            minimized: false
+            z: 0
+
+        """
+
+    func testAnInlineWidgetSurvivesARewriteByteForByte() throws {
+        XCTAssertEqual(BoardCodec.encode(try BoardCodec.decode(cliInlineBoard)), cliInlineBoard)
+        XCTAssertEqual(BoardCodec.encode(try BoardCodec.decode(cliBlockStyleBoard)), cliBlockStyleBoard)
+    }
+
+    func testACRLFBoardKeepsItsFlowStyleAndRefusesAnchors() throws {
+        let crlf = cliInlineBoard.replacingOccurrences(of: "\n", with: "\r\n")
+        XCTAssertEqual(BoardCodec.encode(try BoardCodec.decode(crlf)), cliInlineBoard)
+        let anchored = crlf.replacingOccurrences(of: "args: [-h, /]", with: "args: &args [-h, /]")
+        XCTAssertEqual(problem(anchored)?.line, 9)
+    }
+
+    func testARepeatedKeyInsideASourceIsAProblem() {
+        let repeated = cliInlineBoard.replacingOccurrences(of: "      run: df\n", with: "      run: df\n      run: du\n")
+        XCTAssertEqual(problem(repeated)?.line, 9)
+    }
+
+    func testAPlainTrueIsASwitchAsInTheCLI() throws {
+        let board = cliInlineBoard.replacingOccurrences(of: "      run: df\n      args: [-h, /]\n", with: "      run: df -h /\n      shell: True\n")
+        guard case let .command(command)? = try BoardCodec.decode(board).widgets.first?.inline?.source else { return XCTFail() }
+        XCTAssertTrue(command.shell)
+    }
+
+    func testRewritesAHandWrittenBoardToTheCLIWritersBytes() throws {
+        XCTAssertEqual(BoardCodec.encode(try BoardCodec.decode(handWrittenMixedBoard)), cliRewriteOfMixedBoard)
+    }
+
+    func testLongLinesStayOnOneLineAsTheCLIWritesThem() throws {
+        let board = """
             format: 1
             surface: home
             widgets:
-              - id: disk
-                source: {kind: command, run: df -h}
-                view: {kind: text}
+              - id: ask
+                title: A rather long title for a widget that keeps going well past eighty columns of text
+                source:
+                  kind: prompt
+                  harness: claude
+                  prompt: "Summarize the open pull requests of acme and say which ones need my review today please"
+                  target: local
+                view: {kind: markdown}
+                frame: {x: 24, y: 24, w: 320, h: 160}
+                size: custom
+                minimized: false
+                z: 0
+
+            """
+        XCTAssertEqual(BoardCodec.encode(try BoardCodec.decode(board)), board)
+    }
+
+    func testTheTitleIsQuotedTheWayTheCLIQuotesIt() throws {
+        let doubleQuoted = cliBlockStyleBoard.replacingOccurrences(of: "title: 'Disk: alice'", with: "title: \"Disk: alice\"")
+        XCTAssertEqual(BoardCodec.encode(try BoardCodec.decode(doubleQuoted)), cliBlockStyleBoard)
+    }
+
+    func testAnInlineWidgetIsRead() throws {
+        let board = try BoardCodec.decode(cliInlineBoard)
+        let disk = try XCTUnwrap(board.widgets.first)
+        XCTAssertTrue(disk.isInline)
+        XCTAssertEqual(disk.type, "")
+        XCTAssertEqual(disk.inline?.title, "Disk on alice")
+        XCTAssertEqual(disk.inline?.sizes, ["medium", "wide"])
+        XCTAssertEqual(disk.inline?.view.tail, 20)
+        guard case let .command(command)? = disk.inline?.source else { return XCTFail() }
+        XCTAssertEqual(command.target, .workspace("alice"))
+        XCTAssertEqual(command.every, .interval(60))
+    }
+
+    func testAMoveKeepsTheInlineSourceAsWritten() throws {
+        var board = try BoardCodec.decode(cliBlockStyleBoard)
+        board.widgets[0].frame = BoardFrame(x: 48, y: 24, w: 320, h: 160)
+        XCTAssertEqual(
+            BoardCodec.encode(board),
+            cliBlockStyleBoard.replacingOccurrences(of: "frame: {x: 24,", with: "frame: {x: 48,"))
+    }
+
+    func testInlineRulesNameTheirLine() {
+        let cases: [(String, String, String, Int, String)] = [
+            ("title missing", "    title: Disk on alice\n", "", 4, "widget \"disk\" written in the board needs a title"),
+            ("view missing", "    view: {kind: text, tail: 20}\n", "", 4, "needs both a source and a view"),
+            ("inputs given", "    title: Disk on alice\n", "    title: Disk on alice\n    with: {path: /}\n", 6,
+             "widget \"disk\" written in the board has no inputs, so it takes no with"),
+            ("type and source", "    title: Disk on alice\n", "    type: devmachine-app/clock\n", 4,
+             "has either a type or a source and a view, not both"),
+            ("every too fast", "every: 60s", "every: 1s", 11, "source.every 1s is below the command minimum of 5s"),
+            ("relative script", "      run: df\n      args: [-h, /]\n", "      script: bin/df\n", 8,
+             "a widget written in a board names an absolute path on the target"),
+            ("an input template", "args: [-h, /]", "args: [-h, \"{{inputs.path}}\"]", 9, "has no inputs"),
+            ("a view that does not take it", "view: {kind: text, tail: 20}", "view: {kind: gauge}", 12,
+             "view.kind \"gauge\" takes number, json, and this command source gives text"),
+            ("a view field", "tail: 20", "tail: 9000", 12, "view.tail 9000 is outside 1 to 2000 lines"),
+            ("an unknown size", "sizes: [medium, wide]", "sizes: [medium, huge]", 13, "size \"huge\""),
+            ("an unknown layout", "    sizes: [medium, wide]\n", "    sizes: [medium, wide]\n    fits: [grid]\n", 14,
+             "fits \"grid\""),
+        ]
+        for (name, from, to, line, message) in cases {
+            let edited = cliInlineBoard.replacingOccurrences(of: from, with: to)
+            XCTAssertNotEqual(edited, cliInlineBoard, name)
+            let found = problem(edited)
+            XCTAssertEqual(found?.line, line, "\(name): \(String(describing: found))")
+            XCTAssertTrue(found?.message.contains(message) ?? false, "\(name): \(String(describing: found))")
+        }
+    }
+
+    func testAnInlineProviderNeedsNoApprovalAndIsRead() throws {
+        let board = try BoardCodec.decode("""
+            format: 1
+            surface: home
+            widgets:
+              - id: clock
+                title: Clock
+                source: {kind: provider, name: app/clock, every: 60s}
+                view: {kind: app.clock}
                 frame: {x: 24, y: 24, w: 320, h: 160}
             """)
-        XCTAssertEqual(found?.line, 4)
-        XCTAssertEqual(
-            found?.message,
-            "a widget written in place (source and view, no type) needs engine 1.1; this app implements engine 1.1")
+        XCTAssertEqual(board.widgets.first?.inline?.source, .provider(ProviderSource(name: "app/clock", with: [:], every: "60s")))
     }
 
     func testFrameValuesArePlainNonNegativeIntegers() {

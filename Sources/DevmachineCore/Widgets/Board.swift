@@ -61,6 +61,31 @@ public struct BoardFrame: Hashable, Sendable {
     public var rect: CGRect { CGRect(x: Double(x), y: Double(y), width: Double(w), height: Double(h)) }
 }
 
+/// A widget written straight into a board: its own source and view, no
+/// package. The trees are what gets written back.
+public struct InlineWidget: Equatable, Sendable {
+    public var title: String
+    public var sourceTree: YAMLTree
+    public var viewTree: YAMLTree
+    public var sizes: [String]
+    public var fits: [String]
+    public var source: WidgetSource
+    public var view: WidgetView
+
+    public init(
+        title: String, sourceTree: YAMLTree, viewTree: YAMLTree, sizes: [String], fits: [String],
+        source: WidgetSource, view: WidgetView
+    ) {
+        self.title = title
+        self.sourceTree = sourceTree
+        self.viewTree = viewTree
+        self.sizes = sizes
+        self.fits = fits
+        self.source = source
+        self.view = view
+    }
+}
+
 public struct BoardWidget: Equatable, Sendable, Identifiable {
     public static let customSize = "custom"
 
@@ -71,10 +96,11 @@ public struct BoardWidget: Equatable, Sendable, Identifiable {
     public var size: String
     public var minimized: Bool
     public var z: Int
+    public var inline: InlineWidget?
 
     public init(
         id: String, type: String, with: [String: BoardScalar] = [:], frame: BoardFrame, size: String,
-        minimized: Bool = false, z: Int
+        minimized: Bool = false, z: Int, inline: InlineWidget? = nil
     ) {
         self.id = id
         self.type = type
@@ -83,7 +109,10 @@ public struct BoardWidget: Equatable, Sendable, Identifiable {
         self.size = size
         self.minimized = minimized
         self.z = z
+        self.inline = inline
     }
+
+    public var isInline: Bool { inline != nil }
 
     public var package: String { String(type.split(separator: "/").first ?? "") }
 }

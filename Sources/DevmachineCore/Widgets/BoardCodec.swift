@@ -6,7 +6,9 @@ import Yams
 /// spec gives every writer.
 public enum BoardCodec {
     private static let topKeys: Set<String> = ["format", "surface", "widgets"]
-    private static let widgetKeys: Set<String> = ["id", "type", "with", "frame", "size", "minimized", "z", "source", "view"]
+    private static let widgetKeys: Set<String> = [
+        "id", "type", "title", "with", "source", "view", "sizes", "fits", "frame", "size", "minimized", "z",
+    ]
     private static let frameKeys = ["x", "y", "w", "h"]
     private static let specialFloats: [String: Double] = [".inf": .infinity, "-.inf": -.infinity, ".nan": .nan]
 
@@ -47,8 +49,10 @@ public enum BoardCodec {
         }
         var widgets: [BoardWidget] = []
         var seen: Set<String> = []
+        let contextKeys = Set(contract.surfaces[surface]?.context.keys ?? [:].keys)
+        let lines = YAMLTree.SourceLines(text)
         for item in sequence {
-            let widget = try decodeWidget(item, contract: contract)
+            let widget = try decodeWidget(item, lines: lines, contract: contract, contextKeys: contextKeys)
             guard seen.insert(widget.id).inserted else {
                 throw BoardProblem(line: line(item), message: "id \"\(widget.id)\" is used twice")
             }
@@ -57,21 +61,13 @@ public enum BoardCodec {
         return Board(surface: surface, widgets: widgets)
     }
 
-    private static func decodeWidget(_ node: Node, contract: WidgetContract) throws -> BoardWidget {
+    private static func decodeWidget(
+        _ node: Node, lines: YAMLTree.SourceLines, contract: WidgetContract, contextKeys: Set<String>
+    ) throws -> BoardWidget {
         guard let mapping = node.mapping else {
             throw BoardProblem(line: line(node), message: "each widget is a mapping with id, type and frame")
         }
         let fields = try keyed(mapping, allowed: widgetKeys, context: "a widget")
-        if fields["type"] == nil, fields["source"] != nil || fields["view"] != nil {
-            throw BoardProblem(
-                line: line(node),
-                message: "a widget written in place (source and view, no type) needs engine 1.1; "
-                    + "this app implements engine \(contract.engine)")
-        }
-        if let extra = fields["source"] ?? fields["view"] {
-            throw BoardProblem(
-                line: line(extra), message: "a widget with a type takes no source or view; they come from its widget.yml")
-        }
         guard let idNode = fields["id"], let id = string(idNode) else {
             throw BoardProblem(line: line(node), message: "a widget needs an id")
         }
@@ -79,13 +75,26 @@ public enum BoardCodec {
             throw BoardProblem(
                 line: line(idNode), message: "id \"\(id)\" may use only a-z, 0-9 and -, and starts with a letter or digit")
         }
-        guard let typeNode = fields["type"], let type = string(typeNode) else {
-            throw BoardProblem(line: line(node), message: "widget \"\(id)\" needs a type, such as devmachine-app/clock")
+        let writesInline = fields["source"] != nil || fields["view"] != nil
+        if fields["type"] != nil, writesInline {
+            throw BoardProblem(line: line(node), message: "a widget has either a type or a source and a view, not both")
         }
-        guard type.wholeMatch(of: /[a-z][a-z0-9_-]*\/[a-z][a-z0-9-]*/) != nil else {
-            throw BoardProblem(line: line(typeNode), message: "type \"\(type)\" must be <package>/<widget>")
+        var inline: InlineWidget?
+        if fields["type"] == nil, writesInline || fields["title"] != nil {
+            inline = try decodeInline(node, fields: fields, id: id, lines: lines, contract: contract, contextKeys: contextKeys)
         }
-        let with = try fields["with"].map { try scalars($0, owner: id) } ?? [:]
+        var type = ""
+        var with: [String: BoardScalar] = [:]
+        if inline == nil {
+            guard let typeNode = fields["type"], let typeName = string(typeNode) else {
+                throw BoardProblem(line: line(node), message: "widget \"\(id)\" needs a type, such as devmachine-app/clock")
+            }
+            guard typeName.wholeMatch(of: /[a-z][a-z0-9_-]*\/[a-z][a-z0-9-]*/) != nil else {
+                throw BoardProblem(line: line(typeNode), message: "type \"\(typeName)\" must be <package>/<widget>")
+            }
+            type = typeName
+            with = try fields["with"].map { try scalars($0, owner: id) } ?? [:]
+        }
         guard let frameNode = fields["frame"] else {
             throw BoardProblem(line: line(node), message: "widget \"\(id)\" needs a frame: {x: , y: , w: , h: }")
         }
@@ -112,7 +121,61 @@ public enum BoardCodec {
             }
             z = value
         }
-        return BoardWidget(id: id, type: type, with: with, frame: frame, size: size, minimized: minimized, z: z)
+        return BoardWidget(
+            id: id, type: type, with: with, frame: frame, size: size, minimized: minimized, z: z, inline: inline)
+    }
+
+    private static func decodeInline(
+        _ node: Node, fields: [String: Node], id: String, lines: YAMLTree.SourceLines, contract: WidgetContract,
+        contextKeys: Set<String>
+    ) throws -> InlineWidget {
+        let owner = "widget \"\(id)\""
+        guard let title = fields["title"].flatMap(string), !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw BoardProblem(line: line(node), message: "\(owner) written in the board needs a title")
+        }
+        if let with = fields["with"] {
+            throw BoardProblem(line: line(with), message: "\(owner) written in the board has no inputs, so it takes no with")
+        }
+        guard let sourceNode = fields["source"], let viewNode = fields["view"] else {
+            throw BoardProblem(line: line(node), message: "\(owner) written in the board needs both a source and a view")
+        }
+        let sourceTree = try YAMLTree(node: sourceNode, lines: lines)
+        let viewTree = try YAMLTree(node: viewNode, lines: lines)
+        let scope = WidgetScope.inline(contextKeys: contextKeys)
+        let source: WidgetSource
+        do {
+            source = try WidgetSourceReader.read(sourceTree.value, scope: scope, contract: contract)
+        } catch let problem as WidgetSpecProblem {
+            throw BoardProblem(line: sourceTree.line(at: problem.path) ?? line(sourceNode), message: "\(owner): \(problem.message)")
+        }
+        let view: WidgetView
+        do {
+            view = try WidgetViewReader.read(
+                viewTree.value, source: source, sourceWritesParse: sourceTree.value["parse"] != nil, scope: scope,
+                contract: contract)
+        } catch let problem as WidgetSpecProblem {
+            throw BoardProblem(line: viewTree.line(at: problem.path) ?? line(viewNode), message: "\(owner): \(problem.message)")
+        }
+        let sizes = try names(fields["sizes"], field: "sizes", owner: owner, allowed: WidgetContract.presetOrder)
+        let fits = try names(fields["fits"], field: "fits", owner: owner, allowed: contract.layouts)
+        return InlineWidget(
+            title: title, sourceTree: sourceTree, viewTree: viewTree, sizes: sizes, fits: fits, source: source, view: view)
+    }
+
+    private static func names(_ node: Node?, field: String, owner: String, allowed: [String]) throws -> [String] {
+        guard let node else { return [] }
+        guard let sequence = node.sequence else {
+            throw BoardProblem(line: line(node), message: "\(field) of \(owner) must be a list, such as [\(allowed.joined(separator: ", "))]")
+        }
+        return try sequence.map { item in
+            guard let name = string(item), allowed.contains(name) else {
+                let shown = string(item) ?? "?"
+                let word = field == "sizes" ? "size" : field
+                throw BoardProblem(
+                    line: line(item), message: "\(word) \"\(shown)\" of \(owner) is not one of \(allowed.joined(separator: ", "))")
+            }
+            return name
+        }
     }
 
     private static func decodeFrame(_ node: Node, owner: String) throws -> BoardFrame {
@@ -233,13 +296,21 @@ public enum BoardCodec {
             lines.append("widgets:")
             for widget in board.widgets {
                 lines.append("  - id: \(text(widget.id))")
-                lines.append("    type: \(text(widget.type))")
-                if !widget.with.isEmpty {
-                    let keys = widget.with.keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
-                    let pairs = keys.map { key in
-                        "\(YAMLScalarStyle.text(key, in: .flow)): \(widget.with[key].map(value) ?? "\"\"")"
+                if let inline = widget.inline {
+                    lines.append("    title: \(text(inline.title))")
+                    lines.append(contentsOf: inline.sourceTree.emit(key: "source", indent: 4))
+                    lines.append(contentsOf: inline.viewTree.emit(key: "view", indent: 4))
+                    if !inline.sizes.isEmpty { lines.append("    sizes: [\(flowList(inline.sizes))]") }
+                    if !inline.fits.isEmpty { lines.append("    fits: [\(flowList(inline.fits))]") }
+                } else {
+                    lines.append("    type: \(text(widget.type))")
+                    if !widget.with.isEmpty {
+                        let keys = widget.with.keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
+                        let pairs = keys.map { key in
+                            "\(YAMLScalarStyle.text(key, in: .flow)): \(widget.with[key].map(value) ?? "\"\"")"
+                        }
+                        lines.append("    with: {\(pairs.joined(separator: ", "))}")
                     }
-                    lines.append("    with: {\(pairs.joined(separator: ", "))}")
                 }
                 let frame = widget.frame
                 lines.append("    frame: {x: \(frame.x), y: \(frame.y), w: \(frame.w), h: \(frame.h)}")
@@ -252,6 +323,10 @@ public enum BoardCodec {
     }
 
     private static func text(_ value: String) -> String { YAMLScalarStyle.text(value, in: .block) }
+
+    private static func flowList(_ items: [String]) -> String {
+        items.map { YAMLScalarStyle.text($0, in: .flow) }.joined(separator: ", ")
+    }
 
     private static func value(_ scalar: BoardScalar) -> String {
         switch scalar {

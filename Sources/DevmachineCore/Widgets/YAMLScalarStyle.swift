@@ -63,7 +63,7 @@ enum YAMLScalarStyle {
         value.wholeMatch(of: /[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+(\.[0-9_]*)?/) != nil
     }
 
-    private static func isBreak(_ scalar: Unicode.Scalar) -> Bool {
+    static func isBreak(_ scalar: Unicode.Scalar) -> Bool {
         [0x0A, 0x0D, 0x85, 0x2028, 0x2029].contains(scalar.value)
     }
 
@@ -138,11 +138,18 @@ enum YAMLScalarStyle {
         }
     }
 
-    private static func singleQuoted(_ value: String) -> String {
+    static func singleQuotedIfAllowed(_ value: String) -> String {
+        guard !value.unicodeScalars.contains(where: isBreak), Analysis(value).singleQuotedAllowed else {
+            return doubleQuoted(value)
+        }
+        return singleQuoted(value)
+    }
+
+    static func singleQuoted(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
     }
 
-    private static func doubleQuoted(_ value: String) -> String {
+    static func doubleQuoted(_ value: String) -> String {
         var out = "\""
         for scalar in value.unicodeScalars {
             let mustEscape = !isPrintable(scalar) || scalar.value == 0xFEFF || isBreak(scalar)
