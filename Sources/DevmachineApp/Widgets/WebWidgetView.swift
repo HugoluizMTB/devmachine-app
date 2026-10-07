@@ -17,8 +17,9 @@ enum WebWidgetNavigation: Equatable {
     case allow, cancel, openInBrowser(URL)
 
     static func decide(url: URL?, isMainFrame: Bool, isLinkClick: Bool) -> WebWidgetNavigation {
-        guard isMainFrame else { return .allow }
-        guard let url, PreviewURLPolicy.isWeb(url) else { return .cancel }
+        let isWeb = url.map(PreviewURLPolicy.isWeb) == true
+        guard isMainFrame else { return isLinkClick && !isWeb ? .cancel : .allow }
+        guard let url, isWeb else { return .cancel }
         return isLinkClick ? .openInBrowser(url) : .allow
     }
 
@@ -35,11 +36,17 @@ struct WebWidgetView: View {
     let zoom: Double
     let every: TimeInterval?
     @State private var reloads = 0
+    @Environment(\.dmMetrics) private var m
+
+    private struct Schedule: Equatable {
+        let address: String
+        let every: TimeInterval?
+    }
 
     var body: some View {
         WidgetWebPage(address: address, zoom: zoom, reloads: reloads)
-            .clipShape(RoundedRectangle(cornerRadius: DMRadius.card))
-            .task(id: address) {
+            .clipShape(RoundedRectangle(cornerRadius: max(0, m.radius.card - m.space.lg)))
+            .task(id: Schedule(address: address, every: every)) {
                 guard let every, every > 0 else { return }
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(every))
@@ -74,7 +81,11 @@ private struct WidgetWebPage: NSViewRepresentable {
             load(view, context: context)
         } else if context.coordinator.reloads != reloads {
             context.coordinator.reloads = reloads
-            view.reload()
+            if view.url == nil {
+                load(view, context: context)
+            } else {
+                view.reload()
+            }
         }
     }
 

@@ -35,6 +35,12 @@ enum ANSIPalette {
         }
     }
 
+    /// Black text would vanish on the dark glass card, so it draws as the
+    /// bright-black gray; a black background stays black.
+    static func foreground(_ color: ANSIColor) -> ANSIColor {
+        color == .palette(0) ? .palette(8) : color
+    }
+
     static func color(_ color: ANSIColor) -> Color {
         let value = rgb(color)
         return Color(.sRGB, red: value.red, green: value.green, blue: value.blue)
@@ -46,7 +52,7 @@ enum ANSIPalette {
             if index > 0 { result.append(AttributedString("\n")) }
             for run in runs {
                 var piece = AttributedString(run.text)
-                if let foreground = run.foreground { piece.foregroundColor = color(foreground) }
+                if let foreground = run.foreground { piece.foregroundColor = color(Self.foreground(foreground)) }
                 if let background = run.background { piece.backgroundColor = color(background) }
                 if run.bold { piece.inlinePresentationIntent = .stronglyEmphasized }
                 if run.underline { piece.underlineStyle = .single }
@@ -57,11 +63,12 @@ enum ANSIPalette {
     }
 }
 
-/// Text and stream lines, following the newest line.
+/// Text and stream lines; a stream, a screen or a tail follows the newest line.
 struct TextLinesView: View {
     let lines: [String]
     let wrap: Bool
     let keepsColor: Bool
+    let followsNewest: Bool
 
     var body: some View {
         ScrollView(wrap ? .vertical : [.vertical, .horizontal]) {
@@ -78,7 +85,7 @@ struct TextLinesView: View {
             .textSelection(.enabled)
             .frame(maxWidth: wrap ? .infinity : nil, alignment: .leading)
         }
-        .defaultScrollAnchor(.bottomLeading)
+        .defaultScrollAnchor(followsNewest ? .bottomLeading : .topLeading)
     }
 }
 
@@ -89,7 +96,7 @@ struct TerminalWidgetView: View {
     let onOpen: (() -> Void)?
 
     var body: some View {
-        TextLinesView(lines: TextTail.lines(of: text, tail: tail), wrap: false, keepsColor: true)
+        TextLinesView(lines: TextTail.lines(of: text, tail: tail), wrap: false, keepsColor: true, followsNewest: true)
             .contentShape(Rectangle())
             .onTapGesture { onOpen?() }
             .help(Text(verbatim: onOpen == nil ? "A machine's admin sessions open from a terminal" : "Open this session"))
@@ -127,19 +134,19 @@ struct ListWidgetView: View {
         switch Result(catching: { try ListModel.items(output: output, template: template) }) {
         case let .success(items):
             GeometryReader { proxy in
-                let fit = SourceWidgetLayout.listRows(height: proxy.size.height, rowHeight: m.pt(Self.rowHeight))
-                let shown = items.count > fit ? max(1, fit - 1) : items.count
+                let fit = SourceWidgetLayout.listFit(
+                    count: items.count, height: proxy.size.height, rowHeight: m.pt(Self.rowHeight))
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(items.prefix(shown)) { item in row(item) }
-                    if items.count > shown {
-                        Text(verbatim: "+\(items.count - shown) more")
+                    ForEach(items.prefix(fit.rows)) { item in row(item) }
+                    if fit.more > 0 {
+                        Text(verbatim: "+\(fit.more) more")
                             .font(.dm(10))
                             .foregroundStyle(Color.dmMuted)
                     }
                 }
             }
         case let .failure(error):
-            SourceErrorView(state: DMErrorState(title: "This list cannot be shown", message: "\(error)"), density: density)
+            SourceErrorView(state: SourceErrorPresentation.state(title: "This list cannot be shown", error: error), density: density)
         }
     }
 

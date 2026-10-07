@@ -13,11 +13,11 @@ enum WidgetLevelColor {
 }
 
 private struct ValueErrorText: View {
-    let message: String
+    let error: any Error
     let density: WidgetDensity
 
     var body: some View {
-        SourceErrorView(state: DMErrorState(title: "This value cannot be shown", message: message), density: density)
+        SourceErrorView(state: SourceErrorPresentation.state(title: "This value cannot be shown", error: error), density: density)
     }
 }
 
@@ -37,7 +37,7 @@ struct NumberWidgetView: View {
                 .minimumScaleFactor(0.4)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case let .failure(error):
-            ValueErrorText(message: "\(error)", density: density)
+            ValueErrorText(error: error, density: density)
         }
     }
 }
@@ -69,7 +69,7 @@ struct GaugeWidgetView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
         case let .failure(error):
-            ValueErrorText(message: "\(error)", density: density)
+            ValueErrorText(error: error, density: density)
         }
     }
 }
@@ -130,7 +130,7 @@ struct StatusWidgetView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
         case let .failure(error):
-            ValueErrorText(message: "\(error)", density: density)
+            ValueErrorText(error: error, density: density)
         }
     }
 }
@@ -144,8 +144,8 @@ struct SparklineWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.xs) {
-            if let last = history.last {
-                Text(verbatim: NumberText.format(last.value, format: view.format, unit: view.unit))
+            if let latest = Self.latest(history: history, output: output, view: view) {
+                Text(verbatim: NumberText.format(latest, format: view.format, unit: view.unit))
                     .font(.dm(density == .full ? 22 : 15, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.white)
@@ -157,6 +157,12 @@ struct SparklineWidgetView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityHidden(true)
         }
+    }
+}
+
+extension SparklineWidgetView {
+    static func latest(history: [SparklinePoint], output: SourceOutput, view: WidgetView) -> Double? {
+        history.last?.value ?? (try? ValueExtraction.number(from: output, view: view))
     }
 }
 

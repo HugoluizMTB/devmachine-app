@@ -49,9 +49,66 @@ final class SourceWidgetLayoutTests: XCTestCase {
         XCTAssertEqual(WebWidgetNavigation.decide(url: mail, isMainFrame: true, isLinkClick: true), .cancel)
         XCTAssertEqual(WebWidgetNavigation.decide(url: URL(string: "file:///etc/hosts")!, isMainFrame: true, isLinkClick: false), .cancel)
         XCTAssertEqual(WebWidgetNavigation.decide(url: mail, isMainFrame: false, isLinkClick: false), .allow)
+        XCTAssertEqual(WebWidgetNavigation.decide(url: mail, isMainFrame: false, isLinkClick: true), .cancel)
+        XCTAssertEqual(WebWidgetNavigation.decide(url: page, isMainFrame: false, isLinkClick: true), .allow)
         XCTAssertEqual(WebWidgetNavigation.popup(url: page), .openInBrowser(page))
         XCTAssertEqual(WebWidgetNavigation.popup(url: mail), .cancel)
         XCTAssertEqual(WebWidgetNavigation.popup(url: nil), .cancel)
+    }
+
+    func testOneRowThatBarelyFitsGetsNoMoreLine() {
+        XCTAssertEqual(SourceWidgetLayout.listFit(count: 5, height: 40, rowHeight: 30).rows, 1)
+        XCTAssertEqual(SourceWidgetLayout.listFit(count: 5, height: 40, rowHeight: 30).more, 0)
+        XCTAssertEqual(SourceWidgetLayout.listFit(count: 5, height: 90, rowHeight: 30).rows, 2)
+        XCTAssertEqual(SourceWidgetLayout.listFit(count: 5, height: 90, rowHeight: 30).more, 3)
+        XCTAssertEqual(SourceWidgetLayout.listFit(count: 3, height: 90, rowHeight: 30).rows, 3)
+        XCTAssertEqual(SourceWidgetLayout.listFit(count: 3, height: 90, rowHeight: 30).more, 0)
+    }
+
+    func testOnlyStreamsScreensAndTailsFollowTheNewestLine() {
+        XCTAssertTrue(SourceWidgetLayout.followsNewestLine(kind: "text", every: .continuous, tail: nil))
+        XCTAssertTrue(SourceWidgetLayout.followsNewestLine(kind: "terminal", every: .interval(5), tail: nil))
+        XCTAssertTrue(SourceWidgetLayout.followsNewestLine(kind: "text", every: .interval(60), tail: 50))
+        XCTAssertFalse(SourceWidgetLayout.followsNewestLine(kind: "text", every: .interval(60), tail: nil))
+        XCTAssertFalse(SourceWidgetLayout.followsNewestLine(kind: "text", every: .manual, tail: nil))
+    }
+
+    func testASparklineWithNoHistoryShowsTheCurrentValue() {
+        let view = WidgetView(kind: "sparkline")
+        XCTAssertEqual(SparklineWidgetView.latest(history: [], output: .number(7), view: view), 7)
+        let history = [SparklinePoint(at: Date(timeIntervalSince1970: 0), value: 3)]
+        XCTAssertEqual(SparklineWidgetView.latest(history: history, output: .number(7), view: view), 3)
+        XCTAssertNil(SparklineWidgetView.latest(history: [], output: .text("busy"), view: view))
+    }
+
+    func testBlackTextShowsOnTheDarkCardAndABlackBackgroundStays() {
+        XCTAssertEqual(ANSIPalette.foreground(.palette(0)), .palette(8))
+        XCTAssertEqual(ANSIPalette.foreground(.palette(1)), .palette(1))
+        XCTAssertEqual(ANSIPalette.rgb(.palette(0)).red, 0, accuracy: 0.001)
+        let text = ANSIPalette.attributed(ANSIText.lines("\u{1B}[30;40mx"))
+        let run = text.runs.first!
+        XCTAssertEqual(run.foregroundColor, ANSIPalette.color(.palette(8)))
+        XCTAssertEqual(run.backgroundColor, ANSIPalette.color(.palette(0)))
+    }
+
+    func testACompactErrorSaysWhatWentWrongAndNotOnlyTheTitle() throws {
+        XCTAssertThrowsError(try ListModel.items(output: .text("plain"), template: ListItemTemplate())) { error in
+            let state = SourceErrorPresentation.state(title: "This list cannot be shown", error: error)
+            XCTAssertEqual(SourceErrorPresentation.compactDetail(state), "a list view needs lines or a JSON array")
+        }
+        XCTAssertThrowsError(try ValueExtraction.number(from: .text("busy"), view: WidgetView(kind: "number"))) { error in
+            let state = SourceErrorPresentation.state(title: "This value cannot be shown", error: error)
+            XCTAssertEqual(SourceErrorPresentation.compactDetail(state), "the output is \"busy\", not a number")
+        }
+        XCTAssertThrowsError(try StatusModel.make(output: .json(.list([])), view: statusView(value: "{{json.state}}"))) { error in
+            let detail = SourceErrorPresentation.compactDetail(
+                SourceErrorPresentation.state(title: "This value cannot be shown", error: error))
+            XCTAssertEqual(detail, "{{json.state}} found nothing in the answer")
+        }
+        let timeout = SourceErrorPresentation.state(.timedOut(30))
+        XCTAssertEqual(SourceErrorPresentation.compactDetail(timeout), "The machine took too long to answer.")
+        let exited = SourceErrorPresentation.state(.exited(status: 2, stderr: "no such file"))
+        XCTAssertEqual(SourceErrorPresentation.compactDetail(exited), "no such file")
     }
 
     func testOnlyALargeFrameGetsTheFullLayout() {
@@ -121,6 +178,12 @@ final class SourceWidgetLayoutTests: XCTestCase {
     private func view(_ kind: String, unit: String? = nil) -> WidgetView {
         var view = WidgetView(kind: kind)
         view.unit = unit
+        return view
+    }
+
+    private func statusView(value: String) -> WidgetView {
+        var view = WidgetView(kind: "status")
+        view.value = value
         return view
     }
 

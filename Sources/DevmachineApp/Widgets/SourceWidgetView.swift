@@ -14,6 +14,19 @@ enum SourceWidgetLayout {
     static func listRows(height: CGFloat, rowHeight: CGFloat) -> Int {
         max(1, Int((height / rowHeight).rounded(.down)))
     }
+
+    /// The rows drawn and the count a "+N more" line names; one row that
+    /// barely fits leaves no room for that line, so it gets none.
+    static func listFit(count: Int, height: CGFloat, rowHeight: CGFloat) -> (rows: Int, more: Int) {
+        let fit = listRows(height: height, rowHeight: rowHeight)
+        guard count > fit else { return (count, 0) }
+        guard fit > 1 else { return (1, 0) }
+        return (fit - 1, count - fit + 1)
+    }
+
+    static func followsNewestLine(kind: String, every: WidgetEvery, tail: Int?) -> Bool {
+        every == .continuous || kind == "terminal" || tail != nil
+    }
 }
 
 enum SourceErrorPresentation {
@@ -26,6 +39,23 @@ enum SourceErrorPresentation {
         default:
             return DMErrorState(title: error.title, message: error.details)
         }
+    }
+
+    static func state(title: String, error: any Error) -> DMErrorState {
+        DMErrorState(title: title, message: message(error))
+    }
+
+    static func message(_ error: any Error) -> String {
+        if let error = error as? LocalizedError, let text = error.errorDescription { return text }
+        return String(describing: error)
+    }
+
+    /// What a compact card shows under the title: the guessed cause, else
+    /// the error itself when it says more than the title.
+    static func compactDetail(_ state: DMErrorState) -> String? {
+        if let cause = state.cause { return cause }
+        let details = state.details.trimmingCharacters(in: .whitespacesAndNewlines)
+        return details.isEmpty || details == state.title ? nil : details
     }
 }
 
@@ -93,7 +123,7 @@ struct SourceWidgetContent: View {
                 quiet(state.ended ? "The stream ended. Press ▶ to start it again." : "Waiting for the first line…")
             } else {
                 TextLinesView(lines: TextTail.lines(of: state.lines.joined(separator: "\n"), tail: source.view.tail),
-                              wrap: source.view.wrap, keepsColor: source.view.kind == "terminal")
+                              wrap: source.view.wrap, keepsColor: source.view.kind == "terminal", followsNewest: true)
             }
         } else if let output = state.output {
             OutputView(source: source, output: output, history: history, density: density, onOpenSession: onOpenSession)
@@ -148,8 +178,8 @@ struct SourceErrorView: View {
                     .font(.dm(11, weight: .semibold))
                     .foregroundStyle(Color.dmRowText)
                     .lineLimit(2)
-                if let cause = state.cause {
-                    Text(verbatim: cause)
+                if let detail = SourceErrorPresentation.compactDetail(state) {
+                    Text(verbatim: detail)
                         .font(.dm(10))
                         .foregroundStyle(Color.dmMuted)
                         .lineLimit(2)
@@ -199,7 +229,9 @@ private struct OutputView: View {
         case "terminal":
             TerminalWidgetView(text: plainText(output), tail: view.tail, onOpen: onOpenSession)
         default:
-            TextLinesView(lines: TextTail.lines(of: plainText(output), tail: view.tail), wrap: view.wrap, keepsColor: false)
+            TextLinesView(
+                lines: TextTail.lines(of: plainText(output), tail: view.tail), wrap: view.wrap, keepsColor: false,
+                followsNewest: SourceWidgetLayout.followsNewestLine(kind: view.kind, every: source.every, tail: view.tail))
         }
     }
 
