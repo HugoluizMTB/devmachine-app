@@ -172,6 +172,20 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertFalse(placements.contains("codex/usage", on: "home"))
     }
 
+    func testHomeSavesKeepTheStackPlacements() throws {
+        let controller = makeController()
+        let file = WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json"))
+        var stack = WidgetPlacements()
+        stack.insert("devmachine-app/links", on: "context-sidebar")
+        try file.save(stack, surface: "context-sidebar")
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertTrue(file.load().contains("codex/usage", on: "home"))
+        XCTAssertTrue(file.load().contains("devmachine-app/links", on: "context-sidebar"))
+        try controller.resetHome()
+        XCTAssertFalse(file.load().contains("codex/usage", on: "home"))
+        XCTAssertTrue(file.load().contains("devmachine-app/links", on: "context-sidebar"))
+    }
+
     func testResetWithoutAConfigurationFails() {
         let controller = HomeBoardController(
             placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),

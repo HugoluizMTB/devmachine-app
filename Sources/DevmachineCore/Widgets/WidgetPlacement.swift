@@ -79,27 +79,59 @@ public struct WidgetPlacementsFile: Sendable {
     }
 
     public func load() -> WidgetPlacements {
-        guard let data = try? Data(contentsOf: fileURL),
-              let file = try? JSONDecoder().decode(File.self, from: data), file.version == Self.version
-        else { return WidgetPlacements() }
+        (try? read()) ?? WidgetPlacements()
+    }
+
+    /// Replaces only `surface`'s set in the file, so Home and each sidebar
+    /// never write over one another's placements. A file that exists but
+    /// cannot be read is left as it is rather than replaced by one surface.
+    public func save(_ placements: WidgetPlacements, surface: String) throws {
+        var merged = try read()
+        merged.reset(surface)
+        for widget in placements.placed[surface] ?? [] { merged.insert(widget, on: surface) }
+        try write(merged)
+    }
+
+    private func read() throws -> WidgetPlacements {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return WidgetPlacements() }
+        let file: File
+        do {
+            file = try JSONDecoder().decode(File.self, from: Data(contentsOf: fileURL))
+        } catch {
+            throw WidgetPlacementsFileError.unreadable(path: fileURL.path, reason: error.localizedDescription)
+        }
+        guard file.version == Self.version else {
+            throw WidgetPlacementsFileError.unreadable(
+                path: fileURL.path, reason: "it is version \(file.version), not \(Self.version)")
+        }
         return WidgetPlacements(placed: file.placed.mapValues(Set.init))
     }
 
-    public func save(_ placements: WidgetPlacements) throws {
+    private func write(_ placements: WidgetPlacements) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(File(version: Self.version, placed: placements.placed.mapValues { $0.sorted() }))
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: fileURL, options: .atomic)
     }
+}
 
-    /// Replaces only `surface`'s set in the file, so Home and each sidebar
-    /// never write over one another's placements.
-    public func save(_ placements: WidgetPlacements, surface: String) throws {
-        var merged = load()
-        merged.reset(surface)
-        for widget in placements.placed[surface] ?? [] { merged.insert(widget, on: surface) }
-        try save(merged)
+public enum WidgetPlacementsFileError: LocalizedError, Equatable {
+    case unreadable(path: String, reason: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .unreadable(path, reason):
+            return "Cannot read \(path) (\(reason)), so it was left as it is. Move it away to start the placements again."
+        }
+    }
+}
+
+extension CatalogWidget {
+    /// Whether the widget adds itself to `surface` the first time it is seen
+    /// there; a stack passes its layout, which the widget must fit too.
+    public func placesItself(on surface: String, fitting layout: String? = nil) -> Bool {
+        places.contains(surface) && surfaces.contains(surface) && available && (layout.map(fits.contains) ?? true)
     }
 }
 
@@ -120,8 +152,7 @@ public enum WidgetPlacer {
         var boardChanged = false
         var placementsChanged = false
         let surface = board.surface
-        for widget in catalog.widgets where widget.places.contains(surface)
-            && widget.surfaces.contains(surface) && widget.available
+        for widget in catalog.widgets where widget.placesItself(on: surface)
             && !placements.contains(widget.name, on: surface) && isEligible(widget) {
             if !board.widgets.contains(where: { $0.type == widget.name }) {
                 board.widgets.append(newInstance(of: widget, on: board, canvasWidth: canvasWidth, contract: contract))

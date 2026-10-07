@@ -73,9 +73,8 @@ public enum StackPlacer {
         var boardChanged = false
         var placementsChanged = false
         let surface = board.surface
-        for widget in StackCatalog.merged(catalog).widgets where widget.places.contains(surface)
-            && widget.surfaces.contains(surface) && widget.fits.contains("stack") && widget.available
-            && !placements.contains(widget.name, on: surface) {
+        for widget in StackCatalog.merged(catalog).widgets
+            where widget.placesItself(on: surface, fitting: "stack") && !placements.contains(widget.name, on: surface) {
             if !board.entries.contains(where: { $0.type == widget.name }) {
                 board.insert(newEntry(of: widget, on: board), at: .end)
                 boardChanged = true

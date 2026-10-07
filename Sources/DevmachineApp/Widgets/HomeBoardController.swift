@@ -221,7 +221,7 @@ final class HomeBoardController: ObservableObject {
         var next = placements
         next.reset(store.surface)
         placements = next
-        try placementsFile.save(next)
+        try placementsFile.save(next, surface: store.surface)
         placementsError = nil
     }
 
@@ -257,7 +257,7 @@ final class HomeBoardController: ObservableObject {
     private func savePlacements(_ next: WidgetPlacements) {
         placements = next
         do {
-            try placementsFile.save(next)
+            try placementsFile.save(next, surface: DefaultBoard.surface)
             placementsError = nil
         } catch {
             Self.log.error("saving widget placements failed: \(error.localizedDescription, privacy: .public)")

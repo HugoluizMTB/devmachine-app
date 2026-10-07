@@ -121,14 +121,14 @@ final class StackResolutionTests: XCTestCase {
         XCTAssertFalse(names.contains("devmachine-app/todo"))
         XCTAssertFalse(names.contains(clock.name))
         let workspaces = AppStackWidgets.catalogWidget("workspaces")!
-        XCTAssertEqual(StackGallery.blockedReason(for: workspaces, on: sidebar), "Already in the sidebar")
+        XCTAssertEqual(StackGallery.blockedReason(for: workspaces, on: sidebar), "Already in the sidebar area")
         XCTAssertNil(StackGallery.blockedReason(for: workspaces, on: StackBoard(surface: "sidebar", entries: [])))
         XCTAssertNil(StackGallery.blockedReason(for: AppStackWidgets.catalogWidget("links")!, on: context))
     }
 
     func testAreaNamesAndFiles() {
-        XCTAssertEqual(StackArea.name("sidebar"), "sidebar")
-        XCTAssertEqual(StackArea.name("context-sidebar"), "context sidebar")
+        XCTAssertEqual(StackArea.name("sidebar"), "the sidebar area")
+        XCTAssertEqual(StackArea.name("context-sidebar"), "the context-sidebar area")
         XCTAssertEqual(StackArea.fileName("context-sidebar"), "context-sidebar.yml")
     }
 

@@ -57,9 +57,10 @@ public enum StackCatalog {
     }
 }
 
-/// How a stack surface reads in the app's copy, and the board file it lives in.
+/// How a stack surface reads in copy, the way the CLI writes it ("the
+/// context-sidebar area"), and the board file it lives in.
 public enum StackArea {
-    public static func name(_ surface: String) -> String { surface.replacingOccurrences(of: "-", with: " ") }
+    public static func name(_ surface: String) -> String { "the \(surface) area" }
     public static func fileName(_ surface: String) -> String { "\(surface).yml" }
 }
 
@@ -99,13 +100,13 @@ public enum StackResolution {
         let surface = contract.surfaces[board.surface]
         let layout = surface?.layout ?? "stack"
         if !widget.fits.contains(layout) {
-            return "\(entry.type) does not fit the \(board.surface) area: its fits has no \(layout)"
+            return "\(entry.type) does not fit \(StackArea.name(board.surface)): its fits has no \(layout)"
         }
         let given = Set(surface?.context.keys.map { $0 } ?? [])
         let needed = contract.requiredContext(ofProvider: resolved.provider)
             .union(widget.context.filter { $0.value == "required" }.keys)
         if let missing = needed.subtracting(given).sorted().first {
-            return "\(entry.type) needs context.\(missing), which the \(board.surface) area does not give"
+            return "\(entry.type) needs context.\(missing), which \(StackArea.name(board.surface)) does not give"
         }
         if widget.single, let first = board.entries.first(where: { $0.type == entry.type }), first.id != entry.id {
             return "\(entry.type) goes on a board once, and \(first.id) already has it"
@@ -123,6 +124,6 @@ public enum StackGallery {
 
     public static func blockedReason(for widget: CatalogWidget, on board: StackBoard) -> String? {
         guard widget.single, board.entries.contains(where: { $0.type == widget.name }) else { return nil }
-        return "Already in the \(StackArea.name(board.surface))"
+        return "Already in \(StackArea.name(board.surface))"
     }
 }
