@@ -79,19 +79,43 @@ final class FoundationProcessLauncherTests: XCTestCase {
         XCTAssertTrue(gone)
     }
 
+    private func appears(_ path: String, within seconds: Double = 20) async throws -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if FileManager.default.fileExists(atPath: path) { return true }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return false
+    }
+
     func testAForcedFinishClosesThePipesALeftoverChildHolds() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let marker = folder.appendingPathComponent("wrote").path
+        let go = folder.appendingPathComponent("go").path
+        let wrote = folder.appendingPathComponent("wrote").path
+        let done = folder.appendingPathComponent("done").path
+        let child = #"(while [ ! -e "$1" ]; do /bin/sleep 0.02; done; (echo late) && /usr/bin/touch "$2"; /usr/bin/touch "$3") & exit 0"#
         let process = try FoundationProcessLauncher().launch(
-            ProcessInvocation(executable: "/bin/sh", arguments: [
-                "-c", "(/bin/sleep 2; echo late && /usr/bin/touch \"$1\") & exit 0", "sh", marker,
-            ])) { _ in }
+            ProcessInvocation(executable: "/bin/sh", arguments: ["-c", child, "sh", go, wrote, done])) { _ in }
         let exit = await process.wait()
         XCTAssertEqual(exit.status, 0)
-        try await Task.sleep(for: .seconds(2.5))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: marker))
+        FileManager.default.createFile(atPath: go, contents: nil)
+        let finished = try await appears(done)
+        XCTAssertTrue(finished)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wrote))
+    }
+
+    func testTheLastOutputArrivesBeforeAForcedFinishReturns() async throws {
+        let box = Box()
+        let process = try FoundationProcessLauncher().launch(
+            ProcessInvocation(executable: "/bin/sh", arguments: [
+                "-c", "(/bin/sleep 30) & head -c 300000 /dev/zero | tr '\\0' x; exit 0",
+            ])) { box.append($0) }
+        let exit = await process.wait()
+        XCTAssertEqual(exit.status, 0)
+        XCTAssertEqual(box.text.utf8.count, 300_000)
+        process.terminate()
     }
 
     func testRefusesSSHUnderTests() {

@@ -127,15 +127,20 @@ final class LaunchedProcess: RunningProcess, @unchecked Sendable {
         }
     }
 
+    /// Delivery happens under `pipeLock`, so once the pipes are closed no
+    /// chunk can still reach `onStdout` after `wait()` has returned.
     private func read(_ handle: FileHandle, then deliver: (Data) -> Void) {
-        let data: Data? = pipeLock.withLock {
-            guard readEnds.contains(where: { $0 === handle }) else { return nil }
+        let closed: Bool = pipeLock.withLock {
+            guard readEnds.contains(where: { $0 === handle }) else { return false }
             let data = handle.availableData
-            if data.isEmpty { closeLocked(handle) }
-            return data
+            guard !data.isEmpty else {
+                closeLocked(handle)
+                return true
+            }
+            deliver(data)
+            return false
         }
-        guard let data else { return }
-        if data.isEmpty { pipeClosed() } else { deliver(data) }
+        if closed { pipeClosed() }
     }
 
     private func closeLocked(_ handle: FileHandle) {
@@ -160,8 +165,8 @@ final class LaunchedProcess: RunningProcess, @unchecked Sendable {
         lock.withLock { status = code }
         finishIfReady(force: false)
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) { [weak self] in
-            self?.finishIfReady(force: true)
             self?.closeRemainingPipes()
+            self?.finishIfReady(force: true)
         }
     }
 
