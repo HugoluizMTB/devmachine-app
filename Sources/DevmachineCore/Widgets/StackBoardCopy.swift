@@ -10,4 +10,20 @@ public enum StackBoardCopy {
     public static func saveFailed(file: String, error: String) -> String {
         "Could not save \(file): \(error)"
     }
+
+    public static let resetHint =
+        "The sidebar and the Context tab are lists of widgets. A reset brings back the default list of that area."
+
+    public static func resetTitle(_ surface: String) -> String { "Reset \(displayName(surface))" }
+
+    public static func resetConfirmation(_ surface: String) -> String {
+        let file = StackArea.fileName(surface)
+        return "The \(displayName(surface)) goes back to its default widgets. The current \(file) is kept as \(file).bak."
+    }
+
+    public static func resetFailed(_ surface: String) -> String { "Could not reset the \(displayName(surface))" }
+
+    private static func displayName(_ surface: String) -> String {
+        surface.replacingOccurrences(of: "-", with: " ")
+    }
 }
