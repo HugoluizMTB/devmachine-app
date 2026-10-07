@@ -826,8 +826,10 @@ Rules:
   or workspace added in a terminal shows up without a restart.
 
 ## Home widgets
-- **Home is `<config>/boards/home.yml`, nothing else.** `<config>` is the CLI's
-  config folder (`DEVMACHINE_CONFIG` moves it), never `AppSettings.opsRepoPath`.
+- **Home is `<config>/boards/home.yml`, nothing else.** `<config>` is what
+  `devmachine --format json config path` answers (`DevmachineCLI.configPath()`,
+  called by `HomeBoardController.start()` off the main thread; it honours
+  `DEVMACHINE_CONFIG`), never `AppSettings.opsRepoPath`.
   The app, `devmachine widgets add/remove` and agents edit the same file.
   `BoardStore` reloads it on every change. The app never creates the config
   folder: with no folder, nothing is written.
