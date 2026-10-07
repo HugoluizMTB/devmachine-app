@@ -67,39 +67,76 @@ struct SummaryWidgetView: View {
 
 struct MachinesWidgetView: View {
     static let cardSpacing: CGFloat = 12
+    /// A stats card with a snapshot at 100%; the tallest card drawn replaces it.
+    static let nominalCardHeight: CGFloat = 132
 
+    let size: CGSize
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var stats: StatsStore
     @ObservedObject private var readiness = MachineReadinessStore.shared
     @Environment(\.dmMetrics) private var m
+    @State private var cardHeight: CGFloat?
+    @State private var attentionHeight: CGFloat = 0
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: m.pt(14)) {
-                ForEach(readiness.machinesNeedingAttention, id: \.self) { machine in
-                    MachineReadinessCard(store: readiness, machine: machine)
-                        .dmGlass(radius: DMRadius.panel, stroke: .white.opacity(0.15))
-                }
-                if !stats.machines.isEmpty {
-                    Text("MACHINES")
-                        .font(.dm(11, weight: .semibold))
-                        .kerning(0.8)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .shadow(color: .black.opacity(0.4), radius: 4)
-                    FlowLayout(spacing: Self.cardSpacing, rowSpacing: Self.cardSpacing) {
-                        ForEach(stats.machines) { machine in
-                            MachineStatsCard(
-                                machine: machine,
-                                state: stats.state(for: machine.name),
-                                containerCount: { model.visibleContainers(in: $0).count },
-                                action: { openStats(machine.name) })
-                        }
+        let attention = readiness.machinesNeedingAttention
+        let gridHeight = size.height - (attention.isEmpty ? 0 : attentionHeight + m.pt(Self.cardSpacing))
+        let fit = CardGridFit.fit(
+            in: CGSize(width: size.width, height: max(0, gridHeight)),
+            card: CGSize(width: m.pt(MachineStatsCard.width), height: cardHeight ?? m.pt(Self.nominalCardHeight)),
+            spacing: m.pt(Self.cardSpacing))
+        VStack(alignment: .leading, spacing: m.pt(Self.cardSpacing)) {
+            if !attention.isEmpty {
+                VStack(alignment: .leading, spacing: m.pt(Self.cardSpacing)) {
+                    ForEach(attention, id: \.self) { machine in
+                        MachineReadinessCard(store: readiness, machine: machine)
+                            .dmGlass(radius: DMRadius.panel, stroke: .white.opacity(0.15))
                     }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { attentionHeight = $0 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            grid(fit)
         }
-        .scrollIndicators(.hidden)
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .overlay(alignment: .bottomTrailing) { moreChip(fit.hidden(of: stats.machines.count)) }
+    }
+
+    private func grid(_ fit: CardGridFit) -> some View {
+        let shown = Array(stats.machines.prefix(fit.shown(of: stats.machines.count)))
+        let columns = max(1, fit.columns)
+        let rows = stride(from: 0, to: shown.count, by: columns).map { Array(shown[$0..<min($0 + columns, shown.count)]) }
+        let spacing = m.pt(Self.cardSpacing) * fit.scale
+        return VStack(alignment: .leading, spacing: spacing) {
+            ForEach(rows, id: \.first?.id) { row in
+                HStack(alignment: .top, spacing: spacing) {
+                    ForEach(row) { machine in card(machine, scale: fit.scale) }
+                }
+            }
+        }
+    }
+
+    private func card(_ machine: StatsMachine, scale: Double) -> some View {
+        let height = cardHeight ?? m.pt(Self.nominalCardHeight)
+        return MachineStatsCard(
+            machine: machine,
+            state: stats.state(for: machine.name),
+            containerCount: { model.visibleContainers(in: $0).count },
+            action: { openStats(machine.name) })
+        .fixedSize()
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured in
+            if measured > (cardHeight ?? 0) { cardHeight = measured }
+        }
+        .scaleEffect(scale, anchor: .topLeading)
+        .frame(width: m.pt(MachineStatsCard.width) * scale, height: height * scale, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func moreChip(_ hidden: Int) -> some View {
+        if hidden > 0 {
+            DMButton("+\(hidden) more", variant: .ghost, size: .small) { model.showPage(.stats) }
+                .dmGlass(radius: DMRadius.pill)
+                .help(Text(verbatim: "Open Stats to see every machine"))
+        }
     }
 
     private func openStats(_ machine: String) {
@@ -108,8 +145,25 @@ struct MachinesWidgetView: View {
     }
 }
 
+/// Below this height (in points at 100%) a usage widget shows one line per
+/// window; the full card with its charts needs about four rows of the grid.
+enum UsageWidgetLayout {
+    static let fullCardMinHeight: CGFloat = 240
+    /// A small widget has room for the name, bar and percent, not the reset time.
+    static let resetTimeMinWidth: CGFloat = 240
+
+    static func showsFullCard(boardHeight: CGFloat) -> Bool {
+        boardHeight >= fullCardMinHeight
+    }
+
+    static func showsResetTime(boardWidth: CGFloat) -> Bool {
+        boardWidth >= resetTimeMinWidth
+    }
+}
+
 struct HarnessUsageWidgetView: View {
     let harness: String
+    let size: CGSize
     @EnvironmentObject private var usage: HarnessUsageStore
     @EnvironmentObject private var model: AppModel
     @Environment(\.harnessSettingsFacade) private var facade
@@ -118,16 +172,26 @@ struct HarnessUsageWidgetView: View {
     var body: some View {
         let descriptor = facade.descriptor(for: HarnessID(rawValue: harness))
         if let descriptor, let state = usage.state(for: harness) {
-            HarnessUsageCardContent(
-                state: state,
-                title: "\(descriptor.shortTitle) Usage",
-                systemImage: descriptor.systemImage,
-                accent: descriptor.color,
-                onRefresh: { usage.refresh(harnessID: harness, force: true) },
-                scrollsContent: true)
-            .harnessUsageErrorView { error, retry in
-                DMErrorStateView(state: DMErrorState(error), retry: retry)
-                    .padding(.vertical, m.space.md)
+            Group {
+                if UsageWidgetLayout.showsFullCard(boardHeight: size.height / m.pt(1)) {
+                    HarnessUsageCardContent(
+                        state: state,
+                        title: "\(descriptor.shortTitle) Usage",
+                        systemImage: descriptor.systemImage,
+                        accent: descriptor.color,
+                        onRefresh: refresh,
+                        scrollsContent: true)
+                    .harnessUsageErrorView { error, retry in
+                        DMErrorStateView(state: DMErrorState(error), retry: retry)
+                            .padding(.vertical, m.space.md)
+                    }
+                } else {
+                    CompactUsageView(
+                        state: state, title: "\(descriptor.shortTitle) Usage", systemImage: descriptor.systemImage,
+                        accent: descriptor.color,
+                        showsReset: UsageWidgetLayout.showsResetTime(boardWidth: size.width / m.pt(1)),
+                        onRefresh: refresh)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: m.radius.card))
             .dmGlass(radius: DMRadius.card, stroke: .white.opacity(0.15))
@@ -138,6 +202,78 @@ struct HarnessUsageWidgetView: View {
                 detail: "Turn it on in Settings → Harnesses to see its usage here.",
                 actionTitle: "Open Settings",
                 action: { model.openSettings(.harnesses) })
+        }
+    }
+
+    private func refresh() {
+        usage.refresh(harnessID: harness, force: true)
+    }
+}
+
+/// One line per usage window: its name, a thin bar, the percent and when it
+/// resets, in columns so the bars line up.
+private struct CompactUsageView: View {
+    let state: HarnessUsageState
+    let title: String
+    let systemImage: String
+    let accent: Color
+    let showsReset: Bool
+    let onRefresh: () -> Void
+    @Environment(\.dmMetrics) private var m
+
+    var body: some View {
+        let presentation = HarnessUsagePresentation(title: title, state: state)
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            HStack(spacing: m.space.sm) {
+                Label {
+                    Text(verbatim: presentation.headerTitle)
+                } icon: {
+                    Image(systemName: systemImage)
+                }
+                .font(.dm(12, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                Spacer(minLength: m.space.xs)
+                DMIconButton(systemImage: "arrow.clockwise", action: onRefresh)
+                    .help(Text(verbatim: "Refresh"))
+            }
+            if let error = presentation.error {
+                DMErrorStateView(state: DMErrorState(error), retry: onRefresh)
+            } else if state.showsSkeleton {
+                ProgressView().controlSize(.small)
+            } else if let snapshot = state.snapshot {
+                Grid(alignment: .leading, horizontalSpacing: m.space.sm, verticalSpacing: m.space.md) {
+                    ForEach(snapshot.blocks) { block in row(block) }
+                }
+            }
+        }
+        .padding(m.space.lg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func row(_ block: UsageBlock) -> some View {
+        GridRow {
+            Text(verbatim: block.label)
+                .font(.dm(11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            DMProgressBar(done: block.percent, total: 100, fillColor: accent, barHeight: 4, cornerRadius: 2)
+                .frame(minWidth: m.pt(36))
+                .gridColumnAlignment(.leading)
+            Text(verbatim: "\(block.percent)%")
+                .font(.dm(11, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .fixedSize()
+                .gridColumnAlignment(.trailing)
+            if showsReset {
+                Text(verbatim: block.resets)
+                    .font(.dm(10))
+                    .foregroundStyle(Color.dmMuted)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
         }
     }
 }
@@ -183,9 +319,9 @@ struct AppWidgetView: View {
         case "app.summary":
             SummaryWidgetView()
         case "app.machines":
-            MachinesWidgetView()
+            MachinesWidgetView(size: size)
         case "app.harness-usage":
-            HarnessUsageWidgetView(harness: resolved.arguments["harness"] ?? "")
+            HarnessUsageWidgetView(harness: resolved.arguments["harness"] ?? "", size: size)
         default:
             WidgetPlaceholderView(
                 icon: "questionmark.square.dashed", title: "Needs a newer app",

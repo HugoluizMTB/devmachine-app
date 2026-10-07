@@ -2,8 +2,10 @@ import SwiftUI
 import AppKit
 import DevmachineCore
 
-/// One widget on the canvas: its content, and on hover a title bar to drag
-/// it by, a ⋯ menu and a resize corner. Minimized, it is a pill.
+/// One widget on the canvas: its content, and on hover a small handle on
+/// its top edge to drag it by, with the ⋯ menu, and a resize corner. The
+/// handle sits on the edge so it never covers the card's own title or
+/// buttons. Minimized, it is a pill.
 struct WidgetChromeView: View {
     let widget: BoardWidget
     let resolution: WidgetResolution?
@@ -20,8 +22,13 @@ struct WidgetChromeView: View {
     let onMinimize: (Bool) -> Void
     let onRefresh: () -> Void
     let onRemove: () -> Void
+    var onPillSize: (CGSize) -> Void = { _ in }
 
     @State private var hovering = false
+    @State private var pillDragged = false
+    /// Half of the handle sits outside the card, where the card's own hover
+    /// ends, so the handle keeps itself shown while the pointer is on it.
+    @State private var handleHovered = false
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
@@ -43,11 +50,45 @@ struct WidgetChromeView: View {
             .onEnded { _ in onMoveEnded() }
     }
 
+    /// Tap restores and drag moves, never both: a drag that ends over the
+    /// pill must not also count as a click on it.
     private var pill: some View {
-        DMButton(title, systemImage: "rectangle.expand.vertical", variant: .ghost, size: .small) { onMinimize(false) }
-            .dmGlass(radius: DMRadius.pill)
-            .simultaneousGesture(moveGesture, including: editable ? .all : .subviews)
-            .help(Text(verbatim: "Restore \(title)"))
+        Label {
+            Text(verbatim: title)
+        } icon: {
+            Image(systemName: "rectangle.expand.vertical")
+        }
+        .font(.dm(11, weight: .medium))
+        .foregroundStyle(.white.opacity(0.85))
+        .lineLimit(1)
+        .padding(.vertical, m.space.sm)
+        .padding(.horizontal, m.space.md)
+        .dmGlass(radius: DMRadius.pill)
+        .fixedSize()
+        .contentShape(Capsule())
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { onPillSize($0) }
+        .onTapGesture {
+            guard !pillDragged else { return }
+            onMinimize(false)
+        }
+        .gesture(pillMoveGesture, including: editable ? .all : .none)
+        .help(Text(verbatim: "Restore \(title)"))
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(Text(verbatim: "Restore \(title)"))
+        .accessibilityAction { onMinimize(false) }
+    }
+
+    private var pillMoveGesture: some Gesture {
+        DragGesture(minimumDistance: 2, coordinateSpace: .global)
+            .onChanged {
+                pillDragged = true
+                onMoveChanged($0.translation)
+            }
+            .onEnded { _ in
+                onMoveEnded()
+                DispatchQueue.main.async { pillDragged = false }
+            }
     }
 
     private var card: some View {
@@ -60,7 +101,7 @@ struct WidgetChromeView: View {
                         .allowsHitTesting(false)
                 }
             }
-            .overlay(alignment: .top) { if hovering && editable { titleBar } }
+            .overlay(alignment: .top) { if (hovering || handleHovered) && editable { handle } }
             .overlay(alignment: .bottomTrailing) { if hovering && editable { resizeCorner } }
             .onHover { hovering = $0 }
             .simultaneousGesture(TapGesture().onEnded { onFront() })
@@ -80,13 +121,16 @@ struct WidgetChromeView: View {
         }
     }
 
-    private var titleBar: some View {
-        HStack(spacing: m.space.sm) {
-            Text(verbatim: title)
-                .font(.dm(11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
-                .lineLimit(1)
-            Spacer(minLength: m.space.sm)
+    private var handle: some View {
+        HStack(spacing: m.space.xs) {
+            Image(systemName: "line.3.horizontal")
+                .font(.dm(10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+                .frame(width: m.size(DMHitSize.compact).width, height: m.size(DMHitSize.compact).height)
+                .contentShape(Rectangle())
+                .gesture(moveGesture)
+                .canvasCursor(.openHand)
+                .accessibilityLabel(Text(verbatim: "Move \(title)"))
             Menu {
                 menuItems
             } label: {
@@ -95,17 +139,15 @@ struct WidgetChromeView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .accessibilityLabel(Text(verbatim: "Widget actions"))
+            .accessibilityLabel(Text(verbatim: "Actions for \(title)"))
         }
-        .padding(.horizontal, m.space.md)
+        .padding(.horizontal, m.space.sm)
         .frame(height: m.control.small)
-        .frame(maxWidth: .infinity)
-        .background(
-            Color.black.opacity(0.35),
-            in: UnevenRoundedRectangle(topLeadingRadius: m.radius.card, topTrailingRadius: m.radius.card))
-        .contentShape(Rectangle())
-        .gesture(moveGesture)
-        .canvasCursor(.openHand)
+        .dmGlass(radius: DMRadius.pill)
+        .fixedSize()
+        .onHover { handleHovered = $0 }
+        .onDisappear { handleHovered = false }
+        .offset(y: -m.control.small / 2)
     }
 
     @ViewBuilder

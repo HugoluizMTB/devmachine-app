@@ -10,6 +10,20 @@ final class AppWidgetViewsTests: XCTestCase {
         XCTAssertEqual(ClockWidgetSizing.fontSize(width: 40, height: 40), 24)
     }
 
+    func testUsageShowsOneLinePerWindowUntilTheWidgetIsFourRowsTall() {
+        let heights = WidgetContract.presetOrder.map { (preset: $0, height: CGFloat(CanvasLayout.presetSize($0)!.h)) }
+        let full = heights.filter { UsageWidgetLayout.showsFullCard(boardHeight: $0.height) }.map(\.preset)
+
+        XCTAssertEqual(full, ["large", "tall"])
+    }
+
+    func testANarrowUsageWidgetDropsTheResetTime() {
+        let widths = WidgetContract.presetOrder.map { (preset: $0, width: CGFloat(CanvasLayout.presetSize($0)!.w)) }
+        let withoutReset = widths.filter { !UsageWidgetLayout.showsResetTime(boardWidth: $0.width) }.map(\.preset)
+
+        XCTAssertEqual(withoutReset, ["small", "tall"])
+    }
+
     func testAJobCarriesTheResolvedProviderCallAndInterval() {
         let job = AppWidgetJobs.job(
             for: instance(id: "usage"), resolved: resolved(provider: "app/harness-usage", every: 60, harness: "codex"),

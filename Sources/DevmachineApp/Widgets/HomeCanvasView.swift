@@ -100,6 +100,10 @@ private struct BoardCanvasLayer: View {
     @Environment(\.harnessSettingsFacade) private var facade
     @Environment(\.dmMetrics) private var m
     @State private var drag: CanvasDrag?
+    @State private var pillSizes: [String: CGSize] = [:]
+
+    /// Before a pill has been drawn and measured, in points at 100%.
+    private static let pillFallback = CGSize(width: 120, height: 28)
 
     struct CanvasDrag: Equatable {
         let id: String
@@ -131,7 +135,7 @@ private struct BoardCanvasLayer: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             if let board = store.board {
-                ForEach(board.widgets.sorted { $0.z < $1.z }) { widget in
+                ForEach(drawingOrder(board)) { widget in
                     widgetView(widget, board: board)
                 }
             }
@@ -152,18 +156,31 @@ private struct BoardCanvasLayer: View {
             controller.runtime.setJobs(controller.runtimeJobs(isOnScreen: isOnScreen))
         }
         .onChange(of: clockDisplayRect, initial: true) { _, rect in clockRect = rect }
+        .onChange(of: store.board) { _, _ in drag = nil }
+        .onDisappear { drag = nil }
     }
 
+    /// The widget being dragged draws last, so it stays on top without
+    /// touching the board until the gesture ends.
+    private func drawingOrder(_ board: Board) -> [BoardWidget] {
+        board.widgets.sorted { lhs, rhs in
+            let lhsDragged = lhs.id == drag?.id, rhsDragged = rhs.id == drag?.id
+            if lhsDragged != rhsDragged { return rhsDragged }
+            return lhs.z < rhs.z
+        }
+    }
+
+    /// Clamping pulls every widget back inside the canvas, so while the
+    /// canvas has a size every widget is on screen; minimized ones are
+    /// paused by their job instead.
     private func isOnScreen(_ widget: BoardWidget) -> Bool {
-        guard boardVisible.width > 0, boardVisible.height > 0 else { return false }
-        let rect = CanvasLayout.clamped(widget.frame, in: boardVisible)
-        return rect.intersects(CGRect(origin: .zero, size: boardVisible))
+        boardVisible.width > 0 && boardVisible.height > 0
     }
 
     private func widgetView(_ widget: BoardWidget, board: Board) -> some View {
         let resolution = controller.resolution(of: widget)
         let current = drag.flatMap { $0.id == widget.id ? $0.frame : nil }
-        let display = displayRect(current ?? widget.frame, minimum: minimum(resolution), clamp: current == nil)
+        let display = CanvasLayout.toDisplay((current ?? displayFrame(widget, resolution: resolution)).rect, scale: scale)
         return WidgetChromeView(
             widget: widget, resolution: resolution, release: catalog.catalog?.packagesRelease ?? "",
             title: title(widget, resolution), size: display.size, editable: store.canEdit,
@@ -175,7 +192,8 @@ private struct BoardCanvasLayer: View {
             onPreset: { controller.setPreset(widget.id, preset: $0) },
             onMinimize: { controller.setMinimized(widget.id, $0) },
             onRefresh: { refresh(resolution) },
-            onRemove: { controller.remove(widget.id) })
+            onRemove: { controller.remove(widget.id) },
+            onPillSize: { pillSizes[widget.id] = $0 })
         .offset(x: display.minX, y: display.minY)
     }
 
@@ -189,42 +207,51 @@ private struct BoardCanvasLayer: View {
         return resolved.widget.sizes
     }
 
-    private func displayRect(_ frame: BoardFrame, minimum: CanvasSize, clamp: Bool) -> CGRect {
-        let grown = BoardFrame(x: frame.x, y: frame.y, w: max(frame.w, minimum.w), h: max(frame.h, minimum.h))
-        let rect = clamp ? CanvasLayout.clamped(grown, in: boardVisible) : grown.rect
-        return CanvasLayout.toDisplay(rect, scale: scale)
+    /// Where a widget is drawn, in board points: grown to its minimum, or
+    /// the pill's measured size when minimized, then pulled inside the canvas.
+    /// Drags, guides and resizes start from this, never from the stored size.
+    private func displayFrame(_ widget: BoardWidget, resolution: WidgetResolution?) -> BoardFrame {
+        let size: CanvasSize
+        if widget.minimized {
+            let pill = pillSizes[widget.id].map { CanvasLayout.toBoard($0, scale: scale) } ?? Self.pillFallback
+            size = CanvasSize(w: Int(pill.width.rounded(.up)), h: Int(pill.height.rounded(.up)))
+        } else {
+            let least = minimum(resolution)
+            size = CanvasSize(w: max(widget.frame.w, least.w), h: max(widget.frame.h, least.h))
+        }
+        let rect = CanvasLayout.clamped(
+            BoardFrame(x: widget.frame.x, y: widget.frame.y, w: size.w, h: size.h), in: boardVisible)
+        return BoardFrame(x: Int(rect.minX.rounded()), y: Int(rect.minY.rounded()), w: size.w, h: size.h)
     }
 
-    private func clampedFrame(_ widget: BoardWidget) -> BoardFrame {
-        let rect = CanvasLayout.clamped(widget.frame, in: boardVisible)
-        return BoardFrame(x: Int(rect.minX.rounded()), y: Int(rect.minY.rounded()), w: widget.frame.w, h: widget.frame.h)
-    }
-
-    private func dragStart(_ widget: BoardWidget) -> BoardFrame {
+    private func dragStart(_ widget: BoardWidget, resolution: WidgetResolution?) -> BoardFrame {
         if let drag, drag.id == widget.id { return drag.start }
-        controller.bringToFront(widget.id)
-        return clampedFrame(widget)
+        return displayFrame(widget, resolution: resolution)
     }
 
     private func moveChanged(_ widget: BoardWidget, translation: CGSize, board: Board) {
         guard store.canEdit else { return }
-        let start = dragStart(widget)
+        let start = dragStart(widget, resolution: controller.resolution(of: widget))
         let delta = CanvasLayout.toBoard(translation, scale: scale)
-        let others = board.widgets.filter { $0.id != widget.id && !$0.minimized }.map(clampedFrame)
+        let others = board.widgets.filter { $0.id != widget.id }.map {
+            displayFrame($0, resolution: controller.resolution(of: $0))
+        }
         let move = CanvasLayout.moved(
             start, to: CGPoint(x: Double(start.x) + delta.width, y: Double(start.y) + delta.height), among: others)
         drag = CanvasDrag(id: widget.id, start: start, frame: move.frame, guides: move.guides)
     }
 
+    /// A move keeps the stored size; only the place and the stacking change.
     private func moveEnded(_ widget: BoardWidget) {
         guard let drag, drag.id == widget.id else { return }
-        controller.move(widget.id, to: drag.frame)
         self.drag = nil
+        controller.move(widget.id, to: BoardFrame(x: drag.frame.x, y: drag.frame.y, w: widget.frame.w, h: widget.frame.h))
+        controller.bringToFront(widget.id)
     }
 
     private func resizeChanged(_ widget: BoardWidget, translation: CGSize, resolution: WidgetResolution?) {
         guard store.canEdit else { return }
-        let start = dragStart(widget)
+        let start = dragStart(widget, resolution: resolution)
         let delta = CanvasLayout.toBoard(translation, scale: scale)
         let frame = CanvasLayout.resized(
             start, width: Double(start.w) + delta.width, height: Double(start.h) + delta.height,
@@ -234,8 +261,9 @@ private struct BoardCanvasLayer: View {
 
     private func resizeEnded(_ widget: BoardWidget, resolution: WidgetResolution?) {
         guard let drag, drag.id == widget.id else { return }
-        controller.resize(widget.id, to: drag.frame, sizes: sizes(resolution))
         self.drag = nil
+        controller.resize(widget.id, to: drag.frame, sizes: sizes(resolution))
+        controller.bringToFront(widget.id)
     }
 
     private func refresh(_ resolution: WidgetResolution?) {
@@ -257,7 +285,7 @@ private struct BoardCanvasLayer: View {
             guard !widget.minimized, case let .ready(resolved)? = controller.resolution(of: widget) else { return false }
             return resolved.viewKind == "app.clock"
         }
-        return clock.map { displayRect($0.frame, minimum: CanvasSize(w: 1, h: 1), clamp: true) }
+        return clock.map { CanvasLayout.toDisplay(displayFrame($0, resolution: nil).rect, scale: scale) }
     }
 
     @ViewBuilder
