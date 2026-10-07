@@ -269,6 +269,41 @@ final class StackBoardControllerTests: XCTestCase {
         XCTAssertFalse(controller.needsGitContext)
     }
 
+    func testAnInlineWidgetThatReadsPathOrHarnessNeedsSessionContext() throws {
+        for reference in ["{{context.path}}", "{{context.harness}}"] {
+            try write("""
+                format: 1
+                surface: context-sidebar
+                widgets:
+                  - id: here
+                    title: Here
+                    source: {kind: command, run: echo, args: ["\(reference)"], every: 30s}
+                    view: {kind: text}
+
+                """, "context-sidebar")
+            let controller = makeController("context-sidebar")
+            XCTAssertEqual(controller.board.entries.map(\.id), ["here"])
+            XCTAssertNil(controller.leadEntryID(provider: "app/session-context"))
+            XCTAssertTrue(controller.needsSessionContext, reference)
+            controller.setCollapsed("here", true)
+            XCTAssertFalse(controller.needsSessionContext, reference)
+        }
+    }
+
+    func testAnInlineWidgetThatReadsOnlyTheSessionNeedsNoSessionContext() throws {
+        try write("""
+            format: 1
+            surface: context-sidebar
+            widgets:
+              - id: here
+                title: Here
+                source: {kind: command, run: echo, args: ["{{context.session}}"], every: 30s}
+                view: {kind: text}
+
+            """, "context-sidebar")
+        XCTAssertFalse(makeController("context-sidebar").needsSessionContext)
+    }
+
     func testAPackageWidgetNeedsGitOnlyWhenItDeclaresRepoOrBranch() throws {
         try write("""
             format: 1

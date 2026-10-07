@@ -1039,7 +1039,9 @@ Rules:
   the context board's while the Context tab is on screen. A collapsed widget
   runs nothing. `ContextStore` keeps its 5 s poll only under
   `ContextPollRule` (panel shown, not collapsed, Context tab, a target, and
-  an expanded widget reading `app/session-context`).
+  an expanded widget reading `app/session-context`, or an expanded source
+  widget reading `path` or `harness`, which come from the same poll:
+  `StackBoardController.needsSessionContext`).
 - **Placements are saved per surface** (`WidgetPlacementsFile.save(_:surface:)`):
   Home and each sidebar rewrite only their own set. A placements file that
   does not decode moves to `widget-placements.json.broken`, the move is

@@ -256,13 +256,19 @@ final class StackBoardController: ObservableObject {
         }?.id
     }
 
-    var needsSessionContext: Bool { leadEntryID(provider: "app/session-context") != nil }
+    /// `path` and `harness` come from the session-context poll too, so a
+    /// widget reading them keeps it running.
+    var needsSessionContext: Bool {
+        leadEntryID(provider: "app/session-context") != nil || expandedSourceReads(["path", "harness"])
+    }
 
-    var needsGitContext: Bool {
+    var needsGitContext: Bool { expandedSourceReads(["repo", "branch"]) }
+
+    private func expandedSourceReads(_ keys: [String]) -> Bool {
         board.entries.contains { entry in
             guard !entry.collapsed, case let .ready(resolved)? = resolution(of: entry), let source = resolved.source
             else { return false }
-            return source.reads(contextKey: "repo") || source.reads(contextKey: "branch")
+            return keys.contains { source.reads(contextKey: $0) }
         }
     }
 
