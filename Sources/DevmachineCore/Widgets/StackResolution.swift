@@ -119,6 +119,9 @@ public enum StackResolution {
         if !widget.fits.contains(layout) {
             return "\(entry.type) does not fit \(StackArea.name(board.surface)): its fits has no \(layout)"
         }
+        if layout == "slot", let problem = MenubarSlotRules.viewProblem(resolved.viewKind, contract: contract) {
+            return "\(entry.id): \(problem)"
+        }
         let given = Set(surface?.context.keys.map { $0 } ?? [])
         let needed = contract.requiredContext(ofProvider: resolved.provider)
             .union(widget.context.filter { $0.value == "required" }.keys)
@@ -148,10 +151,14 @@ public enum StackGallery {
         contract.layout(of: board.surface) == "slot" && board.entries.count >= contract.slotMax
     }
 
+    public static func fullReason(_ board: StackBoard, contract: WidgetContract = .current) -> String? {
+        isFull(board, contract: contract) ? "The menu bar holds \(contract.slotMax) widgets" : nil
+    }
+
     public static func blockedReason(
         for widget: CatalogWidget, on board: StackBoard, contract: WidgetContract = .current
     ) -> String? {
-        if isFull(board, contract: contract) { return "The menu bar holds \(contract.slotMax) widgets" }
+        if let full = fullReason(board, contract: contract) { return full }
         guard widget.single, board.entries.contains(where: { $0.type == widget.name }) else { return nil }
         return "Already in \(StackArea.name(board.surface))"
     }

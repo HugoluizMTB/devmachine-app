@@ -57,10 +57,15 @@ public enum AppMenubarWidgets {
 /// What the menu bar title adds to the shared rules: a short list of views,
 /// no streams, and a 30 s floor, because its widgets run with no window open.
 public enum MenubarSlotRules {
+    /// The CLI's `MenubarViewProblem`: the view is named only when there is one.
+    public static func viewProblem(_ kind: String, contract: WidgetContract = .current) -> String? {
+        if contract.slotEntry.views.contains(kind) { return nil }
+        if kind.isEmpty { return "a widget with no view cannot be drawn in the menu bar" }
+        return "the \(kind) view cannot be drawn in the menu bar"
+    }
+
     public static func refusal(_ resolved: ResolvedWidget, contract: WidgetContract = .current) -> String? {
-        if !contract.slotEntry.views.contains(resolved.viewKind) {
-            return "the \(resolved.viewKind) view cannot be drawn in the menu bar"
-        }
+        if let problem = viewProblem(resolved.viewKind, contract: contract) { return problem }
         if resolved.source?.every == .continuous {
             return "a stream never ends, so it cannot run in the menu bar: use mode: poll"
         }

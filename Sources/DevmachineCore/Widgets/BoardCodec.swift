@@ -237,8 +237,8 @@ public enum BoardCodec {
         guard let view = contract.views[kind] else { return }
         let viewLine = core.keyLines["view"] ?? line(node)
         if layout == slotLayout {
-            if !contract.slotEntry.views.contains(kind) {
-                throw BoardProblem(line: viewLine, message: "\(id): the \(kind) view cannot be drawn in the menu bar")
+            if let problem = MenubarSlotRules.viewProblem(kind, contract: contract) {
+                throw BoardProblem(line: viewLine, message: "\(id): \(problem)")
             }
         } else if let layouts = view.layouts, !layouts.isEmpty, !layouts.contains(layout) {
             throw BoardProblem(

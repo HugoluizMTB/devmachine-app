@@ -52,6 +52,55 @@ final class MenubarResolutionTests: XCTestCase {
             ["devmachine-app/pull-requests-panel", "devmachine-app/usage-panel"])
     }
 
+    func testAWidgetWithNoViewIsRefusedInTheCLIsWords() {
+        XCTAssertEqual(MenubarSlotRules.viewProblem(""), "a widget with no view cannot be drawn in the menu bar")
+        XCTAssertEqual(MenubarSlotRules.viewProblem("gauge"), "the gauge view cannot be drawn in the menu bar")
+        XCTAssertNil(MenubarSlotRules.viewProblem("text"))
+    }
+
+    func testOnlyAFullMenuBarSaysItIsFull() {
+        var board = menubar
+        XCTAssertNil(StackGallery.fullReason(board))
+        board.entries.append(StackEntry(id: "third", type: "acme/third"))
+        XCTAssertEqual(StackGallery.fullReason(board), "The menu bar holds 3 widgets")
+        XCTAssertNil(StackGallery.fullReason(panel))
+    }
+
+    func testAnInlineStreamIsRefusedInTheMenuBar() throws {
+        let text = """
+            format: 1
+            surface: menubar
+            widgets:
+              - id: tail
+                title: Tail
+                source: {kind: command, run: journalctl, args: [-f], mode: stream}
+                view: {kind: text}
+
+            """
+        let board = try BoardCodec.decodeStack(text)
+        let entry = try XCTUnwrap(board.entries.first)
+        XCTAssertEqual(
+            StackResolution.resolve(entry, on: board, catalog: CatalogFixtures.catalog([])),
+            .refused(type: "tail", reason: "tail: a stream never ends, so it cannot run in the menu bar: use mode: poll"))
+    }
+
+    func testAStreamRunsInAPopoverTab() throws {
+        let stream = command("acme/tail", fits: ["tabs"], view: "text", every: nil, mode: "stream")
+        let entry = StackEntry(id: "tail", type: stream.name)
+        let resolved = try XCTUnwrap(ready(StackResolution.resolve(
+            entry, on: board("menubar-panel", [entry]), catalog: CatalogFixtures.catalog([stream]))))
+        XCTAssertEqual(resolved.source?.every, .continuous)
+    }
+
+    func testTheViewIsCheckedBeforeTheContextAsTheCLIDoes() {
+        var gauge = command("acme/cpu", fits: ["slot"], view: "gauge", parse: "number")
+        gauge.context = ["selected": "required"]
+        let entry = StackEntry(id: "cpu", type: gauge.name)
+        XCTAssertEqual(
+            StackResolution.resolve(entry, on: board("menubar", [entry]), catalog: CatalogFixtures.catalog([gauge])),
+            .refused(type: "acme/cpu", reason: "cpu: the gauge view cannot be drawn in the menu bar"))
+    }
+
     func testAViewTheMenuBarCannotDrawIsRefused() {
         let gauge = command("acme/cpu", fits: ["slot"], view: "gauge", parse: "number")
         let entry = StackEntry(id: "cpu", type: gauge.name)

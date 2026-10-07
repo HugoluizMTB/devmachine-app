@@ -90,8 +90,12 @@ struct MenubarEditView: View {
                     .padding(.vertical, m.space.xs)
                 }
             }
+            let full = StackGallery.fullReason(board.board)
             DMButton("Add widget", systemImage: "plus", variant: .ghost, size: .small) { adding = board.surface }
-                .disabled(!board.canEdit)
+                .disabled(!board.canEdit || full != nil)
+            if let full {
+                Text(verbatim: full).font(.dm(11)).foregroundStyle(Color.dmMuted)
+            }
         }
     }
 
