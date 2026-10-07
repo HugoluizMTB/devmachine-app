@@ -37,6 +37,16 @@ public struct TypedEntryForm: Equatable, Sendable {
 
     public var choiceInputs: [ChoiceInput] { ChoiceInput.all(of: widget) }
 
+    /// The label names this widget's own minimum, and drops `manual` for a provider.
+    public func everyLabel(catalog: WidgetCatalog, contract: WidgetContract = .current) -> String {
+        let plain = BoardWidget(
+            id: entry.id, type: entry.type, with: entry.with, frame: BoardFrame(x: 0, y: 0, w: 1, h: 1), size: "medium", z: 0)
+        guard case let .ready(resolved) = WidgetResolution.resolve(plain, in: catalog, contract: contract) else { return "Every" }
+        return EntryOverrideRules.everyLabel(
+            floor: EntryOverrideRules.floorText(of: resolved, catalog: catalog, contract: contract),
+            allowsManual: widget.source.kind != "provider")
+    }
+
     public var everyPlaceholder: String { widget.source.every }
 
     public func edit(

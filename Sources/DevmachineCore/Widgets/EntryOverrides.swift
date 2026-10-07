@@ -44,6 +44,11 @@ public enum EntryOverrideRules {
         return contract.sources[source.source.kind]?.minEvery
     }
 
+    public static func everyLabel(floor: String?, allowsManual: Bool) -> String {
+        guard let floor else { return "Every" }
+        return "Every (at least \(floor)\(allowsManual ? ", or manual" : ""))"
+    }
+
     public static func floor(
         of resolved: ResolvedWidget, catalog: WidgetCatalog? = nil, contract: WidgetContract = .current
     ) -> TimeInterval {

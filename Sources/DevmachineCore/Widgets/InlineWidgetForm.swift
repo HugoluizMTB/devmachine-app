@@ -173,6 +173,18 @@ public struct InlineWidgetForm: Equatable, Sendable {
         PermissionModes.names(for: harness, contract: contract)
     }
 
+    /// The label names this source's own minimum, read from the contract.
+    public func everyLabel(contract: WidgetContract = .current) -> String {
+        let kind: String
+        switch template {
+        case .command: kind = "command"
+        case .urlStatus, .webPage: kind = "url"
+        case .prompt: kind = "prompt"
+        case .session: kind = "session"
+        }
+        return EntryOverrideRules.everyLabel(floor: contract.sources[kind]?.minEvery, allowsManual: true)
+    }
+
     /// A mode with no checks runs only by hand, so Every stays manual.
     public func everyLocked(contract: WidgetContract = .current) -> Bool {
         template == .prompt && PermissionModes.isDangerous(permissionMode, contract: contract)
@@ -341,9 +353,14 @@ public struct InlineWidgetForm: Equatable, Sendable {
     /// The reader names the widget; the form already shows which one.
     static func plain(_ message: String, id: String) -> String {
         for prefix in ["widget \"\(id)\" written in the board ", "widget \"\(id)\": ", "\(id): "] where message.hasPrefix(prefix) {
-            let rest = message.dropFirst(prefix.count)
-            return rest.prefix(1).uppercased() + rest.dropFirst()
+            return sentence(message.dropFirst(prefix.count))
         }
-        return message.prefix(1).uppercased() + message.dropFirst()
+        return sentence(message[...])
+    }
+
+    /// A field path such as `source.every` stays as the file writes it.
+    private static func sentence(_ text: Substring) -> String {
+        if text.prefix(while: { $0 != " " }).contains(".") { return String(text) }
+        return text.prefix(1).uppercased() + text.dropFirst()
     }
 }

@@ -174,4 +174,27 @@ final class TypedEntryFormTests: XCTestCase {
         XCTAssertEqual(TypedEntryForm.field(atLine: 7, in: text), "every")
         XCTAssertNil(TypedEntryForm.field(atLine: 2, in: text))
     }
+
+    func testTheEveryLabelNamesAProvidersMinimumAndOffersNoManual() throws {
+        let least = try XCTUnwrap(WidgetContract.current.providers["app/machines"]?.minEvery)
+        let label = form().everyLabel(catalog: catalog)
+        XCTAssertEqual(label, "Every (at least \(least))")
+        XCTAssertFalse(label.contains("manual"))
+    }
+
+    func testTheEveryLabelNamesACommandWidgetsMinimumAndOffersManual() throws {
+        let command = CatalogWidget(
+            name: "acme/disk", fits: ["canvas", "stack"],
+            source: CatalogSource(raw: .object(["kind": .string("command"), "run": .string("df"), "every": .string("1m")])),
+            viewKind: "text", sizes: ["medium"], defaultSize: "medium", origin: "local")
+        let withCommand = WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [command])
+        let entry = BoardWidget(id: "w", type: "acme/disk", frame: BoardFrame(x: 0, y: 0, w: 1, h: 1), size: "medium", z: 0)
+        let typed = TypedEntryForm(entry: EditableEntry(entry), widget: command)
+        let least = try XCTUnwrap(WidgetContract.current.sources["command"]?.minEvery)
+        XCTAssertEqual(typed.everyLabel(catalog: withCommand), "Every (at least \(least), or manual)")
+    }
+
+    func testTheEveryLabelFallsBackToAPlainWordWhenTheWidgetDoesNotResolve() {
+        XCTAssertEqual(form().everyLabel(catalog: WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [])), "Every")
+    }
 }

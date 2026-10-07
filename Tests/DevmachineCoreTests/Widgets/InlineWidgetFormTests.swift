@@ -315,4 +315,29 @@ final class InlineWidgetFormTests: XCTestCase {
         XCTAssertEqual(problem.field, "permissionMode")
         XCTAssertTrue(problem.message.contains("runs without any check, so it runs only when you press refresh"), problem.message)
     }
+
+    private func minimum(of kind: String) throws -> String {
+        try XCTUnwrap(WidgetContract.current.sources[kind]?.minEvery)
+    }
+
+    func testTheEveryLabelNamesTheSourceKindsOwnMinimum() throws {
+        XCTAssertEqual(filled(.command).everyLabel(), "Every (at least \(try minimum(of: "command")), or manual)")
+        XCTAssertEqual(filled(.prompt).everyLabel(), "Every (at least \(try minimum(of: "prompt")), or manual)")
+        XCTAssertEqual(filled(.urlStatus).everyLabel(), "Every (at least \(try minimum(of: "url")), or manual)")
+        XCTAssertEqual(filled(.session).everyLabel(), "Every (at least \(try minimum(of: "session")), or manual)")
+    }
+
+    func testAPromptBelowItsMinimumKeepsTheLowercaseSourceEveryName() throws {
+        var form = filled(.prompt)
+        form.every = "1s"
+        guard case let .failure(problem) = form.read(surface: "home", id: "check") else { return XCTFail("expected a refusal") }
+        XCTAssertTrue(problem.message.hasPrefix("source.every 1s"), problem.message)
+        XCTAssertTrue(problem.message.contains(try minimum(of: "prompt")), problem.message)
+    }
+
+    func testPlainCapitalisesAWordButNeverAFieldPath() {
+        XCTAssertEqual(InlineWidgetForm.plain("w: every manual is not allowed", id: "w"), "Every manual is not allowed")
+        XCTAssertEqual(InlineWidgetForm.plain("source.every 1s is low", id: "w"), "source.every 1s is low")
+        XCTAssertEqual(InlineWidgetForm.plain("w: source.every 1s is low", id: "w"), "source.every 1s is low")
+    }
 }

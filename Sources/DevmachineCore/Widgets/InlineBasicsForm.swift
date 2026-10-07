@@ -19,6 +19,17 @@ public struct InlineBasicsForm: Equatable, Sendable {
         return inline.sourceTree.value.object?["every"]?.text ?? computed
     }
 
+    public func everyLabel(contract: WidgetContract = .current) -> String {
+        switch old.source {
+        case let .provider(provider):
+            return EntryOverrideRules.everyLabel(floor: contract.providers[provider.name]?.minEvery, allowsManual: false)
+        case .packageProvider:
+            return EntryOverrideRules.everyLabel(floor: contract.packageProvider.minEvery, allowsManual: false)
+        default:
+            return EntryOverrideRules.everyLabel(floor: contract.sources[old.source.kind]?.minEvery, allowsManual: true)
+        }
+    }
+
     public var fields: Set<String> { every == nil ? ["title"] : ["title", "every"] }
 
     /// The changed entry goes through `BoardCodec` and the resolver, as a

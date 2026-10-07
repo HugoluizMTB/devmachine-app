@@ -58,7 +58,7 @@ struct WidgetEditorView: View {
                 })).dmField()
             }
             if let every = form.every {
-                everyField(every) { v in
+                everyField(every, label: form.everyLabel()) { v in
                     var next = form
                     next.every = v
                     model.form = .basics(next)
@@ -106,7 +106,7 @@ struct WidgetEditorView: View {
                 }
             }
             targetPicker(form.target) { v in set { $0.target = v } }
-            everyField(form.every) { v in set { $0.every = v } }
+            everyField(form.every, label: form.everyLabel()) { v in set { $0.every = v } }
             field("Output", "parse") {
                 Picker(selection: Binding(get: { form.parse }, set: { v in set { $0.parse = v } })) {
                     ForEach(["text", "lines", "number", "json", "ansi"], id: \.self) { Text(verbatim: $0).tag($0) }
@@ -124,7 +124,7 @@ struct WidgetEditorView: View {
             field("Address", "url") {
                 TextField("https://example.com", text: Binding(get: { form.url }, set: { v in set { $0.url = v } })).dmField()
             }
-            everyField(form.every) { v in set { $0.every = v } }
+            everyField(form.every, label: form.everyLabel()) { v in set { $0.every = v } }
             if form.template == .webPage {
                 field("Zoom", "zoom") { TextField("1", text: Binding(get: { form.zoom }, set: { v in set { $0.zoom = v } })).dmField() }
             }
@@ -144,13 +144,13 @@ struct WidgetEditorView: View {
                     .lineLimit(3...8).dmField()
             }
             targetPicker(form.target) { v in set { $0.target = v } }
-            everyField(form.every, locked: form.everyLocked()) { v in set { $0.every = v } }
+            everyField(form.every, label: form.everyLabel(), locked: form.everyLocked()) { v in set { $0.every = v } }
         case .session:
             targetPicker(form.target) { v in set { $0.target = v } }
             field("Session", "session") {
                 TextField("main", text: Binding(get: { form.session }, set: { v in set { $0.session = v } })).dmField()
             }
-            everyField(form.every) { v in set { $0.every = v } }
+            everyField(form.every, label: form.everyLabel()) { v in set { $0.every = v } }
         }
     }
 
@@ -164,7 +164,7 @@ struct WidgetEditorView: View {
         field("Title", "title") {
             TextField(WidgetTitle.make(type: form.entry.type), text: Binding(get: { form.title }, set: { v in set { $0.title = v } })).dmField()
         }
-        field("Every", "every") {
+        field(form.everyLabel(catalog: target.editCatalog ?? WidgetCatalog(engine: WidgetContract.current.engine, packagesRelease: "", widgets: [])), "every") {
             TextField(form.everyPlaceholder, text: Binding(get: { form.every }, set: { v in set { $0.every = v } })).dmField()
         }
         ForEach(form.choiceInputs) { input in
@@ -208,8 +208,8 @@ struct WidgetEditorView: View {
         }
     }
 
-    private func everyField(_ value: String, locked: Bool = false, set: @escaping (String) -> Void) -> some View {
-        field("Every (60s, 5m or manual)", "every") {
+    private func everyField(_ value: String, label: String, locked: Bool = false, set: @escaping (String) -> Void) -> some View {
+        field(label, "every") {
             TextField("60s", text: Binding(get: { value }, set: set)).dmField().disabled(locked)
             if locked {
                 Text(verbatim: "A mode with no checks runs only when you press ▶.")
