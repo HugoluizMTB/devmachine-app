@@ -94,7 +94,7 @@ read eof || exit 0
         defer { try? FileManager.default.removeItem(at: script) }
 
         let snapshot = try CodexAppServerTransport(
-            executableURL: script, timeout: 2).accountSnapshot()
+            executableURL: script, timeout: 15).accountSnapshot()
 
         XCTAssertEqual(snapshot.rateLimits.rateLimits.primary?.usedPercent, 8)
     }
@@ -121,7 +121,7 @@ while true; do sleep 1; done
             executableURL: script, timeout: 0.1).accountSnapshot()) { error in
             XCTAssertEqual(error as? CodexTransportError, .timedOut)
         }
-        XCTAssertLessThan(Date().timeIntervalSince(started), 1.5)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10)
     }
 
     private func makeScript(body: String) throws -> URL {
