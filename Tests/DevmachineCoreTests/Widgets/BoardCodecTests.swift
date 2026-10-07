@@ -177,6 +177,85 @@ final class BoardCodecTests: XCTestCase {
         XCTAssertEqual(found, BoardProblem(line: 7, message: "unknown key \"minimised\" in a widget"))
     }
 
+    func testReadsAndRewritesTheCLIWritersBytes() throws {
+        let cliBytes = """
+            format: 1
+            surface: home
+            widgets:
+              - id: clock
+                type: devmachine-app/clock
+                frame: {x: 24, y: 24, w: 320, h: 160}
+                size: medium
+                minimized: false
+                z: 1
+              - id: ssh-status
+                type: ssh_hardening/status
+                with: {host: example.com, label: 'a, b', port: "8080", ratio: 1.5, retries: 3, strict: true}
+                frame: {x: 352, y: 24, w: 320, h: 160}
+                size: custom
+                minimized: true
+                z: 2
+
+            """
+        let board = try BoardCodec.decode(cliBytes)
+        XCTAssertEqual(board.widgets.last?.type, "ssh_hardening/status")
+        XCTAssertEqual(board.widgets.last?.with, [
+            "host": .string("example.com"), "label": .string("a, b"), "port": .string("8080"),
+            "ratio": .double(1.5), "retries": .int(3), "strict": .bool(true),
+        ])
+        XCTAssertEqual(BoardCodec.encode(board), cliBytes)
+    }
+
+    func testQuotesInputsTheWayTheCLIWriterDoes() throws {
+        let cliBytes = #"""
+            format: 1
+            surface: home
+            widgets:
+              - id: w
+                type: ssh_hardening/status
+                with: {' q': ' lead', a: "yes", b: "1:20", c: "0x1F", d: "", e: "line one\nline two", f: it's, g: -x, h: 'x #y', i: café, j: "2026-10-06", k: "1_000", l: say "hi", m: ".5", n: "~", p: "tab\there", r: "null", s: 'a:b', t: '@x', u: '?x', v: 'x: y', w: '-', x: 1e+06, y: 1, z: 0.0001}
+                frame: {x: 352, y: 24, w: 320, h: 160}
+                size: custom
+                minimized: false
+                z: 2
+              - id: keys
+                type: acme/widget
+                with: {"": 3, "8080": 2, 'a, b': 4, yes: 1}
+                frame: {x: 0, y: 0, w: 160, h: 160}
+                size: small
+                minimized: false
+                z: 3
+
+            """#
+        let board = try BoardCodec.decode(cliBytes)
+        XCTAssertEqual(board.widgets.first?.with["a"], .string("yes"))
+        XCTAssertEqual(board.widgets.first?.with["x"], .double(1_000_000))
+        XCTAssertEqual(board.widgets.first?.with["e"], .string("line one\nline two"))
+        XCTAssertEqual(BoardCodec.encode(board), cliBytes)
+    }
+
+    func testAPackageNameMayHoldAnUnderscoreButAWidgetNameMayNot() throws {
+        let board = try BoardCodec.decode("""
+            format: 1
+            surface: home
+            widgets:
+              - id: w
+                type: ssh_hardening/status
+                frame: {x: 0, y: 0, w: 160, h: 160}
+            """)
+        XCTAssertEqual(board.widgets.first?.type, "ssh_hardening/status")
+        XCTAssertEqual(
+            problem("""
+                format: 1
+                surface: home
+                widgets:
+                  - id: w
+                    type: ssh_hardening/disk_usage
+                    frame: {x: 0, y: 0, w: 160, h: 160}
+                """),
+            BoardProblem(line: 5, message: "type \"ssh_hardening/disk_usage\" must be <package>/<widget>"))
+    }
+
     func testARepeatedInputNamesItsLine() {
         let found = problem("""
             format: 1

@@ -8,7 +8,7 @@ public enum BoardCodec {
     private static let topKeys: Set<String> = ["format", "surface", "widgets"]
     private static let widgetKeys: Set<String> = ["id", "type", "with", "frame", "size", "minimized", "z", "source", "view"]
     private static let frameKeys = ["x", "y", "w", "h"]
-    private static let reservedWords: Set<String> = ["true", "false", "yes", "no", "on", "off", "null", "y", "n"]
+    private static let specialFloats: [String: Double] = [".inf": .infinity, "-.inf": -.infinity, ".nan": .nan]
 
     public static func decode(_ text: String, contract: WidgetContract = .engine10) throws -> Board {
         let root: Node
@@ -82,7 +82,7 @@ public enum BoardCodec {
         guard let typeNode = fields["type"], let type = string(typeNode) else {
             throw BoardProblem(line: line(node), message: "widget \"\(id)\" needs a type, such as devmachine-app/clock")
         }
-        guard type.wholeMatch(of: /[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*/) != nil else {
+        guard type.wholeMatch(of: /[a-z][a-z0-9_-]*\/[a-z][a-z0-9-]*/) != nil else {
             throw BoardProblem(line: line(typeNode), message: "type \"\(type)\" must be <package>/<widget>")
         }
         let with = try fields["with"].map { try scalars($0, owner: id) } ?? [:]
@@ -194,6 +194,7 @@ public enum BoardCodec {
         if text == "true" { return .bool(true) }
         if text == "false" { return .bool(false) }
         if let number = Int(text) { return .int(number) }
+        if let special = specialFloats[text] { return .double(special) }
         if let number = Double(text), text.contains(where: { $0 == "." || $0 == "e" || $0 == "E" }) {
             return .double(number)
         }
@@ -225,23 +226,24 @@ public enum BoardCodec {
     }
 
     public static func encode(_ board: Board) -> String {
-        var lines = ["format: \(Board.format)", "surface: \(scalar(board.surface))"]
+        var lines = ["format: \(Board.format)", "surface: \(text(board.surface))"]
         if board.widgets.isEmpty {
             lines.append("widgets: []")
         } else {
             lines.append("widgets:")
             for widget in board.widgets {
-                lines.append("  - id: \(scalar(widget.id))")
-                lines.append("    type: \(scalar(widget.type))")
+                lines.append("  - id: \(text(widget.id))")
+                lines.append("    type: \(text(widget.type))")
                 if !widget.with.isEmpty {
-                    let pairs = widget.with.keys.sorted().map { key in
-                        "\(scalar(key)): \(widget.with[key].map(value) ?? "\"\"")"
+                    let keys = widget.with.keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
+                    let pairs = keys.map { key in
+                        "\(YAMLScalarStyle.text(key, in: .flow)): \(widget.with[key].map(value) ?? "\"\"")"
                     }
                     lines.append("    with: {\(pairs.joined(separator: ", "))}")
                 }
                 let frame = widget.frame
                 lines.append("    frame: {x: \(frame.x), y: \(frame.y), w: \(frame.w), h: \(frame.h)}")
-                lines.append("    size: \(scalar(widget.size))")
+                lines.append("    size: \(text(widget.size))")
                 lines.append("    minimized: \(widget.minimized)")
                 lines.append("    z: \(widget.z)")
             }
@@ -249,37 +251,14 @@ public enum BoardCodec {
         return lines.joined(separator: "\n") + "\n"
     }
 
+    private static func text(_ value: String) -> String { YAMLScalarStyle.text(value, in: .block) }
+
     private static func value(_ scalar: BoardScalar) -> String {
         switch scalar {
-        case let .string(text): return self.scalar(text)
+        case let .string(text): return YAMLScalarStyle.text(text, in: .flow, quoteYAML11Words: true)
         case let .int(number): return String(number)
-        case let .double(number): return String(number)
+        case let .double(number): return YAMLScalarStyle.number(number)
         case let .bool(flag): return flag ? "true" : "false"
         }
-    }
-
-    static func scalar(_ text: String) -> String {
-        let plain = text.wholeMatch(of: /[A-Za-z_][A-Za-z0-9_.\/-]*/) != nil
-            && !reservedWords.contains(text.lowercased())
-        return plain ? text : quoted(text)
-    }
-
-    private static func quoted(_ text: String) -> String {
-        var out = "\""
-        for character in text.unicodeScalars {
-            switch character {
-            case "\"": out += "\\\""
-            case "\\": out += "\\\\"
-            case "\n": out += "\\n"
-            case "\t": out += "\\t"
-            default:
-                if character.value < 0x20 {
-                    out += String(format: "\\x%02X", character.value)
-                } else {
-                    out.unicodeScalars.append(character)
-                }
-            }
-        }
-        return out + "\""
     }
 }
