@@ -96,6 +96,26 @@ final class EntryOverrideTests: XCTestCase {
             .refused(type: "acme/label", reason: "w: input \"label\" is a string, and [a, b] is not"))
     }
 
+    func testANonDurationEveryIsRefusedWithTheWordingOfItsKind() {
+        XCTAssertEqual(
+            WidgetResolution.resolve(entry("devmachine-app/machines", every: "often"), in: catalog),
+            .refused(
+                type: "devmachine-app/machines", reason: "w: every \"often\" is not a duration: write it like 60s or 5m"))
+        XCTAssertEqual(
+            WidgetResolution.resolve(entry("acme/disk", every: "often"), in: catalog),
+            .refused(
+                type: "acme/disk",
+                reason: "w: every \"often\" is neither a duration nor manual: write it like 60s, 5m or manual"))
+    }
+
+    func testANumberForAManyInputIsRefused() {
+        XCTAssertEqual(
+            WidgetResolution.resolve(entry("devmachine-app/machines", with: ["machines": .int(3)]), in: catalog),
+            .refused(
+                type: "devmachine-app/machines",
+                reason: "w: input \"machines\" takes a list of names, written [a, b], and 3 is not one"))
+    }
+
     func testEveryBelowTheFloorIsRefused() {
         XCTAssertEqual(
             WidgetResolution.resolve(entry("acme/disk", every: "2s"), in: catalog),

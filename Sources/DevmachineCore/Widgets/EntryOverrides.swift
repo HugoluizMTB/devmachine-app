@@ -32,15 +32,24 @@ public enum InputShapes {
 /// what the widget's source allows, a stream has none, and an app provider
 /// runs on a schedule, so it takes no `manual`.
 public enum EntryOverrideRules {
+    public static func floorText(
+        of resolved: ResolvedWidget, catalog: WidgetCatalog? = nil, contract: WidgetContract = .current
+    ) -> String? {
+        guard let source = resolved.source else { return contract.providers[resolved.provider]?.minEvery }
+        if case let .packageProvider(provider) = source.source {
+            let spec = catalog.flatMap { try? $0.packageProviderIndex.spec(for: provider.name) }
+            return spec?.minEvery ?? contract.packageProvider.minEvery
+        }
+        return contract.sources[source.source.kind]?.minEvery
+    }
+
     public static func floor(
         of resolved: ResolvedWidget, catalog: WidgetCatalog? = nil, contract: WidgetContract = .current
     ) -> TimeInterval {
-        guard let source = resolved.source else { return contract.minimumInterval(for: resolved.provider) ?? 0 }
-        if case let .packageProvider(provider) = source.source {
-            let spec = catalog.flatMap { try? $0.packageProviderIndex.spec(for: provider.name) }
-            return spec.flatMap { GoDuration.seconds($0.minEvery) } ?? contract.packageProviderFloor
+        if let text = floorText(of: resolved, catalog: catalog, contract: contract), let seconds = GoDuration.seconds(text) {
+            return seconds
         }
-        return contract.minimumInterval(forSource: source.source.kind) ?? 0
+        return resolved.source == nil ? 0 : contract.packageProviderFloor
     }
 
     public static func everyProblem(
@@ -50,7 +59,7 @@ public enum EntryOverrideRules {
         if resolved.source?.every == .continuous {
             return "\(id): a stream runs while the widget is on screen, so it takes no every"
         }
-        let readsProvider = resolved.source == nil
+        let readsProvider = resolved.widget.source.kind == "provider"
         if text == "manual" {
             guard readsProvider else { return nil }
             return "\(id): every manual: \(type) reads a provider, which runs on a schedule: write a duration like 60s"
@@ -62,7 +71,8 @@ public enum EntryOverrideRules {
         }
         let least = floor(of: resolved, catalog: catalog, contract: contract)
         guard seconds >= least else {
-            return "\(id): every \(text) is below \(type)'s minimum of \(GoDurationText.short(least))"
+            let shown = floorText(of: resolved, catalog: catalog, contract: contract) ?? GoDurationText.short(least)
+            return "\(id): every \(text) is below \(type)'s minimum of \(shown)"
         }
         return nil
     }

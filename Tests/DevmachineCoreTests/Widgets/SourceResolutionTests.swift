@@ -257,6 +257,26 @@ final class SourceResolutionTests: XCTestCase {
         XCTAssertEqual(filled.target, .machine("main"))
     }
 
+    func testManualEveryIsRefusedOnAPackageProviderWidgetAndADurationIsApplied() throws {
+        let catalog = try catalog13()
+        func overridden(_ every: String) -> WidgetResolution {
+            var widget = entry("devmachine-app/machine-stats")
+            widget.everyOverride = every
+            return WidgetResolution.resolve(widget, in: catalog)
+        }
+        XCTAssertEqual(
+            overridden("manual"),
+            .refused(
+                type: "devmachine-app/machine-stats",
+                reason: "w: every manual: devmachine-app/machine-stats reads a provider, which runs on a schedule: write a duration like 60s"))
+        XCTAssertEqual(
+            overridden("often"),
+            .refused(
+                type: "devmachine-app/machine-stats",
+                reason: "w: every \"often\" is not a duration: write it like 60s or 5m"))
+        XCTAssertEqual(ready(overridden("2m"))?.source?.every, .interval(120))
+    }
+
     func testAThirdPartyCodeWidgetWaitsAndAnOfficialOneDoesNot() throws {
         let catalog = try catalog13()
         for name in ["acme-tools/load", "acme-tools/disk"] {
