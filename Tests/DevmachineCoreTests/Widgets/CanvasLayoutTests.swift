@@ -75,6 +75,40 @@ final class CanvasLayoutTests: XCTestCase {
         XCTAssertEqual(move.guides.first?.position, 160)
     }
 
+    func testAnEdgeNeverSnapsToAnotherWidgetsCentre() {
+        let panel = frame(728, 0, 1504, 400)
+        let move = CanvasLayout.moved(frame(1096, 1072, 384, 232), to: CGPoint(x: 1098, y: 1072), among: [panel])
+        XCTAssertEqual(move.guides, [])
+        XCTAssertEqual(move.frame.x, 1096)
+    }
+
+    func testACentreNeverSnapsToAnotherWidgetsEdge() {
+        let other = frame(400, 0, 320, 160)
+        let move = CanvasLayout.moved(frame(0, 600, 160, 160), to: CGPoint(x: 323, y: 600), among: [other])
+        XCTAssertEqual(move.guides, [])
+        XCTAssertEqual(move.frame.x, 320)
+    }
+
+    func testACentreGuideSaysItIsACentre() {
+        let other = frame(0, 0, 320, 160)
+        let move = CanvasLayout.moved(frame(0, 0, 160, 160), to: CGPoint(x: 83, y: 400), among: [other])
+        XCTAssertEqual(move.guides, [CanvasGuide(axis: .vertical, position: 160, start: 0, end: 560, kind: .centre)])
+    }
+
+    func testAnEdgeGuideSaysItIsAnEdge() {
+        let other = frame(200, 400, 320, 160)
+        let move = CanvasLayout.moved(frame(0, 0, 160, 160), to: CGPoint(x: 204.5, y: 37), among: [other])
+        XCTAssertEqual(move.guides.map(\.kind), [.edge])
+    }
+
+    func testOnlyWidgetsDrawnOnScreenAreSnapTargets() {
+        let widgets = ["clock", "machines", "unresolved"].map {
+            BoardWidget(id: $0, type: "devmachine-app/\($0)", frame: frame(0, 0, 160, 160), size: "small", z: 1)
+        }
+        let targets = CanvasLayout.snapTargets(widgets, moving: "clock") { $0.id != "unresolved" }
+        XCTAssertEqual(targets.map(\.id), ["machines"])
+    }
+
     func testAMoveNeverLeavesTheCanvasOrigin() {
         let move = CanvasLayout.moved(frame(0, 0, 160, 160), to: CGPoint(x: -50, y: -9), among: [])
         XCTAssertEqual(move.frame.x, 0)

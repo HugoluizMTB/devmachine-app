@@ -15,17 +15,20 @@ public struct CanvasSize: Equatable, Sendable {
 /// another widget's.
 public struct CanvasGuide: Equatable, Sendable {
     public enum Axis: Equatable, Sendable { case vertical, horizontal }
+    public enum Kind: Equatable, Sendable { case edge, centre }
 
     public let axis: Axis
     public let position: Double
     public let start: Double
     public let end: Double
+    public let kind: Kind
 
-    public init(axis: Axis, position: Double, start: Double, end: Double) {
+    public init(axis: Axis, position: Double, start: Double, end: Double, kind: Kind = .edge) {
         self.axis = axis
         self.position = position
         self.start = start
         self.end = end
+        self.kind = kind
     }
 }
 
@@ -93,33 +96,48 @@ public enum CanvasLayout {
         if let vertical {
             guides.append(CanvasGuide(
                 axis: .vertical, position: vertical.position,
-                start: min(rect.minY, vertical.other.minY), end: max(rect.maxY, vertical.other.maxY)))
+                start: min(rect.minY, vertical.other.minY), end: max(rect.maxY, vertical.other.maxY), kind: vertical.kind))
         }
         if let horizontal {
             guides.append(CanvasGuide(
                 axis: .horizontal, position: horizontal.position,
-                start: min(rect.minX, horizontal.other.minX), end: max(rect.maxX, horizontal.other.maxX)))
+                start: min(rect.minX, horizontal.other.minX), end: max(rect.maxX, horizontal.other.maxX),
+                kind: horizontal.kind))
         }
         let moved = BoardFrame(x: Int(rect.minX.rounded()), y: Int(rect.minY.rounded()), w: frame.w, h: frame.h)
         return CanvasMove(frame: moved, guides: guides)
+    }
+
+    public static func snapTargets(
+        _ widgets: [BoardWidget], moving id: String, isDrawn: (BoardWidget) -> Bool
+    ) -> [BoardWidget] {
+        widgets.filter { $0.id != id && isDrawn($0) }
     }
 
     private struct Hit {
         let delta: Double
         let position: Double
         let other: CGRect
+        let kind: CanvasGuide.Kind
     }
 
+    private static func lines(_ rect: CGRect, axis: CanvasGuide.Axis) -> [(Double, CanvasGuide.Kind)] {
+        axis == .vertical
+            ? [(rect.minX, .edge), (rect.midX, .centre), (rect.maxX, .edge)]
+            : [(rect.minY, .edge), (rect.midY, .centre), (rect.maxY, .edge)]
+    }
+
+    /// An edge meets only edges and a centre only centres: an edge snapped
+    /// to a centre drew a guide where nothing on screen has a line.
     private static func nearest(_ moving: CGRect, _ others: [CGRect], axis: CanvasGuide.Axis) -> Hit? {
-        let mine = axis == .vertical ? [moving.minX, moving.midX, moving.maxX] : [moving.minY, moving.midY, moving.maxY]
+        let mine = lines(moving, axis: axis)
         var best: Hit?
         for other in others {
-            let theirs = axis == .vertical ? [other.minX, other.midX, other.maxX] : [other.minY, other.midY, other.maxY]
-            for a in mine {
-                for b in theirs {
+            for (a, kind) in mine {
+                for (b, theirs) in lines(other, axis: axis) where theirs == kind {
                     let delta = b - a
                     guard abs(delta) <= guideTolerance, abs(delta) < abs(best?.delta ?? .infinity) else { continue }
-                    best = Hit(delta: delta, position: b, other: other)
+                    best = Hit(delta: delta, position: b, other: other, kind: kind)
                 }
             }
         }

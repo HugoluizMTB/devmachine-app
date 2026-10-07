@@ -329,9 +329,9 @@ private struct BoardCanvasLayer: View {
         guard store.canEdit else { return }
         let start = dragStart(widget, resolution: controller.resolution(of: widget))
         let delta = CanvasLayout.toBoard(translation, scale: scale)
-        let others = board.widgets.filter { $0.id != widget.id }.map {
-            displayFrame($0, resolution: controller.resolution(of: $0))
-        }
+        let others = CanvasLayout.snapTargets(board.widgets, moving: widget.id) {
+            controller.resolution(of: $0) != nil
+        }.map { displayFrame($0, resolution: controller.resolution(of: $0)) }
         let move = CanvasLayout.moved(
             start, to: CGPoint(x: Double(start.x) + delta.width, y: Double(start.y) + delta.height), among: others)
         drag = CanvasDrag(id: widget.id, start: start, frame: move.frame, guides: move.guides)
@@ -404,13 +404,11 @@ private struct BoardCanvasLayer: View {
             ForEach(Array(drag.guides.enumerated()), id: \.offset) { _, guide in
                 switch guide.axis {
                 case .vertical:
-                    Rectangle()
-                        .fill(Color.accentColor.opacity(0.8))
+                    GuideLine(axis: guide.axis, kind: guide.kind)
                         .frame(width: 1, height: (guide.end - guide.start) * scale)
                         .offset(x: guide.position * scale, y: guide.start * scale)
                 case .horizontal:
-                    Rectangle()
-                        .fill(Color.accentColor.opacity(0.8))
+                    GuideLine(axis: guide.axis, kind: guide.kind)
                         .frame(width: (guide.end - guide.start) * scale, height: 1)
                         .offset(x: guide.start * scale, y: guide.position * scale)
                 }
@@ -472,6 +470,31 @@ private struct BoardCanvasLayer: View {
                 .frame(width: m.card.sheet, alignment: .leading)
                 .padding(m.space.lg)
                 .dmGlass(radius: DMRadius.toast)
+        }
+    }
+}
+
+/// A centre guide is dashed, so it never reads as an edge that is not there.
+private struct GuideLine: View {
+    let axis: CanvasGuide.Axis
+    let kind: CanvasGuide.Kind
+    @Environment(\.dmMetrics) private var m
+
+    var body: some View {
+        GeometryReader { proxy in
+            Path { path in
+                switch axis {
+                case .vertical:
+                    path.move(to: CGPoint(x: 0.5, y: 0))
+                    path.addLine(to: CGPoint(x: 0.5, y: proxy.size.height))
+                case .horizontal:
+                    path.move(to: CGPoint(x: 0, y: 0.5))
+                    path.addLine(to: CGPoint(x: proxy.size.width, y: 0.5))
+                }
+            }
+            .stroke(
+                Color.accentColor.opacity(0.8),
+                style: StrokeStyle(lineWidth: 1, dash: kind == .centre ? [m.space.xs, m.space.xs] : []))
         }
     }
 }
