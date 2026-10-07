@@ -11,6 +11,7 @@ final class FakeEditTarget: WidgetEditTarget {
     var entries: [String: EditableEntry] = [:]
     var applied: [(EntryEdit, String)] = []
     var added: [(InlineWidget, String, String)] = []
+    var hasRoom = true
 
     func editableEntry(_ id: String) -> EditableEntry? { entries[id] }
 
@@ -25,6 +26,7 @@ final class FakeEditTarget: WidgetEditTarget {
     }
 
     func addInline(_ inline: InlineWidget, title: String, preset: String) -> String? {
+        guard hasRoom else { return nil }
         added.append((inline, title, preset))
         return "new"
     }
@@ -73,14 +75,18 @@ final class WidgetEditorModelTests: XCTestCase {
         XCTAssertTrue(target.added.isEmpty)
     }
 
-    func testAnInlineWidgetTheTemplatesCannotShowOffersTheTitleOnly() throws {
+    func testAStreamTheTemplatesCannotShowOffersItsTitleAndNoEvery() throws {
         let target = FakeEditTarget()
         target.editSurface = "sidebar"
         let old = try inline("  - id: log\n    title: Log\n    source: {kind: command, run: tail, args: [-f, x], mode: stream}\n    view: {kind: text}\n")
         target.entries["log"] = EditableEntry(StackEntry(id: "log", type: "", inline: old))
         let model = try XCTUnwrap(WidgetEditorModel(request: .edit("log"), target: target))
-        XCTAssertEqual(model.form, .titleOnly("Log", old: old))
-        model.form = .titleOnly("Live log", old: old)
+        guard case var .basics(form) = model.form else { return XCTFail() }
+        XCTAssertEqual(form.title, "Log")
+        XCTAssertNil(form.every)
+        XCTAssertEqual(model.shownFields, ["title"])
+        form.title = "Live log"
+        model.form = .basics(form)
         XCTAssertTrue(model.save(to: target))
         guard case let .inline(saved)? = target.applied.first?.0 else { return XCTFail() }
         XCTAssertEqual(saved.title, "Live log")
@@ -101,12 +107,149 @@ final class WidgetEditorModelTests: XCTestCase {
         XCTAssertEqual(target.applied.first?.0, .typed(title: "Servers", with: ["label": .string("prod")], every: nil))
     }
 
-    func testNoEditForATypedEntryMissingFromTheCatalog() {
+    func testATypedEntryMissingFromTheCatalogEditsItsTitleOnly() throws {
         let target = FakeEditTarget()
         target.entries["s"] = EditableEntry(BoardWidget(
-            id: "s", type: "acme/gone", frame: BoardFrame(x: 0, y: 0, w: 1, h: 1), size: "medium", z: 0))
-        XCTAssertNil(WidgetEditorModel(request: .edit("s"), target: target))
-        XCTAssertFalse(target.offersEdit("s"))
+            id: "s", type: "acme/gone", with: ["label": .string("prod")], frame: BoardFrame(x: 0, y: 0, w: 1, h: 1),
+            size: "medium", z: 0, everyOverride: "90s"))
+        XCTAssertTrue(target.offersEdit("s"))
+        let model = try XCTUnwrap(WidgetEditorModel(request: .edit("s"), target: target))
+        guard case let .titleOnly(entry, title) = model.form else { return XCTFail() }
+        XCTAssertEqual(title, "")
+        XCTAssertEqual(model.shownFields, ["title"])
+        model.form = .titleOnly(entry, title: "Servers")
+        XCTAssertTrue(model.save(to: target))
+        XCTAssertEqual(target.applied.first?.0, .typed(title: "Servers", with: ["label": .string("prod")], every: "90s"))
+    }
+
+    func testNoEditForAnEntryNoLongerOnTheBoard() {
+        let target = FakeEditTarget()
+        XCTAssertNil(WidgetEditorModel(request: .edit("gone"), target: target))
+        XCTAssertFalse(target.offersEdit("gone"))
+    }
+
+    private let clockYAML = "  - id: clock\n    title: Clock\n    source: {kind: provider, name: app/clock, every: 60s}\n    view: {kind: app.clock}\n"
+
+    func testAnInlineWidgetTheTemplatesCannotShowChangesItsEvery() throws {
+        let target = FakeEditTarget()
+        target.editSurface = "sidebar"
+        let old = try inline(clockYAML)
+        target.entries["clock"] = EditableEntry(StackEntry(id: "clock", type: "", inline: old))
+        let model = try XCTUnwrap(WidgetEditorModel(request: .edit("clock"), target: target))
+        guard case var .basics(form) = model.form else { return XCTFail() }
+        XCTAssertEqual(form.every, "60s")
+        XCTAssertEqual(model.shownFields, ["title", "every"])
+        form.every = "30s"
+        model.form = .basics(form)
+        XCTAssertTrue(model.save(to: target))
+        guard case let .inline(saved)? = target.applied.first?.0 else { return XCTFail() }
+        XCTAssertEqual(saved.source.every, .interval(30))
+        XCTAssertEqual(saved.sourceTree.emit(key: "source", indent: 4), ["    source: {kind: provider, name: app/clock, every: 30s}"])
+        XCTAssertEqual(saved.viewTree, old.viewTree)
+    }
+
+    func testAnEveryBelowTheMinimumStaysUnderItsField() throws {
+        let target = FakeEditTarget()
+        target.editSurface = "sidebar"
+        let old = try inline(clockYAML)
+        target.entries["clock"] = EditableEntry(StackEntry(id: "clock", type: "", inline: old))
+        let model = try XCTUnwrap(WidgetEditorModel(request: .edit("clock"), target: target))
+        guard case var .basics(form) = model.form else { return XCTFail() }
+        form.every = "1s"
+        model.form = .basics(form)
+        XCTAssertFalse(model.save(to: target))
+        XCTAssertNotNil(model.problem(for: "every"))
+        XCTAssertTrue(target.applied.isEmpty)
+    }
+
+    func testAnUnchangedEveryKeepsTheSourceAsWritten() throws {
+        let target = FakeEditTarget()
+        target.editSurface = "sidebar"
+        let old = try inline(clockYAML)
+        target.entries["clock"] = EditableEntry(StackEntry(id: "clock", type: "", inline: old))
+        let model = try XCTUnwrap(WidgetEditorModel(request: .edit("clock"), target: target))
+        guard case var .basics(form) = model.form else { return XCTFail() }
+        form.title = "Time"
+        model.form = .basics(form)
+        XCTAssertTrue(model.save(to: target))
+        guard case let .inline(saved)? = target.applied.first?.0 else { return XCTFail() }
+        XCTAssertEqual(saved.sourceTree, old.sourceTree)
+        XCTAssertEqual(saved.title, "Time")
+    }
+
+    func testValueIsWrittenOnlyWhenTheViewUsesIt() throws {
+        let target = FakeEditTarget()
+        let model = try XCTUnwrap(WidgetEditorModel(request: .new(.command), target: target))
+        guard case var .inline(form, nil) = model.form else { return XCTFail() }
+        form.title = "Disk"
+        form.run = "df"
+        form.parse = "json"
+        form.view = "number"
+        form.value = "{{json.used}}"
+        model.form = .inline(form, old: nil)
+        XCTAssertTrue(model.shownFields.contains("value"))
+        form.parse = "text"
+        form.view = "text"
+        model.form = .inline(form, old: nil)
+        XCTAssertFalse(model.shownFields.contains("value"))
+        XCTAssertTrue(model.save(to: target))
+        XCTAssertNil(target.added.first?.0.view.value)
+    }
+
+    func testAProblemOnAFieldTheFormHidesShowsInTheBanner() throws {
+        let target = FakeEditTarget()
+        let model = try XCTUnwrap(WidgetEditorModel(request: .new(.urlStatus), target: target))
+        guard case var .inline(form, nil) = model.form else { return XCTFail() }
+        form.title = "Site"
+        form.url = "https://example.com"
+        form.view = "markdown"
+        model.form = .inline(form, old: nil)
+        XCTAssertFalse(model.save(to: target))
+        XCTAssertFalse(model.shownFields.contains("view"))
+        XCTAssertNil(model.problem(for: "view"))
+        XCTAssertNotNil(model.formProblem)
+    }
+
+    func testTheHeadingUsesTheTemplatesOwnWords() throws {
+        let model = try XCTUnwrap(WidgetEditorModel(request: .new(.urlStatus), target: FakeEditTarget()))
+        XCTAssertEqual(model.heading, "New URL status widget")
+    }
+
+    func testEditingAShowableInlineWidgetAppliesItAndKeepsTheView() throws {
+        let target = FakeEditTarget()
+        target.editSurface = "sidebar"
+        let old = try inline("  - id: site\n    title: Site\n    source: {kind: url, url: \"https://example.com\", every: 60s, parse: status}\n    view: {kind: status}\n")
+        target.entries["site"] = EditableEntry(StackEntry(id: "site", type: "", inline: old))
+        let model = try XCTUnwrap(WidgetEditorModel(request: .edit("site"), target: target))
+        guard case .inline(var form, old?) = model.form else { return XCTFail() }
+        form.url = "https://example.com/health"
+        model.form = .inline(form, old: old)
+        XCTAssertTrue(model.save(to: target))
+        XCTAssertEqual(target.applied.first?.1, "site")
+        guard case let .inline(saved)? = target.applied.first?.0 else { return XCTFail() }
+        XCTAssertEqual(saved.viewTree, old.viewTree)
+        guard case let .url(url) = saved.source else { return XCTFail() }
+        XCTAssertEqual(url.url, "https://example.com/health")
+    }
+
+    func testNoRoomForAnotherWidgetStaysOnTheForm() throws {
+        let target = FakeEditTarget()
+        target.hasRoom = false
+        let model = try XCTUnwrap(WidgetEditorModel(request: .new(.urlStatus), target: target))
+        guard case var .inline(form, nil) = model.form else { return XCTFail() }
+        form.title = "Site"
+        form.url = "https://example.com"
+        model.form = .inline(form, old: nil)
+        XCTAssertFalse(model.save(to: target))
+        XCTAssertEqual(model.formProblem, "There is no room for another widget here.")
+    }
+
+    func testANewWidgetOpensOnlyOnceTheGalleryIsGone() {
+        var handoff = NewWidgetHandoff()
+        XCTAssertNil(handoff.galleryGone())
+        handoff.choose(.webPage)
+        XCTAssertEqual(handoff.galleryGone(), .new(.webPage))
+        XCTAssertNil(handoff.galleryGone())
     }
 
     func testNothingIsSavedWhileTheBoardCannotChange() throws {

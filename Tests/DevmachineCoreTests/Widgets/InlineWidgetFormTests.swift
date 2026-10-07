@@ -225,4 +225,35 @@ final class InlineWidgetFormTests: XCTestCase {
         form.zoom = "1: x"
         XCTAssertFalse(form.yaml(surface: "home", id: "check").text.contains("\n      x"))
     }
+
+    func testAValueIsWrittenOnlyWhenTheViewUsesIt() {
+        var form = filled(.command)
+        form.parse = "json"
+        form.view = "number"
+        form.value = "{{json.used}}"
+        XCTAssertTrue(form.fields.contains("value"))
+        XCTAssertTrue(form.yaml(surface: "home", id: "check").text.contains("value: "))
+        form.view = "list"
+        XCTAssertFalse(form.fields.contains("value"))
+        XCTAssertFalse(form.yaml(surface: "home", id: "check").text.contains("value: "))
+        form.view = "number"
+        form.parse = "number"
+        XCTAssertFalse(form.fields.contains("value"))
+        XCTAssertFalse(form.yaml(surface: "home", id: "check").text.contains("value: "))
+    }
+
+    func testEachTemplateShowsItsOwnFields() {
+        XCTAssertEqual(filled(.urlStatus).fields, ["title", "url", "every"])
+        XCTAssertEqual(filled(.webPage).fields, ["title", "url", "every", "zoom"])
+        XCTAssertEqual(filled(.session).fields, ["title", "target", "session", "every"])
+        XCTAssertEqual(filled(.prompt).fields, ["title", "harness", "prompt", "target", "every"])
+        XCTAssertEqual(filled(.command).fields, ["title", "run", "args", "target", "every", "parse", "view"])
+        var shell = filled(.command)
+        shell.commandStyle = .shell
+        XCTAssertEqual(shell.fields, ["title", "shellLine", "target", "every", "parse", "view"])
+    }
+
+    func testTemplatesNameThemselvesInAHeading() {
+        XCTAssertEqual(InlineWidgetTemplate.allCases.map(\.noun), ["command", "URL status", "web page", "prompt", "session"])
+    }
 }

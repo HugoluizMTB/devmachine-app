@@ -7,8 +7,9 @@ import DevmachineCore
 final class WidgetEditorModel: ObservableObject {
     enum Form: Equatable {
         case inline(InlineWidgetForm, old: InlineWidget?)
-        case titleOnly(String, old: InlineWidget)
+        case basics(InlineBasicsForm)
         case typed(TypedEntryForm)
+        case titleOnly(EditableEntry, title: String)
     }
 
     let request: WidgetEditRequest
@@ -28,20 +29,33 @@ final class WidgetEditorModel: ObservableObject {
             guard let entry = target.editableEntry(id) else { return nil }
             if let inline = entry.inline {
                 form = InlineWidgetForm(inline: inline, surface: target.editSurface).map { .inline($0, old: inline) }
-                    ?? .titleOnly(inline.title, old: inline)
-            } else {
-                guard let widget = target.editCatalog?.widget(named: entry.type) else { return nil }
+                    ?? .basics(InlineBasicsForm(inline: inline))
+            } else if let widget = target.editCatalog?.widget(named: entry.type) {
                 form = .typed(TypedEntryForm(entry: entry, widget: widget))
+            } else {
+                form = .titleOnly(entry, title: entry.titleOverride ?? "")
             }
         }
     }
 
     var heading: String {
         switch (request, form) {
-        case let (.new(template), _): return "New \(template.title.lowercased()) widget"
+        case let (.new(template), _): return "New \(template.noun) widget"
         case let (_, .inline(form, _)): return "Edit \(form.title)"
-        case let (_, .titleOnly(title, _)): return "Edit \(title)"
+        case let (_, .basics(form)): return "Edit \(form.old.title)"
         case let (_, .typed(form)): return "Edit \(form.entry.titleOverride ?? WidgetTitle.make(type: form.entry.type))"
+        case let (_, .titleOnly(entry, _)): return "Edit \(entry.titleOverride ?? WidgetTitle.make(type: entry.type))"
+        }
+    }
+
+    var shownFields: Set<String> {
+        switch form {
+        case let .inline(form, _): return form.fields
+        case let .basics(form): return form.fields
+        case let .typed(form):
+            let drawn = form.widget.inputs.filter { $0.value.type != "boolean" }.keys.map { "input.\($0)" }
+            return Set(["title", "every"] + drawn)
+        case .titleOnly: return ["title"]
         }
     }
 
@@ -51,11 +65,15 @@ final class WidgetEditorModel: ObservableObject {
     }
 
     func problem(for field: String) -> String? {
-        problem?.field == field ? problem?.message : nil
+        guard let problem, problem.field == field, shownFields.contains(field) else { return nil }
+        return problem.message
     }
 
+    /// Any problem with no field on screen, so Save never fails in silence.
     var formProblem: String? {
-        problem?.field == nil ? problem?.message : nil
+        guard let problem else { return nil }
+        if let field = problem.field, shownFields.contains(field) { return nil }
+        return problem.message
     }
 
     func save(to target: WidgetEditTarget) -> Bool {
@@ -65,36 +83,39 @@ final class WidgetEditorModel: ObservableObject {
         if let id = editedID, target.editableEntry(id) == nil {
             return refuse(FormProblem(field: nil, message: "This widget is no longer on the board."))
         }
+        let edit: EntryEdit
         switch form {
         case let .inline(form, old):
             switch form.read(surface: surface, id: editedID ?? "new", keeping: old, catalog: target.editCatalog) {
             case let .failure(found):
                 return refuse(found)
             case let .success(inline):
-                if editedID == nil {
+                guard editedID != nil else {
                     guard target.addInline(inline, title: form.title, preset: form.template.preset) != nil else {
                         return refuse(FormProblem(field: nil, message: "There is no room for another widget here."))
                     }
-                } else if let refusal = apply(.inline(inline), to: target) {
-                    return refuse(refusal)
+                    problem = nil
+                    return true
                 }
+                edit = .inline(inline)
             }
-        case let .titleOnly(title, old):
-            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return refuse(FormProblem(field: "title", message: "Give the widget a title.")) }
-            var inline = old
-            inline.title = trimmed
-            if let refusal = apply(.inline(inline), to: target) { return refuse(refusal) }
+        case let .basics(form):
+            switch form.read(surface: surface, id: editedID ?? "new", catalog: target.editCatalog) {
+            case let .failure(found): return refuse(found)
+            case let .success(inline): edit = .inline(inline)
+            }
         case let .typed(form):
             let catalog = target.editCatalog
                 ?? WidgetCatalog(engine: WidgetContract.current.engine, packagesRelease: "", widgets: [])
             switch form.edit(surface: surface, catalog: catalog) {
-            case let .failure(found):
-                return refuse(found)
-            case let .success(edit):
-                if let refusal = apply(edit, to: target) { return refuse(refusal) }
+            case let .failure(found): return refuse(found)
+            case let .success(typed): edit = typed
             }
+        case let .titleOnly(entry, title):
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            edit = .typed(title: trimmed.isEmpty ? nil : trimmed, with: entry.with, every: entry.everyOverride)
         }
+        if let refusal = apply(edit, to: target) { return refuse(refusal) }
         problem = nil
         return true
     }

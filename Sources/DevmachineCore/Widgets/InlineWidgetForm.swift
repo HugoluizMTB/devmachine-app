@@ -30,6 +30,17 @@ public enum InlineWidgetTemplate: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
+    /// How a heading names it: "New URL status widget".
+    public var noun: String {
+        switch self {
+        case .command: return "command"
+        case .urlStatus: return "URL status"
+        case .webPage: return "web page"
+        case .prompt: return "prompt"
+        case .session: return "session"
+        }
+    }
+
     public var preset: String { self == .webPage || self == .session ? "large" : "medium" }
 
     /// The menu bar draws one line, so only what can end in one is offered.
@@ -137,6 +148,29 @@ public struct InlineWidgetForm: Equatable, Sendable {
         self = form
     }
 
+    /// The fields the form draws; a problem on any other shows above the buttons.
+    public func fields(contract: WidgetContract = .current) -> Set<String> {
+        var shown: Set<String> = ["title"]
+        switch template {
+        case .command:
+            shown.formUnion(commandStyle == .shell ? ["shellLine"] : ["run", "args"])
+            shown.formUnion(["target", "every", "parse", "view"])
+            if usesValue(contract: contract) { shown.insert("value") }
+        case .urlStatus: shown.formUnion(["url", "every"])
+        case .webPage: shown.formUnion(["url", "every", "zoom"])
+        case .prompt: shown.formUnion(["harness", "prompt", "target", "every"])
+        case .session: shown.formUnion(["target", "session", "every"])
+        }
+        return shown
+    }
+
+    public var fields: Set<String> { fields() }
+
+    /// A view's `value` picks out of JSON, so it is written only then.
+    public func usesValue(contract: WidgetContract = .current) -> Bool {
+        parse == ParseMode.json.rawValue && contract.views[view]?.fields?["value"] != nil
+    }
+
     public static func views(for parse: String, layout: String, contract: WidgetContract = .current) -> [String] {
         contract.views.keys.filter { kind in
             !kind.hasPrefix("app.") && contract.view(kind, accepts: parse, sourceKind: "command")
@@ -166,7 +200,7 @@ public struct InlineWidgetForm: Equatable, Sendable {
         } catch {
             return .failure(FormProblem(field: nil, message: "\(error)"))
         }
-        if let reason = refusal(of: inline, surface: surface, id: id, catalog: catalog, contract: contract) {
+        if let reason = Self.refusal(of: inline, surface: surface, id: id, catalog: catalog, contract: contract) {
             return .failure(FormProblem(field: nil, message: Self.plain(reason, id: id)))
         }
         guard let old else { return .success(inline) }
@@ -177,7 +211,7 @@ public struct InlineWidgetForm: Equatable, Sendable {
             sizes: old.sizes, fits: old.fits, source: inline.source, view: inline.view))
     }
 
-    private func refusal(
+    static func refusal(
         of inline: InlineWidget, surface: String, id: String, catalog: WidgetCatalog?, contract: WidgetContract
     ) -> String? {
         let resolution: WidgetResolution?
@@ -246,7 +280,7 @@ public struct InlineWidgetForm: Equatable, Sendable {
         add("    view:", "view")
         add("      kind: \(Self.block(view))", "view")
         if template == .webPage { add("      zoom: \(zoomText)", "zoom") }
-        if !value.isEmpty { add("      value: \(Self.block(value))", "value") }
+        if usesValue(contract: contract), !value.isEmpty { add("      value: \(Self.block(value))", "value") }
         if contract.layout(of: surface) == "canvas" {
             add("    frame: {x: 0, y: 0, w: 320, h: 160}", nil)
             add("    size: medium", nil)

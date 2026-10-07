@@ -40,6 +40,7 @@ struct StackBoardView: View {
     @State private var drag: StackDrag?
     @State private var choosing: WidgetChoiceRequest?
     @State private var editing: WidgetEditRequest?
+    @State private var newWidget = NewWidgetHandoff()
     @State private var heights: [String: CGFloat] = [:]
     @State private var addRowHeight: CGFloat = 0
     @State private var bannerHeight: CGFloat = 0
@@ -295,11 +296,9 @@ struct StackBoardView: View {
                     onAdd: { if controller.add($0) { showsGallery = false } },
                     onRetry: { controller.catalog.reloadSoon() },
                     templates: InlineWidgetTemplate.offered(on: WidgetContract.current.layout(of: controller.surface)),
-                    onNewWidget: { template in
-                        showsGallery = false
-                        // The sheet waits for the popover, whose menu sent this, to be gone.
-                        DispatchQueue.main.async { editing = .new(template) }
-                    })
+                    canMakeWidgets: controller.canEdit,
+                    onNewWidget: NewWidgetHandoff.chooser($newWidget, closing: $showsGallery))
+                .opensNewWidget($newWidget, into: $editing)
             }
             .onChange(of: showsGallery) { _, open in if open { controller.catalog.reloadSoon() } }
     }

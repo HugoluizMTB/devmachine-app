@@ -141,6 +141,21 @@ public indirect enum YAMLTree: Sendable {
         }
     }
 
+    /// A mapping with `key` set to one scalar, in its place when written
+    /// already, else last; quoted only when plain would read differently.
+    public func setting(_ key: String, to text: String) -> YAMLTree {
+        guard case let .mapping(pairs, flow, line) = self else { return self }
+        let plain = YAMLScalarStyle.text(text, in: .flow, quoteYAML11Words: true) == text
+        let scalar = YAMLTree.scalar(text, plain ? .plain : .doubleQuoted, line: nil)
+        var next = pairs
+        if let index = next.firstIndex(where: { $0.key == key }) {
+            next[index] = YAMLPair(key: key, value: scalar)
+        } else {
+            next.append(YAMLPair(key: key, value: scalar))
+        }
+        return .mapping(next, flow: flow, line: line)
+    }
+
     /// `key: value` at `indent` spaces, block collections on the lines after,
     /// two more spaces in, sequences as `- item` (yaml.v3's layout).
     public func emit(key: String, indent: Int) -> [String] {

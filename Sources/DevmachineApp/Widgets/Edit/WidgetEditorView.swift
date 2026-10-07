@@ -49,13 +49,33 @@ struct WidgetEditorView: View {
         switch model.form {
         case let .inline(form, old):
             inlineFields(form, old: old)
-        case let .titleOnly(title, old):
+        case let .basics(form):
             field("Title", "title") {
-                TextField("Title", text: Binding(get: { title }, set: { model.form = .titleOnly($0, old: old) })).dmField()
+                TextField("Title", text: Binding(get: { form.title }, set: { v in
+                    var next = form
+                    next.title = v
+                    model.form = .basics(next)
+                })).dmField()
+            }
+            if let every = form.every {
+                everyField(every) { v in
+                    var next = form
+                    next.every = v
+                    model.form = .basics(next)
+                }
             }
             Text(verbatim: "Edit the rest in \(model.fileName).").font(.dm(11)).foregroundStyle(Color.dmMuted)
         case let .typed(form):
             typedFields(form)
+        case let .titleOnly(entry, title):
+            field("Title", "title") {
+                TextField(WidgetTitle.make(type: entry.type), text: Binding(
+                    get: { title }, set: { model.form = .titleOnly(entry, title: $0) })).dmField()
+            }
+            Text(verbatim: "The packages release does not list this widget, so only its title can change here.")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -95,7 +115,7 @@ struct WidgetEditorView: View {
                 }
             }
             viewPicker(form) { v in set { $0.view = v } }
-            if form.parse == "json" {
+            if form.fields.contains("value") {
                 field("Value", "value") {
                     TextField("{{json.used}}", text: Binding(get: { form.value }, set: { v in set { $0.value = v } })).dmField()
                 }
@@ -233,7 +253,7 @@ struct WidgetEditorSheet: View {
         } else {
             WidgetPlaceholderView(
                 icon: "pencil.slash", title: "Nothing to edit",
-                detail: "This widget is not in the catalog, so the app does not know its inputs.",
+                detail: "This widget is no longer on the board.",
                 actionTitle: "Close", action: onDone)
         }
     }
@@ -243,4 +263,26 @@ struct WidgetEditorSheet: View {
 final class WidgetEditorModelBox: ObservableObject {
     let model: WidgetEditorModel?
     init(_ model: WidgetEditorModel?) { self.model = model }
+}
+
+extension NewWidgetHandoff {
+    /// The gallery's "New widget" action: hold the pick, close the popover.
+    static func chooser(
+        _ handoff: Binding<NewWidgetHandoff>, closing shows: Binding<Bool>
+    ) -> (InlineWidgetTemplate) -> Void {
+        { template in
+            handoff.wrappedValue.choose(template)
+            shows.wrappedValue = false
+        }
+    }
+}
+
+extension View {
+    /// On the gallery popover's content: when it disappears, open the editor
+    /// for the template picked in it, if any.
+    func opensNewWidget(_ handoff: Binding<NewWidgetHandoff>, into editing: Binding<WidgetEditRequest?>) -> some View {
+        onDisappear {
+            if let request = handoff.wrappedValue.galleryGone() { editing.wrappedValue = request }
+        }
+    }
 }

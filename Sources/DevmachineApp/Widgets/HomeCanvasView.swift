@@ -30,6 +30,7 @@ struct HomeCanvasView: View {
     @State private var inWindow: CGRect = .zero
     @State private var clockRect: CGRect?
     @State private var editing: WidgetEditRequest?
+    @State private var newWidget = NewWidgetHandoff()
 
     init(controller: HomeBoardController) {
         self.controller = controller
@@ -96,11 +97,8 @@ struct HomeCanvasView: View {
                     controller: controller, catalog: catalog,
                     canvasWidth: Int(canvasSize.width / m.pt(1)),
                     onAdded: { showsGallery = false },
-                    onNewWidget: { template in
-                        showsGallery = false
-                        // The sheet waits for the popover, whose menu sent this, to be gone.
-                        DispatchQueue.main.async { editing = .new(template) }
-                    })
+                    onNewWidget: NewWidgetHandoff.chooser($newWidget, closing: $showsGallery))
+                .opensNewWidget($newWidget, into: $editing)
             }
     }
 
@@ -170,6 +168,7 @@ private struct WidgetGalleryPopover: View {
             onAdd: { widget in if controller.add(widget, canvasWidth: canvasWidth) { onAdded() } },
             onRetry: { catalog.reloadSoon() },
             templates: InlineWidgetTemplate.offered(on: WidgetContract.current.layout(of: DefaultBoard.surface)),
+            canMakeWidgets: controller.canEdit,
             onNewWidget: onNewWidget)
     }
 

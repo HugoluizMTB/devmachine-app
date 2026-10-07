@@ -35,6 +35,7 @@ struct WidgetGalleryView: View {
     let onAdd: (CatalogWidget) -> Void
     let onRetry: () -> Void
     var templates: [InlineWidgetTemplate] = []
+    var canMakeWidgets = true
     var onNewWidget: (InlineWidgetTemplate) -> Void = { _ in }
     @Environment(\.dmMetrics) private var m
 
@@ -56,7 +57,7 @@ struct WidgetGalleryView: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
-                    .disabled(sharedReason != nil)
+                    .disabled(!canMakeWidgets || sharedReason != nil)
                 }
             }
             if let sharedReason {

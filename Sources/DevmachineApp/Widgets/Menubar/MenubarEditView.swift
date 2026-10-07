@@ -64,6 +64,7 @@ struct MenubarEditView: View {
                     failure: galleryFailure(board), blockedReason: { board.addBlockedReason(for: $0) },
                     onAdd: { if board.add($0) { adding = nil } }, onRetry: { board.catalog.reloadSoon() },
                     templates: InlineWidgetTemplate.offered(on: WidgetContract.current.layout(of: board.surface)),
+                    canMakeWidgets: board.canEdit,
                     onNewWidget: { template in
                         adding = nil
                         editing = MenubarEditing(surface: board.surface, request: .new(template))
