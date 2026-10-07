@@ -113,6 +113,45 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), [])
     }
 
+    func testAnInlinePackageProviderNeitherRunsNorAsksUntilTheCatalogLoads() throws {
+        try FileManager.default.createDirectory(at: boardFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try """
+            format: 1
+            surface: home
+            widgets:
+              - id: load
+                title: Load
+                source: {kind: provider, name: acme-tools/load, target: {workspace: alice-dev}, every: 60s}
+                view: {kind: number, value: "{{json.load}}"}
+                frame: {x: 24, y: 24, w: 320, h: 160}
+                size: medium
+                minimized: false
+                z: 1
+            """.write(to: boardFile, atomically: true, encoding: .utf8)
+        let store = WidgetCatalogStore(read: { throw DevmachineCLIError.commandFailed("not yet") })
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
+            catalog: store, configPath: { nil })
+        controller.open(configDirectory: root.appendingPathComponent("config").path)
+        let widget = try XCTUnwrap(controller.store?.board?.widgets.first)
+        XCTAssertEqual(controller.resolution(of: widget), .waitingForCatalog(type: "load"))
+        XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), [])
+
+        let commit = String(repeating: "1", count: 40)
+        store.seed(WidgetCatalog(
+            engine: "1.3", packagesRelease: "v41", widgets: [],
+            providers: [CatalogProvider(
+                name: "acme-tools/load", spec: PackageProviderSpec(returns: ["load": "number"], minEvery: "10s"),
+                trust: .thirdParty,
+                packageSource: CatalogPackageSource(url: "https://example.com/acme/acme-tools.git", ref: "v1.2.0", commit: commit))]))
+        guard case let .ready(resolved)? = controller.resolution(of: widget), let source = resolved.source else {
+            return XCTFail("the loaded catalog resolves it")
+        }
+        XCTAssertEqual(source.packageCommit, commit)
+        XCTAssertEqual(ApprovalPrompt(source, context: [:]).thirdPartySource, "https://example.com/acme/acme-tools.git")
+        XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), ["load"])
+    }
+
     func testAWidgetChangedWithinOneReleaseRefreshesTheJobs() {
         let before = DemoData.widgetCatalog
         let edited = WidgetCatalog(

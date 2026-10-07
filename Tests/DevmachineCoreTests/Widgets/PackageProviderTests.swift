@@ -34,6 +34,23 @@ final class PackageProviderTests: XCTestCase {
         XCTAssertEqual(try index.spec(for: "acme-tools/load"), spec)
         XCTAssertNil(try index.spec(for: "ghost/load"))
         XCTAssertNil(try PackageProviderIndex.unknown.spec(for: "acme-tools/load"))
+        XCTAssertThrowsError(try index.spec(for: "acme-tools/nope")) {
+            XCTAssertEqual(($0 as? WidgetSpecProblem)?.message,
+                           "source.name acme-tools/nope: acme-tools has no provider nope; its providers: load")
+        }
+    }
+
+    func testACatalogIsCompleteOnlyWhenItReadAReleaseAndListsProviders() {
+        let spec = PackageProviderSpec(returns: [:], minEvery: "10s")
+        let listed = [CatalogProvider(name: "acme-tools/load", spec: spec)]
+        XCTAssertTrue(WidgetCatalog(engine: "1.3", packagesRelease: "v41", widgets: [], providers: listed)
+            .packageProviderIndex.isComplete)
+        let noRelease = WidgetCatalog(engine: "1.3", packagesRelease: "", widgets: [], providers: listed).packageProviderIndex
+        XCTAssertFalse(noRelease.isComplete)
+        XCTAssertEqual(noRelease.packages, ["acme-tools"])
+        let older = WidgetCatalog(engine: "1.2", packagesRelease: "v41", widgets: [], providers: nil).packageProviderIndex
+        XCTAssertFalse(older.isComplete)
+        XCTAssertEqual(older.packages, [])
     }
 
     func testACompleteIndexNamesWhatIsMissing() {

@@ -154,6 +154,10 @@ public enum WidgetResolution: Equatable, Sendable {
     case needsNewerApp(type: String, reason: String)
     /// The entry exists but cannot sit in its area; the reason is the CLI's.
     case refused(type: String, reason: String)
+    /// Only a fresh catalog says whose code a package provider written in a
+    /// board runs, and at which commit third-party code is, so neither runs
+    /// nor offers approval until one is read.
+    case waitingForCatalog(type: String)
 
     public static func resolve(
         _ instance: BoardWidget, in catalog: WidgetCatalog, contract: WidgetContract = .current
@@ -169,7 +173,7 @@ public enum WidgetResolution: Equatable, Sendable {
             }
         }
         if widget.source.kind != "provider" || PackageProviderName.parts(widget.source.name) != nil {
-            return resolveSource(instance, widget: widget, index: catalog.packageProviderIndex, contract: contract)
+            return resolveSource(instance, widget: widget, catalog: catalog, contract: contract)
         }
         let provider = widget.source.name
         guard contract.sourceKinds.contains(widget.source.kind), let minimum = contract.minimumInterval(for: provider) else {
@@ -186,7 +190,7 @@ public enum WidgetResolution: Equatable, Sendable {
     }
 
     private static func resolveSource(
-        _ instance: BoardWidget, widget: CatalogWidget, index: PackageProviderIndex, contract: WidgetContract
+        _ instance: BoardWidget, widget: CatalogWidget, catalog: WidgetCatalog, contract: WidgetContract
     ) -> WidgetResolution {
         if widget.source.kind == "provider", let parts = PackageProviderName.parts(widget.source.name),
            parts.package != widget.package {
@@ -200,7 +204,7 @@ public enum WidgetResolution: Equatable, Sendable {
         do {
             source = try WidgetSourceReader.read(
                 raisingEvery(of: widget.source.raw, contract: contract), scope: scope, contract: contract,
-                packageProviders: index)
+                packageProviders: catalog.packageProviderIndex)
             view = try WidgetViewReader.read(
                 widget.view, source: source, sourceWritesParse: widget.source.raw["parse"] != nil, scope: scope,
                 contract: contract)
@@ -216,6 +220,7 @@ public enum WidgetResolution: Equatable, Sendable {
             .merging(instance.with.filter { widget.inputs[$0.key] != nil }.mapValues(\.text)) { _, chosen in chosen }
         let every = floored(source.every, kind: source.kind, contract: contract)
         let thirdParty = widget.trust == .thirdParty
+        if thirdParty, source.runsCode, catalog.isStale { return .waitingForCatalog(type: widget.name) }
         return .ready(ResolvedWidget(
             widget: widget, provider: "", viewKind: view.kind, arguments: [:], every: every.seconds ?? 0,
             minimum: CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract),
@@ -229,8 +234,8 @@ public enum WidgetResolution: Equatable, Sendable {
 
     /// A widget written in a board carries its own source and view, already
     /// checked by the board reader. An agent may have written it, so whatever
-    /// runs code waits for approval; a package provider is also checked
-    /// against the catalog once there is one.
+    /// runs code waits for approval; a package provider also waits for the
+    /// catalog, which it is checked against.
     public static func resolveInline(
         _ instance: BoardWidget, catalog: WidgetCatalog? = nil, contract: WidgetContract = .current
     ) -> WidgetResolution {
@@ -247,7 +252,8 @@ public enum WidgetResolution: Equatable, Sendable {
                 every: max(floor, GoDuration.seconds(provider.every) ?? floor), minimum: minimum, title: inline.title))
         }
         var source = inline.source
-        if case let .packageProvider(provider) = source, let catalog {
+        if case let .packageProvider(provider) = source {
+            guard let catalog else { return .waitingForCatalog(type: instance.id) }
             switch checked(provider, against: catalog.packageProviderIndex) {
             case let .success(filled): source = .packageProvider(filled)
             case let .failure(problem): return .refused(type: instance.id, reason: problem.message)
@@ -258,6 +264,7 @@ public enum WidgetResolution: Equatable, Sendable {
         }
         let every = floored(source.every, kind: source.kind, contract: contract)
         let thirdParty = thirdPartyProvider(of: source, in: catalog)
+        if thirdParty != nil, catalog?.isStale == true { return .waitingForCatalog(type: instance.id) }
         return .ready(ResolvedWidget(
             widget: widget, provider: "", viewKind: inline.view.kind, arguments: [:], every: every.seconds ?? 0,
             minimum: minimum,
@@ -328,6 +335,7 @@ public enum WidgetResolutionCopy {
         case .notFound: return "Widget not found"
         case .needsNewerApp: return "Needs a newer app"
         case .refused: return "Cannot go here"
+        case .waitingForCatalog: return "Waiting for the widget catalog…"
         }
     }
 
@@ -342,6 +350,8 @@ public enum WidgetResolutionCopy {
             return "This app cannot draw it: \(reason)."
         case let .refused(_, reason):
             return reason + "."
+        case .waitingForCatalog:
+            return "Only devmachine widgets list says whose code it runs and at which commit, so it waits for a fresh answer."
         }
     }
 }

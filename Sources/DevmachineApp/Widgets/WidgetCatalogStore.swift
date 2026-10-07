@@ -2,7 +2,7 @@ import Foundation
 import DevmachineCore
 
 /// The widget catalog as the CLI resolves it. A failed read keeps the last
-/// good catalog; with none, Home says it could not fetch packages.
+/// good catalog, marked stale; with none, Home says it could not fetch packages.
 @MainActor
 final class WidgetCatalogStore: ObservableObject {
     static let shared = WidgetCatalogStore()
@@ -64,6 +64,7 @@ final class WidgetCatalogStore: ObservableObject {
             if catalog != next { catalog = next }
             state = .loaded
         case let .failure(error):
+            if let current = catalog, !current.isStale { catalog = current.stale() }
             state = .failed(error.localizedDescription)
         }
         if again {

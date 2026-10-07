@@ -74,8 +74,13 @@ final class WidgetCatalogStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .loaded)
         box.set(.failure(ReadError.offline))
         await store.reload()
-        XCTAssertEqual(store.catalog, good)
+        XCTAssertEqual(store.catalog?.widgets, good.widgets)
+        XCTAssertEqual(store.catalog?.isStale, true)
         XCTAssertEqual(store.state, .failed("could not fetch packages: offline"))
+        box.set(.success(good))
+        await store.reload()
+        XCTAssertEqual(store.catalog, good)
+        XCTAssertEqual(store.catalog?.isStale, false)
     }
 
     func testAFirstFailureLeavesNoCatalog() async {

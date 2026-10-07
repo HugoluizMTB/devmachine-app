@@ -5,6 +5,7 @@
     "devmachine-app/stats": {"package": "devmachine-app", "command": "stats", "scope": "machine", "trust": "official",
       "returns": {"cpu": "number", "memory": "number", "disk": "number", "uptime": "string?"}, "min_every": "30s"},
     "acme-tools/load": {"package": "acme-tools", "command": "load", "scope": "workspace", "trust": "third-party",
+      "package_source": {"url": "https://example.com/acme/acme-tools.git", "ref": "v1.2.0", "commit": "1111111111111111111111111111111111111111"},
       "returns": {"load": "number"}, "min_every": "10s"}
   },
   "widgets": [

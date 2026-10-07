@@ -74,8 +74,9 @@ public struct PackageProviderSource: Hashable, Sendable {
     }
 }
 
-/// The package providers the catalog knows. Only a complete index (the CLI
-/// listed every one) may call a name missing; otherwise `devmachine run` does.
+/// The package providers the catalog knows. A package in `packages` lists
+/// all its providers; only a complete index (a release was read) may call a
+/// package missing, as `widgets validate` does; otherwise `devmachine run` does.
 public struct PackageProviderIndex: Equatable, Sendable {
     public let providers: [String: PackageProviderSpec]
     public let packages: Set<String>
@@ -91,8 +92,9 @@ public struct PackageProviderIndex: Equatable, Sendable {
 
     public func spec(for name: String) throws -> PackageProviderSpec? {
         if let spec = providers[name] { return spec }
-        guard isComplete, let parts = PackageProviderName.parts(name) else { return nil }
+        guard let parts = PackageProviderName.parts(name) else { return nil }
         guard packages.contains(parts.package) else {
+            guard isComplete else { return nil }
             throw WidgetSpecProblem(["name"], "source.name \(name): no package \(parts.package) in the release or your own packages")
         }
         let prefix = parts.package + "/"

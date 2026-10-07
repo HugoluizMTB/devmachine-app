@@ -51,10 +51,12 @@ public enum StackCatalog {
     public static func merged(_ catalog: WidgetCatalog?, contract: WidgetContract = .current) -> WidgetCatalog {
         let known = catalog?.widgets ?? []
         let names = Set(known.map(\.name))
-        return WidgetCatalog(
+        var merged = WidgetCatalog(
             engine: catalog?.engine ?? contract.engine, packagesRelease: catalog?.packagesRelease ?? "",
             widgets: known + AppStackWidgets.all.filter { !names.contains($0.name) }, problems: catalog?.problems ?? [],
             providers: catalog?.providers)
+        merged.isStale = catalog?.isStale ?? false
+        return merged
     }
 }
 

@@ -306,8 +306,17 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertNil(try older.spec(for: "ghost/load"))
     }
 
+    func testAThirdPartyProviderEntryCarriesItsPackageSource() throws {
+        let provider = try XCTUnwrap(catalog("widgets-list-engine-1.3.json").providers?.first { $0.name == "acme-tools/load" })
+        XCTAssertEqual(provider.trust, .thirdParty)
+        XCTAssertEqual(provider.packageSource, CatalogPackageSource(
+            url: "https://example.com/acme/acme-tools.git", ref: "v1.2.0", commit: String(repeating: "1", count: 40)))
+        let official = try XCTUnwrap(catalog("widgets-list-engine-1.3.json").providers?.first { $0.name == "devmachine-app/stats" })
+        XCTAssertNil(official.packageSource)
+    }
+
     func testAnEmptyProviderListStillMakesTheIndexComplete() throws {
-        let json = #"{"engine": "1.3", "providers": {}, "widgets": []}"#
+        let json = #"{"engine": "1.3", "packages_release": "v41", "providers": {}, "widgets": []}"#
         let catalog = try WidgetCatalog.decode(Data(json.utf8))
         XCTAssertEqual(catalog.providers, [])
         XCTAssertTrue(catalog.packageProviderIndex.isComplete)
@@ -350,7 +359,7 @@ final class WidgetCatalogTests: XCTestCase {
 
     func testAMalformedProviderIsLeftOutAndTheRestRead() throws {
         let json = #"""
-        {"engine": "1.3", "widgets": [], "providers": {
+        {"engine": "1.3", "packages_release": "v41", "widgets": [], "providers": {
           "mine/load": {"package": "mine", "command": "load", "returns": {"load": "number"}, "min_every": "10s"},
           "mine/broken": {"returns": 42, "min_every": "10s"},
           "mine/text": "not an object"}}

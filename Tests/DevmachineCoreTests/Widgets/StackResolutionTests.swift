@@ -163,9 +163,7 @@ final class StackResolutionTests: XCTestCase {
         XCTAssertEqual(
             StackResolution.resolve(entry, on: board, catalog: catalog),
             .refused(type: entry.id, reason: "source.name ghost/load: no package ghost in the release or your own packages"))
-        guard case .ready? = StackResolution.resolve(entry, on: board, catalog: nil) else {
-            return XCTFail("before the catalog loads, the board reader's checks are enough")
-        }
+        XCTAssertEqual(StackResolution.resolve(entry, on: board, catalog: nil), .waitingForCatalog(type: entry.id))
     }
 
     func testTheStackCatalogKeepsTheCLIListOfPackageProviders() throws {

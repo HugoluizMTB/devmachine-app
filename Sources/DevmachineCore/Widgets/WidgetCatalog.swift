@@ -11,6 +11,9 @@ public struct WidgetCatalog: Decodable, Equatable, Sendable {
     /// Every package provider the CLI found, sorted by name; nil from a CLI
     /// older than engine 1.3, which lists none.
     public let providers: [CatalogProvider]?
+    /// The last read failed, so the commits here may be older than what
+    /// `packages update` installed since; third-party code waits for a fresh one.
+    public var isStale = false
 
     enum CodingKeys: String, CodingKey {
         case engine, widgets, problems, providers
@@ -49,9 +52,16 @@ public struct WidgetCatalog: Decodable, Equatable, Sendable {
             if let spec = widget.packageProvider { specs[widget.source.name] = spec }
         }
         for provider in providers ?? [] { specs[provider.name] = provider.spec }
+        guard providers != nil else { return PackageProviderIndex(providers: specs, packages: [], isComplete: false) }
         let packages = Set(widgets.map(\.package))
             .union(specs.keys.compactMap { PackageProviderName.parts($0)?.package })
-        return PackageProviderIndex(providers: specs, packages: packages, isComplete: providers != nil)
+        return PackageProviderIndex(providers: specs, packages: packages, isComplete: !packagesRelease.isEmpty)
+    }
+
+    public func stale() -> WidgetCatalog {
+        var copy = self
+        copy.isStale = true
+        return copy
     }
 
     public static func decode(_ data: Data) throws -> WidgetCatalog {
