@@ -1,20 +1,32 @@
 import SwiftUI
 import DevmachineCore
 
+/// A reason every listed widget shares (the board cannot change) reads
+/// once above the list, as Home always showed it; any other sits on its row.
+enum WidgetGalleryReasons {
+    static func shared(_ entries: [CatalogWidget], _ reason: (CatalogWidget) -> String?) -> String? {
+        guard let first = entries.first.flatMap(reason) else { return nil }
+        return entries.allSatisfy({ reason($0) == first }) ? first : nil
+    }
+}
+
 struct WidgetGalleryView: View {
+    let surface: String
     let catalog: WidgetCatalog?
+    let entries: [CatalogWidget]
     let failure: String?
-    let blockedReason: String?
+    let blockedReason: (CatalogWidget) -> String?
     let onAdd: (CatalogWidget) -> Void
     let onRetry: () -> Void
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        VStack(alignment: .leading, spacing: m.space.md) {
+        let sharedReason = WidgetGalleryReasons.shared(entries, blockedReason)
+        return VStack(alignment: .leading, spacing: m.space.md) {
             Text(verbatim: "Add a widget")
                 .font(.dm(13, weight: .semibold))
-            if let blockedReason {
-                Text(verbatim: blockedReason)
+            if let sharedReason {
+                Text(verbatim: sharedReason)
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -22,7 +34,7 @@ struct WidgetGalleryView: View {
             if let catalog {
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: m.space.xs) {
-                        ForEach(WidgetGallery.entries(catalog, surface: DefaultBoard.surface)) { row($0, in: catalog) }
+                        ForEach(entries) { row($0, in: catalog, showsReason: sharedReason == nil) }
                     }
                 }
             } else if let failure {
@@ -36,8 +48,9 @@ struct WidgetGalleryView: View {
         .frame(maxHeight: m.pt(480))
     }
 
-    private func row(_ widget: CatalogWidget, in catalog: WidgetCatalog) -> some View {
-        HStack(alignment: .top, spacing: m.space.md) {
+    private func row(_ widget: CatalogWidget, in catalog: WidgetCatalog, showsReason: Bool) -> some View {
+        let reason = blockedReason(widget)
+        return HStack(alignment: .top, spacing: m.space.md) {
             VStack(alignment: .leading, spacing: m.space.xxs) {
                 Text(verbatim: WidgetTitle.make(type: widget.name, in: catalog))
                     .font(.dm(12, weight: .semibold))
@@ -48,6 +61,12 @@ struct WidgetGalleryView: View {
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize(horizontal: false, vertical: true)
+                if let reason, showsReason {
+                    Text(verbatim: reason)
+                        .font(.dm(11))
+                        .foregroundStyle(Color.dmMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if !widget.available {
                     unavailableHint(widget)
                 }
@@ -55,7 +74,7 @@ struct WidgetGalleryView: View {
             Spacer(minLength: m.space.sm)
             if widget.available {
                 DMButton("Add", variant: .outline, size: .small) { onAdd(widget) }
-                    .disabled(blockedReason != nil)
+                    .disabled(reason != nil)
             }
         }
         .padding(m.space.sm)

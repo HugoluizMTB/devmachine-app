@@ -150,9 +150,11 @@ private struct WidgetGalleryPopover: View {
 
     private var gallery: some View {
         WidgetGalleryView(
+            surface: DefaultBoard.surface,
             catalog: catalog.catalog,
+            entries: catalog.catalog.map { WidgetGallery.entries($0, surface: DefaultBoard.surface) } ?? [],
             failure: failureMessage,
-            blockedReason: controller.addBlockedReason,
+            blockedReason: { _ in controller.addBlockedReason },
             onAdd: { widget in if controller.add(widget, canvasWidth: canvasWidth) { onAdded() } },
             onRetry: { catalog.reloadSoon() })
     }
