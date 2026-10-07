@@ -205,6 +205,34 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertNil(controller.placementsError)
     }
 
+    func testAddingToABrokenBoardFailsAndChangesNothing() throws {
+        try FileManager.default.createDirectory(at: boardFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("widgets: [unclosed\n".utf8).write(to: boardFile)
+        let controller = makeController()
+        let before = try String(contentsOf: boardFile, encoding: .utf8)
+        let clock = try XCTUnwrap(DemoData.widgetCatalog.widgets.first { $0.name == "devmachine-app/clock" })
+        XCTAssertFalse(controller.add(clock, canvasWidth: 1280))
+        XCTAssertEqual(try String(contentsOf: boardFile, encoding: .utf8), before)
+        XCTAssertEqual(controller.addBlockedReason, HomeBoardCopy.invalidNote)
+    }
+
+    func testAddingToAnOpenBoardSucceeds() throws {
+        let controller = makeController()
+        let clock = try XCTUnwrap(DemoData.widgetCatalog.widgets.first { $0.name == "devmachine-app/clock" })
+        XCTAssertNil(controller.addBlockedReason)
+        XCTAssertTrue(controller.add(clock, canvasWidth: 1280))
+        XCTAssertEqual(controller.store?.board?.widgets.filter { $0.type == "devmachine-app/clock" }.count, 2)
+    }
+
+    func testAddingBeforeTheBoardIsOpenFails() throws {
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
+            catalog: WidgetCatalogStore(read: { DemoData.widgetCatalog }))
+        let clock = try XCTUnwrap(DemoData.widgetCatalog.widgets.first { $0.name == "devmachine-app/clock" })
+        XCTAssertFalse(controller.add(clock, canvasWidth: 1280))
+        XCTAssertEqual(controller.addBlockedReason, "Home is not ready yet.")
+    }
+
     func testReloadOpensTheBoardOnceTheConfigurationIsKnown() async throws {
         let configPath = root.appendingPathComponent("config").path
         let answers = ConfigAnswers([nil, configPath])

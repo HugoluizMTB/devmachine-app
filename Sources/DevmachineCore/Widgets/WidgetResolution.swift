@@ -139,10 +139,44 @@ public enum WidgetResolutionCopy {
 }
 
 public enum WidgetTitle {
+    private static let acronyms = ["api": "API", "cli": "CLI", "pr": "PR", "prs": "PRs"]
+
     public static func make(type: String) -> String {
-        let part = type.split(separator: "/").last.map(String.init) ?? type
-        let words = part.replacingOccurrences(of: "-", with: " ")
-        return words.prefix(1).uppercased() + words.dropFirst()
+        phrase(widgetPart(type), capitalizesFirst: true)
+    }
+
+    /// Two widgets with the same name from different packages ("usage")
+    /// would read the same, so each takes its package's name in front.
+    public static func make(type: String, in catalog: WidgetCatalog?) -> String {
+        let widget = widgetPart(type)
+        let package = type.split(separator: "/", maxSplits: 1).first.map(String.init) ?? type
+        guard let catalog, catalog.widgets.contains(where: { $0.widget == widget && $0.package != package }) else {
+            return make(type: type)
+        }
+        return displayName(package: package) + " " + phrase(widget, capitalizesFirst: false)
+    }
+
+    public static func displayName(package: String) -> String {
+        words(package).map { word($0, capitalized: true) }.joined(separator: " ")
+    }
+
+    private static func widgetPart(_ type: String) -> String {
+        type.split(separator: "/").last.map(String.init) ?? type
+    }
+
+    private static func phrase(_ name: String, capitalizesFirst: Bool) -> String {
+        words(name).enumerated()
+            .map { word($0.element, capitalized: capitalizesFirst && $0.offset == 0) }
+            .joined(separator: " ")
+    }
+
+    private static func words(_ name: String) -> [String] {
+        name.split(whereSeparator: { $0 == "-" || $0 == "_" }).map(String.init)
+    }
+
+    private static func word(_ word: String, capitalized: Bool) -> String {
+        if let acronym = acronyms[word.lowercased()] { return acronym }
+        return capitalized ? word.prefix(1).uppercased() + word.dropFirst() : word
     }
 }
 

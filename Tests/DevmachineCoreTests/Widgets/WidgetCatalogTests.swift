@@ -151,7 +151,7 @@ final class WidgetCatalogTests: XCTestCase {
 
     func testTitlesAndGallery() {
         XCTAssertEqual(WidgetTitle.make(type: "devmachine-app/clock"), "Clock")
-        XCTAssertEqual(WidgetTitle.make(type: "github/open-prs"), "Open prs")
+        XCTAssertEqual(WidgetTitle.make(type: "github/open-prs"), "Open PRs")
         var locked = CatalogFixtures.usage(package: "acme", harness: "acme")
         locked.available = false
         var sidebarOnly = CatalogFixtures.summary
@@ -160,6 +160,25 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertEqual(
             WidgetGallery.entries(catalog, surface: "home").map(\.name),
             ["devmachine-app/clock", "devmachine-app/machines", "acme/usage"])
+    }
+
+    func testWidgetsThatShareANameTakeTheirPackagesName() {
+        let catalog = CatalogFixtures.catalog([
+            CatalogFixtures.usage(package: "claude-code", harness: "claude"),
+            CatalogFixtures.usage(package: "codex", harness: "codex"),
+            CatalogFixtures.clock,
+        ])
+        XCTAssertEqual(WidgetTitle.make(type: "claude-code/usage", in: catalog), "Claude Code usage")
+        XCTAssertEqual(WidgetTitle.make(type: "codex/usage", in: catalog), "Codex usage")
+        XCTAssertEqual(WidgetTitle.make(type: "devmachine-app/clock", in: catalog), "Clock")
+        XCTAssertEqual(WidgetTitle.make(type: "claude-code/usage", in: nil), "Usage")
+    }
+
+    func testAPackagesDisplayNameKeepsKnownAcronyms() {
+        XCTAssertEqual(WidgetTitle.displayName(package: "claude-code"), "Claude Code")
+        XCTAssertEqual(WidgetTitle.displayName(package: "ssh_hardening"), "Ssh Hardening")
+        XCTAssertEqual(WidgetTitle.displayName(package: "acme-cli"), "Acme CLI")
+        XCTAssertEqual(WidgetTitle.displayName(package: "acme-api-prs"), "Acme API PRs")
     }
 
     func testTheGalleryHintSplitsTheCommandFromTheAdvice() {

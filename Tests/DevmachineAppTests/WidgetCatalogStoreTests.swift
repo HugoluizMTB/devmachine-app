@@ -84,4 +84,14 @@ final class WidgetCatalogStoreTests: XCTestCase {
         XCTAssertNil(store.catalog)
         XCTAssertEqual(store.state, .failed("could not fetch packages: offline"))
     }
+
+    func testAPinnedCatalogNeverReadsTheCLI() async {
+        let pinned = WidgetCatalog(engine: "1.0", packagesRelease: "v39", widgets: [])
+        let box = ReadBox(.success(WidgetCatalog(engine: "1.0", packagesRelease: "v40", widgets: [])))
+        let store = WidgetCatalogStore(read: { try box.read() })
+        store.pin(pinned)
+        await store.reload()
+        XCTAssertEqual(store.catalog, pinned)
+        XCTAssertEqual(store.state, .loaded)
+    }
 }

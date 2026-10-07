@@ -4,6 +4,7 @@ import DevmachineCore
 struct WidgetGalleryView: View {
     let catalog: WidgetCatalog?
     let failure: String?
+    let blockedReason: String?
     let onAdd: (CatalogWidget) -> Void
     let onRetry: () -> Void
     @Environment(\.dmMetrics) private var m
@@ -12,10 +13,16 @@ struct WidgetGalleryView: View {
         VStack(alignment: .leading, spacing: m.space.md) {
             Text(verbatim: "Add a widget")
                 .font(.dm(13, weight: .semibold))
+            if let blockedReason {
+                Text(verbatim: blockedReason)
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let catalog {
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: m.space.xs) {
-                        ForEach(WidgetGallery.entries(catalog, surface: DefaultBoard.surface)) { row($0) }
+                        ForEach(WidgetGallery.entries(catalog, surface: DefaultBoard.surface)) { row($0, in: catalog) }
                     }
                 }
             } else if let failure {
@@ -29,10 +36,10 @@ struct WidgetGalleryView: View {
         .frame(maxHeight: m.pt(480))
     }
 
-    private func row(_ widget: CatalogWidget) -> some View {
+    private func row(_ widget: CatalogWidget, in catalog: WidgetCatalog) -> some View {
         HStack(alignment: .top, spacing: m.space.md) {
             VStack(alignment: .leading, spacing: m.space.xxs) {
-                Text(verbatim: WidgetTitle.make(type: widget.name))
+                Text(verbatim: WidgetTitle.make(type: widget.name, in: catalog))
                     .font(.dm(12, weight: .semibold))
                 Text(verbatim: widget.name)
                     .font(.dm(11))
@@ -48,6 +55,7 @@ struct WidgetGalleryView: View {
             Spacer(minLength: m.space.sm)
             if widget.available {
                 DMButton("Add", variant: .outline, size: .small) { onAdd(widget) }
+                    .disabled(blockedReason != nil)
             }
         }
         .padding(m.space.sm)

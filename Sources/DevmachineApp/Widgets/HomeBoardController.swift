@@ -56,7 +56,7 @@ final class HomeBoardController: ObservableObject {
         guard !started else { return }
         started = true
         if DemoMode.isActive {
-            catalog.seed(DemoData.widgetCatalog)
+            catalog.pin(DemoData.widgetCatalog)
             let environment = ProcessInfo.processInfo.environment
             let folder = environment["DEVMACHINE_DEMO_BOARDS"].flatMap { $0.isEmpty ? nil : $0 }
                 ?? FileManager.default.temporaryDirectory
@@ -177,13 +177,19 @@ final class HomeBoardController: ObservableObject {
         store?.update { $0.widgets.removeAll { $0.id == id } }
     }
 
-    func add(_ widget: CatalogWidget, canvasWidth: Int) {
-        guard let store, store.canEdit, let board = store.board else { return }
+    var addBlockedReason: String? {
+        HomeBoardCopy.addBlocked(isOpen: store != nil, canEdit: store?.canEdit ?? false)
+    }
+
+    @discardableResult
+    func add(_ widget: CatalogWidget, canvasWidth: Int) -> Bool {
+        guard let store, store.canEdit, let board = store.board else { return false }
         let instance = WidgetPlacer.newInstance(of: widget, on: board, canvasWidth: canvasWidth)
         store.update { $0.widgets.append(instance) }
         var next = placements
         next.insert(widget.name, on: board.surface)
         savePlacements(next)
+        return true
     }
 
     func dismissPlacementsError() {

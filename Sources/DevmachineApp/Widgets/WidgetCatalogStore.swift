@@ -18,6 +18,7 @@ final class WidgetCatalogStore: ObservableObject {
     private let read: @Sendable () throws -> WidgetCatalog
     private var running = false
     private var again = false
+    private var pinned = false
 
     init(read: @escaping @Sendable () throws -> WidgetCatalog = { try WidgetCatalogStore.liveRead() }) {
         self.read = read
@@ -38,6 +39,7 @@ final class WidgetCatalogStore: ObservableObject {
     }
 
     func reload() async {
+        guard !pinned else { return }
         guard !running else {
             again = true
             return
@@ -63,5 +65,11 @@ final class WidgetCatalogStore: ObservableObject {
     func seed(_ catalog: WidgetCatalog) {
         self.catalog = catalog
         state = .loaded
+    }
+
+    /// Demo mode: the catalog stays this one, and the CLI is never asked.
+    func pin(_ catalog: WidgetCatalog) {
+        seed(catalog)
+        pinned = true
     }
 }

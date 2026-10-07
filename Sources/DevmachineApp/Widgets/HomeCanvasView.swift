@@ -16,6 +16,7 @@ struct HomeCanvasView: View {
     @Environment(\.dmMetrics) private var m
     @Environment(\.collapsedSidebarButtonFrame) private var sidebarButton
     @State private var showsGallery = false
+    @State private var addButtonInWindow: CGRect?
     @State private var canvasSize: CGSize = .zero
     @State private var inWindow: CGRect = .zero
     @State private var clockRect: CGRect?
@@ -64,31 +65,30 @@ struct HomeCanvasView: View {
     }
 
     private var addButton: some View {
-        DMButton(icon: "plus", label: "Add a widget") { showsGallery = true }
+        let windowSpace = ContentView.windowSpace
+        return DMButton(icon: "plus", label: "Add a widget") { showsGallery = true }
             .dmGlass(radius: DMRadius.pill)
-            .padding(m.pt(HomeCanvasMetrics.padding))
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(windowSpace)) } action: {
+                addButtonInWindow = $0
+            }
+            .padding(.top, m.space.md)
+            .padding(.trailing, m.pt(HomeCanvasMetrics.padding))
             .popover(isPresented: $showsGallery, arrowEdge: .bottom) {
-                WidgetGalleryView(
-                    catalog: catalog.catalog,
-                    failure: catalogFailureMessage,
-                    onAdd: { widget in
-                        controller.add(widget, canvasWidth: Int(canvasSize.width / m.pt(1)))
-                        showsGallery = false
-                    },
-                    onRetry: { catalog.reloadSoon() })
+                WidgetGalleryPopover(
+                    controller: controller, catalog: catalog,
+                    canvasWidth: Int(canvasSize.width / m.pt(1)),
+                    onAdded: { showsGallery = false })
             }
     }
 
-    private var catalogFailureMessage: String? {
-        if case let .failed(message) = catalog.state { return message }
-        return nil
-    }
-
-    /// Moves the canvas down so the floating button that reopens the
-    /// sidebar covers no widget; the stored frames stay as they are.
+    /// Moves the canvas down so neither floating button (the one that
+    /// reopens the sidebar, and "+") covers a widget; the stored frames
+    /// stay as they are, and every free spot lands below them.
     private var topInset: CGFloat {
-        let button = sidebarButton?.offsetBy(dx: -inWindow.minX, dy: -inWindow.minY)
-        return FloatingButtonClearance.topInset(button: button, contentMinX: 0, contentMinY: 0, gap: m.space.md)
+        let local = { (rect: CGRect?) in rect?.offsetBy(dx: -inWindow.minX, dy: -inWindow.minY) }
+        return [sidebarButton, addButtonInWindow].map {
+            FloatingButtonClearance.topInset(button: local($0), contentMinX: 0, contentMinY: 0, gap: m.space.md)
+        }.max() ?? 0
     }
 
     @ViewBuilder
@@ -118,6 +118,44 @@ struct HomeCanvasView: View {
                 centreX: clock.map { Double($0.midX) })
         }
     }
+}
+
+/// The gallery redraws when the board's state changes, so Add is
+/// disabled (with the reason) while the board cannot be edited.
+private struct WidgetGalleryPopover: View {
+    @ObservedObject var controller: HomeBoardController
+    @ObservedObject var catalog: WidgetCatalogStore
+    let canvasWidth: Int
+    let onAdded: () -> Void
+
+    var body: some View {
+        if let store = controller.store {
+            BoardStoreReader(store: store) { gallery }
+        } else {
+            gallery
+        }
+    }
+
+    private var gallery: some View {
+        WidgetGalleryView(
+            catalog: catalog.catalog,
+            failure: failureMessage,
+            blockedReason: controller.addBlockedReason,
+            onAdd: { widget in if controller.add(widget, canvasWidth: canvasWidth) { onAdded() } },
+            onRetry: { catalog.reloadSoon() })
+    }
+
+    private var failureMessage: String? {
+        if case let .failed(message) = catalog.state { return message }
+        return nil
+    }
+}
+
+private struct BoardStoreReader<Content: View>: View {
+    @ObservedObject var store: BoardStore
+    @ViewBuilder let content: () -> Content
+
+    var body: some View { content() }
 }
 
 private struct BoardCanvasLayer: View {
@@ -306,7 +344,7 @@ private struct BoardCanvasLayer: View {
            let descriptor = facade.descriptor(for: HarnessID(rawValue: resolved.arguments["harness"] ?? "")) {
             return "\(descriptor.shortTitle) usage"
         }
-        return WidgetTitle.make(type: widget.type)
+        return WidgetTitle.make(type: widget.type, in: catalog.catalog)
     }
 
     private var clockDisplayRect: CGRect? {
