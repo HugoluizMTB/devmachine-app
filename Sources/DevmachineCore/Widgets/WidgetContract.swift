@@ -160,6 +160,30 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         public let ignores: [String]
     }
 
+    /// One input type of a `widget.yml`; `with` says what a board's value
+    /// for it holds, `fields` what the input itself may declare.
+    public struct InputTypeSpec: Decodable, Equatable, Sendable {
+        public let fields: [String: FieldSpec]?
+        public let with: String
+
+        public init(fields: [String: FieldSpec]? = nil, with: String) {
+            self.fields = fields
+            self.with = with
+        }
+    }
+
+    /// Where a `choice` input's options come from: a fixed list (`values`),
+    /// or a list in the configuration (`config`), which the app reads live.
+    public struct OptionSourceSpec: Decodable, Equatable, Sendable {
+        public let values: [String]?
+        public let config: String?
+
+        public init(values: [String]? = nil, config: String? = nil) {
+            self.values = values
+            self.config = config
+        }
+    }
+
     /// How a package's own command feeds a widget: its name, what its
     /// package.yml may declare, where it runs and when its widgets ask.
     public struct PackageProviderRules: Decodable, Equatable, Sendable {
@@ -203,6 +227,9 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
     public let sourceKinds: [String]
     public let sources: [String: SourceSpec]
     public let formats: Formats
+    public let inputTypes: [String: InputTypeSpec]
+    public let optionSources: [String: OptionSourceSpec]
+    public let entryOverrides: [String: FieldSpec]
 
     enum CodingKeys: String, CodingKey {
         case engine, layouts, unit, snap, presets, surfaces, providers, views, sources, formats
@@ -214,6 +241,9 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         case slotEntry = "slot_entry"
         case tabsEntry = "tabs_entry"
         case packageProvider = "package_provider"
+        case inputTypes = "input_types"
+        case optionSources = "option_sources"
+        case entryOverrides = "entry_overrides"
     }
 
     public static let presetOrder = ["small", "medium", "large", "wide", "tall"]
@@ -269,13 +299,13 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
 }
 
 extension WidgetContract {
-    public static let current = engine14
+    public static let current = engine15
 
     private static let target = FieldSpec(type: "target", defaultValue: .string("local"))
     private static let timeout = FieldSpec(type: "duration", defaultValue: .string("30s"), max: .string("10m"))
 
-    public static let engine14 = WidgetContract(
-        engine: "1.4",
+    public static let engine15 = WidgetContract(
+        engine: "1.5",
         layouts: ["canvas", "stack", "slot", "tabs"],
         unit: 80,
         snap: 8,
@@ -320,7 +350,9 @@ extension WidgetContract {
             "app/summary": Provider(
                 args: [:], minEvery: "5s",
                 returns: ["sessions": "int", "harness_sessions": "int", "workspaces": "int"]),
-            "app/machines": Provider(args: [:], minEvery: "5s", returns: ["list": "machine_stats"]),
+            "app/machines": Provider(
+                args: ["machines": ProviderArg(type: "list", required: false)], minEvery: "5s",
+                returns: ["list": "machine_stats"]),
             "app/harness-usage": Provider(
                 args: ["harness": ProviderArg(type: "string", required: true)], minEvery: "5s",
                 returns: ["harness": "string", "windows": "list", "error": "string?"]),
@@ -361,7 +393,7 @@ extension WidgetContract {
             "app.pull-requests": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
             "app.links": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
             "app.brand": ViewSpec(accepts: ["app/brand"], layouts: ["slot"]),
-            "app.pull-requests-panel": ViewSpec(accepts: ["app/pull-requests-panel"], layouts: ["tabs"]),
+            "app.pull-requests-panel": ViewSpec(accepts: ["app/pull-requests-panel"], layouts: ["tabs", "canvas", "stack"]),
             "app.usage-panel": ViewSpec(accepts: ["app/usage-panel"], layouts: ["tabs"]),
             "text": ViewSpec(accepts: ["text", "lines", "ansi"], fields: [
                 "wrap": FieldSpec(type: "bool", defaultValue: .bool(true)),
@@ -449,5 +481,22 @@ extension WidgetContract {
                 "every": FieldSpec(type: "every", required: true),
             ]),
         ],
-        formats: Formats(widget: 1, board: 1))
+        formats: Formats(widget: 1, board: 1),
+        inputTypes: [
+            "string": InputTypeSpec(with: "string"),
+            "number": InputTypeSpec(with: "number"),
+            "boolean": InputTypeSpec(with: "bool"),
+            "choice": InputTypeSpec(
+                fields: [
+                    "from": FieldSpec(type: "enum", required: true, values: ["harnesses", "machines", "workspaces"]),
+                    "many": FieldSpec(type: "bool", defaultValue: .bool(false)),
+                ],
+                with: "string, or a list of strings when many"),
+        ],
+        optionSources: [
+            "harnesses": OptionSourceSpec(values: ["claude", "codex"]),
+            "machines": OptionSourceSpec(config: "machines"),
+            "workspaces": OptionSourceSpec(config: "workspaces"),
+        ],
+        entryOverrides: ["title": FieldSpec(type: "string"), "every": FieldSpec(type: "every")])
 }

@@ -5,15 +5,33 @@ final class WidgetContractTests: XCTestCase {
     private func fixture() throws -> Data {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/widget-contract-1.4.json")
+            .appendingPathComponent("Fixtures/widget-contract-1.5.json")
         return try Data(contentsOf: url)
     }
 
     func testTheGoldenContractIsTheOneThisAppImplements() throws {
         let decoded = try JSONDecoder().decode(WidgetContract.self, from: fixture())
-        XCTAssertEqual(decoded, WidgetContract.engine14)
-        XCTAssertEqual(WidgetContract.current, WidgetContract.engine14)
-        XCTAssertEqual(WidgetContract.current.engine, "1.4")
+        XCTAssertEqual(decoded, WidgetContract.engine15)
+        XCTAssertEqual(WidgetContract.current, WidgetContract.engine15)
+        XCTAssertEqual(WidgetContract.current.engine, "1.5")
+    }
+
+    func testChoiceInputsAndTheirSources() {
+        let contract = WidgetContract.current
+        XCTAssertEqual(Set(contract.inputTypes.keys), ["string", "number", "boolean", "choice"])
+        XCTAssertEqual(contract.inputTypes["choice"]?.fields?["from"]?.values, ["harnesses", "machines", "workspaces"])
+        XCTAssertEqual(contract.inputTypes["choice"]?.fields?["many"]?.defaultValue, .bool(false))
+        XCTAssertEqual(Set(contract.optionSources.keys), ["machines", "workspaces", "harnesses"])
+        XCTAssertEqual(contract.optionSources["harnesses"]?.values, ["claude", "codex"])
+        XCTAssertEqual(contract.optionSources["machines"]?.config, "machines")
+        XCTAssertEqual(contract.entryOverrides["every"]?.type, "every")
+        XCTAssertEqual(contract.entryOverrides["title"]?.type, "string")
+    }
+
+    func testMachinesTakeAListAndPullRequestsSitAnywhere() {
+        let contract = WidgetContract.current
+        XCTAssertEqual(contract.providers["app/machines"]?.args["machines"], .init(type: "list", required: false))
+        XCTAssertEqual(contract.views["app.pull-requests-panel"]?.layouts, ["tabs", "canvas", "stack"])
     }
 
     func testTheMenuBarIsASlotAndItsPanelIsTabs() {
@@ -55,7 +73,7 @@ final class WidgetContractTests: XCTestCase {
         XCTAssertTrue(contract.view("app.brand", accepts: "app/brand"))
         XCTAssertTrue(contract.view("app.usage-panel", accepts: "app/usage-panel"))
         XCTAssertEqual(contract.views["app.brand"]?.layouts, ["slot"])
-        XCTAssertEqual(contract.views["app.pull-requests-panel"]?.layouts, ["tabs"])
+        XCTAssertEqual(contract.views["app.pull-requests-panel"]?.layouts, ["tabs", "canvas", "stack"])
         XCTAssertEqual(contract.views["app.usage-panel"]?.layouts, ["tabs"])
         XCTAssertEqual(contract.views["number"]?.fields?["hide_zero"], .init(type: "bool", defaultValue: .bool(false)))
     }

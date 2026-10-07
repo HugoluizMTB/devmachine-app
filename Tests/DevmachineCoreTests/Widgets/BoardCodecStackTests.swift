@@ -176,7 +176,8 @@ final class BoardCodecStackTests: XCTestCase {
             engine: c.engine, layouts: c.layouts, unit: c.unit, snap: c.snap, presets: c.presets, stackRow: c.stackRow,
             stackEntry: c.stackEntry, slotMax: c.slotMax, slotEntry: c.slotEntry, tabsEntry: c.tabsEntry,
             surfaces: c.surfaces, contextTypes: c.contextTypes, providers: c.providers,
-            packageProvider: c.packageProvider, views: views, sourceKinds: c.sourceKinds, sources: c.sources, formats: c.formats)
+            packageProvider: c.packageProvider, views: views, sourceKinds: c.sourceKinds, sources: c.sources, formats: c.formats,
+            inputTypes: c.inputTypes, optionSources: c.optionSources, entryOverrides: c.entryOverrides)
     }
 
     func testAnInlineViewDrawnOnlyOnACanvasIsRefused() throws {
