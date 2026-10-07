@@ -313,6 +313,42 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertTrue(catalog.packageProviderIndex.isComplete)
     }
 
+    private func decodedTrust(_ extra: String, origin: String = "release") throws -> WidgetTrust? {
+        let json = """
+        {"engine": "1.3", "widgets": [{"name": "acme-tools/disk", "package": "acme-tools", "widget": "disk",
+          "origin": "\(origin)"\(extra), "source": {"kind": "url", "url": "https://example.com", "every": "60s"},
+          "view": {"kind": "status"}}]}
+        """
+        return try WidgetCatalog.decode(Data(json.utf8)).widgets.first?.trust
+    }
+
+    func testATrustThatDoesNotReadIsThirdParty() throws {
+        for value in [#""community""#, #""""#, "42", "{}", "null"] {
+            XCTAssertEqual(try decodedTrust(#", "trust": \#(value)"#), .thirdParty, value)
+        }
+    }
+
+    func testAPackageSourceWithoutTrustIsThirdParty() throws {
+        let source = #", "package_source": {"url": "https://example.com/acme/acme-tools.git", "ref": "v1", "commit": "2222222222222222222222222222222222222222"}"#
+        XCTAssertEqual(try decodedTrust(source), .thirdParty)
+        XCTAssertEqual(try decodedTrust(source, origin: "local"), .thirdParty)
+        XCTAssertEqual(try decodedTrust(#", "package_source": "broken""#), .thirdParty)
+        XCTAssertEqual(try decodedTrust(""), .official)
+        XCTAssertEqual(try decodedTrust("", origin: "local"), .local)
+    }
+
+    func testAMalformedProviderIsLeftOutAndTheRestRead() throws {
+        let json = #"""
+        {"engine": "1.3", "widgets": [], "providers": {
+          "mine/load": {"package": "mine", "command": "load", "returns": {"load": "number"}, "min_every": "10s"},
+          "mine/broken": {"returns": 42, "min_every": "10s"},
+          "mine/text": "not an object"}}
+        """#
+        let catalog = try WidgetCatalog.decode(Data(json.utf8))
+        XCTAssertEqual(catalog.providers?.map(\.name), ["mine/load"])
+        XCTAssertTrue(catalog.packageProviderIndex.isComplete)
+    }
+
     func testAGoNullReturnsAndAMissingOriginFileStillDecode() throws {
         let json = #"""
         {"engine": "1.3", "providers": {"mine/load": {"package": "mine", "command": "load", "returns": null, "min_every": ""}},

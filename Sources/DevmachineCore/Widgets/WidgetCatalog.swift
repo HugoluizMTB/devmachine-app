@@ -34,8 +34,8 @@ public struct WidgetCatalog: Decodable, Equatable, Sendable {
         packagesRelease = try c.decodeIfPresent(String.self, forKey: .packagesRelease) ?? ""
         widgets = try c.decodeIfPresent([CatalogWidget].self, forKey: .widgets) ?? []
         problems = try c.decodeIfPresent([CatalogProblem].self, forKey: .problems) ?? []
-        providers = try c.decodeIfPresent([String: PackageProviderSpec].self, forKey: .providers)?
-            .map { CatalogProvider(name: $0.key, spec: $0.value) }
+        providers = try c.decodeIfPresent([String: LenientProviderSpec].self, forKey: .providers)?
+            .compactMap { entry in entry.value.spec.map { CatalogProvider(name: entry.key, spec: $0) } }
             .sorted { $0.name < $1.name }
     }
 
@@ -149,6 +149,25 @@ public enum WidgetTrust: String, Sendable {
         guard let text else { return origin == "release" ? .official : .local }
         return WidgetTrust(rawValue: text) ?? .thirdParty
     }
+
+    /// A `trust` that is there but unreadable, or a package source without
+    /// one, asks: neither may pass for the owner's own code.
+    fileprivate static func decode(from c: KeyedDecodingContainer<CatalogWidget.CodingKeys>, origin: String) -> WidgetTrust {
+        if c.contains(.trust) {
+            return read((try? c.decodeIfPresent(String.self, forKey: .trust)) ?? "", origin: origin)
+        }
+        return c.contains(.packageSource) ? .thirdParty : read(nil, origin: origin)
+    }
+}
+
+/// One provider of the catalog's map; an entry that does not read is left
+/// out instead of failing the whole catalog.
+private struct LenientProviderSpec: Decodable {
+    let spec: PackageProviderSpec?
+
+    init(from decoder: Decoder) throws {
+        spec = try? PackageProviderSpec(from: decoder)
+    }
 }
 
 /// `.devmachine-source.yml` of a package installed from a git URL.
@@ -257,8 +276,8 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         package = try c.decode(String.self, forKey: .package)
         widget = try c.decode(String.self, forKey: .widget)
         origin = try c.decodeIfPresent(String.self, forKey: .origin) ?? ""
-        trust = WidgetTrust.read(try c.decodeIfPresent(String.self, forKey: .trust), origin: origin)
-        packageSource = try c.decodeIfPresent(CatalogPackageSource.self, forKey: .packageSource)
+        packageSource = try? c.decodeIfPresent(CatalogPackageSource.self, forKey: .packageSource)
+        trust = WidgetTrust.decode(from: c, origin: origin)
         packageProvider = try c.decodeIfPresent(PackageProviderSpec.self, forKey: .packageProvider)
         version = try c.decodeIfPresent(String.self, forKey: .version) ?? ""
         path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
