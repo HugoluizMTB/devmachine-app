@@ -373,9 +373,12 @@ final class WidgetSourceReaderTests: XCTestCase {
         providers: ["acme-tools/load": PackageProviderSpec(returns: ["load": "number"], minEvery: "10s")],
         packages: ["acme-tools"], isComplete: true)
 
+    private let machinePackageScope = WidgetScope.package(inputs: [], contextKeys: ["machine"])
+
     private func packageProblem(_ fields: [String: WidgetValue], index: PackageProviderIndex = .unknown) -> WidgetSpecProblem? {
+        let scope = index == .unknown ? WidgetScope.inline(contextKeys: ["machine"]) : machinePackageScope
         do {
-            _ = try WidgetSourceReader.read(.object(fields), scope: .inline(contextKeys: ["machine"]), packageProviders: index)
+            _ = try WidgetSourceReader.read(.object(fields), scope: scope, packageProviders: index)
             return nil
         } catch let problem as WidgetSpecProblem {
             return problem
@@ -390,7 +393,7 @@ final class WidgetSourceReaderTests: XCTestCase {
             "kind": .string("provider"), "name": .string("acme-tools/load"),
             "with": .object(["window": .string("5m"), "count": .int(3)]),
             "target": .object(["machine": .string("{{context.machine}}")]), "every": .string("30s"), "timeout": .string("1m"),
-        ]), scope: .inline(contextKeys: ["machine"]), packageProviders: acme)
+        ]), scope: machinePackageScope, packageProviders: acme)
         XCTAssertEqual(source, .packageProvider(PackageProviderSource(
             name: "acme-tools/load", with: ["window": "5m", "count": "3"], target: .machine("{{context.machine}}"),
             every: .interval(30), timeout: 60, returns: ["load": "number"])))

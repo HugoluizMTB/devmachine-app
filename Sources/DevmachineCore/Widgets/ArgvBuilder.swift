@@ -120,11 +120,10 @@ public enum ArgvBuilder {
             throw WidgetCommandError.refused("source.name \"\(source.name)\" is not <package>/<command>")
         }
         var args: [String] = []
-        for key in source.with.keys.sorted() {
+        for (key, value) in source.with.sorted(by: { $0.key < $1.key }) {
             guard key.wholeMatch(of: flagName) != nil else {
                 throw WidgetCommandError.refused("source.with.\(key) is not a flag name")
             }
-            let value = source.with[key] ?? ""
             guard !value.contains("\u{0}") else {
                 throw WidgetCommandError.refused("source.with.\(key) holds a NUL byte")
             }

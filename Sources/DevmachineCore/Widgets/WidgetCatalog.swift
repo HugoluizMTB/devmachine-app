@@ -172,12 +172,13 @@ public enum WidgetTrust: String, Sendable {
     }
 
     /// A `trust` that is there but unreadable, or a package source without
-    /// one, asks: neither may pass for the owner's own code.
-    fileprivate static func decode(from c: KeyedDecodingContainer<CatalogWidget.CodingKeys>, origin: String) -> WidgetTrust {
-        if c.contains(.trust) {
-            return read((try? c.decodeIfPresent(String.self, forKey: .trust)) ?? "", origin: origin)
-        }
-        return c.contains(.packageSource) ? .thirdParty : read(nil, origin: origin)
+    /// one, asks: neither may pass for the owner's own code. Nil when neither
+    /// key is there, so each caller keeps its own fallback.
+    fileprivate static func decode<Key: CodingKey>(
+        from c: KeyedDecodingContainer<Key>, trust: Key, packageSource: Key
+    ) -> WidgetTrust? {
+        if c.contains(trust) { return read((try? c.decodeIfPresent(String.self, forKey: trust)) ?? "", origin: "") }
+        return c.contains(packageSource) ? .thirdParty : nil
     }
 }
 
@@ -197,11 +198,7 @@ private struct LenientProviderSpec: Decodable {
         spec = try? PackageProviderSpec(from: decoder)
         let c = try? decoder.container(keyedBy: CodingKeys.self)
         packageSource = try? c?.decodeIfPresent(CatalogPackageSource.self, forKey: .packageSource)
-        if let c, c.contains(.trust) {
-            trust = WidgetTrust.read((try? c.decodeIfPresent(String.self, forKey: .trust)) ?? "", origin: "")
-        } else {
-            trust = c?.contains(.packageSource) == true ? .thirdParty : nil
-        }
+        trust = c.flatMap { WidgetTrust.decode(from: $0, trust: .trust, packageSource: .packageSource) }
     }
 }
 
@@ -314,7 +311,8 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         packageSource = try? c.decodeIfPresent(CatalogPackageSource.self, forKey: .packageSource)
         packageProvider = try? c.decodeIfPresent(PackageProviderSpec.self, forKey: .packageProvider)
         trust = c.contains(.packageProvider) && packageProvider == nil
-            ? .thirdParty : WidgetTrust.decode(from: c, origin: origin)
+            ? .thirdParty
+            : WidgetTrust.decode(from: c, trust: .trust, packageSource: .packageSource) ?? WidgetTrust.read(nil, origin: origin)
         version = try c.decodeIfPresent(String.self, forKey: .version) ?? ""
         path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
         summary = try c.decodeIfPresent(String.self, forKey: .summary) ?? ""
