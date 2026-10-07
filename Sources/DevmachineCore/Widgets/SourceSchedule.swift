@@ -81,6 +81,13 @@ public struct SourceSchedule: Sendable {
         inFlight.remove(id)
     }
 
+    /// A run stopped before it answered counts as not run, so it runs again
+    /// as soon as it may instead of waiting a whole interval.
+    public mutating func cancel(_ id: String) {
+        inFlight.remove(id)
+        lastRun[id] = nil
+    }
+
     public func isInFlight(_ id: String) -> Bool { inFlight.contains(id) }
 
     /// Pausing does not end the run: the caller still calls `finish`.

@@ -277,7 +277,7 @@ final class WidgetSourceController: ObservableObject {
     private func cancelRun(_ id: String) {
         guard let run = runs.removeValue(forKey: id) else { return }
         run.task.cancel()
-        schedule.finish(id)
+        schedule.cancel(id)
         if states[id]?.isRunning == true { states[id]?.isRunning = false }
     }
 

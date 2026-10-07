@@ -113,6 +113,15 @@ final class ScriptedSourceRunner: SourceRunner, @unchecked Sendable {
     }
 }
 
+final class ReadCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int { lock.withLock { count } }
+
+    func increment() { lock.withLock { count += 1 } }
+}
+
 @MainActor
 func waitUntil(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
     for _ in 0..<400 {

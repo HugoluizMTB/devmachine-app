@@ -33,6 +33,15 @@ final class SourceScheduleTests: XCTestCase {
         XCTAssertEqual(schedule.due(now: start.addingTimeInterval(60)), ["disk"])
     }
 
+    func testACancelledRunIsDueAgainAtOnce() {
+        var schedule = SourceSchedule()
+        schedule.replaceJobs([job("disk", .interval(60))])
+        schedule.begin("disk", at: start)
+        schedule.cancel("disk")
+        XCTAssertFalse(schedule.isInFlight("disk"))
+        XCTAssertEqual(schedule.due(now: start.addingTimeInterval(1)), ["disk"])
+    }
+
     func testManualAndStreamsAreNeverDue() {
         var schedule = SourceSchedule()
         schedule.replaceJobs([job("today", .manual), job("log", .continuous)])

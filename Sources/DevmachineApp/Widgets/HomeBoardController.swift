@@ -78,7 +78,7 @@ final class HomeBoardController: ObservableObject {
             open(configDirectory: DemoMode.boardsFolder)
             return
         }
-        catalog.reloadSoon()
+        catalog.reloadIfIdle()
         observeConfiguration()
         openFromConfiguration()
     }
@@ -109,6 +109,7 @@ final class HomeBoardController: ObservableObject {
     /// After the packages change: the catalog may have new widgets, and the
     /// board file may have been rewritten.
     func reload() {
+        guard started else { return }
         catalog.reloadSoon()
         reloadBoard()
     }

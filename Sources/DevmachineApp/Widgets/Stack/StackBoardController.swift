@@ -4,19 +4,18 @@ import Foundation
 import os
 
 enum StackBoardError: LocalizedError, Equatable {
-    case noConfiguration(String)
-    case noConfigurationFolder(String)
+    case noConfiguration(surface: String)
+    case noConfigurationFolder(surface: String)
 
     var errorDescription: String? {
         switch self {
-        case let .noConfiguration(area):
-            "\(Self.sentence(area)) has no layout file yet: the devmachine CLI has not said where its configuration lives."
-        case let .noConfigurationFolder(area):
-            "\(Self.sentence(area)) was not reset: the devmachine configuration folder does not exist yet."
+        case let .noConfiguration(surface):
+            "\(StackArea.sentenceName(surface)) has no layout file yet: "
+                + "the devmachine CLI has not said where its configuration lives."
+        case let .noConfigurationFolder(surface):
+            "\(StackArea.sentenceName(surface)) was not reset: the devmachine configuration folder does not exist yet."
         }
     }
-
-    private static func sentence(_ area: String) -> String { area.prefix(1).uppercased() + area.dropFirst() }
 }
 
 /// One sidebar's board: its file (or today's default in memory while there
@@ -102,7 +101,7 @@ final class StackBoardController: ObservableObject {
             open(configDirectory: DemoMode.boardsFolder)
             return
         }
-        if catalog.state == .idle { catalog.reloadSoon() }
+        catalog.reloadIfIdle()
         configObserver = NotificationCenter.default.addObserver(
             forName: ConfigDirectoryWatcher.changed, object: nil, queue: .main
         ) { [weak self] _ in
@@ -136,7 +135,14 @@ final class StackBoardController: ObservableObject {
         watchIfNeeded(store)
     }
 
+    /// Before `start()` nothing happens, so an early call never asks the CLI
+    /// for its configuration or opens a real file in demo mode.
     func reload() {
+        guard started else { return }
+        reloadBoard()
+    }
+
+    private func reloadBoard() {
         guard let store else { return openFromConfiguration() }
         store.load()
         watchIfNeeded(store)
@@ -148,7 +154,7 @@ final class StackBoardController: ObservableObject {
         let folder = Self.fileNumber(store.fileURL.deletingLastPathComponent())
         guard watcher == nil || folder != watchedFolder else { return }
         watchedFolder = folder
-        watcher = folder == nil ? nil : BoardFileWatcher(fileURL: store.fileURL) { [weak self] in self?.reload() }
+        watcher = folder == nil ? nil : BoardFileWatcher(fileURL: store.fileURL) { [weak self] in self?.reloadBoard() }
     }
 
     private static func fileNumber(_ url: URL) -> UInt64? {
@@ -172,8 +178,7 @@ final class StackBoardController: ObservableObject {
 
     func addBlockedReason(for widget: CatalogWidget) -> String? {
         if !canEdit {
-            let area = StackArea.name(surface)
-            return "\(area.prefix(1).uppercased() + area.dropFirst()) cannot change until "
+            return "\(StackArea.sentenceName(surface)) cannot change until "
                 + "\(StackArea.fileName(surface)) can be read and written."
         }
         return StackGallery.blockedReason(for: widget, on: board)
@@ -198,8 +203,8 @@ final class StackBoardController: ObservableObject {
     func remove(_ id: String) { edit { $0.remove(id) } }
 
     func reset() throws {
-        guard let store else { throw StackBoardError.noConfiguration(StackArea.name(surface)) }
-        guard try store.reset() else { throw StackBoardError.noConfigurationFolder(StackArea.name(surface)) }
+        guard let store else { throw StackBoardError.noConfiguration(surface: surface) }
+        guard try store.reset() else { throw StackBoardError.noConfigurationFolder(surface: surface) }
         loadPlacements()
         var next = placements
         next.reset(surface)

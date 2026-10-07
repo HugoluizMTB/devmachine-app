@@ -61,6 +61,7 @@ public enum StackCatalog {
 /// context-sidebar area"), and the board file it lives in.
 public enum StackArea {
     public static func name(_ surface: String) -> String { "the \(surface) area" }
+    public static func sentenceName(_ surface: String) -> String { "The \(surface) area" }
     public static func fileName(_ surface: String) -> String { "\(surface).yml" }
 }
 

@@ -94,4 +94,32 @@ final class WidgetCatalogStoreTests: XCTestCase {
         XCTAssertEqual(store.catalog, pinned)
         XCTAssertEqual(store.state, .loaded)
     }
+
+    func testHomeAndBothSidebarsStartingTogetherReadTheCatalogOnce() async {
+        let reads = ReadCounter()
+        let store = WidgetCatalogStore(read: {
+            reads.increment()
+            return WidgetCatalog(engine: "1.2", packagesRelease: "v39", widgets: [])
+        })
+        store.reloadIfIdle()
+        XCTAssertEqual(store.state, .loading)
+        store.reloadIfIdle()
+        store.reloadIfIdle()
+        await waitUntil { store.state == .loaded }
+        store.reloadIfIdle()
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(reads.value, 1)
+    }
+
+    func testAPinnedCatalogIsNeverReloadedWhenIdle() async {
+        let reads = ReadCounter()
+        let store = WidgetCatalogStore(read: {
+            reads.increment()
+            return WidgetCatalog(engine: "1.2", packagesRelease: "v39", widgets: [])
+        })
+        store.pin(WidgetCatalog(engine: "1.2", packagesRelease: "v38", widgets: []))
+        store.reloadIfIdle()
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(reads.value, 0)
+    }
 }

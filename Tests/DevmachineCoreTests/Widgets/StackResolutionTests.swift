@@ -129,6 +129,7 @@ final class StackResolutionTests: XCTestCase {
     func testAreaNamesAndFiles() {
         XCTAssertEqual(StackArea.name("sidebar"), "the sidebar area")
         XCTAssertEqual(StackArea.name("context-sidebar"), "the context-sidebar area")
+        XCTAssertEqual(StackArea.sentenceName("context-sidebar"), "The context-sidebar area")
         XCTAssertEqual(StackArea.fileName("context-sidebar"), "context-sidebar.yml")
     }
 

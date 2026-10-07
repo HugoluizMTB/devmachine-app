@@ -40,6 +40,14 @@ final class WidgetCatalogStore: ObservableObject {
         Task { await reload() }
     }
 
+    /// Home and both sidebars start together; the state turns `.loading`
+    /// before the task exists, so only the first of them reads the catalog.
+    func reloadIfIdle() {
+        guard state == .idle, !pinned else { return }
+        state = .loading
+        Task { await reload() }
+    }
+
     func reload() async {
         guard !pinned else { return }
         guard !running else {

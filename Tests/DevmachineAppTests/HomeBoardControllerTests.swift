@@ -23,7 +23,7 @@ final class HomeBoardControllerTests: XCTestCase {
         catalogStore.seed(catalog)
         let controller = HomeBoardController(
             placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
-            catalog: catalogStore)
+            catalog: catalogStore, configPath: { nil })
         controller.defaultBoard = { DefaultBoard.make(usage: [UsageHarness(harness: "claude", package: "claude-code")]) }
         controller.open(configDirectory: root.appendingPathComponent("config").path)
         return controller
@@ -80,6 +80,7 @@ final class HomeBoardControllerTests: XCTestCase {
     func testSourceWidgetsAreNotRuntimeJobs() throws {
         let controller = makeController()
         try sourceBoard.write(to: boardFile, atomically: true, encoding: .utf8)
+        controller.start()
         controller.reload()
         XCTAssertEqual(controller.runtimeJobs().map(\.instanceID), ["clock"])
         XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), ["disk", "tail"])
@@ -226,6 +227,11 @@ final class HomeBoardControllerTests: XCTestCase {
         })
         let controller = makeController(store: store)
         controller.reload()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(reads.value, 0)
+        controller.start()
+        XCTAssertEqual(reads.value, 0)
+        controller.reload()
         try await waitUntil { reads.value == 1 }
     }
 
@@ -331,7 +337,7 @@ final class HomeBoardControllerTests: XCTestCase {
             catalog: catalogStore,
             configPath: { answers.next() })
         controller.defaultBoard = { DefaultBoard.make(usage: []) }
-        controller.openFromConfiguration()
+        controller.start()
         try await waitUntil { answers.calls == 1 }
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertNil(controller.store)
@@ -391,15 +397,6 @@ final class HomeBoardControllerTests: XCTestCase {
             try await Task.sleep(nanoseconds: 20_000_000)
         }
     }
-}
-
-private final class ReadCounter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var count = 0
-
-    var value: Int { lock.withLock { count } }
-
-    func increment() { lock.withLock { count += 1 } }
 }
 
 private final class ConfigAnswers: @unchecked Sendable {

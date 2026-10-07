@@ -194,16 +194,37 @@ final class StackBoardControllerTests: XCTestCase {
                 type: acme/here
 
             """, "context-sidebar")
+        command = ScriptedSourceRunner([.success(.output(.text("files")))], gated: true)
         let controller = makeController("context-sidebar", catalog: catalog([here]))
         controller.setContext(["path": "/home/alice/api"])
         controller.setVisible(true)
         await waitUntil { self.command.calls == 1 }
+        XCTAssertTrue(controller.sources.state("here").isRunning)
         controller.setVisible(false)
         XCTAssertFalse(controller.isVisible)
-        controller.setContext(["path": "/home/alice/web"])
-        controller.sources.tick()
-        try? await Task.sleep(for: .milliseconds(30))
-        XCTAssertEqual(command.calls, 1)
+        XCTAssertFalse(controller.sources.state("here").isRunning)
+        command.release()
+        await waitUntil { self.command.cancelled == 1 }
+        XCTAssertNil(controller.sources.state("here").output)
+        controller.setVisible(true)
+        await waitUntil { self.command.calls == 2 }
+        await waitUntil { controller.sources.state("here").output == .text("files") }
+    }
+
+    func testAReloadBeforeStartNeverAsksForTheConfiguration() async {
+        let folder = config
+        let asks = ReadCounter()
+        let controller = StackBoardController(
+            surface: "sidebar", placementsFile: WidgetPlacementsFile(fileURL: placementsURL),
+            catalog: WidgetCatalogStore(read: { WidgetCatalog(engine: "1.2", packagesRelease: "", widgets: []) }),
+            configPath: {
+                asks.increment()
+                return folder
+            })
+        controller.reload()
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(asks.value, 0)
+        XCTAssertNil(controller.store)
     }
 
     func testTheBoardSaysWhichCostlyContextItNeeds() throws {
@@ -225,6 +246,7 @@ final class StackBoardControllerTests: XCTestCase {
                 view: {kind: text}
 
             """, "context-sidebar")
+        controller.start()
         controller.reload()
         XCTAssertEqual(controller.board.entries.map(\.id), ["branch"])
         XCTAssertTrue(controller.needsGitContext)
@@ -272,7 +294,7 @@ final class StackBoardControllerTests: XCTestCase {
     func testResetWithoutAConfigurationSaysWhy() {
         let controller = makeController("context-sidebar", open: false)
         XCTAssertThrowsError(try controller.reset()) { error in
-            XCTAssertEqual(error as? StackBoardError, .noConfiguration("the context-sidebar area"))
+            XCTAssertEqual(error as? StackBoardError, .noConfiguration(surface: "context-sidebar"))
             XCTAssertEqual(
                 error.localizedDescription,
                 "The context-sidebar area has no layout file yet: the devmachine CLI has not said where its configuration lives.")
@@ -283,7 +305,7 @@ final class StackBoardControllerTests: XCTestCase {
         let controller = makeController("sidebar", open: false)
         controller.open(configDirectory: root.appendingPathComponent("missing").path)
         XCTAssertThrowsError(try controller.reset()) { error in
-            XCTAssertEqual(error as? StackBoardError, .noConfigurationFolder("the sidebar area"))
+            XCTAssertEqual(error as? StackBoardError, .noConfigurationFolder(surface: "sidebar"))
         }
     }
 
