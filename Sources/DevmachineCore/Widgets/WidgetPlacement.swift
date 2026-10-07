@@ -82,29 +82,50 @@ public struct WidgetPlacementsFile: Sendable {
         (try? read()) ?? WidgetPlacements()
     }
 
+    public var brokenFileURL: URL { fileURL.appendingPathExtension("broken") }
+
     /// Replaces only `surface`'s set in the file, so Home and each sidebar
-    /// never write over one another's placements. A file that exists but
-    /// cannot be read is left as it is rather than replaced by one surface.
-    public func save(_ placements: WidgetPlacements, surface: String) throws {
-        var merged = try read()
+    /// never write over one another's placements. A file that cannot be
+    /// decoded never blocks a save: it moves to `brokenFileURL`, whose URL is
+    /// returned so the caller can log it, and a fresh file starts.
+    @discardableResult
+    public func save(_ placements: WidgetPlacements, surface: String) throws -> URL? {
+        var moved: URL?
+        var merged: WidgetPlacements
+        if let current = try read() {
+            merged = current
+        } else {
+            moved = try setBrokenFileAside()
+            merged = WidgetPlacements()
+        }
         merged.reset(surface)
         for widget in placements.placed[surface] ?? [] { merged.insert(widget, on: surface) }
         try write(merged)
+        return moved
     }
 
-    private func read() throws -> WidgetPlacements {
+    /// Nil when the file exists but does not decode or has another version.
+    private func read() throws -> WidgetPlacements? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return WidgetPlacements() }
-        let file: File
+        let data: Data
         do {
-            file = try JSONDecoder().decode(File.self, from: Data(contentsOf: fileURL))
+            data = try Data(contentsOf: fileURL)
         } catch {
             throw WidgetPlacementsFileError.unreadable(path: fileURL.path, reason: error.localizedDescription)
         }
-        guard file.version == Self.version else {
-            throw WidgetPlacementsFileError.unreadable(
-                path: fileURL.path, reason: "it is version \(file.version), not \(Self.version)")
-        }
+        guard let file = try? JSONDecoder().decode(File.self, from: data), file.version == Self.version else { return nil }
         return WidgetPlacements(placed: file.placed.mapValues(Set.init))
+    }
+
+    private func setBrokenFileAside() throws -> URL {
+        let target = brokenFileURL
+        do {
+            if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.removeItem(at: target) }
+            try FileManager.default.moveItem(at: fileURL, to: target)
+        } catch {
+            throw WidgetPlacementsFileError.cannotSetAside(path: fileURL.path, reason: error.localizedDescription)
+        }
+        return target
     }
 
     private func write(_ placements: WidgetPlacements) throws {
@@ -118,11 +139,14 @@ public struct WidgetPlacementsFile: Sendable {
 
 public enum WidgetPlacementsFileError: LocalizedError, Equatable {
     case unreadable(path: String, reason: String)
+    case cannotSetAside(path: String, reason: String)
 
     public var errorDescription: String? {
         switch self {
         case let .unreadable(path, reason):
-            return "Cannot read \(path) (\(reason)), so it was left as it is. Move it away to start the placements again."
+            return "Cannot read \(path): \(reason)"
+        case let .cannotSetAside(path, reason):
+            return "Cannot move the broken \(path) aside: \(reason)"
         }
     }
 }

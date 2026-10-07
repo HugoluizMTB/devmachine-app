@@ -124,7 +124,7 @@ final class WidgetPlacementTests: XCTestCase {
         XCTAssertTrue(file.load().contains("devmachine-app/links", on: "context-sidebar"))
     }
 
-    func testAPlacementsFileThatCannotBeReadIsNotOverwritten() throws {
+    func testABrokenPlacementsFileIsSetAsideAndTheSaveGoesOn() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("placements-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -134,9 +134,11 @@ final class WidgetPlacementTests: XCTestCase {
         home.insert("devmachine-app/clock", on: "home")
         for broken in ["{not json", #"{"version": 99, "placed": {"sidebar": ["devmachine-app/workspaces"]}}"#] {
             try Data(broken.utf8).write(to: url)
-            XCTAssertThrowsError(try file.save(home, surface: "home"))
-            XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), broken)
+            XCTAssertEqual(try file.save(home, surface: "home"), folder.appendingPathComponent("widget-placements.json.broken"))
+            XCTAssertEqual(try String(contentsOf: file.brokenFileURL, encoding: .utf8), broken)
+            XCTAssertEqual(file.load(), home)
         }
+        XCTAssertNil(try file.save(home, surface: "home"))
     }
 
     func testAStackPlacesAWidgetOnceAtTheEnd() {

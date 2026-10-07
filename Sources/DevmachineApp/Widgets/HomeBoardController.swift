@@ -221,8 +221,13 @@ final class HomeBoardController: ObservableObject {
         var next = placements
         next.reset(store.surface)
         placements = next
-        try placementsFile.save(next, surface: store.surface)
+        logSetAside(try placementsFile.save(next, surface: store.surface))
         placementsError = nil
+    }
+
+    private func logSetAside(_ broken: URL?) {
+        guard let broken else { return }
+        Self.log.error("widget placements file did not decode; moved it to \(broken.path, privacy: .public)")
     }
 
     func runtimeJobs(isOnScreen: (BoardWidget) -> Bool = { _ in true }) -> [WidgetJob] {
@@ -257,7 +262,7 @@ final class HomeBoardController: ObservableObject {
     private func savePlacements(_ next: WidgetPlacements) {
         placements = next
         do {
-            try placementsFile.save(next, surface: DefaultBoard.surface)
+            logSetAside(try placementsFile.save(next, surface: DefaultBoard.surface))
             placementsError = nil
         } catch {
             Self.log.error("saving widget placements failed: \(error.localizedDescription, privacy: .public)")
