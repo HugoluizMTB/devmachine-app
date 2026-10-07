@@ -100,6 +100,22 @@ final class WidgetApprovalsTests: XCTestCase {
         XCTAssertTrue(text.contains("\"decided_at\""))
     }
 
+    func testRecordingADecisionKeepsTheOnesAlreadyInTheFileAndAnnouncesIt() throws {
+        let file = WidgetApprovalsFile(fileURL: folder.appendingPathComponent("widget-approvals.json"))
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        var first = WidgetApprovals()
+        first.record(.allowed, hash: "one", summary: "uptime on this Mac", at: date)
+        try file.save(first)
+        let announced = expectation(forNotification: WidgetApprovalsFile.didChange, object: nil) { note in
+            note.object as? URL == file.fileURL
+        }
+        let merged = try file.record(.denied, hash: "two", summary: "df on this Mac", at: date)
+        wait(for: [announced], timeout: 1)
+        XCTAssertEqual(merged.decision(for: "one"), .allowed)
+        XCTAssertEqual(merged.decision(for: "two"), .denied)
+        XCTAssertEqual(file.load(), merged)
+    }
+
     func testAnUnreadableFileMeansEverythingWaits() throws {
         let file = WidgetApprovalsFile(fileURL: folder.appendingPathComponent("widget-approvals.json"))
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

@@ -1,3 +1,4 @@
+import Combine
 import DevmachineCore
 import Foundation
 import os
@@ -50,6 +51,7 @@ final class WidgetSourceController: ObservableObject {
     private var histories: [String: SparklineHistory] = [:]
     private var runs: [String: (token: UUID, task: Task<Void, Never>)] = [:]
     private var timer: Timer?
+    private var approvalsChange: AnyCancellable?
     private var isStarted = false
     private let runners: SourceRunners
     private let approvalsFile: WidgetApprovalsFile
@@ -82,6 +84,10 @@ final class WidgetSourceController: ObservableObject {
         self.startsTimer = startsTimer
         self.now = now
         approvals = approvalsFile.load()
+        let fileURL = approvalsFile.fileURL
+        approvalsChange = NotificationCenter.default.publisher(for: WidgetApprovalsFile.didChange)
+            .filter { $0.object as? URL == fileURL }
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.reloadApprovals() } }
     }
 
     var isDemoMode: Bool { isDemo }
@@ -169,8 +175,8 @@ final class WidgetSourceController: ObservableObject {
         tick()
     }
 
-    /// Every area writes the same approvals file. Sources that never stop,
-    /// as the menu bar title's, read it again here to see another area's decision.
+    /// Every area writes the same approvals file and announces each decision
+    /// (`WidgetApprovalsFile.didChange`), so another area's answer applies here at once.
     func reloadApprovals() {
         readApprovals()
         tick()
@@ -235,10 +241,11 @@ final class WidgetSourceController: ObservableObject {
         guard let entry = entries[id], entry.source.needsApproval,
               case let .success(hash?) = hashes[id], !hash.isEmpty, hash == shown
         else { return }
-        approvals.record(decision, hash: hash, summary: approvalPrompt(for: entry.source).summary, at: now())
+        let summary = approvalPrompt(for: entry.source).summary
         do {
-            try approvalsFile.save(approvals)
+            approvals = try approvalsFile.record(decision, hash: hash, summary: summary, at: now())
         } catch {
+            approvals.record(decision, hash: hash, summary: summary, at: now())
             Self.log.error("saving widget approvals failed: \(error.localizedDescription, privacy: .public)")
         }
         if decision == .denied {

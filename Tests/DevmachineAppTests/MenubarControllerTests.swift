@@ -235,13 +235,30 @@ final class MenubarControllerTests: XCTestCase {
         await waitUntil { menubar.label.items == [.text("0.42")] }
     }
 
-    func testAConfigurationChangeReadsADecisionMadeElsewhere() async throws {
+    func testADecisionRecordedInAnotherAreaReachesTheTitleAtOnce() async throws {
         try writeWaitingLabel()
         let (menubar, _) = makeMenubar()
         await waitUntil { menubar.label.items == [.waiting] }
-        try allowElsewhere(menubar)
-        NotificationCenter.default.post(name: ConfigDirectoryWatcher.changed, object: nil)
+        guard case let .waiting(hash) = menubar.slots.sources.approvalState("mine") else { return XCTFail("not waiting") }
+        try WidgetApprovalsFile(fileURL: root.appendingPathComponent("approvals.json"))
+            .record(.allowed, hash: hash, summary: "uptime", at: Date())
+        XCTAssertEqual(menubar.slots.sources.approvalState("mine"), .allowed)
+        XCTAssertFalse(menubar.isPanelOpen)
         await waitUntil { menubar.label.items == [.text("0.42")] }
+    }
+
+    func testATitleWidgetsOutputRedrawsTheTitleButNotThePopover() async throws {
+        try placeBuiltIns()
+        try write("format: 1\nsurface: menubar\nwidgets:\n  - id: load\n    type: acme/load\n", "menubar")
+        command = ScriptedSourceRunner([.success(.output(.text("0.42")))], gated: true)
+        let (menubar, _) = makeMenubar([widget("acme/load", fits: "slot", surface: "menubar")])
+        await waitUntil { self.command.calls == 1 }
+        var redraws = 0
+        let watch = menubar.objectWillChange.sink { _ in redraws += 1 }
+        command.release()
+        await waitUntil { menubar.label.items == [.text("0.42")] }
+        watch.cancel()
+        XCTAssertEqual(redraws, 0)
     }
 
     func testALabelWidgetWaitingForApprovalShowsAMarkAndIsListed() async throws {

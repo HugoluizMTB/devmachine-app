@@ -29,6 +29,7 @@ final class MenubarController: ObservableObject {
     let panel: StackBoardController
     let label = MenubarLabelState()
     @Published private(set) var isPanelOpen = false
+    @Published private(set) var approvals: [MenubarApproval] = []
 
     private var prs: PRStore?
     private var started = false
@@ -36,7 +37,6 @@ final class MenubarController: ObservableObject {
     private var triggers: [String: StackJobsTrigger] = [:]
     private var cancellables: Set<AnyCancellable> = []
     private var slotSourcesChange: AnyCancellable?
-    private var configObserver: NSObjectProtocol?
     private static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
 
     init(slots: StackBoardController, panel: StackBoardController) {
@@ -61,11 +61,6 @@ final class MenubarController: ObservableObject {
         prs.$openCount.removeDuplicates()
             .sink { [weak self] _ in self?.queueRefresh() }
             .store(in: &cancellables)
-        configObserver = NotificationCenter.default.addObserver(
-            forName: ConfigDirectoryWatcher.changed, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.reloadSlotApprovals() }
-        }
         panel.setVisibleEntries([])
         slots.start()
         panel.start()
@@ -83,8 +78,12 @@ final class MenubarController: ObservableObject {
     func setPanelOpen(_ open: Bool) {
         guard open != isPanelOpen else { return }
         isPanelOpen = open
-        if open { reloadSlotApprovals() }
-        if open { panel.runtime.start() } else { panel.runtime.stop() }
+        if open {
+            reloadSlotApprovals()
+            panel.runtime.start()
+        } else {
+            panel.runtime.stop()
+        }
         panel.setVisible(open)
         panel.runtime.setJobs(panel.runtimeJobs())
         Self.log.info("menubar panel \(open ? "opened" : "closed", privacy: .public)")
@@ -95,7 +94,7 @@ final class MenubarController: ObservableObject {
         panel.runtime.setJobs(panel.runtimeJobs())
     }
 
-    var approvals: [MenubarApproval] {
+    private func waitingApprovals() -> [MenubarApproval] {
         guard slots.hasSources else { return [] }
         let catalog = slots.catalog.catalog
         return slots.board.entries.compactMap { entry in
@@ -133,6 +132,8 @@ final class MenubarController: ObservableObject {
                     : (source.needsApproval ? .waiting(hash: "") : .notNeeded)
             }))
         if items != label.items { label.items = items }
+        let waiting = waitingApprovals()
+        if waiting != approvals { approvals = waiting }
     }
 
     private func reloadSlotApprovals() {
@@ -151,9 +152,6 @@ final class MenubarController: ObservableObject {
 
     private func watchSlotSources() {
         guard slotSourcesChange == nil, slots.hasSources else { return }
-        slotSourcesChange = slots.sources.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
-            self?.queueRefresh()
-        }
+        slotSourcesChange = slots.sources.objectWillChange.sink { [weak self] _ in self?.queueRefresh() }
     }
 }

@@ -103,9 +103,9 @@ app-scoped `MenubarController.shared`:
 - **Approval.** A title widget waiting for approval draws "!" in its slot;
   a denied one draws nothing. Both are listed, as their `SourceWidgetCard`,
   in an "Approvals" tab that comes first and is selected when the popover
-  opens. The title re-reads approvals when the popover opens and when the
-  config folder changes, so an answer given in the CLI or on another
-  surface reaches the title without a relaunch.
+  opens. An answer given on any surface (Home, a sidebar, the popover)
+  reaches the title at once: see "A widget written in the board runs only
+  after Allow" for how every area shares the approvals file.
 - **Edit mode** (pencil in the footer) lists both boards with up, down and
   remove, and "Add widget" opens `WidgetGalleryView` in place, filtered to
   that surface. A full menu bar refuses an add ("The menu bar holds 3
@@ -952,7 +952,12 @@ Rules:
   lives in `Application Support/Devmachine/widget-approvals.json`, never in
   the config folder: whoever can write a board must not be able to approve
   it. Any change to what runs asks again; Deny pauses and keeps the widget,
-  with "Allow" to change your mind. An unreadable file means everything
+  with "Allow" to change your mind. Every area keeps its own copy of the
+  decisions, so a decision is merged onto what the file holds now
+  (`WidgetApprovalsFile.record`, read, change, atomic write), never saved
+  from the stale copy, and then announced (`WidgetApprovalsFile.didChange`,
+  object = the file URL); every `WidgetSourceController` on that file
+  reloads and runs what was allowed. An unreadable file means everything
   waits again. A package widget asks only when its package is third-party
   (see Package providers and third-party widgets); `url` and app providers
   never ask.

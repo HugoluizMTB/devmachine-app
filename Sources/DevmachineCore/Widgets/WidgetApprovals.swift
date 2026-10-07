@@ -145,6 +145,10 @@ public struct WidgetApprovalsFile: Sendable {
 
     public static let version = 1
 
+    /// Posted with the file's URL after a decision is written, so every area
+    /// that reads the same file sees it at once.
+    public static let didChange = Notification.Name("WidgetApprovalsFile.didChange")
+
     public static var defaultFileURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory() + "/Library/Application Support")
@@ -173,6 +177,17 @@ public struct WidgetApprovalsFile: Sendable {
         let data = try encoder.encode(File(version: Self.version, approvals: approvals.entries))
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: fileURL, options: .atomic)
+    }
+
+    /// Several areas hold their own copy of the decisions, so one decision is
+    /// merged onto what the file holds now; saving a stale copy would drop another area's.
+    @discardableResult
+    public func record(_ decision: ApprovalDecision, hash: String, summary: String, at date: Date) throws -> WidgetApprovals {
+        var approvals = load()
+        approvals.record(decision, hash: hash, summary: summary, at: date)
+        try save(approvals)
+        NotificationCenter.default.post(name: Self.didChange, object: fileURL)
+        return approvals
     }
 }
 

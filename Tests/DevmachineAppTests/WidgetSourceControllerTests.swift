@@ -120,6 +120,47 @@ final class WidgetSourceControllerTests: XCTestCase {
         XCTAssertEqual(again.approvalState("disk"), .allowed)
     }
 
+    func testTwoAreasOnOneApprovalsFileKeepEachOthersDecisions() throws {
+        let first = makeController()
+        let second = makeController()
+        first.start()
+        second.start()
+        first.update([entry("one", run: "uptime")])
+        second.update([entry("two", run: "df")])
+        let firstHash = shown(first, "one")
+        let secondHash = shown(second, "two")
+        first.approve("one", hash: firstHash)
+        second.approve("two", hash: secondHash)
+        let stored = WidgetApprovalsFile(fileURL: approvalsFile).load()
+        XCTAssertEqual(stored.decision(for: firstHash), .allowed)
+        XCTAssertEqual(stored.decision(for: secondHash), .allowed)
+    }
+
+    func testADecisionInOneAreaReachesAnotherAtOnce() {
+        let first = makeController()
+        let second = makeController()
+        first.start()
+        second.start()
+        first.update([entry("disk")])
+        second.update([entry("disk")])
+        second.approve("disk", hash: shown(second, "disk"))
+        XCTAssertEqual(first.approvalState("disk"), .allowed)
+    }
+
+    func testADecisionOnAnotherApprovalsFileIsNotRead() {
+        let elsewhere = folder.appendingPathComponent("elsewhere.json")
+        let first = makeController()
+        first.start()
+        first.update([entry("disk")])
+        let stranger = WidgetApprovalsFile(fileURL: elsewhere)
+        var decided = WidgetApprovals()
+        guard case let .waiting(hash) = first.approvalState("disk") else { return XCTFail() }
+        decided.record(.allowed, hash: hash, summary: "df", at: clock)
+        XCTAssertNoThrow(try stranger.save(decided))
+        NotificationCenter.default.post(name: WidgetApprovalsFile.didChange, object: elsewhere)
+        guard case .waiting = first.approvalState("disk") else { return XCTFail() }
+    }
+
     func testDenyKeepsItPaused() async {
         controller.start()
         controller.update([entry()])
