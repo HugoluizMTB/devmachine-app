@@ -1,9 +1,12 @@
 import XCTest
+@testable import DevmachineApp
 @testable import DevmachineCore
 
 /// Runs the real CLI named by `DEVMACHINE_WIDGETS_E2E` against a temp
 /// configuration it makes itself (only machine `here`, `self: true`), so the
 /// real config folder is never read or written. Skipped otherwise.
+/// `DEVMACHINE_WIDGETS_PACKAGES` names a packages checkout whose
+/// `packages/devmachine-app` is copied into that configuration as a local package.
 @MainActor
 final class WidgetEditLiveTests: XCTestCase {
     private struct Run {
@@ -27,7 +30,20 @@ final class WidgetEditLiveTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder.appendingPathComponent("boards"), withIntermediateDirectories: true)
         self.folder = folder
         try Data("machines:\n  - name: here\n    self: true\n".utf8).write(to: folder.appendingPathComponent("config.yml"))
+        if let packages = ProcessInfo.processInfo.environment["DEVMACHINE_WIDGETS_PACKAGES"], !packages.isEmpty {
+            let target = folder.appendingPathComponent("packages")
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(
+                at: URL(fileURLWithPath: packages).appendingPathComponent("packages/devmachine-app"),
+                to: target.appendingPathComponent("devmachine-app"))
+        }
         return (cli, folder.path)
+    }
+
+    private func requirePackages() throws {
+        guard let packages = ProcessInfo.processInfo.environment["DEVMACHINE_WIDGETS_PACKAGES"], !packages.isEmpty else {
+            throw XCTSkip("set DEVMACHINE_WIDGETS_PACKAGES to a packages checkout")
+        }
     }
 
     private func run(_ cli: String, _ config: String, _ args: [String]) throws -> Run {
@@ -80,6 +96,7 @@ final class WidgetEditLiveTests: XCTestCase {
     }
 
     func testTheAppReadsWhatWidgetsSetWrites() throws {
+        try requirePackages()
         let (cli, config) = try setting()
         let home = BoardFiles.url(configDirectory: config, surface: "home")
         let store = BoardStore(fileURL: home, makeDefault: { DefaultBoard.make(harnesses: ["claude"]) })
@@ -88,9 +105,6 @@ final class WidgetEditLiveTests: XCTestCase {
         let set = try run(cli, config, [
             "widgets", "set", "machines", "--board", "home", "--title", "Servers", "--every", "2m", "--set", "machines=here,main",
         ])
-        if set.status != 0, set.output.contains("release") || set.output.contains("not in the catalog") {
-            throw XCTSkip("the CLI catalog lacks devmachine-app/machines (needs a packages release): \(set.output)")
-        }
         XCTAssertEqual(set.status, 0, set.output)
         store.load()
         let machines = try XCTUnwrap(store.board?.widgets.first { $0.id == "machines" })
@@ -100,6 +114,29 @@ final class WidgetEditLiveTests: XCTestCase {
         let after = try String(contentsOf: home, encoding: .utf8)
         let untouched = { (text: String) in text.components(separatedBy: "  - id: clock").last ?? "" }
         XCTAssertEqual(untouched(after), untouched(before))
+    }
+
+    func testBothRefuseAnEveryBelowTheFloorOnATypedEntry() throws {
+        try requirePackages()
+        let (cli, config) = try setting()
+        let home = BoardFiles.url(configDirectory: config, surface: "home")
+        let store = BoardStore(fileURL: home, makeDefault: { DefaultBoard.make(harnesses: ["claude"]) })
+        store.load()
+        let before = try String(contentsOf: home, encoding: .utf8)
+        let set = try run(cli, config, ["widgets", "set", "machines", "--board", "home", "--every", "1s"])
+        XCTAssertNotEqual(set.status, 0, set.output)
+        XCTAssertTrue(set.output.contains("minimum") || set.output.contains("below"), set.output)
+        XCTAssertEqual(try String(contentsOf: home, encoding: .utf8), before)
+
+        let catalog = try WidgetCatalog.decode(Data(try run(cli, config, ["widgets", "list", "--format", "json"]).output.utf8))
+        let catalogStore = WidgetCatalogStore(read: { catalog })
+        catalogStore.seed(catalog)
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: URL(fileURLWithPath: config).appendingPathComponent("widget-placements.json")),
+            catalog: catalogStore, configPath: { nil })
+        controller.open(configDirectory: config)
+        let problem = try XCTUnwrap(controller.problem(with: .typed(title: nil, with: [:], every: "1s"), for: "machines"))
+        XCTAssertTrue(problem.contains("minimum"), problem)
     }
 
     func testBothRefuseAnEveryBelowTheFloorAndAnInlineSourceEdit() throws {
