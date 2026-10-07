@@ -1136,7 +1136,10 @@ Rules:
   While it is stale, the shared `WidgetCatalogStore` reads `widgets list`
   again on `CatalogRetrySchedule` (30s, 60s, 120s, then every 5 min): one
   pending retry for Home and both sidebars, stopped by a good read, a seed
-  or app quit.
+  or app quit. A failed first read (no catalog yet) is retried the same way,
+  but only while some board holds a `.waitingForCatalog` widget: each
+  controller reports it (`setWaitsForCatalog`) when it syncs its jobs, and the
+  retry stops once no board does. With no CLI it settles at every 5 min.
 - **The provider index is complete only when a packages release was read**
   and `providers` is there, as `widgets validate` decides it. Without a
   release an unknown package is left to `devmachine run`; a package the

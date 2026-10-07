@@ -25,6 +25,7 @@ final class WidgetCatalogStore: ObservableObject {
     private let sleep: @Sendable (TimeInterval) async -> Void
     private var retry: Task<Void, Never>?
     private var retryFailures = 0
+    private var catalogWaiters: Set<String> = []
     private var quitObserver: NSObjectProtocol?
 
     init(
@@ -89,10 +90,28 @@ final class WidgetCatalogStore: ObservableObject {
         }
     }
 
+    /// A stale catalog is always read again; with none yet, only while a
+    /// board holds a widget waiting for it, so an app without the CLI stays quiet.
+    private var needsRetry: Bool {
+        catalog?.isStale == true || (catalog == nil && !catalogWaiters.isEmpty)
+    }
+
+    /// Each board says whether it holds a widget that waits for the catalog.
+    func setWaitsForCatalog(_ waits: Bool, board: String) {
+        if waits { catalogWaiters.insert(board) } else { catalogWaiters.remove(board) }
+        if !needsRetry {
+            stopRetrying()
+        } else if case .failed = state {
+            scheduleRetry()
+        }
+    }
+
+    var isWaitedFor: Bool { !catalogWaiters.isEmpty }
+
     /// One pending retry serves Home and both sidebars; a failure while it
     /// waits does not start a second one.
     private func scheduleRetry() {
-        guard retry == nil, catalog?.isStale == true else { return }
+        guard retry == nil, needsRetry else { return }
         retryFailures += 1
         guard let delay = CatalogRetrySchedule.delay(afterFailures: retryFailures) else { return }
         let sleep = self.sleep
@@ -100,6 +119,7 @@ final class WidgetCatalogStore: ObservableObject {
             await sleep(delay)
             guard !Task.isCancelled, let self else { return }
             self.retry = nil
+            guard self.needsRetry else { return }
             await self.reload()
         }
     }

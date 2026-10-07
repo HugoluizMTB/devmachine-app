@@ -232,6 +232,8 @@ final class StackBoardController: ObservableObject {
 
     /// Called whenever the board, the catalog or the visibility changes.
     func syncSources() {
+        catalog.setWaitsForCatalog(
+            board.entries.contains { resolution(of: $0)?.waitsForCatalog == true }, board: surface)
         let entries = board.entries.compactMap { entry -> SourceWidgetEntry? in
             guard case let .ready(resolved)? = resolution(of: entry), let source = resolved.source else { return nil }
             return SourceWidgetEntry(id: entry.id, source: source, isVisible: isVisible && !entry.collapsed)

@@ -233,6 +233,7 @@ private struct BoardCanvasLayer: View {
         ) { _, _ in
             controller.runtime.setJobs(controller.runtimeJobs(isOnScreen: isOnScreen))
             controller.sources.update(controller.sourceEntries(isOnScreen: isOnScreen))
+            controller.syncCatalogWaits()
         }
         .onChange(of: clockDisplayRect, initial: true) { _, rect in clockRect = rect }
         .onChange(of: store.board) { _, _ in drag = nil }

@@ -226,6 +226,11 @@ final class HomeBoardController: ObservableObject {
         Self.log.error("widget placements file did not decode; moved it to \(broken.path, privacy: .public)")
     }
 
+    func syncCatalogWaits() {
+        let waits = store?.board?.widgets.contains { resolution(of: $0)?.waitsForCatalog == true } ?? false
+        catalog.setWaitsForCatalog(waits, board: DefaultBoard.surface)
+    }
+
     func runtimeJobs(isOnScreen: (BoardWidget) -> Bool = { _ in true }) -> [WidgetJob] {
         guard let board = store?.board else { return [] }
         return board.widgets.compactMap { widget in

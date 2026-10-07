@@ -73,6 +73,25 @@ final class StackBoardControllerTests: XCTestCase {
         XCTAssertEqual(try read("context-sidebar"), DefaultStackBoard.make(surface: "context-sidebar"))
     }
 
+    func testAStackWithAPackageProviderSaysItWaitsForTheCatalog() throws {
+        try write("""
+            format: 1
+            surface: context-sidebar
+            widgets:
+              - id: load
+                title: Load
+                source: {kind: provider, name: acme-tools/load, target: {workspace: alice-dev}, every: 60s}
+                view: {kind: number, value: "{{json.load}}"}
+                size: medium
+            """, "context-sidebar")
+        let controller = makeController("context-sidebar")
+        controller.syncSources()
+        XCTAssertTrue(controller.catalog.isWaitedFor)
+        controller.catalog.seed(WidgetCatalog(engine: "1.3", packagesRelease: "v41", widgets: [], providers: []))
+        controller.syncSources()
+        XCTAssertFalse(controller.catalog.isWaitedFor)
+    }
+
     func testEachSurfaceKeepsItsOwnStore() {
         let sidebar = makeController("sidebar")
         let context = makeController("context-sidebar")

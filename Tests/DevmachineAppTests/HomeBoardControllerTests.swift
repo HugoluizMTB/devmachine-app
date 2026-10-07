@@ -136,6 +136,9 @@ final class HomeBoardControllerTests: XCTestCase {
         let widget = try XCTUnwrap(controller.store?.board?.widgets.first)
         XCTAssertEqual(controller.resolution(of: widget), .waitingForCatalog(type: "load"))
         XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), [])
+        XCTAssertFalse(store.isWaitedFor)
+        controller.syncCatalogWaits()
+        XCTAssertTrue(store.isWaitedFor)
 
         let commit = String(repeating: "1", count: 40)
         store.seed(WidgetCatalog(
@@ -150,6 +153,8 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertEqual(source.packageCommit, commit)
         XCTAssertEqual(ApprovalPrompt(source, context: [:]).thirdPartySource, "https://example.com/acme/acme-tools.git")
         XCTAssertEqual(controller.sourceEntries(isOnScreen: { _ in true }).map(\.id), ["load"])
+        controller.syncCatalogWaits()
+        XCTAssertFalse(store.isWaitedFor)
     }
 
     func testAWidgetChangedWithinOneReleaseRefreshesTheJobs() {

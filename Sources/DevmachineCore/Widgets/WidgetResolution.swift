@@ -159,6 +159,11 @@ public enum WidgetResolution: Equatable, Sendable {
     /// nor offers approval until one is read.
     case waitingForCatalog(type: String)
 
+    public var waitsForCatalog: Bool {
+        if case .waitingForCatalog = self { return true }
+        return false
+    }
+
     public static func resolve(
         _ instance: BoardWidget, in catalog: WidgetCatalog, contract: WidgetContract = .current
     ) -> WidgetResolution {

@@ -121,11 +121,46 @@ final class WidgetCatalogStoreTests: XCTestCase {
         XCTAssertEqual(sleeps.delays, [30])
     }
 
-    func testNoCatalogYetMeansNoRetry() async {
+    func testNoCatalogYetAndNothingWaitingForItMeansNoRetry() async {
         let store = retryingStore(ReadBox(.failure(ReadError.offline)))
         await store.reload()
         try? await Task.sleep(for: .milliseconds(30))
         XCTAssertEqual(sleeps.delays, [])
+    }
+
+    func testAFailedFirstReadIsRetriedOnlyWhileABoardWaitsForTheCatalog() async {
+        let reads = ReadCounter()
+        let box = ReadBox(.failure(ReadError.offline))
+        let store = retryingStore(box, reads: reads)
+        await store.reload()
+        store.setWaitsForCatalog(true, board: "home")
+        await waitUntil { self.sleeps.waiting == 1 }
+        store.setWaitsForCatalog(true, board: "sidebar")
+        sleeps.releaseNext()
+        await waitUntil { self.sleeps.delays == [30, 60] && self.sleeps.waiting == 1 }
+        XCTAssertEqual(reads.value, 2)
+
+        store.setWaitsForCatalog(false, board: "home")
+        store.setWaitsForCatalog(false, board: "sidebar")
+        sleeps.releaseNext()
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(reads.value, 2)
+
+        store.setWaitsForCatalog(true, board: "context-sidebar")
+        await waitUntil { self.sleeps.delays == [30, 60, 30] }
+        box.set(.success(WidgetCatalog(engine: "1.3", packagesRelease: "v41", widgets: [])))
+        sleeps.releaseNext()
+        await waitUntil { store.catalog != nil }
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(sleeps.delays.count, 3)
+    }
+
+    func testABoardWaitingBeforeTheFirstReadFailsGetsTheRetryWhenItFails() async {
+        let store = retryingStore(ReadBox(.failure(ReadError.offline)))
+        store.setWaitsForCatalog(true, board: "home")
+        XCTAssertEqual(sleeps.delays, [])
+        await store.reload()
+        await waitUntil { self.sleeps.delays == [30] }
     }
 
     func testStoppingCancelsThePendingRetry() async {
