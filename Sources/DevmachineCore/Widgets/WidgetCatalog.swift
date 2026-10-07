@@ -199,3 +199,15 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         unavailableReason = try c.decodeIfPresent(String.self, forKey: .unavailableReason) ?? ""
     }
 }
+
+extension CatalogWidget {
+    /// A widget written in a board has no catalog entry; this stands in for
+    /// one so sizes, presets and titles work the same way.
+    public static func inline(id: String, title: String, sizes: [String], fits: [String], viewKind: String) -> CatalogWidget {
+        CatalogWidget(
+            name: "inline/\(id)", summary: title, requiresEngine: "", fits: fits.isEmpty ? ["canvas", "stack", "slot"] : fits,
+            source: CatalogSource(raw: .object([:])), viewKind: viewKind,
+            sizes: sizes.isEmpty ? WidgetContract.presetOrder : sizes, defaultSize: sizes.first ?? "medium",
+            places: [], surfaces: ["home"], origin: "board")
+    }
+}

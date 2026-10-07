@@ -135,7 +135,8 @@ final class HomeBoardController: ObservableObject {
     }
 
     func resolution(of widget: BoardWidget) -> WidgetResolution? {
-        catalog.catalog.map { WidgetResolution.resolve(widget, in: $0) }
+        if widget.isInline { return WidgetResolution.resolveInline(widget) }
+        return catalog.catalog.map { WidgetResolution.resolve(widget, in: $0) }
     }
 
     func applyPlaces(canvasWidth: Int, enabledHarnesses: Set<String>) {

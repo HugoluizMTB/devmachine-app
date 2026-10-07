@@ -118,6 +118,7 @@ public enum WidgetResolution: Equatable, Sendable {
     public static func resolve(
         _ instance: BoardWidget, in catalog: WidgetCatalog, contract: WidgetContract = .current
     ) -> WidgetResolution {
+        if instance.isInline { return resolveInline(instance, contract: contract) }
         guard let widget = catalog.widget(named: instance.type) else { return .notFound(type: instance.type) }
         guard widget.available else { return .needsPackage(package: widget.package, reason: widget.unavailableReason) }
         let engine = EngineVersion(contract.engine) ?? EngineVersion(major: 1, minor: 0)
@@ -170,6 +171,33 @@ public enum WidgetResolution: Equatable, Sendable {
             source: ResolvedSource(
                 source: resolved, view: view, every: every, needsApproval: false, approvalHash: nil,
                 package: widget.package, packagePath: widget.packagePath)))
+    }
+
+    /// A widget written in a board resolves without the catalog: it carries
+    /// its own source and view, already checked by the board reader.
+    public static func resolveInline(_ instance: BoardWidget, contract: WidgetContract = .current) -> WidgetResolution {
+        guard let inline = instance.inline else { return .notFound(type: instance.type) }
+        let widget = CatalogWidget.inline(
+            id: instance.id, title: inline.title, sizes: inline.sizes, fits: inline.fits, viewKind: inline.view.kind)
+        let minimum = CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract)
+        if case let .provider(provider) = inline.source {
+            guard let floor = contract.minimumInterval(for: provider.name),
+                  contract.view(inline.view.kind, accepts: provider.name)
+            else { return .needsNewerApp(type: instance.id, reason: "this app has no provider \(provider.name)") }
+            return .ready(ResolvedWidget(
+                widget: widget, provider: provider.name, viewKind: inline.view.kind, arguments: provider.with,
+                every: max(floor, GoDuration.seconds(provider.every) ?? floor), minimum: minimum, title: inline.title))
+        }
+        let source = inline.source.resolved(with: .none)
+        let needsApproval = contract.needsApproval(source.kind)
+        let every = floored(source.every, kind: source.kind, contract: contract)
+        return .ready(ResolvedWidget(
+            widget: widget, provider: "", viewKind: inline.view.kind, arguments: [:], every: every.seconds ?? 0,
+            minimum: minimum,
+            source: ResolvedSource(
+                source: source, view: inline.view, every: every, needsApproval: needsApproval,
+                approvalHash: needsApproval ? ApprovalSubject.hash(source) : nil, package: nil, packagePath: nil),
+            title: inline.title))
     }
 
     /// The CLI refused a catalog widget under the minimum, so a lower value
