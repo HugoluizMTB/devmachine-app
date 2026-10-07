@@ -24,7 +24,8 @@ public enum ApprovalSubject {
     /// What the runner checks right before a run and what the card records a
     /// decision for: the same inputs and the same real context as the run.
     public static func hash(for resolved: ResolvedSource, context: [String: String]) throws -> String? {
-        try hash(resolved.source, values: resolved.values(context: context))
+        let filled = try subject(resolved.source, values: resolved.values(context: context))
+        return hash(filled.source, environment: filled.environment, packageCommit: resolved.packageCommit)
     }
 
     /// A third-party widget's subject carries its package's commit, so code
@@ -230,6 +231,9 @@ public struct ApprovalPrompt: Equatable, Sendable {
     public let what: String
     public let place: String
     public let howOften: String
+    /// The git address a third-party package came from, "" when unknown;
+    /// nil for any other widget.
+    public let thirdPartySource: String?
 
     public var summary: String { "\(what) \(place), \(howOften)" }
 
@@ -239,6 +243,7 @@ public struct ApprovalPrompt: Equatable, Sendable {
         what = ApprovalCopy.what(shown.source, environment: shown.environment)
         place = ApprovalCopy.place(shown.source.target)
         howOften = ApprovalCopy.howOften(resolved.every)
+        thirdPartySource = resolved.trust == .thirdParty ? resolved.packageSourceURL ?? "" : nil
     }
 }
 

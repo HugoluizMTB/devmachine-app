@@ -87,11 +87,17 @@ public struct ResolvedSource: Equatable, Sendable {
     /// The context keys a package widget declares; nil for a widget written in
     /// a board, which may read whatever its area gives.
     public let contextKeys: Set<String>?
+    /// Nil for a widget written in a board.
+    public let trust: WidgetTrust?
+    /// Set only for a third-party widget: its approval hash covers the commit.
+    public let packageCommit: String?
+    public let packageSourceURL: String?
     let contextReads: ContextReads
 
     public init(
         source: WidgetSource, view: WidgetView, every: WidgetEvery, needsApproval: Bool, package: String?,
-        packagePath: String?, inputs: [String: String] = [:], contextKeys: Set<String>? = nil
+        packagePath: String?, inputs: [String: String] = [:], contextKeys: Set<String>? = nil,
+        trust: WidgetTrust? = nil, packageCommit: String? = nil, packageSourceURL: String? = nil
     ) {
         self.source = source
         self.view = view
@@ -101,6 +107,9 @@ public struct ResolvedSource: Equatable, Sendable {
         self.packagePath = packagePath
         self.inputs = inputs
         self.contextKeys = contextKeys
+        self.trust = trust
+        self.packageCommit = packageCommit
+        self.packageSourceURL = packageSourceURL
         self.contextReads = ContextReads(source: source, declared: contextKeys)
     }
 
@@ -149,7 +158,7 @@ public enum WidgetResolution: Equatable, Sendable {
     public static func resolve(
         _ instance: BoardWidget, in catalog: WidgetCatalog, contract: WidgetContract = .current
     ) -> WidgetResolution {
-        if instance.isInline { return resolveInline(instance, contract: contract) }
+        if instance.isInline { return resolveInline(instance, catalog: catalog, contract: contract) }
         guard let widget = catalog.widget(named: instance.type) else { return .notFound(type: instance.type) }
         guard widget.available else { return .needsPackage(package: widget.package, reason: widget.unavailableReason) }
         let engine = EngineVersion(contract.engine) ?? EngineVersion(major: 1, minor: 0)
@@ -159,8 +168,8 @@ public enum WidgetResolution: Equatable, Sendable {
                     type: widget.name, reason: "it needs engine \(widget.requiresEngine); this app implements \(contract.engine)")
             }
         }
-        if widget.source.kind != "provider" {
-            return resolveSource(instance, widget: widget, contract: contract)
+        if widget.source.kind != "provider" || PackageProviderName.parts(widget.source.name) != nil {
+            return resolveSource(instance, widget: widget, index: catalog.packageProviderIndex, contract: contract)
         }
         let provider = widget.source.name
         guard contract.sourceKinds.contains(widget.source.kind), let minimum = contract.minimumInterval(for: provider) else {
@@ -177,13 +186,15 @@ public enum WidgetResolution: Equatable, Sendable {
     }
 
     private static func resolveSource(
-        _ instance: BoardWidget, widget: CatalogWidget, contract: WidgetContract
+        _ instance: BoardWidget, widget: CatalogWidget, index: PackageProviderIndex, contract: WidgetContract
     ) -> WidgetResolution {
         let scope = WidgetScope.package(inputs: Set(widget.inputs.keys), contextKeys: Set(widget.context.keys))
         let source: WidgetSource
         let view: WidgetView
         do {
-            source = try WidgetSourceReader.read(raisingEvery(of: widget.source.raw, contract: contract), scope: scope, contract: contract)
+            source = try WidgetSourceReader.read(
+                raisingEvery(of: widget.source.raw, contract: contract), scope: scope, contract: contract,
+                packageProviders: index)
             view = try WidgetViewReader.read(
                 widget.view, source: source, sourceWritesParse: widget.source.raw["parse"] != nil, scope: scope,
                 contract: contract)
@@ -198,17 +209,25 @@ public enum WidgetResolution: Equatable, Sendable {
         let inputs = widget.inputs.compactMapValues { $0.defaultValue?.text }
             .merging(instance.with.filter { widget.inputs[$0.key] != nil }.mapValues(\.text)) { _, chosen in chosen }
         let every = floored(source.every, kind: source.kind, contract: contract)
+        let thirdParty = widget.trust == .thirdParty
         return .ready(ResolvedWidget(
             widget: widget, provider: "", viewKind: view.kind, arguments: [:], every: every.seconds ?? 0,
             minimum: CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract),
             source: ResolvedSource(
-                source: source, view: view, every: every, needsApproval: false, package: widget.package,
-                packagePath: widget.packagePath, inputs: inputs, contextKeys: Set(widget.context.keys))))
+                source: source, view: view, every: every, needsApproval: thirdParty && source.runsCode,
+                package: widget.package, packagePath: widget.packagePath, inputs: inputs,
+                contextKeys: Set(widget.context.keys), trust: widget.trust,
+                packageCommit: thirdParty ? widget.packageSource?.commit ?? "" : nil,
+                packageSourceURL: widget.packageSource?.url)))
     }
 
-    /// A widget written in a board resolves without the catalog: it carries
-    /// its own source and view, already checked by the board reader.
-    public static func resolveInline(_ instance: BoardWidget, contract: WidgetContract = .current) -> WidgetResolution {
+    /// A widget written in a board carries its own source and view, already
+    /// checked by the board reader. An agent may have written it, so whatever
+    /// runs code waits for approval; a package provider is also checked
+    /// against the catalog once there is one.
+    public static func resolveInline(
+        _ instance: BoardWidget, catalog: WidgetCatalog? = nil, contract: WidgetContract = .current
+    ) -> WidgetResolution {
         guard let inline = instance.inline else { return .notFound(type: instance.type) }
         let widget = CatalogWidget.inline(
             id: instance.id, title: inline.title, sizes: inline.sizes, fits: inline.fits, viewKind: inline.view.kind)
@@ -221,7 +240,13 @@ public enum WidgetResolution: Equatable, Sendable {
                 widget: widget, provider: provider.name, viewKind: inline.view.kind, arguments: provider.with,
                 every: max(floor, GoDuration.seconds(provider.every) ?? floor), minimum: minimum, title: inline.title))
         }
-        let source = inline.source
+        var source = inline.source
+        if case let .packageProvider(provider) = source, let catalog {
+            switch checked(provider, against: catalog.packageProviderIndex) {
+            case let .success(filled): source = .packageProvider(filled)
+            case let .failure(problem): return .refused(type: instance.id, reason: problem.message)
+            }
+        }
         if case let .command(command) = source, let refused = ArgvBuilder.refusal(command) {
             return .needsNewerApp(type: instance.id, reason: refused.message)
         }
@@ -230,9 +255,33 @@ public enum WidgetResolution: Equatable, Sendable {
             widget: widget, provider: "", viewKind: inline.view.kind, arguments: [:], every: every.seconds ?? 0,
             minimum: minimum,
             source: ResolvedSource(
-                source: source, view: inline.view, every: every, needsApproval: contract.needsApproval(source.kind),
-                package: nil, packagePath: nil),
+                source: source, view: inline.view, every: every,
+                needsApproval: source.runsCode || contract.needsApproval(source.kind), package: nil, packagePath: nil),
             title: inline.title))
+    }
+
+    /// The CLI's BoardProviderProblems: the package, its provider and its
+    /// minimum, which the board reader could not know without the catalog.
+    private static func checked(
+        _ provider: PackageProviderSource, against index: PackageProviderIndex
+    ) -> Result<PackageProviderSource, WidgetSpecProblem> {
+        let spec: PackageProviderSpec?
+        do {
+            spec = try index.spec(for: provider.name)
+        } catch let problem as WidgetSpecProblem {
+            return .failure(problem)
+        } catch {
+            return .failure(WidgetSpecProblem(["name"], "\(error)"))
+        }
+        guard let spec else { return .success(provider) }
+        if case let .interval(seconds) = provider.every, let floor = GoDuration.seconds(spec.minEvery), seconds < floor {
+            return .failure(WidgetSpecProblem(
+                ["every"],
+                "source.every \(GoDurationText.short(seconds)) is below the \(provider.name) minimum of \(spec.minEvery)"))
+        }
+        var filled = provider
+        filled.returns = spec.returns
+        return .success(filled)
     }
 
     /// The CLI refused a catalog widget under the minimum, so a lower value

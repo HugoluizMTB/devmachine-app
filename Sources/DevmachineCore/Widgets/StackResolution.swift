@@ -53,7 +53,8 @@ public enum StackCatalog {
         let names = Set(known.map(\.name))
         return WidgetCatalog(
             engine: catalog?.engine ?? contract.engine, packagesRelease: catalog?.packagesRelease ?? "",
-            widgets: known + AppStackWidgets.all.filter { !names.contains($0.name) }, problems: catalog?.problems ?? [])
+            widgets: known + AppStackWidgets.all.filter { !names.contains($0.name) }, problems: catalog?.problems ?? [],
+            providers: catalog?.providers)
     }
 }
 
@@ -71,7 +72,7 @@ public enum StackResolution {
     public static func resolve(
         _ entry: StackEntry, on board: StackBoard, catalog: WidgetCatalog?, contract: WidgetContract = .current
     ) -> WidgetResolution? {
-        if entry.isInline { return WidgetResolution.resolveInline(entry.boardWidget, contract: contract) }
+        if entry.isInline { return WidgetResolution.resolveInline(entry.boardWidget, catalog: catalog, contract: contract) }
         let merged = StackCatalog.merged(catalog, contract: contract)
         if catalog == nil, merged.widget(named: entry.type) == nil { return nil }
         let resolution = WidgetResolution.resolve(entry.boardWidget, in: merged, contract: contract)

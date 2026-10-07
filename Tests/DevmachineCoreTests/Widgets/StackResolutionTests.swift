@@ -139,4 +139,40 @@ final class StackResolutionTests: XCTestCase {
         XCTAssertEqual(
             WidgetResolutionCopy.detail(refused, release: "r"), "acme/x does not fit the sidebar area: its fits has no stack.")
     }
+
+    private func inlineGhostLoadEntry() throws -> (StackBoard, StackEntry) {
+        let board = try BoardCodec.decodeStack("""
+            format: 1
+            surface: context-sidebar
+            widgets:
+              - id: load
+                title: Load
+                source: {kind: provider, name: ghost/load, target: {machine: main}, every: 60s}
+                view: {kind: number, value: "{{json.load}}"}
+                size: medium
+            """)
+        return (board, board.entries[0])
+    }
+
+    func testAnInlinePackageProviderInAStackIsCheckedAgainstTheCatalog() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/widgets-list-engine-1.3.json")
+        let catalog = try WidgetCatalog.decode(Data(contentsOf: url))
+        let (board, entry) = try inlineGhostLoadEntry()
+        XCTAssertEqual(
+            StackResolution.resolve(entry, on: board, catalog: catalog),
+            .refused(type: entry.id, reason: "source.name ghost/load: no package ghost in the release or your own packages"))
+        guard case .ready? = StackResolution.resolve(entry, on: board, catalog: nil) else {
+            return XCTFail("before the catalog loads, the board reader's checks are enough")
+        }
+    }
+
+    func testTheStackCatalogKeepsTheCLIListOfPackageProviders() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/widgets-list-engine-1.3.json")
+        let catalog = try WidgetCatalog.decode(Data(contentsOf: url))
+        XCTAssertEqual(StackCatalog.merged(catalog).packageProviderIndex.isComplete, true)
+    }
 }

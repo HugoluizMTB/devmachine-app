@@ -215,4 +215,116 @@ final class SourceResolutionTests: XCTestCase {
         expected.args = [""]
         XCTAssertEqual(try ApprovalSubject.hash(for: source, context: [:]), ApprovalSubject.hash(.command(expected)))
     }
+
+    private func catalog13(replacing old: String = "", with new: String = "") throws -> WidgetCatalog {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/widgets-list-engine-1.3.json")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        return try WidgetCatalog.decode(Data((old.isEmpty ? text : text.replacingOccurrences(of: old, with: new)).utf8))
+    }
+
+    private func inline(
+        _ source: [String: WidgetValue],
+        view: [String: WidgetValue] = ["kind": .string("number"), "value": .string("{{json.load}}")]
+    ) throws -> BoardWidget {
+        let text = """
+            format: 1
+            surface: home
+            widgets:
+              - id: load
+                title: Load
+                source: \(WidgetValue.object(source).canonicalJSON)
+                view: \(WidgetValue.object(view).canonicalJSON)
+                frame: {x: 0, y: 0, w: 320, h: 160}
+            """
+        return try XCTUnwrap(BoardCodec.decode(text).widgets.first)
+    }
+
+    func testAnOfficialPackageProviderResolvesAsASourceThatNeedsNoApproval() throws {
+        let resolved = try XCTUnwrap(ready(WidgetResolution.resolve(entry("devmachine-app/machine-stats"), in: catalog13())))
+        let source = try XCTUnwrap(resolved.source)
+        guard case let .packageProvider(provider) = source.source else { return XCTFail("\(source.source)") }
+        XCTAssertEqual(provider.name, "devmachine-app/stats")
+        XCTAssertEqual(provider.returns["cpu"], "number")
+        XCTAssertEqual(provider.target, .machine("{{inputs.machine}}"))
+        XCTAssertEqual(resolved.provider, "")
+        XCTAssertEqual(resolved.viewKind, "gauge")
+        XCTAssertFalse(source.needsApproval)
+        XCTAssertEqual(source.trust, .official)
+        XCTAssertNil(source.packageCommit)
+        guard case let .packageProvider(filled) = try source.resolved(context: [:]) else { return XCTFail() }
+        XCTAssertEqual(filled.target, .machine("main"))
+    }
+
+    func testAThirdPartyCodeWidgetWaitsAndAnOfficialOneDoesNot() throws {
+        let catalog = try catalog13()
+        for name in ["acme-tools/load", "acme-tools/disk"] {
+            let source = try XCTUnwrap(ready(WidgetResolution.resolve(entry(name), in: catalog))?.source, name)
+            XCTAssertTrue(source.needsApproval, name)
+            XCTAssertEqual(source.trust, .thirdParty, name)
+            XCTAssertEqual(source.packageCommit, "1111111111111111111111111111111111111111", name)
+            XCTAssertEqual(source.packageSourceURL, "https://example.com/acme/acme-tools.git", name)
+        }
+        let health = try XCTUnwrap(ready(WidgetResolution.resolve(entry("acme-tools/health"), in: catalog))?.source)
+        XCTAssertFalse(health.needsApproval)
+        let mine = try XCTUnwrap(ready(WidgetResolution.resolve(entry("mine/uptime"), in: catalog))?.source)
+        XCTAssertFalse(mine.needsApproval)
+        XCTAssertNil(mine.packageCommit)
+    }
+
+    func testATrustThisAppDoesNotKnowWaitsLikeAThirdPartyOne() throws {
+        let catalog = try catalog13(
+            replacing: "\"origin\": \"local\", \"trust\": \"local\"", with: "\"origin\": \"local\", \"trust\": \"verified\"")
+        let mine = try XCTUnwrap(ready(WidgetResolution.resolve(entry("mine/uptime"), in: catalog))?.source)
+        XCTAssertEqual(mine.trust, .thirdParty)
+        XCTAssertTrue(mine.needsApproval)
+        XCTAssertEqual(mine.packageCommit, "")
+    }
+
+    func testAThirdPartyWidgetOfAnAppProviderStaysAnAppJob() throws {
+        let widget = CatalogWidget(
+            name: "acme-tools/clock", requiresEngine: ">= 1.1",
+            source: CatalogSource(raw: .object(["kind": .string("provider"), "name": .string("app/clock"), "every": .string("60s")])),
+            viewKind: "app.clock", sizes: ["medium"], defaultSize: "medium", trust: .thirdParty)
+        let resolved = try XCTUnwrap(ready(WidgetResolution.resolve(entry("acme-tools/clock"), in: catalog(with: widget))))
+        XCTAssertEqual(resolved.provider, "app/clock")
+        XCTAssertNil(resolved.source)
+    }
+
+    func testAnInlinePackageProviderAlwaysWaits() throws {
+        let widget = try inline([
+            "kind": .string("provider"), "name": .string("devmachine-app/stats"),
+            "target": .object(["machine": .string("main")]), "every": .string("60s"),
+        ], view: ["kind": .string("gauge"), "value": .string("{{json.cpu}}")])
+        for catalog in [nil, try catalog13()] {
+            let source = try XCTUnwrap(ready(WidgetResolution.resolveInline(widget, catalog: catalog))?.source)
+            XCTAssertTrue(source.needsApproval)
+            XCTAssertNil(source.packageCommit)
+        }
+        let catalog = try catalog13()
+        let withCatalog = try XCTUnwrap(ready(WidgetResolution.resolveInline(widget, catalog: catalog))?.source)
+        guard case let .packageProvider(provider) = withCatalog.source else { return XCTFail() }
+        XCTAssertEqual(provider.returns["disk"], "number")
+        XCTAssertEqual(WidgetResolution.resolve(widget, in: catalog), WidgetResolution.resolveInline(widget, catalog: catalog))
+    }
+
+    func testAnInlinePackageProviderTheCatalogDoesNotKnowIsRefused() throws {
+        let catalog = try catalog13()
+        let ghost = try inline(["kind": .string("provider"), "name": .string("ghost/load"),
+                                "target": .object(["machine": .string("main")]), "every": .string("60s")])
+        XCTAssertEqual(
+            WidgetResolution.resolveInline(ghost, catalog: catalog),
+            .refused(type: "load", reason: "source.name ghost/load: no package ghost in the release or your own packages"))
+        let nope = try inline(["kind": .string("provider"), "name": .string("acme-tools/nope"),
+                               "target": .object(["machine": .string("main")]), "every": .string("60s")])
+        XCTAssertEqual(
+            WidgetResolution.resolveInline(nope, catalog: catalog),
+            .refused(type: "load", reason: "source.name acme-tools/nope: acme-tools has no provider nope; its providers: load"))
+        let fast = try inline(["kind": .string("provider"), "name": .string("acme-tools/load"),
+                               "target": .object(["machine": .string("main")]), "every": .string("5s")])
+        XCTAssertEqual(WidgetResolution.resolveInline(fast, catalog: catalog),
+                       .refused(type: "load", reason: "source.every 5s is below the acme-tools/load minimum of 10s"))
+        guard case .ready = WidgetResolution.resolveInline(ghost) else { return XCTFail("no catalog yet must not refuse") }
+    }
 }

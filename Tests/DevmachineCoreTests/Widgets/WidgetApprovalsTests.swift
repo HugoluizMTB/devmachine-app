@@ -192,4 +192,61 @@ final class WidgetApprovalsTests: XCTestCase {
                        "acme-tools/load --all yes --path '/var/log/system log'")
         XCTAssertEqual(ApprovalCopy.place(load().target), "on machine main")
     }
+
+    private func resolved(trust: WidgetTrust?, commit: String?, url: String? = "https://example.com/acme/acme-tools.git") -> ResolvedSource {
+        ResolvedSource(
+            source: command(), view: WidgetView(kind: "text"), every: .interval(60), needsApproval: true,
+            package: "acme-tools", packagePath: nil, trust: trust, packageCommit: commit, packageSourceURL: url)
+    }
+
+    func testThePackageCommitIsPartOfAThirdPartyHash() throws {
+        let first = try ApprovalSubject.hash(for: resolved(trust: .thirdParty, commit: "1111"), context: [:])
+        let second = try ApprovalSubject.hash(for: resolved(trust: .thirdParty, commit: "2222"), context: [:])
+        XCTAssertNotEqual(first, second)
+        XCTAssertEqual(first, ApprovalSubject.hash(command(), packageCommit: "1111"))
+    }
+
+    func testAnInlineHashIsTheSameAsBefore() throws {
+        let inline = ResolvedSource(source: command(), view: WidgetView(kind: "text"), every: .interval(60),
+                                    needsApproval: true, package: nil, packagePath: nil)
+        XCTAssertEqual(try ApprovalSubject.hash(for: inline, context: [:]), ApprovalSubject.hash(command()))
+    }
+
+    func testThePromptNamesAThirdPartySource() {
+        XCTAssertEqual(ApprovalPrompt(resolved(trust: .thirdParty, commit: "1111"), context: [:]).thirdPartySource,
+                       "https://example.com/acme/acme-tools.git")
+        XCTAssertEqual(ApprovalPrompt(resolved(trust: .thirdParty, commit: "1111", url: nil), context: [:]).thirdPartySource, "")
+        XCTAssertNil(ApprovalPrompt(resolved(trust: .local, commit: nil), context: [:]).thirdPartySource)
+        XCTAssertNil(ApprovalPrompt(resolved(trust: nil, commit: nil), context: [:]).thirdPartySource)
+    }
+
+    private func thirdPartyDisk(commit: String) throws -> ResolvedSource {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/widgets-list-engine-1.3.json")
+        let text = try String(contentsOf: url, encoding: .utf8)
+            .replacingOccurrences(of: "1111111111111111111111111111111111111111", with: commit)
+        let catalog = try WidgetCatalog.decode(Data(text.utf8))
+        let entry = BoardWidget(
+            id: "w", type: "acme-tools/disk", with: [:], frame: BoardFrame(x: 0, y: 0, w: 320, h: 160), size: "medium", z: 1)
+        let resolution = WidgetResolution.resolve(entry, in: catalog)
+        guard case let .ready(resolved) = resolution else { return try XCTUnwrap(nil, "\(resolution)") }
+        return try XCTUnwrap(resolved.source)
+    }
+
+    func testAThirdPartyWidgetAllowedOnTheCardRunsUntilItsCommitChanges() throws {
+        let approved = try thirdPartyDisk(commit: String(repeating: "1", count: 40))
+        let hash = try XCTUnwrap(ApprovalSubject.hash(for: approved, context: [:]))
+        XCTAssertEqual(hash, ApprovalSubject.hash(try approved.resolved(context: [:]), packageCommit: String(repeating: "1", count: 40)))
+        var approvals = WidgetApprovals()
+        approvals.record(.allowed, hash: hash, summary: ApprovalPrompt(approved, context: [:]).summary,
+                         at: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(try SourceApprovalGate.blocked(SourceRunRequest(instanceID: "w", source: approved, approvals: approvals)), nil)
+
+        let moved = try thirdPartyDisk(commit: String(repeating: "2", count: 40))
+        let movedHash = try XCTUnwrap(ApprovalSubject.hash(for: moved, context: [:]))
+        XCTAssertNotEqual(movedHash, hash)
+        XCTAssertEqual(try SourceApprovalGate.blocked(SourceRunRequest(instanceID: "w", source: moved, approvals: approvals)),
+                       .waiting(hash: movedHash))
+    }
 }
