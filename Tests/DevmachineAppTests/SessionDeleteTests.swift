@@ -3,7 +3,7 @@ import XCTest
 import DevmachineCore
 @testable import DevmachineApp
 
-private final class GatedSessionSource: SessionSource, @unchecked Sendable {
+private final class GatedSessionSource: SessionListSource, @unchecked Sendable {
     private let lock = NSLock()
     private let gate = DispatchSemaphore(value: 0)
     private var listed: [String]
