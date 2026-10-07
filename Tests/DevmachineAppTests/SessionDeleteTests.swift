@@ -163,6 +163,21 @@ final class SessionDeleteTests: XCTestCase {
         XCTAssertFalse(seen.contains { $0.contains("session-09") }, "\(seen)")
     }
 
+    func testAListWithoutEitherNameAfterTheRenameSucceededKeepsTheNewNamesPlace() async throws {
+        let source = GatedSessionSource(["api", "dash"])
+        source.release()
+        let model = makeModel(source: source, runner: KillRunner(exitCode: 0))
+        model.sessionsByAlias[acme.alias] = ["api", "dash", "web"].map { TmuxSession(name: $0, windows: 1, harnesses: []) }
+        model.moveInSidebar(.session("web", in: acme.alias), over: .session("api", in: acme.alias))
+
+        model.renameSession(alias: acme.alias, old: "web", new: "site")
+        try await waitFor("the list the rename asked for lands") {
+            source.callCount == 1 && self.names(model) == ["api", "dash"]
+        }
+
+        XCTAssertEqual(model.sidebarOrder.savedSessions[acme.alias], ["site", "api", "dash"])
+    }
+
     func testAKillThatFailsKeepsTheRowAndSaysWhy() async throws {
         let source = GatedSessionSource(before)
         source.release()

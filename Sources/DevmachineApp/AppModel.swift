@@ -804,13 +804,19 @@ final class AppModel: ObservableObject {
         return hidden.isEmpty ? listed : listed.filter { !hidden.contains($0.name) }
     }
 
-    private func dropMissingSessions(alias: String, present: [TmuxSession]) {
-        let names = Set(present.map(\.name))
+    /// Only a list read from tmux settles a rename: the app's own copy already
+    /// holds the new name the moment tmux answers.
+    private func settleRenames(alias: String, listed: [TmuxSession]) {
+        let names = Set(listed.map(\.name))
         let now = Date()
         renamesInFlight = renamesInFlight.filter { ref, started in
             !(ref.alias == alias && names.contains(ref.name))
                 && now.timeIntervalSince(started) < Self.renameGrace
         }
+    }
+
+    private func dropMissingSessions(alias: String, present: [TmuxSession]) {
+        let names = Set(present.map(\.name))
         let renaming = renamesInFlight.keys.filter { $0.alias == alias }.map(\.name)
         updateSidebarOrder { $0.keepSessions(names.union(renaming), in: alias) }
         var refs: [SessionRef] = []
@@ -2009,6 +2015,7 @@ final class AppModel: ObservableObject {
         switch outcome {
         case .success(let listed):
             let result = withoutJustDeleted(listed, alias: alias)
+            settleRenames(alias: alias, listed: result)
             // Assign only on a real change: every write to a @Published
             // re-renders the whole tree, and the 5s poll usually returns
             // exactly what is already on screen.
