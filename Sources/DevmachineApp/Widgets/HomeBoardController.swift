@@ -1,5 +1,6 @@
 import Foundation
 import DevmachineCore
+import os
 
 enum HomeBoardError: LocalizedError, Equatable {
     case noConfiguration
@@ -16,6 +17,7 @@ final class HomeBoardController: ObservableObject {
     static let shared = HomeBoardController()
 
     @Published private(set) var store: BoardStore?
+    @Published private(set) var placementsError: String?
     let catalog: WidgetCatalogStore
     let runtime = WidgetRuntimeDriver()
     var defaultBoard: @MainActor () -> Board = { DefaultBoard.make(usage: []) }
@@ -26,14 +28,21 @@ final class HomeBoardController: ObservableObject {
     private var watchedFolder: UInt64?
     private var configObserver: NSObjectProtocol?
     private var started = false
+    private var openingFromConfiguration = false
+    private let configPath: @Sendable () async -> String?
+    private static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
 
     init(
         placementsFile: WidgetPlacementsFile = WidgetPlacementsFile(fileURL: HomeBoardController.placementsURL()),
-        catalog: WidgetCatalogStore = WidgetCatalogStore()
+        catalog: WidgetCatalogStore = WidgetCatalogStore(),
+        configPath: @escaping @Sendable () async -> String? = {
+            await Task.detached { try? DevmachineCLI.resolve().configPath().path }.value
+        }
     ) {
         self.placementsFile = placementsFile
         self.placements = placementsFile.load()
         self.catalog = catalog
+        self.configPath = configPath
     }
 
     static func placementsURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
@@ -58,9 +67,18 @@ final class HomeBoardController: ObservableObject {
         }
         catalog.reloadSoon()
         observeConfiguration()
+        openFromConfiguration()
+    }
+
+    /// Asks the CLI where its configuration lives; a reload asks again while
+    /// no board is open, so a CLI installed after launch is picked up.
+    func openFromConfiguration() {
+        guard store == nil, !openingFromConfiguration else { return }
+        openingFromConfiguration = true
         Task {
-            let path = await Task.detached { try? DevmachineCLI.resolve().configPath().path }.value
-            if let path { self.open(configDirectory: path) }
+            let path = await configPath()
+            openingFromConfiguration = false
+            if let path, store == nil { open(configDirectory: path) }
         }
     }
 
@@ -83,7 +101,7 @@ final class HomeBoardController: ObservableObject {
     }
 
     private func reloadBoard() {
-        guard let store else { return }
+        guard let store else { return openFromConfiguration() }
         store.load()
         watchIfNeeded(store)
     }
@@ -194,6 +212,12 @@ final class HomeBoardController: ObservableObject {
 
     private func savePlacements(_ next: WidgetPlacements) {
         placements = next
-        try? placementsFile.save(next)
+        do {
+            try placementsFile.save(next)
+            placementsError = nil
+        } catch {
+            Self.log.error("saving widget placements failed: \(error.localizedDescription, privacy: .public)")
+            placementsError = error.localizedDescription
+        }
     }
 }

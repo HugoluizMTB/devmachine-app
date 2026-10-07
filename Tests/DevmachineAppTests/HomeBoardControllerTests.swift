@@ -153,6 +153,64 @@ final class HomeBoardControllerTests: XCTestCase {
         try await waitUntil { controller.store?.board == edited }
     }
 
+    func testAFailedPlacementsSaveIsReportedAndKeptInMemory() throws {
+        let blocker = root.appendingPathComponent("not-a-folder")
+        try Data("x".utf8).write(to: blocker)
+        let catalogStore = WidgetCatalogStore(read: { DemoData.widgetCatalog })
+        catalogStore.seed(DemoData.widgetCatalog)
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: blocker.appendingPathComponent("widget-placements.json")),
+            catalog: catalogStore)
+        controller.defaultBoard = { DefaultBoard.make(usage: []) }
+        controller.open(configDirectory: root.appendingPathComponent("config").path)
+        XCTAssertNil(controller.placementsError)
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertNotNil(controller.placementsError)
+        let added = try XCTUnwrap(controller.store?.board?.widgets.first { $0.type == "codex/usage" })
+        controller.remove(added.id)
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertFalse(controller.store?.board?.widgets.map(\.type).contains("codex/usage") ?? true)
+    }
+
+    func testASuccessfulPlacementsSaveClearsTheError() throws {
+        let folder = root.appendingPathComponent("support")
+        try Data("x".utf8).write(to: folder)
+        let catalogStore = WidgetCatalogStore(read: { DemoData.widgetCatalog })
+        catalogStore.seed(DemoData.widgetCatalog)
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: folder.appendingPathComponent("widget-placements.json")),
+            catalog: catalogStore)
+        controller.defaultBoard = { DefaultBoard.make(usage: []) }
+        controller.open(configDirectory: root.appendingPathComponent("config").path)
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude"])
+        XCTAssertNotNil(controller.placementsError)
+        try FileManager.default.removeItem(at: folder)
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertNil(controller.placementsError)
+    }
+
+    func testReloadOpensTheBoardOnceTheConfigurationIsKnown() async throws {
+        let configPath = root.appendingPathComponent("config").path
+        let answers = ConfigAnswers([nil, configPath])
+        let catalogStore = WidgetCatalogStore(read: { DemoData.widgetCatalog })
+        catalogStore.seed(DemoData.widgetCatalog)
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
+            catalog: catalogStore,
+            configPath: { answers.next() })
+        controller.defaultBoard = { DefaultBoard.make(usage: []) }
+        controller.openFromConfiguration()
+        try await waitUntil { answers.calls == 1 }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertNil(controller.store)
+        controller.reload()
+        try await waitUntil { controller.store != nil }
+        XCTAssertEqual(controller.store?.fileURL, boardFile)
+        controller.reload()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(answers.calls, 2)
+    }
+
     func testThePlacementsFileCanBeMoved() {
         XCTAssertEqual(
             HomeBoardController.placementsURL(environment: ["DEVMACHINE_WIDGET_PLACEMENTS": "/tmp/dm/p.json"]).path,
@@ -176,4 +234,21 @@ private final class ReadCounter: @unchecked Sendable {
     var value: Int { lock.withLock { count } }
 
     func increment() { lock.withLock { count += 1 } }
+}
+
+private final class ConfigAnswers: @unchecked Sendable {
+    private let lock = NSLock()
+    private var answers: [String?]
+    private var count = 0
+
+    init(_ answers: [String?]) { self.answers = answers }
+
+    var calls: Int { lock.withLock { count } }
+
+    func next() -> String? {
+        lock.withLock {
+            count += 1
+            return answers.isEmpty ? nil : answers.removeFirst()
+        }
+    }
 }

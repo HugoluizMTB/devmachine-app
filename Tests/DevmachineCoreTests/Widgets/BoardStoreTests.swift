@@ -169,6 +169,28 @@ final class BoardStoreTests: XCTestCase {
         XCTAssertEqual(store.status, .ready)
     }
 
+    func testResetWithoutAConfigurationFolderWritesNothing() throws {
+        try FileManager.default.removeItem(at: config)
+        let store = makeStore()
+        store.load()
+        try store.reset()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: config.path))
+    }
+
+    func testAPendingWriteNeverOverwritesAFileThatTurnedInvalid() throws {
+        try writeFile(oneWidget)
+        let store = makeStore()
+        store.load()
+        let good = store.board
+        store.update { $0.widgets[0].frame.x = 104 }
+        let broken = "format: 1\nsurface: home\nwidgets: [oops\n"
+        try writeFile(broken)
+        timer.fire()
+        XCTAssertEqual(try readFile(), broken)
+        guard case .invalid = store.status else { return XCTFail("not invalid") }
+        XCTAssertEqual(store.board, good)
+    }
+
     func testADeletedFileIsRecreatedWithTheDefaultBoard() throws {
         try writeFile(oneWidget)
         let store = makeStore()

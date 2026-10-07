@@ -49,6 +49,7 @@ public final class BoardStore: ObservableObject {
     private let makeDefault: @MainActor () -> Board
     private let timer: any BoardWriteTimer
     private var diskData: Data?
+    private var savedBoard: Board?
     private var pending = false
 
     public init(
@@ -89,12 +90,18 @@ public final class BoardStore: ObservableObject {
                     line: nil, message: "this file is for the \(surface) area but says surface: \(decoded.surface)")
             }
             if board != decoded { board = decoded }
+            savedBoard = decoded
             status = .ready
         } catch let problem as BoardProblem {
-            status = .invalid(problem)
+            markInvalid(problem)
         } catch {
-            status = .invalid(BoardProblem(line: nil, message: error.localizedDescription))
+            markInvalid(BoardProblem(line: nil, message: error.localizedDescription))
         }
+    }
+
+    private func markInvalid(_ problem: BoardProblem) {
+        if let savedBoard, board != savedBoard { board = savedBoard }
+        status = .invalid(problem)
     }
 
     public func update(_ change: (inout Board) -> Void) {
@@ -122,6 +129,7 @@ public final class BoardStore: ObservableObject {
                 at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: fileURL, options: .atomic)
             diskData = data
+            savedBoard = board
             pending = false
             writeError = nil
         } catch {
@@ -130,6 +138,7 @@ public final class BoardStore: ObservableObject {
     }
 
     public func reset() throws {
+        guard FileManager.default.fileExists(atPath: configDirectory.path) else { return }
         timer.cancel()
         if let existing = try? Data(contentsOf: fileURL) {
             try existing.write(to: backupURL, options: .atomic)
@@ -139,6 +148,7 @@ public final class BoardStore: ObservableObject {
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: fileURL, options: .atomic)
         diskData = data
+        savedBoard = fresh
         pending = false
         writeError = nil
         board = fresh
@@ -148,6 +158,7 @@ public final class BoardStore: ObservableObject {
     private func useDefault() {
         diskData = nil
         board = makeDefault()
+        savedBoard = board
         status = .ready
         pending = true
         flush()

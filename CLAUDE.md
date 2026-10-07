@@ -841,8 +841,14 @@ Rules:
   is dropped when the file changed since the store last read it: the CLI's
   edit replaces the app's pending one. An invalid file keeps the last good
   layout on screen, the banner names the line, and nothing is written until it
-  is valid again: someone is fixing it by hand. Reset is the one write allowed
-  then, and it saves `home.yml.bak` first.
+  is valid again: someone is fixing it by hand. An edit still waiting when the
+  file turns invalid is dropped, and the last good layout comes back. Reset is
+  the one write allowed then: it saves `home.yml.bak` first, and does nothing
+  when the config folder is missing.
+- **A failed `widget-placements.json` save is not silent.** The placement
+  stays in memory, the error goes to the `widgets` log and to
+  `HomeBoardController.placementsError`; the next good save clears it. If the
+  CLI's config path is unknown at launch, the next reload asks again.
 - **Yams reads, our code writes.** Three writers produce the file (the app, the
   CLI, a person or agent), so the reader must accept any YAML style. A
   hand-made parser would call valid files invalid, and that blocks every write.
