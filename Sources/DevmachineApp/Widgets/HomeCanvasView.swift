@@ -355,6 +355,7 @@ private struct BoardCanvasLayer: View {
     }
 
     private func title(_ widget: BoardWidget, _ resolution: WidgetResolution?) -> String {
+        if let title = widget.titleOverride { return title }
         if let inline = widget.inline { return inline.title }
         if case let .ready(resolved)? = resolution, resolved.viewKind == "app.harness-usage",
            let descriptor = facade.descriptor(for: HarnessID(rawValue: resolved.arguments["harness"] ?? "")) {

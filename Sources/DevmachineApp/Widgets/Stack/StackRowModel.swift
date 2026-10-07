@@ -54,7 +54,7 @@ struct StackRowModel: Equatable {
         entry: StackEntry, index: Int, count: Int, resolution: WidgetResolution?, approval: ApprovalState?,
         catalog: WidgetCatalog?, contract: WidgetContract = .current
     ) -> StackRowModel {
-        var title = entry.inline?.title ?? WidgetTitle.make(type: entry.type, in: catalog)
+        var title = entry.titleOverride ?? entry.inline?.title ?? WidgetTitle.make(type: entry.type, in: catalog)
         var header = StackHeaderStyle.standard
         var height = StackRowHeight.fixed(CGFloat(StackLayout.placeholderHeight(contract: contract)))
         var choices: [StackSize] = []
@@ -62,7 +62,7 @@ struct StackRowModel: Equatable {
         switch resolution {
         case let .ready(resolved)?:
             let appTitle = StackAppViewKind(viewKind: resolved.viewKind).flatMap { AppStackWidgets.titles[$0.rawValue] }
-            title = entry.inline?.title ?? appTitle ?? title
+            title = entry.titleOverride ?? entry.inline?.title ?? appTitle ?? title
             header = StackHeaderStyle.of(viewKind: resolved.viewKind)
             choices = StackLayout.sizeChoices(for: resolved, contract: contract)
             size = StackLayout.effectiveSize(of: entry, resolved: resolved, contract: contract)

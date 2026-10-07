@@ -79,9 +79,11 @@ public enum MenubarSlotRules {
             source = current.withEvery(.interval(floor))
         }
         let every = resolved.every > 0 ? max(floor, resolved.every) : resolved.every
-        return ResolvedWidget(
+        var result = ResolvedWidget(
             widget: resolved.widget, provider: resolved.provider, viewKind: resolved.viewKind,
             arguments: resolved.arguments, every: every, minimum: resolved.minimum, source: source, title: resolved.title)
+        result.listArguments = resolved.listArguments
+        return result
     }
 }
 
@@ -89,6 +91,7 @@ public enum MenubarSlotRules {
 /// title, the catalog's, or the placeholder's.
 public enum MenubarTitles {
     public static func title(_ entry: StackEntry, resolution: WidgetResolution?, catalog: WidgetCatalog?) -> String {
+        if let title = entry.titleOverride { return title }
         if let inline = entry.inline { return inline.title }
         if case let .ready(resolved)? = resolution, let title = AppMenubarWidgets.viewTitles[resolved.viewKind] {
             return title

@@ -101,16 +101,20 @@ public struct CatalogInput: Decodable, Equatable, Sendable {
     public let type: String
     public let defaultValue: BoardScalar?
     public let summary: String
+    public let from: String?
+    public let many: Bool
 
     enum CodingKeys: String, CodingKey {
-        case type, summary
+        case type, summary, from, many
         case defaultValue = "default"
     }
 
-    public init(type: String, defaultValue: BoardScalar?, summary: String) {
+    public init(type: String, defaultValue: BoardScalar?, summary: String, from: String? = nil, many: Bool = false) {
         self.type = type
         self.defaultValue = defaultValue
         self.summary = summary
+        self.from = from
+        self.many = many
     }
 
     public init(from decoder: Decoder) throws {
@@ -118,7 +122,11 @@ public struct CatalogInput: Decodable, Equatable, Sendable {
         type = try c.decodeIfPresent(String.self, forKey: .type) ?? "string"
         defaultValue = try c.decodeIfPresent(BoardScalar.self, forKey: .defaultValue)
         summary = try c.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        from = try c.decodeIfPresent(String.self, forKey: .from)
+        many = try c.decodeIfPresent(Bool.self, forKey: .many) ?? false
     }
+
+    public var isChoice: Bool { type == "choice" }
 }
 
 /// `raw` is the whole source as the CLI printed it; the four provider

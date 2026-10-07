@@ -143,6 +143,7 @@ public struct ResolvedWidget: Equatable, Sendable {
     public let minimum: CanvasSize
     public var source: ResolvedSource? = nil
     public var title: String? = nil
+    public var listArguments: [String: [String]] = [:]
 }
 
 extension ResolvedSource {
@@ -179,6 +180,23 @@ public enum WidgetResolution: Equatable, Sendable {
         _ instance: BoardWidget, in catalog: WidgetCatalog, contract: WidgetContract = .current
     ) -> WidgetResolution {
         if instance.isInline { return resolveInline(instance, catalog: catalog, contract: contract) }
+        let resolution = resolveTyped(instance, in: catalog, contract: contract)
+        guard case var .ready(resolved) = resolution else { return resolution }
+        if let problem = InputShapes.problem(instance.with, inputs: resolved.widget.inputs, id: instance.id) {
+            return .refused(type: instance.type, reason: problem.message)
+        }
+        if let every = instance.everyOverride,
+           let problem = EntryOverrideRules.everyProblem(
+               id: instance.id, type: instance.type, every: every, resolved: resolved, catalog: catalog, contract: contract) {
+            return .refused(type: instance.type, reason: problem)
+        }
+        resolved.listArguments = ListArguments.of(resolved.widget, values: instance.with)
+        return .ready(EntryOverrideRules.applied(resolved, title: instance.titleOverride, every: instance.everyOverride))
+    }
+
+    private static func resolveTyped(
+        _ instance: BoardWidget, in catalog: WidgetCatalog, contract: WidgetContract
+    ) -> WidgetResolution {
         guard let widget = catalog.widget(named: instance.type) else { return .notFound(type: instance.type) }
         guard widget.available else { return .needsPackage(package: widget.package, reason: widget.unavailableReason) }
         let engine = EngineVersion(contract.engine) ?? EngineVersion(major: 1, minor: 0)

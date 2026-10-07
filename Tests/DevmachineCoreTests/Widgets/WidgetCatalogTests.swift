@@ -394,4 +394,19 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertEqual(CatalogFixtures.clock.trust, .official)
         XCTAssertEqual(CatalogWidget.inline(id: "a", title: "A", sizes: [], fits: [], viewKind: "text").trust, .local)
     }
+
+    func testAChoiceInputReadsItsSourceAndAListDefault() throws {
+        let json = """
+            {"type": "choice", "from": "machines", "many": true, "default": [], "summary": "Machines to show."}
+            """
+        let input = try JSONDecoder().decode(CatalogInput.self, from: Data(json.utf8))
+        XCTAssertTrue(input.isChoice)
+        XCTAssertEqual(input.from, "machines")
+        XCTAssertTrue(input.many)
+        XCTAssertEqual(input.defaultValue, .list([]))
+        let plain = try JSONDecoder().decode(CatalogInput.self, from: Data(#"{"type": "string"}"#.utf8))
+        XCTAssertFalse(plain.isChoice)
+        XCTAssertNil(plain.from)
+        XCTAssertFalse(plain.many)
+    }
 }
