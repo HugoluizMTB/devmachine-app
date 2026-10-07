@@ -258,7 +258,7 @@ public enum WidgetResolution: Equatable, Sendable {
         }
         var source = inline.source
         if case let .packageProvider(provider) = source {
-            guard let catalog else { return .waitingForCatalog(type: instance.id) }
+            guard let catalog, !catalog.isStale else { return .waitingForCatalog(type: instance.id) }
             switch checked(provider, against: catalog.packageProviderIndex) {
             case let .success(filled): source = .packageProvider(filled)
             case let .failure(problem): return .refused(type: instance.id, reason: problem.message)
@@ -269,7 +269,6 @@ public enum WidgetResolution: Equatable, Sendable {
         }
         let every = floored(source.every, kind: source.kind, contract: contract)
         let thirdParty = thirdPartyProvider(of: source, in: catalog)
-        if thirdParty != nil, catalog?.isStale == true { return .waitingForCatalog(type: instance.id) }
         return .ready(ResolvedWidget(
             widget: widget, provider: "", viewKind: inline.view.kind, arguments: [:], every: every.seconds ?? 0,
             minimum: minimum,

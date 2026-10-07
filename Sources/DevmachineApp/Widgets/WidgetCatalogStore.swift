@@ -23,10 +23,11 @@ final class WidgetCatalogStore: ObservableObject {
     private var again = false
     private var pinned = false
     private let sleep: @Sendable (TimeInterval) async -> Void
-    private var retry: Task<Void, Never>?
+    private nonisolated(unsafe) var retry: Task<Void, Never>?
     private var retryFailures = 0
     private var catalogWaiters: Set<String> = []
-    private var quitObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var quitObserver: NSObjectProtocol?
+    private var quitting = false
 
     init(
         read: @escaping @Sendable () throws -> WidgetCatalog = { try WidgetCatalogStore.liveRead() },
@@ -37,8 +38,22 @@ final class WidgetCatalogStore: ObservableObject {
         quitObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.stopRetrying() }
+            MainActor.assumeIsolated { self?.stopForQuit() }
         }
+    }
+
+    deinit {
+        retry?.cancel()
+        if let quitObserver { NotificationCenter.default.removeObserver(quitObserver) }
+    }
+
+    /// Only quit drops the observer: a plain `stopRetrying` after a good read
+    /// must still let a later stale spell stop at quit.
+    func stopForQuit() {
+        quitting = true
+        stopRetrying()
+        if let quitObserver { NotificationCenter.default.removeObserver(quitObserver) }
+        quitObserver = nil
     }
 
     nonisolated static func liveRead() throws -> WidgetCatalog {
@@ -101,7 +116,7 @@ final class WidgetCatalogStore: ObservableObject {
         if waits { catalogWaiters.insert(board) } else { catalogWaiters.remove(board) }
         if !needsRetry {
             stopRetrying()
-        } else if case .failed = state {
+        } else if catalog == nil, case .failed = state {
             scheduleRetry()
         }
     }
@@ -111,7 +126,7 @@ final class WidgetCatalogStore: ObservableObject {
     /// One pending retry serves Home and both sidebars; a failure while it
     /// waits does not start a second one.
     private func scheduleRetry() {
-        guard retry == nil, needsRetry else { return }
+        guard retry == nil, needsRetry, !quitting else { return }
         retryFailures += 1
         guard let delay = CatalogRetrySchedule.delay(afterFailures: retryFailures) else { return }
         let sleep = self.sleep

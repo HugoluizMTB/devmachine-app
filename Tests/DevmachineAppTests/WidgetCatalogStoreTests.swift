@@ -155,6 +155,37 @@ final class WidgetCatalogStoreTests: XCTestCase {
         XCTAssertEqual(sleeps.delays.count, 3)
     }
 
+    func testABoardSyncWithAStaleCatalogNeverMovesTheBackoffAhead() async {
+        let box = ReadBox(.success(WidgetCatalog(engine: "1.3", packagesRelease: "v41", widgets: [])))
+        let store = retryingStore(box)
+        await store.reload()
+        box.set(.failure(ReadError.offline))
+        await store.reload()
+        await waitUntil { self.sleeps.waiting == 1 }
+        store.stopRetrying()
+        store.setWaitsForCatalog(true, board: "home")
+        store.setWaitsForCatalog(true, board: "sidebar")
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(sleeps.delays, [30])
+    }
+
+    func testAfterQuitNothingIsRetried() async {
+        let reads = ReadCounter()
+        let box = ReadBox(.success(WidgetCatalog(engine: "1.3", packagesRelease: "v41", widgets: [])))
+        let store = retryingStore(box, reads: reads)
+        await store.reload()
+        box.set(.failure(ReadError.offline))
+        await store.reload()
+        await waitUntil { self.sleeps.waiting == 1 }
+        store.stopForQuit()
+        sleeps.releaseNext()
+        await store.reload()
+        store.setWaitsForCatalog(true, board: "home")
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(sleeps.delays, [30])
+        XCTAssertEqual(reads.value, 3)
+    }
+
     func testABoardWaitingBeforeTheFirstReadFailsGetsTheRetryWhenItFails() async {
         let store = retryingStore(ReadBox(.failure(ReadError.offline)))
         store.setWaitsForCatalog(true, board: "home")

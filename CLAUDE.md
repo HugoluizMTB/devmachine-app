@@ -1130,16 +1130,21 @@ Rules:
   package commit can be stored. Once the catalog loads it gets its trust and
   commit from the top-level `providers` map.
 - **A failed catalog reload marks the kept catalog stale** (`isStale`).
-  Third-party code widgets (catalog and inline) then wait as above until a
-  read works, as the commits it holds may be older than what
-  `packages update` installed. Official, local and `url` widgets keep running.
+  Third-party catalog widgets that run code, and every inline package-provider
+  widget whatever its trust (a stale catalog cannot vouch for it), then wait
+  as above until a read works, as the commits it holds may be older than what
+  `packages update` installed. Official and local catalog widgets and `url`
+  widgets keep running.
   While it is stale, the shared `WidgetCatalogStore` reads `widgets list`
   again on `CatalogRetrySchedule` (30s, 60s, 120s, then every 5 min): one
   pending retry for Home and both sidebars, stopped by a good read, a seed
-  or app quit. A failed first read (no catalog yet) is retried the same way,
-  but only while some board holds a `.waitingForCatalog` widget: each
-  controller reports it (`setWaitsForCatalog`) when it syncs its jobs, and the
-  retry stops once no board does. With no CLI it settles at every 5 min.
+  or app quit (`stopForQuit` also drops the quit observer, as `deinit` does;
+  nothing retries after it). A failed first read (no catalog yet) is retried
+  the same way, but only while some board holds a `.waitingForCatalog` widget:
+  each controller reports it (`setWaitsForCatalog`) when it syncs its jobs, and
+  the retry stops once no board does. Only with no catalog does a board report
+  start a retry, so a board sync during a stale spell never moves the backoff
+  ahead. With no CLI it settles at every 5 min.
 - **The provider index is complete only when a packages release was read**
   and `providers` is there, as `widgets validate` decides it. Without a
   release an unknown package is left to `devmachine run`; a package the

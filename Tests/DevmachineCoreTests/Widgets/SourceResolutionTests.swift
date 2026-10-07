@@ -430,6 +430,24 @@ final class SourceResolutionTests: XCTestCase {
         XCTAssertEqual(StackCatalog.merged(stale).isStale, true)
     }
 
+    func testAStaleCatalogCannotVouchForAnyInlinePackageProvider() throws {
+        let local = try catalog13(
+            replacing: #""scope": "workspace", "trust": "third-party""#, with: #""scope": "workspace", "trust": "local""#)
+        XCTAssertEqual(local.providers?.first { $0.name == "acme-tools/load" }?.trust, .local)
+        XCTAssertNotNil(ready(WidgetResolution.resolveInline(try loadWidget(), catalog: local))?.source)
+        XCTAssertEqual(WidgetResolution.resolveInline(try loadWidget(), catalog: local.stale()), .waitingForCatalog(type: "load"))
+
+        let ghost = try inline(["kind": .string("provider"), "name": .string("ghost/load"),
+                                "target": .object(["machine": .string("main")]), "every": .string("60s")])
+        XCTAssertEqual(WidgetResolution.resolveInline(ghost, catalog: try catalog13().stale()), .waitingForCatalog(type: "load"))
+
+        let official = try inline([
+            "kind": .string("provider"), "name": .string("devmachine-app/stats"),
+            "target": .object(["machine": .string("main")]), "every": .string("60s"),
+        ], view: ["kind": .string("gauge"), "value": .string("{{json.cpu}}")])
+        XCTAssertEqual(WidgetResolution.resolveInline(official, catalog: try catalog13().stale()), .waitingForCatalog(type: "load"))
+    }
+
     func testAProviderWhosePackageSourceDoesNotReadStaysInTheCatalog() throws {
         let catalog = try catalog13(replacing: loadProviderSource, with: #""package_source": 7,"#)
         let provider = try XCTUnwrap(catalog.providers?.first { $0.name == "acme-tools/load" })
