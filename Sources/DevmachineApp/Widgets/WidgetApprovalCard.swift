@@ -21,8 +21,10 @@ enum SourceWidgetCardMode: Equatable {
     case demo
     case content
 
-    static func of(approval: ApprovalState, isDemo: Bool, viewKind: String) -> SourceWidgetCardMode {
-        guard approval.canRun else { return .approval }
+    /// The controller answers `notNeeded` for an id it has not been given
+    /// yet, so a source that needs approval shows the card until it has.
+    static func of(approval: ApprovalState, needsApproval: Bool, isDemo: Bool, viewKind: String) -> SourceWidgetCardMode {
+        guard approval.canRun, !(needsApproval && approval == .notNeeded) else { return .approval }
         return isDemo && viewKind != "web" ? .demo : .content
     }
 }
@@ -111,10 +113,13 @@ struct SourceWidgetCard: View {
 
     var body: some View {
         let approval = controller.approvalState(id)
-        switch SourceWidgetCardMode.of(approval: approval, isDemo: controller.isDemoMode, viewKind: source.view.kind) {
+        switch SourceWidgetCardMode.of(
+            approval: approval, needsApproval: source.needsApproval, isDemo: controller.isDemoMode,
+            viewKind: source.view.kind
+        ) {
         case .approval:
             WidgetApprovalCard(
-                source: source, state: approval, size: size,
+                source: source, state: approval == .notNeeded ? .waiting(hash: "") : approval, size: size,
                 onAllow: { controller.approve(id) }, onDeny: { controller.deny(id) })
         case .demo:
             WidgetPlaceholderView(icon: "play.slash", title: title, detail: "Demo mode never runs widget commands.")

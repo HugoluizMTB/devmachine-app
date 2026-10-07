@@ -214,13 +214,20 @@ final class SourceWidgetLayoutTests: XCTestCase {
     }
 
     func testTheApprovalCardShowsUntilAllowedAndNeverForWidgetsThatNeedNone() {
-        XCTAssertEqual(SourceWidgetCardMode.of(approval: .waiting(hash: "h"), isDemo: false, viewKind: "text"), .approval)
-        XCTAssertEqual(SourceWidgetCardMode.of(approval: .denied(hash: "h"), isDemo: false, viewKind: "text"), .approval)
-        XCTAssertEqual(SourceWidgetCardMode.of(approval: .allowed, isDemo: false, viewKind: "text"), .content)
-        XCTAssertEqual(SourceWidgetCardMode.of(approval: .notNeeded, isDemo: false, viewKind: "text"), .content)
-        XCTAssertEqual(SourceWidgetCardMode.of(approval: .notNeeded, isDemo: true, viewKind: "text"), .demo)
-        XCTAssertEqual(SourceWidgetCardMode.of(approval: .notNeeded, isDemo: true, viewKind: "web"), .content)
-        XCTAssertEqual(SourceWidgetCardMode.of(approval: .waiting(hash: "h"), isDemo: true, viewKind: "text"), .approval)
+        func mode(_ approval: ApprovalState, needs: Bool = true, demo: Bool = false, view: String = "text") -> SourceWidgetCardMode {
+            SourceWidgetCardMode.of(approval: approval, needsApproval: needs, isDemo: demo, viewKind: view)
+        }
+        XCTAssertEqual(mode(.waiting(hash: "h")), .approval)
+        XCTAssertEqual(mode(.denied(hash: "h")), .approval)
+        XCTAssertEqual(mode(.allowed), .content)
+        XCTAssertEqual(mode(.notNeeded, needs: false), .content)
+        XCTAssertEqual(mode(.notNeeded, needs: false, demo: true), .demo)
+        XCTAssertEqual(mode(.notNeeded, needs: false, demo: true, view: "web"), .content)
+        XCTAssertEqual(mode(.waiting(hash: "h"), demo: true), .approval)
+    }
+
+    func testAnInlineWidgetTheControllerHasNotSeenYetShowsTheCardNotItsContent() {
+        XCTAssertEqual(SourceWidgetCardMode.of(approval: .notNeeded, needsApproval: true, isDemo: false, viewKind: "text"), .approval)
     }
 
     func testTheApprovalCardSaysWhatRunsWhereAndHowOften() {
@@ -230,5 +237,13 @@ final class SourceWidgetLayoutTests: XCTestCase {
         XCTAssertEqual(WidgetApprovalText.headline(kind: "session", denied: false), "Allow this session widget to run?")
         XCTAssertEqual(WidgetApprovalText.headline(kind: "command", denied: true), "Paused: you denied this command widget")
         XCTAssertEqual(WidgetApprovalText.whereAndWhen(source), "Runs in workspace alice, every 10s.")
+        let command = WidgetSource.command(CommandSource(
+            run: "tail", script: nil, args: ["-n", "50", "/var/log/system log"], shell: false, target: .local,
+            every: .interval(60), timeout: 30, mode: .poll, keep: 200, parse: .text))
+        XCTAssertEqual(ApprovalCopy.what(command), "tail -n 50 '/var/log/system log'")
+        let script = WidgetSource.command(CommandSource(
+            run: nil, script: "scripts/disk.sh", args: ["--all"], shell: false, target: .local,
+            every: .interval(60), timeout: 30, mode: .poll, keep: 200, parse: .text))
+        XCTAssertEqual(ApprovalCopy.what(script), "scripts/disk.sh --all")
     }
 }

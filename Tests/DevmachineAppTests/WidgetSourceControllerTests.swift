@@ -151,6 +151,17 @@ final class WidgetSourceControllerTests: XCTestCase {
         await waitUntil { self.command.calls == 1 }
     }
 
+    func testRunNowSkipsAMinimizedWidget() async {
+        controller.start()
+        controller.update([entry(every: .manual, inline: false, visible: false)])
+        controller.runNow("disk")
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 0)
+        controller.update([entry(every: .manual, inline: false, visible: true)])
+        controller.runNow("disk")
+        await waitUntil { self.command.calls == 1 }
+    }
+
     func testOneRunAtATime() async {
         command = ScriptedSourceRunner(gated: true)
         controller = makeController()

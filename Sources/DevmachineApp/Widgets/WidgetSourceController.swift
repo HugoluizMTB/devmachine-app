@@ -148,10 +148,10 @@ final class WidgetSourceController: ObservableObject {
     }
 
     func runNow(_ id: String) {
-        guard isStarted, schedule.canRunNow(id), let entry = entries[id] else { return }
+        guard isStarted, schedule.canRunNow(id), let entry = entries[id], entry.isVisible else { return }
         guard entry.source.every == .continuous else { return run(id) }
         heldStreams.remove(id)
-        if entry.isVisible, streams[id] == nil { startStream(id) }
+        if streams[id] == nil { startStream(id) }
     }
 
     func approve(_ id: String) { decide(.allowed, id) }
