@@ -57,6 +57,28 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertTrue(usage.available)
     }
 
+    func testDecodesTheRealCLIOutputAndEveryWidgetResolves() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/widgets-list-cli-0.9.0.json")
+        let catalog = try WidgetCatalog.decode(Data(contentsOf: url))
+        XCTAssertEqual(catalog.engine, WidgetContract.engine10.engine)
+        XCTAssertEqual(catalog.problems, [])
+        XCTAssertEqual(
+            catalog.widgets.map(\.name),
+            ["claude-code/usage", "codex/usage", "devmachine-app/clock", "devmachine-app/machines", "devmachine-app/summary"])
+        let codex = try XCTUnwrap(catalog.widget(named: "codex/usage"))
+        XCTAssertEqual(codex.origin, "local")
+        XCTAssertEqual(codex.source.with, ["harness": "codex"])
+        XCTAssertEqual(codex.surfaces, ["context-sidebar", "home", "sidebar"])
+        for widget in catalog.widgets {
+            XCTAssertTrue(widget.available, widget.name)
+            guard case .ready = WidgetResolution.resolve(entry(widget.name), in: catalog) else {
+                return XCTFail("\(widget.name) does not resolve in this app")
+            }
+        }
+    }
+
     func testMissingOptionalListsReadAsEmpty() throws {
         let catalog = try WidgetCatalog.decode(Data(#"{"engine":"1.0","packages_release":"v40","widgets":[]}"#.utf8))
         XCTAssertEqual(catalog.problems, [])

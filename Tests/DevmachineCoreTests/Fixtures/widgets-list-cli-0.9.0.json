@@ -1,0 +1,219 @@
+{
+  "engine": "1.0",
+  "packages_release": "v38",
+  "widgets": [
+    {
+      "name": "claude-code/usage",
+      "package": "claude-code",
+      "widget": "usage",
+      "origin": "local",
+      "version": "",
+      "path": "/Users/alice/.config/devmachine/packages/claude-code/widgets/usage",
+      "summary": "Claude Code usage windows, how much of each is used and when it resets.",
+      "requires_engine": "\u003e= 1.0",
+      "fits": [
+        "canvas",
+        "stack",
+        "slot"
+      ],
+      "context": {},
+      "inputs": {},
+      "source": {
+        "kind": "provider",
+        "name": "app/harness-usage",
+        "with": {
+          "harness": "claude"
+        },
+        "every": "60s"
+      },
+      "view": {
+        "kind": "app.harness-usage"
+      },
+      "sizes": [
+        "small",
+        "medium",
+        "wide"
+      ],
+      "default_size": "medium",
+      "places": [
+        "home"
+      ],
+      "surfaces": [
+        "context-sidebar",
+        "home",
+        "sidebar"
+      ],
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "name": "codex/usage",
+      "package": "codex",
+      "widget": "usage",
+      "origin": "local",
+      "version": "",
+      "path": "/Users/alice/.config/devmachine/packages/codex/widgets/usage",
+      "summary": "Codex usage windows, how much of each is used and when it resets.",
+      "requires_engine": "\u003e= 1.0",
+      "fits": [
+        "canvas",
+        "stack",
+        "slot"
+      ],
+      "context": {},
+      "inputs": {},
+      "source": {
+        "kind": "provider",
+        "name": "app/harness-usage",
+        "with": {
+          "harness": "codex"
+        },
+        "every": "60s"
+      },
+      "view": {
+        "kind": "app.harness-usage"
+      },
+      "sizes": [
+        "small",
+        "medium",
+        "wide"
+      ],
+      "default_size": "medium",
+      "places": [
+        "home"
+      ],
+      "surfaces": [
+        "context-sidebar",
+        "home",
+        "sidebar"
+      ],
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "name": "devmachine-app/clock",
+      "package": "devmachine-app",
+      "widget": "clock",
+      "origin": "local",
+      "version": "",
+      "path": "/Users/alice/.config/devmachine/packages/devmachine-app/widgets/clock",
+      "summary": "The time, the date and the computer the app runs on.",
+      "requires_engine": "\u003e= 1.0",
+      "fits": [
+        "canvas",
+        "stack",
+        "slot"
+      ],
+      "context": {},
+      "inputs": {},
+      "source": {
+        "kind": "provider",
+        "name": "app/clock",
+        "with": {},
+        "every": "5s"
+      },
+      "view": {
+        "kind": "app.clock"
+      },
+      "sizes": [
+        "medium",
+        "wide"
+      ],
+      "default_size": "medium",
+      "places": [
+        "home"
+      ],
+      "surfaces": [
+        "context-sidebar",
+        "home",
+        "sidebar"
+      ],
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "name": "devmachine-app/machines",
+      "package": "devmachine-app",
+      "widget": "machines",
+      "origin": "local",
+      "version": "",
+      "path": "/Users/alice/.config/devmachine/packages/devmachine-app/widgets/machines",
+      "summary": "Each machine, online or not, with its CPU, memory, disk and readiness.",
+      "requires_engine": "\u003e= 1.0",
+      "fits": [
+        "canvas",
+        "stack"
+      ],
+      "context": {},
+      "inputs": {},
+      "source": {
+        "kind": "provider",
+        "name": "app/machines",
+        "with": {},
+        "every": "90s"
+      },
+      "view": {
+        "kind": "app.machines"
+      },
+      "sizes": [
+        "medium",
+        "large",
+        "wide",
+        "tall"
+      ],
+      "default_size": "large",
+      "places": [
+        "home"
+      ],
+      "surfaces": [
+        "context-sidebar",
+        "home",
+        "sidebar"
+      ],
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "name": "devmachine-app/summary",
+      "package": "devmachine-app",
+      "widget": "summary",
+      "origin": "local",
+      "version": "",
+      "path": "/Users/alice/.config/devmachine/packages/devmachine-app/widgets/summary",
+      "summary": "How many sessions, coding-harness sessions and workspaces are open.",
+      "requires_engine": "\u003e= 1.0",
+      "fits": [
+        "canvas",
+        "stack",
+        "slot"
+      ],
+      "context": {},
+      "inputs": {},
+      "source": {
+        "kind": "provider",
+        "name": "app/summary",
+        "with": {},
+        "every": "5s"
+      },
+      "view": {
+        "kind": "app.summary"
+      },
+      "sizes": [
+        "medium",
+        "wide"
+      ],
+      "default_size": "wide",
+      "places": [
+        "home"
+      ],
+      "surfaces": [
+        "context-sidebar",
+        "home",
+        "sidebar"
+      ],
+      "available": true,
+      "unavailable_reason": ""
+    }
+  ],
+  "problems": []
+}
