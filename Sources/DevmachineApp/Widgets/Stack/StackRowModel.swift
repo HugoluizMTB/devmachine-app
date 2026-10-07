@@ -62,6 +62,7 @@ struct StackRowModel: Equatable {
         switch resolution {
         case let .ready(resolved)?:
             let appTitle = StackAppViewKind(viewKind: resolved.viewKind).flatMap { AppStackWidgets.titles[$0.rawValue] }
+                ?? AppMenubarWidgets.boardTitles[resolved.viewKind]
             title = entry.titleOverride ?? entry.inline?.title ?? appTitle ?? title
             header = StackHeaderStyle.of(viewKind: resolved.viewKind)
             choices = StackLayout.sizeChoices(for: resolved, contract: contract)

@@ -32,6 +32,7 @@ struct StackBoardView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var usage: HarnessUsageStore
     @EnvironmentObject private var stats: StatsStore
+    @EnvironmentObject private var prStore: PRStore
     @Environment(\.dmMetrics) private var m
     @State private var hovered: String?
     @State private var panelHovered = false
@@ -83,7 +84,7 @@ struct StackBoardView: View {
         }
         .onHover { panelHovered = $0 }
         .onAppear {
-            controller.runtime.providers = AppWidgetProviders(usage: usage, stats: stats)
+            controller.runtime.providers = AppWidgetProviders(usage: usage, stats: stats, prs: prStore)
             controller.runtime.start()
             controller.setVisible(isVisible)
             watchOptionKey()

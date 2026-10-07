@@ -43,7 +43,8 @@ final class MenubarResolutionTests: XCTestCase {
 
     func testTheMenubarWidgetsStayOutOfTheSidebars() {
         let names = StackGallery.entries(nil, surface: "context-sidebar").map(\.name)
-        XCTAssertFalse(names.contains { $0.hasSuffix("-panel") || $0.hasSuffix("/brand") })
+        XCTAssertFalse(names.contains { $0.hasSuffix("/usage-panel") || $0.hasSuffix("/brand") })
+        XCTAssertTrue(names.contains("devmachine-app/pull-requests-panel"))
         XCTAssertEqual(
             StackGallery.entries(nil, surface: "menubar").map(\.name),
             ["devmachine-app/brand", "devmachine-app/open-pull-requests"])

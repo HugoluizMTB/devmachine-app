@@ -9,28 +9,31 @@ public enum AppMenubarWidgets {
     private struct Spec {
         let provider: String
         let view: WidgetValue
-        let layout: String
-        let surface: String
+        let fits: [String]
+        let surfaces: [String]
+        let places: [String]
         let title: String
         let summary: String
     }
 
     private static let specs: [String: Spec] = [
         "brand": Spec(
-            provider: "app/brand", view: .object(["kind": .string("app.brand")]), layout: "slot",
-            surface: DefaultStackBoard.menubar, title: "Devmachine mark", summary: "The ❯_ mark."),
+            provider: "app/brand", view: .object(["kind": .string("app.brand")]), fits: ["slot"],
+            surfaces: [DefaultStackBoard.menubar], places: [DefaultStackBoard.menubar], title: "Devmachine mark", summary: "The ❯_ mark."),
         "open-pull-requests": Spec(
             provider: "app/open-pull-requests",
-            view: .object(["kind": .string("number"), "hide_zero": .bool(true)]), layout: "slot",
-            surface: DefaultStackBoard.menubar, title: "Open pull requests",
+            view: .object(["kind": .string("number"), "hide_zero": .bool(true)]), fits: ["slot"],
+            surfaces: [DefaultStackBoard.menubar], places: [DefaultStackBoard.menubar], title: "Open pull requests",
             summary: "How many of your pull requests are open; hidden at 0."),
         "pull-requests-panel": Spec(
             provider: "app/pull-requests-panel", view: .object(["kind": .string("app.pull-requests-panel")]),
-            layout: "tabs", surface: DefaultStackBoard.menubarPanel, title: "Pull Requests",
+            fits: ["tabs", "canvas", "stack"],
+            surfaces: [DefaultStackBoard.menubarPanel, DefaultStackBoard.sidebar, DefaultStackBoard.contextSidebar],
+            places: [DefaultStackBoard.menubarPanel], title: "Pull Requests",
             summary: "Your open pull requests, by organisation."),
         "usage-panel": Spec(
-            provider: "app/usage-panel", view: .object(["kind": .string("app.usage-panel")]), layout: "tabs",
-            surface: DefaultStackBoard.menubarPanel, title: "Usage",
+            provider: "app/usage-panel", view: .object(["kind": .string("app.usage-panel")]), fits: ["tabs"],
+            surfaces: [DefaultStackBoard.menubarPanel], places: [DefaultStackBoard.menubarPanel], title: "Usage",
             summary: "Coding harness usage, one column per harness."),
     ]
 
@@ -41,14 +44,17 @@ public enum AppMenubarWidgets {
         "app.brand": "Devmachine mark", "app.pull-requests-panel": "Pull Requests", "app.usage-panel": "Usage",
     ]
 
+    /// On Home and in a sidebar the panel reads like any other widget title.
+    public static let boardTitles: [String: String] = ["app.pull-requests-panel": "Pull requests"]
+
     public static func title(_ widget: String) -> String? { specs[widget]?.title }
 
     public static func catalogWidget(_ widget: String) -> CatalogWidget? {
         guard let spec = specs[widget], let kind = spec.view["kind"]?.string else { return nil }
         return CatalogWidget(
-            name: "\(package)/\(widget)", summary: spec.summary, requiresEngine: ">= 1.4", fits: [spec.layout],
+            name: "\(package)/\(widget)", summary: spec.summary, requiresEngine: ">= 1.4", fits: spec.fits,
             source: CatalogSource(name: spec.provider, every: "60s"), viewKind: kind, sizes: [], defaultSize: "",
-            places: [spec.surface], surfaces: [spec.surface], origin: "app", view: spec.view, single: true)
+            places: spec.places, surfaces: spec.surfaces, origin: "app", view: spec.view, single: true)
     }
 
     public static var all: [CatalogWidget] { specs.keys.sorted().compactMap(catalogWidget) }

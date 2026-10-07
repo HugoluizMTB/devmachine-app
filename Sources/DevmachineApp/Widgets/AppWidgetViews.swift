@@ -325,6 +325,10 @@ struct AppWidgetView: View {
             MachinesWidgetView(size: size)
         case "app.harness-usage":
             HarnessUsageWidgetView(harness: resolved.arguments["harness"] ?? "", size: size)
+        case "app.pull-requests-panel":
+            PRsView()
+                .clipShape(RoundedRectangle(cornerRadius: DMRadius.card))
+                .dmGlass(radius: DMRadius.card, stroke: .white.opacity(0.15))
         default:
             WidgetPlaceholderView(
                 icon: "questionmark.square.dashed", title: "Needs a newer app",

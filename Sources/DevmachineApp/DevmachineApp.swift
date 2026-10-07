@@ -80,6 +80,7 @@ struct DevmachineApp: App {
                 .environmentObject(recentCommandStore)
                 .environmentObject(caddyStore)
                 .environmentObject(statsStore)
+                .environmentObject(prStore)
                 .environmentObject(healthCheckStore)
                 .environmentObject(usageStore)
                 .environmentObject(settingsStore)

@@ -20,6 +20,7 @@ struct HomeCanvasView: View {
     @ObservedObject private var catalog: WidgetCatalogStore
     @EnvironmentObject private var usage: HarnessUsageStore
     @EnvironmentObject private var stats: StatsStore
+    @EnvironmentObject private var prStore: PRStore
     @EnvironmentObject private var model: AppModel
     @Environment(\.dmMetrics) private var m
     @Environment(\.collapsedSidebarButtonFrame) private var sidebarButton
@@ -65,7 +66,7 @@ struct HomeCanvasView: View {
         }
         .onAppear {
             controller.start()
-            controller.runtime.providers = AppWidgetProviders(usage: usage, stats: stats)
+            controller.runtime.providers = AppWidgetProviders(usage: usage, stats: stats, prs: prStore)
             controller.runtime.start()
             controller.sources.start()
             stats.start()
@@ -357,6 +358,7 @@ private struct BoardCanvasLayer: View {
     private func title(_ widget: BoardWidget, _ resolution: WidgetResolution?) -> String {
         if let title = widget.titleOverride { return title }
         if let inline = widget.inline { return inline.title }
+        if case let .ready(resolved)? = resolution, let title = AppMenubarWidgets.boardTitles[resolved.viewKind] { return title }
         if case let .ready(resolved)? = resolution, resolved.viewKind == "app.harness-usage",
            let descriptor = facade.descriptor(for: HarnessID(rawValue: resolved.arguments["harness"] ?? "")) {
             return "\(descriptor.shortTitle) usage"
