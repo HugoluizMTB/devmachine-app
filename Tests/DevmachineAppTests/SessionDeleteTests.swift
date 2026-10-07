@@ -166,7 +166,7 @@ final class SessionDeleteTests: XCTestCase {
     func testAKillThatFailsKeepsTheRowAndSaysWhy() async throws {
         let source = GatedSessionSource(before)
         source.release()
-        let model = makeModel(source: source, runner: KillRunner(exitCode: 1, stderr: "no server running"))
+        let model = makeModel(source: source, runner: KillRunner(exitCode: 1, stderr: "lost server"))
 
         model.deleteSession(alias: acme.alias, name: "session-09")
         try await waitFor("the failure is shown") {
@@ -174,7 +174,31 @@ final class SessionDeleteTests: XCTestCase {
         }
 
         XCTAssertEqual(names(model), before)
-        XCTAssertTrue(model.activeTasks.contains { $0.label.contains("no server running") })
+        XCTAssertTrue(model.activeTasks.contains { $0.label.contains("lost server") })
+    }
+
+    func testAKillOfASessionTmuxNoLongerHasRemovesTheRowQuietly() async throws {
+        for stderr in ["can't find session: session-09", "no server running on /tmp/tmux-501/default"] {
+            let source = GatedSessionSource(before)
+            source.release()
+            let model = makeModel(source: source, runner: KillRunner(exitCode: 1, stderr: stderr))
+
+            model.deleteSession(alias: acme.alias, name: "session-09")
+            try await waitFor("the row goes: \(stderr)") { self.names(model) == ["session-08"] }
+
+            XCTAssertFalse(model.activeTasks.contains { $0.label.contains("Couldn't") }, stderr)
+        }
+    }
+
+    func testABulkKillOfSessionsTmuxNoLongerHasRemovesTheRowsQuietly() async throws {
+        let source = GatedSessionSource(before)
+        source.release()
+        let model = makeModel(source: source, runner: KillRunner(exitCode: 1, stderr: "can't find session"))
+
+        model.deleteSessions(before.map { SessionRef(alias: acme.alias, name: $0) })
+        try await waitFor("the rows go") { self.names(model).isEmpty }
+
+        XCTAssertFalse(model.activeTasks.contains { $0.label.contains("Couldn't") })
     }
 
     func testARenameThatFailsKeepsTheOldName() async throws {

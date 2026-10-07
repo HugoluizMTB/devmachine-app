@@ -1467,7 +1467,7 @@ final class AppModel: ObservableObject {
         Task.detached { [store] in
             var failed: [(ref: SessionRef, reason: String)] = []
             for ref in refs {
-                if let reason = AppModel.remoteFailure({
+                if let reason = AppModel.killFailure({
                     try store.runCapturing(alias: ref.alias, command: RemoteCommands.killSession(name: ref.name))
                 }) {
                     failed.append((ref, reason))
@@ -1502,6 +1502,15 @@ final class AppModel: ObservableObject {
         if selection == .session(alias: ref.alias, name: ref.name) {
             selection = nil
         }
+    }
+
+    /// A kill of a session tmux no longer has already got what it asked for.
+    nonisolated private static func killFailure(
+        _ run: () throws -> (stdout: String, stderr: String, exitCode: Int32)
+    ) -> String? {
+        guard let reason = remoteFailure(run) else { return nil }
+        let gone = reason.contains("can't find session") || reason.contains("no server running")
+        return gone ? nil : reason
     }
 
     /// Why a remote command failed, or nil when it exited 0.
@@ -1571,7 +1580,7 @@ final class AppModel: ObservableObject {
         pendingDelete = nil
         let taskId = beginTask(label: "Deleting \(name)", total: 1)
         Task.detached { [store] in
-            let failure = AppModel.remoteFailure {
+            let failure = AppModel.killFailure {
                 try store.runCapturing(alias: alias, command: RemoteCommands.killSession(name: name))
             }
             await MainActor.run {
