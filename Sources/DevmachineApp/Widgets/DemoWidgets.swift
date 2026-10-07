@@ -22,7 +22,7 @@ extension DemoData {
             name: "devmachine-app/usage", summary: "A coding harness's usage windows.",
             inputs: ["harness": CatalogInput(type: "choice", defaultValue: nil, summary: "Harness.", from: "harnesses")],
             source: CatalogSource(name: "app/harness-usage", with: ["harness": "{{inputs.harness}}"], every: "60s"),
-            viewKind: "app.harness-usage", sizes: ["small", "medium", "wide"], defaultSize: "medium", places: []),
+            viewKind: "app.harness-usage", sizes: ["small", "medium", "wide"], defaultSize: "medium"),
         demoUsage(package: "claude-code", harness: "claude"),
         demoUsage(package: "codex", harness: "codex"),
         CatalogWidget(

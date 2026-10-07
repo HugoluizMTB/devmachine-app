@@ -50,6 +50,8 @@ final class DefaultHomeBoardTests: XCTestCase {
         for count in 0...4 {
             let board = DefaultBoard.make(harnesses: Array(["claude", "codex", "kimi", "pi"].prefix(count)))
             let rects = board.widgets.map(\.frame.rect)
+            XCTAssertTrue(board.widgets.allSatisfy { $0.frame.x % 8 == 0 && $0.frame.y % 8 == 0 }, "\(count) harnesses")
+            XCTAssertEqual(Set(board.widgets.map(\.z)).count, board.widgets.count, "\(count) harnesses")
             for (i, a) in rects.enumerated() {
                 XCTAssertLessThanOrEqual(a.maxX, 1256, "\(count) harnesses")
                 for b in rects.dropFirst(i + 1) {

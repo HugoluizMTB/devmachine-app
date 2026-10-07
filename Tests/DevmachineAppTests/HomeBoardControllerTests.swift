@@ -183,19 +183,86 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertTrue(controller.sources === sources)
     }
 
-    func testAPackageUsageWidgetIsNotPlacedOverAHarnessTheBoardShows() throws {
-        let generic = CatalogWidget(
+    private var genericUsage: CatalogWidget {
+        CatalogWidget(
             name: "devmachine-app/usage",
             inputs: ["harness": CatalogInput(type: "choice", defaultValue: nil, summary: "", from: "harnesses")],
             source: CatalogSource(name: "app/harness-usage", with: ["harness": "{{inputs.harness}}"], every: "60s"),
-            viewKind: "app.harness-usage", sizes: ["medium", "large"], defaultSize: "large", places: [])
-        let package = CatalogWidget(
+            viewKind: "app.harness-usage", sizes: ["small", "medium", "wide"], defaultSize: "medium")
+    }
+
+    private var packageUsage: CatalogWidget {
+        CatalogWidget(
             name: "claude-code/usage", source: CatalogSource(name: "app/harness-usage", with: ["harness": "claude"], every: "60s"),
             viewKind: "app.harness-usage", sizes: ["medium"], defaultSize: "medium")
-        let catalog = WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [generic, package])
-        let controller = makeController(catalog: catalog)
+    }
+
+    private func usageEntries(_ controller: HomeBoardController) -> [String] {
+        (controller.store?.board?.widgets ?? []).filter { $0.type.hasSuffix("/usage") }.map {
+            if case let .string(value)? = $0.with["harness"] { return "\($0.type)#\(value)" }
+            return "\($0.type)#bare"
+        }
+    }
+
+    private func harnessValues(_ controller: HomeBoardController) -> [String?] {
+        (controller.store?.board?.widgets ?? []).filter { $0.type == "devmachine-app/usage" }.map {
+            if case let .string(value)? = $0.with["harness"] { return value }
+            return nil
+        }
+    }
+
+    func testAPackageUsageWidgetIsNotPlacedOverAHarnessTheBoardShows() {
+        let controller = makeController(catalog: WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [genericUsage, packageUsage]))
         controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude"])
         XCTAssertFalse(controller.store?.board?.widgets.contains { $0.type == "claude-code/usage" } ?? true)
+    }
+
+    func testEnablingAHarnessLaterAddsOneGenericUsageWidgetForIt() {
+        let controller = makeController(catalog: WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [genericUsage]))
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude"])
+        XCTAssertEqual(harnessValues(controller), ["claude"])
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertEqual(harnessValues(controller), ["claude", "codex"])
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertEqual(harnessValues(controller), ["claude", "codex"])
+    }
+
+    func testARemovedHarnessWidgetIsNotAddedAgain() throws {
+        let controller = makeController(catalog: WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [genericUsage]))
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        let codex = controller.store?.board?.widgets.first { $0.with["harness"] == .string("codex") }
+        controller.remove(try XCTUnwrap(codex).id)
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertEqual(harnessValues(controller), ["claude"])
+    }
+
+    func testARemovedDefaultBoardWidgetIsNotPutBackInDemoStyleCatalogs() {
+        let controller = makeController(
+            catalog: WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [genericUsage, packageUsage]))
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude"])
+        controller.remove("claude-usage")
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude"])
+        XCTAssertEqual(usageEntries(controller), [])
+    }
+
+    func testAnOldBoardWithAPerHarnessEntryGetsNoDuplicateAndNoBareEntry() {
+        let controller = makeController(
+            catalog: WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [genericUsage, packageUsage]))
+        controller.store?.update {
+            $0.widgets = [BoardWidget(
+                id: "claude-usage", type: "claude-code/usage", frame: BoardFrame(x: 24, y: 24, w: 320, h: 160), size: "medium", z: 1)]
+        }
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude"])
+        XCTAssertEqual(usageEntries(controller), ["claude-code/usage#bare"])
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])
+        XCTAssertEqual(usageEntries(controller), ["claude-code/usage#bare", "devmachine-app/usage#codex"])
+    }
+
+    func testAChoiceWidgetWithNoOptionsNeverPlacesABareCopy() {
+        let controller = makeController(catalog: WidgetCatalog(engine: "1.5", packagesRelease: "r", widgets: [genericUsage]))
+        controller.store?.update { $0.widgets = [] }
+        controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: [])
+        XCTAssertEqual(controller.store?.board?.widgets.count, 0)
     }
 
     func testOpeningWritesTheDefaultBoard() throws {

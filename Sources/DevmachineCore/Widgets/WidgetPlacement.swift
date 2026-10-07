@@ -191,18 +191,47 @@ public struct PlacementResult: Equatable, Sendable {
 }
 
 public enum WidgetPlacer {
+    /// Entries of an older packages release that already show one option of a
+    /// choice widget, keyed `<type>#<option>`.
+    private static let legacyTypes: [String: String] = [
+        "devmachine-app/usage#claude": "claude-code/usage",
+        "devmachine-app/usage#codex": "codex/usage",
+    ]
+
+    /// `options` maps an option source (such as `harnesses`) to its values.
+    /// A widget that places itself and takes one choice from a source is placed
+    /// once per option. A placing widget whose choice cannot be decided is
+    /// never placed, so no copy without its choice reaches the board.
     public static func place(
         on board: Board, catalog: WidgetCatalog, placements: WidgetPlacements, canvasWidth: Int,
-        contract: WidgetContract = .current, isEligible: (CatalogWidget) -> Bool
+        contract: WidgetContract = .current, options: [String: [String]] = [:],
+        isShown: (CatalogWidget) -> Bool = { _ in false }, isEligible: (CatalogWidget) -> Bool
     ) -> PlacementResult {
         var board = board
         var placements = placements
         var boardChanged = false
         var placementsChanged = false
         let surface = board.surface
-        for widget in catalog.widgets where widget.placesItself(on: surface)
-            && !placements.contains(widget.name, on: surface) && isEligible(widget) {
-            if !board.widgets.contains(where: { $0.type == widget.name }) {
+        for widget in catalog.widgets where widget.placesItself(on: surface) {
+            if let choice = oneChoice(of: widget) {
+                for option in options[choice.source] ?? [] {
+                    let key = "\(widget.name)#\(option)"
+                    guard !placements.contains(key, on: surface) else { continue }
+                    if !showsOption(board, widget: widget, input: choice.input, option: option, key: key) {
+                        var copy = newInstance(
+                            of: widget, on: board, canvasWidth: canvasWidth, contract: contract, idBase: "\(option)-usage")
+                        copy.with = [choice.input: .string(option)]
+                        board.widgets.append(copy)
+                        boardChanged = true
+                    }
+                    placements.insert(key, on: surface)
+                    placementsChanged = true
+                }
+                continue
+            }
+            if widget.inputs.values.contains(where: { $0.type == "choice" && $0.defaultValue == nil }) { continue }
+            guard !placements.contains(widget.name, on: surface), isEligible(widget) else { continue }
+            if !board.widgets.contains(where: { $0.type == widget.name }) && !isShown(widget) {
                 board.widgets.append(newInstance(of: widget, on: board, canvasWidth: canvasWidth, contract: contract))
                 boardChanged = true
             }
@@ -213,14 +242,26 @@ public enum WidgetPlacer {
             board: board, placements: placements, boardChanged: boardChanged, placementsChanged: placementsChanged)
     }
 
+    private static func oneChoice(of widget: CatalogWidget) -> (input: String, source: String)? {
+        let choices = widget.inputs.filter { $0.value.type == "choice" }
+        guard choices.count == 1, let entry = choices.first, !entry.value.many, let source = entry.value.from else { return nil }
+        return (entry.key, source)
+    }
+
+    private static func showsOption(_ board: Board, widget: CatalogWidget, input: String, option: String, key: String) -> Bool {
+        board.widgets.contains { entry in
+            (entry.type == widget.name && entry.with[input] == .string(option)) || entry.type == legacyTypes[key]
+        }
+    }
+
     public static func newInstance(
-        of widget: CatalogWidget, on board: Board, canvasWidth: Int, contract: WidgetContract = .current
+        of widget: CatalogWidget, on board: Board, canvasWidth: Int, contract: WidgetContract = .current, idBase: String? = nil
     ) -> BoardWidget {
         let preset = CanvasLayout.presetSize(widget.defaultSize, contract: contract)
         let size = preset ?? CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract)
         let spot = CanvasLayout.firstFreeSpot(for: size, avoiding: board.widgets.map(\.frame), bandWidth: canvasWidth)
         return BoardWidget(
-            id: board.uniqueID(base: widget.name.replacingOccurrences(of: "/", with: "-")), type: widget.name,
+            id: board.uniqueID(base: idBase ?? widget.name.replacingOccurrences(of: "/", with: "-")), type: widget.name,
             frame: spot, size: preset == nil ? BoardWidget.customSize : widget.defaultSize, z: board.topZ + 1)
     }
 

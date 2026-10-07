@@ -155,10 +155,9 @@ final class HomeBoardController: ObservableObject {
         })
         let result = WidgetPlacer.place(
             on: board, catalog: catalog, placements: placements, canvasWidth: canvasWidth,
-            isEligible: { widget in
-                guard let harness = WidgetPlacer.harness(of: widget) else { return true }
-                return enabledHarnesses.contains(harness) && !shown.contains(harness)
-            })
+            options: ["harnesses": enabledHarnesses.sorted()],
+            isShown: { widget in WidgetPlacer.harness(of: widget).map(shown.contains) ?? false },
+            isEligible: { widget in WidgetPlacer.harness(of: widget).map(enabledHarnesses.contains) ?? true })
         if result.boardChanged { store.update { $0 = result.board } }
         if result.placementsChanged { savePlacements(result.placements) }
     }
