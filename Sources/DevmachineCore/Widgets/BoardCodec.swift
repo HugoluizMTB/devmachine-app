@@ -7,12 +7,54 @@ import Yams
 public enum BoardCodec {
     private static let topKeys: Set<String> = ["format", "surface", "widgets"]
     private static let widgetKeys: Set<String> = [
-        "id", "type", "title", "with", "source", "view", "sizes", "fits", "frame", "size", "minimized", "z",
+        "id", "type", "title", "with", "source", "view", "sizes", "fits", "frame", "size", "minimized", "collapsed", "z",
     ]
+    private static let stackLayout = "stack"
     private static let frameKeys = ["x", "y", "w", "h"]
     private static let specialFloats: [String: Double] = [".inf": .infinity, "-.inf": -.infinity, ".nan": .nan]
 
     public static func decode(_ text: String, contract: WidgetContract = .current) throws -> Board {
+        let envelope = try envelope(text, contract: contract)
+        var widgets: [BoardWidget] = []
+        var seen: Set<String> = []
+        for item in envelope.items {
+            let widget = try decodeWidget(item, envelope: envelope, contract: contract)
+            guard seen.insert(widget.id).inserted else {
+                throw BoardProblem(line: line(item), message: "id \"\(widget.id)\" is used twice")
+            }
+            widgets.append(widget)
+        }
+        return Board(surface: envelope.surface, widgets: widgets)
+    }
+
+    public static func decodeStack(_ text: String, contract: WidgetContract = .current) throws -> StackBoard {
+        let envelope = try envelope(text, contract: contract)
+        guard contract.surfaces[envelope.surface]?.layout == stackLayout else {
+            throw BoardProblem(
+                line: line(envelope.surfaceNode),
+                message: "surface \(envelope.surface) is a canvas; this file holds a stack of widgets")
+        }
+        var entries: [StackEntry] = []
+        var seen: Set<String> = []
+        for item in envelope.items {
+            let entry = try decodeStackEntry(item, envelope: envelope, contract: contract)
+            guard seen.insert(entry.id).inserted else {
+                throw BoardProblem(line: line(item), message: "id \"\(entry.id)\" is used twice")
+            }
+            entries.append(entry)
+        }
+        return StackBoard(surface: envelope.surface, entries: entries)
+    }
+
+    private struct Envelope {
+        let surface: String
+        let surfaceNode: Node
+        let items: [Node]
+        let lines: YAMLTree.SourceLines
+        let contextKeys: Set<String>
+    }
+
+    private static func envelope(_ text: String, contract: WidgetContract) throws -> Envelope {
         let root: Node
         do {
             guard let node = try Yams.compose(yaml: text) else {
@@ -37,7 +79,7 @@ public enum BoardCodec {
         guard let surfaceNode = fields["surface"], let surface = string(surfaceNode) else {
             throw BoardProblem(line: line(root), message: "surface is missing, such as surface: home")
         }
-        guard contract.surfaces[surface] != nil else {
+        guard let area = contract.surfaces[surface] else {
             let known = contract.surfaces.keys.sorted().joined(separator: ", ")
             throw BoardProblem(line: line(surfaceNode), message: "unknown surface \"\(surface)\"; known: \(known)")
         }
@@ -47,23 +89,20 @@ public enum BoardCodec {
         guard let sequence = widgetsNode.sequence else {
             throw BoardProblem(line: line(widgetsNode), message: "widgets must be a list")
         }
-        var widgets: [BoardWidget] = []
-        var seen: Set<String> = []
-        let contextKeys = Set(contract.surfaces[surface]?.context.keys ?? [:].keys)
-        let lines = YAMLTree.SourceLines(text)
-        for item in sequence {
-            let widget = try decodeWidget(item, lines: lines, contract: contract, contextKeys: contextKeys)
-            guard seen.insert(widget.id).inserted else {
-                throw BoardProblem(line: line(item), message: "id \"\(widget.id)\" is used twice")
-            }
-            widgets.append(widget)
-        }
-        return Board(surface: surface, widgets: widgets)
+        return Envelope(
+            surface: surface, surfaceNode: surfaceNode, items: Array(sequence), lines: YAMLTree.SourceLines(text),
+            contextKeys: Set(area.context.keys))
     }
 
-    private static func decodeWidget(
-        _ node: Node, lines: YAMLTree.SourceLines, contract: WidgetContract, contextKeys: Set<String>
-    ) throws -> BoardWidget {
+    private struct EntryCore {
+        let id: String
+        let type: String
+        let with: [String: BoardScalar]
+        let inline: InlineWidget?
+        let fields: [String: Node]
+    }
+
+    private static func entryCore(_ node: Node, envelope: Envelope, contract: WidgetContract) throws -> EntryCore {
         guard let mapping = node.mapping else {
             throw BoardProblem(line: line(node), message: "each widget is a mapping with id, type and frame")
         }
@@ -81,7 +120,8 @@ public enum BoardCodec {
         }
         var inline: InlineWidget?
         if fields["type"] == nil, writesInline || fields["title"] != nil {
-            inline = try decodeInline(node, fields: fields, id: id, lines: lines, contract: contract, contextKeys: contextKeys)
+            inline = try decodeInline(
+                node, fields: fields, id: id, lines: envelope.lines, contract: contract, contextKeys: envelope.contextKeys)
         }
         var type = ""
         var with: [String: BoardScalar] = [:]
@@ -94,6 +134,17 @@ public enum BoardCodec {
             }
             type = typeName
             with = try fields["with"].map { try scalars($0, owner: id) } ?? [:]
+        }
+        return EntryCore(id: id, type: type, with: with, inline: inline, fields: fields)
+    }
+
+    private static func decodeWidget(_ node: Node, envelope: Envelope, contract: WidgetContract) throws -> BoardWidget {
+        let core = try entryCore(node, envelope: envelope, contract: contract)
+        let fields = core.fields
+        let id = core.id
+        if let collapsedNode = fields["collapsed"] {
+            throw BoardProblem(
+                line: line(collapsedNode), message: "\(id): a widget on a canvas folds with minimized: true, not collapsed")
         }
         guard let frameNode = fields["frame"] else {
             throw BoardProblem(line: line(node), message: "widget \"\(id)\" needs a frame: {x: , y: , w: , h: }")
@@ -122,7 +173,58 @@ public enum BoardCodec {
             z = value
         }
         return BoardWidget(
-            id: id, type: type, with: with, frame: frame, size: size, minimized: minimized, z: z, inline: inline)
+            id: id, type: core.type, with: core.with, frame: frame, size: size, minimized: minimized, z: z,
+            inline: core.inline)
+    }
+
+    /// Only the rules the file alone shows; what needs the catalog (fit,
+    /// single, auto on a typed view) is left to resolution.
+    private static func decodeStackEntry(_ node: Node, envelope: Envelope, contract: WidgetContract) throws -> StackEntry {
+        let core = try entryCore(node, envelope: envelope, contract: contract)
+        let id = core.id
+        for key in contract.stackEntry.forbids {
+            if let found = core.fields[key] {
+                throw BoardProblem(
+                    line: line(found), message: "\(id): a widget in a sidebar has no \(key); its place is its position in the list")
+            }
+        }
+        if let minimizedNode = core.fields["minimized"] {
+            throw BoardProblem(
+                line: line(minimizedNode), message: "\(id): a widget in a sidebar folds with collapsed: true, not minimized")
+        }
+        var collapsed = false
+        if let collapsedNode = core.fields["collapsed"] {
+            guard let value = bool(collapsedNode) else {
+                throw BoardProblem(line: line(collapsedNode), message: "collapsed of widget \"\(id)\" must be true or false")
+            }
+            collapsed = value
+        }
+        if let inline = core.inline, let fitsNode = core.fields["fits"], !inline.fits.isEmpty,
+           !inline.fits.contains(stackLayout) {
+            throw BoardProblem(
+                line: line(fitsNode),
+                message: "\(id): fits \(inline.fits.joined(separator: ", ")), and this board's area is laid out as \(stackLayout)")
+        }
+        let size = try core.fields["size"].map { try stackSize($0, core: core, contract: contract) }
+        return StackEntry(id: id, type: core.type, with: core.with, inline: core.inline, size: size, collapsed: collapsed)
+    }
+
+    /// A typed entry's sizes and view are in the catalog, so it is checked
+    /// against every preset here; an inline one against its own sizes and view.
+    private static func stackSize(_ node: Node, core: EntryCore, contract: WidgetContract) throws -> StackSize {
+        let ownSizes = core.inline?.sizes ?? []
+        let sizes = (ownSizes.isEmpty ? WidgetContract.presetOrder : ownSizes).joined(separator: ", ")
+        let written = string(node) ?? ""
+        let value = StackSize(text: written, contract: contract)
+        if value == .auto, let kind = core.inline?.view.kind, !contract.viewGrows(kind) {
+            throw BoardProblem(
+                line: line(node),
+                message: "\(core.id): size auto follows the content, and the \(kind) view does not grow: use \(sizes)")
+        }
+        guard let value, value.presetName.map({ ownSizes.isEmpty || ownSizes.contains($0) }) != false else {
+            throw BoardProblem(line: line(node), message: "\(core.id): size \"\(written)\" in a sidebar is auto or one of \(sizes)")
+        }
+        return value
     }
 
     private static func decodeInline(
@@ -296,22 +398,7 @@ public enum BoardCodec {
             lines.append("widgets:")
             for widget in board.widgets {
                 lines.append("  - id: \(text(widget.id))")
-                if let inline = widget.inline {
-                    lines.append("    title: \(text(inline.title))")
-                    lines.append(contentsOf: inline.sourceTree.emit(key: "source", indent: 4))
-                    lines.append(contentsOf: inline.viewTree.emit(key: "view", indent: 4))
-                    if !inline.sizes.isEmpty { lines.append("    sizes: [\(flowList(inline.sizes))]") }
-                    if !inline.fits.isEmpty { lines.append("    fits: [\(flowList(inline.fits))]") }
-                } else {
-                    lines.append("    type: \(text(widget.type))")
-                    if !widget.with.isEmpty {
-                        let keys = widget.with.keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
-                        let pairs = keys.map { key in
-                            "\(YAMLScalarStyle.text(key, in: .flow)): \(widget.with[key].map(value) ?? "\"\"")"
-                        }
-                        lines.append("    with: {\(pairs.joined(separator: ", "))}")
-                    }
-                }
+                lines.append(contentsOf: bodyLines(type: widget.type, with: widget.with, inline: widget.inline))
                 let frame = widget.frame
                 lines.append("    frame: {x: \(frame.x), y: \(frame.y), w: \(frame.w), h: \(frame.h)}")
                 lines.append("    size: \(text(widget.size))")
@@ -320,6 +407,41 @@ public enum BoardCodec {
             }
         }
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    public static func encodeStack(_ board: StackBoard) -> String {
+        var lines = ["format: \(Board.format)", "surface: \(text(board.surface))"]
+        if board.entries.isEmpty {
+            lines.append("widgets: []")
+        } else {
+            lines.append("widgets:")
+            for entry in board.entries {
+                lines.append("  - id: \(text(entry.id))")
+                lines.append(contentsOf: bodyLines(type: entry.type, with: entry.with, inline: entry.inline))
+                if let size = entry.size { lines.append("    size: \(text(size.text))") }
+                if entry.collapsed { lines.append("    collapsed: true") }
+            }
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// The keys between id and the placement, the same on a canvas and in a stack.
+    private static func bodyLines(type: String, with: [String: BoardScalar], inline: InlineWidget?) -> [String] {
+        if let inline {
+            var lines = ["    title: \(text(inline.title))"]
+            lines.append(contentsOf: inline.sourceTree.emit(key: "source", indent: 4))
+            lines.append(contentsOf: inline.viewTree.emit(key: "view", indent: 4))
+            if !inline.sizes.isEmpty { lines.append("    sizes: [\(flowList(inline.sizes))]") }
+            if !inline.fits.isEmpty { lines.append("    fits: [\(flowList(inline.fits))]") }
+            return lines
+        }
+        var lines = ["    type: \(text(type))"]
+        if !with.isEmpty {
+            let keys = with.keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
+            let pairs = keys.map { key in "\(YAMLScalarStyle.text(key, in: .flow)): \(with[key].map(value) ?? "\"\"")" }
+            lines.append("    with: {\(pairs.joined(separator: ", "))}")
+        }
+        return lines
     }
 
     private static func text(_ value: String) -> String { YAMLScalarStyle.text(value, in: .block) }
