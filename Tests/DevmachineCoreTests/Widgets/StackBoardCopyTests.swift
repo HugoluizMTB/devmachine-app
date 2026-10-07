@@ -11,13 +11,15 @@ final class StackBoardCopyTests: XCTestCase {
         XCTAssertEqual(StackBoardCopy.resetFailed("sidebar"), "Could not reset the sidebar")
         XCTAssertEqual(
             StackBoardCopy.resetHint,
-            "The sidebar, the Context tab, the menu bar and its popover are lists of widgets. A reset brings back the default list of that area.")
+            "The sidebar and the Context tab are lists of widgets. A reset brings back the default list of that area.")
     }
 
     func testTheMenubarAreasHaveResetCopy() {
         XCTAssertEqual(StackBoardCopy.resetTitle("menubar"), "Reset menubar")
         XCTAssertEqual(StackBoardCopy.resetTitle("menubar-panel"), "Reset menubar panel")
-        XCTAssertTrue(StackBoardCopy.resetHint.contains("menu bar"))
+        XCTAssertEqual(
+            StackBoardCopy.menubarResetHint,
+            "The menu bar and its popover are lists of widgets. A reset brings back the default list of that area.")
     }
 
     func testTheBannerNamesTheFileAndTheLine() {

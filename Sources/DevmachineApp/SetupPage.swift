@@ -423,7 +423,10 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: m.pt(28)) {
             wallpaperBlock
             subsection("Home") { homeLayoutBlock }
-            subsection("Sidebars") { sidebarsLayoutBlock }
+            subsection("Sidebars") { stackResetBlock(DefaultStackBoard.surfaces, hint: StackBoardCopy.resetHint) }
+            subsection("Menu bar") {
+                stackResetBlock(DefaultStackBoard.menubarSurfaces, hint: StackBoardCopy.menubarResetHint)
+            }
             subsection("Terminal") { terminalBlock }
         }
     }
@@ -453,17 +456,17 @@ struct SetupPage: View {
         }
     }
 
-    private var sidebarsLayoutBlock: some View {
+    private func stackResetBlock(_ surfaces: [String], hint: String) -> some View {
         VStack(alignment: .leading, spacing: m.space.md) {
-            note(StackBoardCopy.resetHint)
+            note(hint)
             HStack(spacing: m.space.md) {
-                ForEach(DefaultStackBoard.surfaces + DefaultStackBoard.menubarSurfaces, id: \.self) { surface in
+                ForEach(surfaces, id: \.self) { surface in
                     DMButton(StackBoardCopy.resetTitle(surface), variant: .dangerOutline, size: .small) {
                         confirmsStackReset = surface
                     }
                 }
             }
-            ForEach(DefaultStackBoard.surfaces + DefaultStackBoard.menubarSurfaces, id: \.self) { surface in
+            ForEach(surfaces, id: \.self) { surface in
                 if let error = stackResetErrors[surface] {
                     DMErrorStateView(state: DMErrorState(title: StackBoardCopy.resetFailed(surface), message: error))
                 }
@@ -471,7 +474,8 @@ struct SetupPage: View {
         }
         .confirmationDialog(
             confirmsStackReset.map { "\(StackBoardCopy.resetTitle($0))?" } ?? "",
-            isPresented: Binding(get: { confirmsStackReset != nil }, set: { if !$0 { confirmsStackReset = nil } }),
+            isPresented: Binding(
+                get: { confirmsStackReset.map(surfaces.contains) ?? false }, set: { if !$0 { confirmsStackReset = nil } }),
             presenting: confirmsStackReset
         ) { surface in
             Button("Reset", role: .destructive) { resetStack(surface) }

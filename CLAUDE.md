@@ -91,8 +91,15 @@ app-scoped `MenubarController.shared`:
 - **Who runs when.** The title's widgets run from launch, window or not
   (`DevmachineApp.init` starts the controller; never a view, never a test).
   A slot source's `every` is raised to 30 s, and a stream is refused. The
-  popover's widgets run only between its `onAppear` and `onDisappear`, and
-  only the selected tab (`StackBoardController.setVisibleEntries`).
+  popover's widgets run only while it is open, and only the selected tab
+  (`StackBoardController.setVisibleEntries`); Edit mode shows no tab, so
+  none runs. Open and close come from `onAppear`/`onDisappear` and also
+  from the menu bar window's `didBecomeKey`/`didResignKey`
+  (`MenubarPanelWindowWatch`), because a `MenuBarExtra` window kept alive
+  between opens may skip them. `MenubarPanelPresence` lets only the first
+  signal of an open or a close act; a window that gives up key but stays
+  on screen stays open. The title's ticks never redraw the popover: the
+  controller publishes only what the popover reads (`approvals`).
   `PRStore` and `HarnessUsageStore` keep their own schedules; the providers
   `app/open-pull-requests`, `app/pull-requests-panel` and `app/usage-panel`
   only read them. The 30 s floor and the 24-character cut are the app's;
@@ -108,10 +115,12 @@ app-scoped `MenubarController.shared`:
   after Allow" for how every area shares the approvals file.
 - **Edit mode** (pencil in the footer) lists both boards with up, down and
   remove, and "Add widget" opens `WidgetGalleryView` in place, filtered to
-  that surface. A full menu bar refuses an add ("The menu bar holds 3
-  widgets"), and a placed widget never makes a fourth slot.
-- **Settings → Appearance** resets "menubar" and "menubar panel" next to
-  the sidebars (`StackBoardController.reset()`, `.bak` kept).
+  that surface. A full menu bar disables "Add widget" and says why ("The
+  menu bar holds 3 widgets", `StackGallery.fullReason`), and a placed
+  widget never makes a fourth slot.
+- **Settings → Appearance** resets "menubar" and "menubar panel" under
+  their own "Menu bar" heading, after "Sidebars"
+  (`StackBoardController.reset()`, `.bak` kept).
 - Test hook: `DEVMACHINE_WIDGETS_E2E=<binary>` runs `MenubarBoardLiveTests`
   against a temp config: the CLI validates the app's default boards,
   refuses a fourth slot and a slot `size`, and moves a tab keeping an

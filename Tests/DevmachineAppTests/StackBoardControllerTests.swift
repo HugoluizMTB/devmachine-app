@@ -413,6 +413,19 @@ final class StackBoardControllerTests: XCTestCase {
         XCTAssertFalse(placements.contains("devmachine-app/workspaces", on: "sidebar"))
     }
 
+    func testResettingTheMenuBarAreasWritesTheirDefaultsAndKeepsBackups() throws {
+        for surface in DefaultStackBoard.menubarSurfaces {
+            let controller = makeController(surface)
+            let first = try XCTUnwrap(controller.board.entries.first?.id, surface)
+            controller.remove(first)
+            controller.store?.flush()
+            XCTAssertNotEqual(try read(surface), DefaultStackBoard.make(surface: surface), surface)
+            try controller.reset()
+            XCTAssertEqual(try read(surface), DefaultStackBoard.make(surface: surface), surface)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file(surface).appendingPathExtension("bak").path), surface)
+        }
+    }
+
     func testResetWithoutAConfigurationSaysWhy() {
         let controller = makeController("context-sidebar", open: false)
         XCTAssertThrowsError(try controller.reset()) { error in

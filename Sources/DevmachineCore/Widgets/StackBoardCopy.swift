@@ -16,7 +16,9 @@ public enum StackBoardCopy {
     }
 
     public static let resetHint =
-        "The sidebar, the Context tab, the menu bar and its popover are lists of widgets. A reset brings back the default list of that area."
+        "The sidebar and the Context tab are lists of widgets. A reset brings back the default list of that area."
+    public static let menubarResetHint =
+        "The menu bar and its popover are lists of widgets. A reset brings back the default list of that area."
 
     public static func resetTitle(_ surface: String) -> String { "Reset \(displayName(surface))" }
 

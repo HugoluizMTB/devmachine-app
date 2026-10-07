@@ -131,6 +131,18 @@ final class SetupPageTests: XCTestCase {
         XCTAssertLessThan(wallpaper.lowerBound, home.lowerBound)
         XCTAssertTrue(source.contains("DMButton(\"Reset Home layout\""))
     }
+
+    func testTheMenuBarResetsSitUnderTheirOwnHeading() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("Sources/DevmachineApp/SetupPage.swift"),
+            encoding: .utf8)
+        let sidebars = try XCTUnwrap(source.range(of: "subsection(\"Sidebars\") {"))
+        let menubar = try XCTUnwrap(source.range(of: "subsection(\"Menu bar\") {"))
+        XCTAssertLessThan(sidebars.lowerBound, menubar.lowerBound)
+        XCTAssertTrue(source.contains("stackResetBlock(DefaultStackBoard.surfaces, hint: StackBoardCopy.resetHint)"))
+        XCTAssertTrue(source.contains("stackResetBlock(DefaultStackBoard.menubarSurfaces, hint: StackBoardCopy.menubarResetHint)"))
+    }
 }
 
 final class SetupPageWallpaperTests: XCTestCase {
