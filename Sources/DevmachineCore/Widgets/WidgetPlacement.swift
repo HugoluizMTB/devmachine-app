@@ -29,7 +29,6 @@ public enum DefaultBoard {
         for (index, entry) in usage.enumerated() {
             board.widgets.append(BoardWidget(
                 id: board.uniqueID(base: "\(entry.harness)-usage"), type: "\(entry.package)/usage",
-                with: ["harness": .string(entry.harness)],
                 frame: BoardFrame(x: 24, y: 360 + index * 176, w: 320, h: 160), size: "medium", z: 4 + index))
         }
         return board

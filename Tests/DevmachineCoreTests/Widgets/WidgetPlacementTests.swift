@@ -22,7 +22,9 @@ final class WidgetPlacementTests: XCTestCase {
             "devmachine-app/clock", "devmachine-app/summary", "devmachine-app/machines", "claude-code/usage", "codex/usage",
         ])
         XCTAssertEqual(board.widgets.map(\.id), ["clock", "summary", "machines", "claude-usage", "codex-usage"])
-        XCTAssertEqual(board.widgets[3].with, ["harness": .string("claude")])
+        XCTAssertEqual(board.widgets[3].with, [:])
+        XCTAssertEqual(board.widgets[4].with, [:])
+        XCTAssertFalse(BoardCodec.encode(board).contains("with:"))
         XCTAssertEqual(board.widgets[4].frame, BoardFrame(x: 24, y: 536, w: 320, h: 160))
         for widget in board.widgets {
             XCTAssertEqual(widget.frame.x % 8, 0)
