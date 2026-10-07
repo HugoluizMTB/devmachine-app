@@ -85,4 +85,39 @@ final class SessionContextTests: XCTestCase {
         XCTAssertEqual(source("git", keys: ["branch"]).readContext(context), ["branch": "main"])
         XCTAssertEqual(source(nil, script: "/home/alice/bin/status").readContext(context), context)
     }
+
+    func testAShellLineGetsOnlyTheContextVariablesItNames() throws {
+        let line = source("echo \"$DM_CONTEXT_PATH\"", shell: true)
+        let context = ["path": "/home/alice/api", "branch": "main", "repo": "acme/api"]
+        guard case let .shell(_, environment)? = try line.command(context: context) else { return XCTFail("not a shell line") }
+        XCTAssertEqual(environment, ["DM_CONTEXT_PATH": "/home/alice/api"])
+    }
+
+    func testAShellLinesHashCoversOnlyTheValuesItNames() throws {
+        let line = source("echo \"$DM_CONTEXT_PATH\"", shell: true)
+        let api = ["path": "/home/alice/api", "branch": "main"]
+        XCTAssertEqual(
+            try ApprovalSubject.hash(for: line, context: api),
+            try ApprovalSubject.hash(for: line, context: api.merging(["branch": "feature"]) { $1 }))
+        XCTAssertNotEqual(
+            try ApprovalSubject.hash(for: line, context: api),
+            try ApprovalSubject.hash(for: line, context: api.merging(["path": "/home/alice/web"]) { $1 }))
+    }
+
+    func testAScriptKeepsEveryContextValue() {
+        let script = source(nil, script: "/home/alice/bin/status")
+        let context = ["path": "/home/alice/api", "branch": "main"]
+        XCTAssertEqual(script.values(context: context).context, context)
+    }
+
+    func testAHomeShellLinesHashIsTheOneItWasBeforeTheContextFilter() throws {
+        let command = WidgetSource.command(CommandSource(
+            run: "df -h \"$DM_CONTEXT_PATH\" | tail -1", script: nil, args: [], shell: true, target: .local,
+            every: .interval(30), timeout: 30, mode: .poll, keep: 200, parse: .text))
+        let line = ResolvedSource(
+            source: command, view: WidgetView(kind: "text"), every: .interval(30), needsApproval: true,
+            package: nil, packagePath: nil)
+        XCTAssertEqual(
+            try ApprovalSubject.hash(for: line, context: [:]), "625d028eb873541277e9c6dde666568dc777b73dce12bb62cab44cdc30cd9a62")
+    }
 }

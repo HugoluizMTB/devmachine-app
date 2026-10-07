@@ -448,13 +448,21 @@ final class WidgetSourceControllerTests: XCTestCase {
         XCTAssertEqual(command.calls, 1)
     }
 
-    func testAnInlineShellLineAsksAgainWhenAnyKeyChangesBecauseItsHashCoversThem() async {
+    func testAnInlineShellLineKeepsItsApprovalUntilAKeyItNamesChanges() async {
         let board = makeController(surface: "context-sidebar", context: ["path": "/home/alice/api", "branch": "main"])
         board.start()
         board.update([entry("here", run: "echo \"$DM_CONTEXT_PATH\"", shell: true)])
         board.approve("here", hash: shown(board, "here"))
         await waitUntil { self.command.calls == 1 }
+        await waitUntil { board.state("here").output == .text("ok") }
         board.setContext(["path": "/home/alice/api", "branch": "feature"])
+        XCTAssertEqual(board.approvalState("here"), .allowed)
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 1)
+        XCTAssertEqual(command.requests[0].source.values(context: command.requests[0].context).environment, [
+            "DM_CONTEXT_PATH": "/home/alice/api",
+        ])
+        board.setContext(["path": "/home/alice/web", "branch": "feature"])
         guard case .waiting = board.approvalState("here") else { return XCTFail("\(board.approvalState("here"))") }
     }
 

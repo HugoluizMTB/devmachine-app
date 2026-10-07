@@ -102,11 +102,11 @@ public struct ResolvedSource: Equatable, Sendable {
         self.contextKeys = contextKeys
     }
 
-    /// The area's context goes in as is; home gives none, so `{{context.x}}`
-    /// reads as empty there.
+    /// Only the context keys the source reads go in, so a shell line gets,
+    /// and its approval covers, just the values it names; home gives none,
+    /// so `{{context.x}}` reads as empty there.
     public func values(context: [String: String]) -> TemplateValues {
-        let allowed = contextKeys.map { keys in context.filter { keys.contains($0.key) } } ?? context
-        return TemplateValues(inputs: inputs, context: allowed)
+        TemplateValues(inputs: inputs, context: readContext(context))
     }
 
     /// Target, url, prompt and session as they run, and what a person reads.

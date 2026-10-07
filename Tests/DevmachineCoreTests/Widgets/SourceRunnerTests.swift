@@ -115,7 +115,7 @@ final class SourceRunnerTests: XCTestCase {
         XCTAssertEqual(invocation.executable, "/bin/sh")
         XCTAssertEqual(invocation.arguments, ["-c", "df -h \"$DM_INPUT_PATH\" | tail -1"])
         XCTAssertEqual(invocation.environment?["DM_INPUT_PATH"], "/; id")
-        XCTAssertEqual(invocation.environment?["DM_CONTEXT_BRANCH"], "dev")
+        XCTAssertNil(invocation.environment?["DM_CONTEXT_BRANCH"])
         XCTAssertNil(invocation.environment?["DM_INPUT_STALE"])
     }
 

@@ -122,15 +122,15 @@ final class WidgetSourceController: ObservableObject {
     }
 
     /// A new session (or selection) for this board's area. Only widgets that
-    /// read a changed key, or whose approval hash moved, start over; what
-    /// they showed belonged to the other session, so it goes too.
+    /// read a changed key start over; what they showed belonged to the other
+    /// session, so it goes too.
     func setContext(_ next: [String: String]) {
         let filtered = next.filter { contextKeys.contains($0.key) }
         guard filtered != context else { return }
         objectWillChange.send()
         let old = context
         context = filtered
-        for (id, entry) in entries where Self.changes(entry.source, from: old, to: filtered) {
+        for (id, entry) in entries where entry.source.values(context: old) != entry.source.values(context: filtered) {
             cancelRun(id)
             stopStream(id)
             heldStreams.remove(id)
@@ -139,12 +139,6 @@ final class WidgetSourceController: ObservableObject {
         }
         replaceJobs()
         tick()
-    }
-
-    private static func changes(_ source: ResolvedSource, from old: [String: String], to new: [String: String]) -> Bool {
-        if source.readContext(old) != source.readContext(new) { return true }
-        guard source.needsApproval else { return false }
-        return (try? ApprovalSubject.hash(for: source, context: old)) != (try? ApprovalSubject.hash(for: source, context: new))
     }
 
     func start() {

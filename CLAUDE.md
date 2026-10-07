@@ -896,7 +896,7 @@ Rules:
   runs, taken at run time with the area's real context
   (`ApprovalSubject.hash(for:context:)`): kind, run/script/args, shell,
   target, harness, prompt, session, and for `shell: true` the `DM_` values it
-  reads — never `every`, `timeout`, `mode`, `keep` or `parse`. The card and
+  reads (only the `$DM_CONTEXT_<KEY>` the line names is exported and hashed) — never `every`, `timeout`, `mode`, `keep` or `parse`. The card and
   the stored summary read `ApprovalPrompt`, built from that same filled
   source and `DM_` values, so the owner approves exactly what the hash
   covers, never the raw templates. The runner
