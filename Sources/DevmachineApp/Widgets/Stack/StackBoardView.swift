@@ -184,7 +184,7 @@ struct StackBoardView: View {
             if let source = resolved.source {
                 SourceWidgetCard(
                     id: entry.id, title: row.title, source: source, controller: controller.sources, size: size,
-                    onOpenSession: openSession)
+                    onOpenSession: model.openWidgetSession)
                     .frame(height: size.height)
             } else if let kind = StackAppViewKind(viewKind: resolved.viewKind) {
                 StackAppWidgetView(
@@ -312,16 +312,6 @@ struct StackBoardView: View {
             }
             .padding(.horizontal, m.pt(10))
             .padding(.vertical, m.space.sm)
-        }
-    }
-
-    private func openSession(_ target: WidgetTarget, _ session: String) {
-        guard let item = SessionOpening.item(
-            target: target, session: session, workspaces: model.visibleWorkspaces, localSessions: model.localSessions)
-        else { return }
-        switch item {
-        case let .session(alias, name): model.clickSession(SessionRef(alias: alias, name: name))
-        case .localSession: model.clickLocalSession(item)
         }
     }
 }

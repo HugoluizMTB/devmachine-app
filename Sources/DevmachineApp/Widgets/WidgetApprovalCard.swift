@@ -26,6 +26,19 @@ enum WidgetApprovalDisplay {
     }
 }
 
+extension AppModel {
+    /// A session widget's click, from any board: select that session.
+    func openWidgetSession(_ target: WidgetTarget, _ session: String) {
+        guard let item = SessionOpening.item(
+            target: target, session: session, workspaces: visibleWorkspaces, localSessions: localSessions)
+        else { return }
+        switch item {
+        case let .session(alias, name): clickSession(SessionRef(alias: alias, name: name))
+        case .localSession: clickLocalSession(item)
+        }
+    }
+}
+
 enum SourceWidgetCardMode: Equatable {
     case approval
     case demo
