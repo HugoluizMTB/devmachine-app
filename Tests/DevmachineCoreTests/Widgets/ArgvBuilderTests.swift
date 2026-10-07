@@ -329,4 +329,59 @@ final class ArgvBuilderTests: XCTestCase {
         let values = TemplateValues(inputs: ["n": WidgetValue.double(3.0).text], context: [:])
         XCTAssertEqual(values.resolve("--depth={{inputs.n}}"), "--depth=3")
     }
+
+    private func provider(
+        _ name: String = "acme-tools/load", with: [String: String] = ["window": "5m"], target: WidgetTarget = .machine("main")
+    ) -> PackageProviderSource {
+        PackageProviderSource(name: name, with: with, target: target, every: .interval(30), timeout: 30)
+    }
+
+    func testAPackageProviderGoesThroughRunPackage() throws {
+        let words = try ArgvBuilder.packageProvider(provider(with: ["window": "5m", "all": "yes"]))
+        XCTAssertEqual(words, .packageCommand(package: "acme-tools", command: "load", args: ["--all", "yes", "--window", "5m"]))
+        XCTAssertEqual(
+            ArgvBuilder.remote(words, target: .machine("main"), cli: cli)?.arguments,
+            ["--machine", "main", "run", "--no-log", "--package", "acme-tools", "--", "load", "--all", "yes", "--window", "5m"])
+        XCTAssertEqual(
+            ArgvBuilder.remote(words, target: .workspace("alice-dev"), cli: cli)?.arguments,
+            ["run", "--workspace", "alice-dev", "--no-log", "--package", "acme-tools", "--", "load", "--all", "yes", "--window", "5m"])
+        XCTAssertEqual(ArgvBuilder.remote(words, target: .machine("main"), cli: cli)?.environment, ["SSH_AUTH_SOCK": "/tmp/a"])
+    }
+
+    func testAPackageProviderWithNoWithIsTheCommandAlone() throws {
+        XCTAssertEqual(try ArgvBuilder.packageProvider(provider(with: [:])),
+                       .packageCommand(package: "acme-tools", command: "load", args: []))
+    }
+
+    func testAPackageProviderValueIsAlwaysOneWordAfterItsFlag() throws {
+        for attack in attacks + ["--all", "--flag", "-rf", "--window=1", "{{context.machine}}"] {
+            let words = try ArgvBuilder.packageProvider(provider(with: ["path": attack]))
+            XCTAssertEqual(words, .packageCommand(package: "acme-tools", command: "load", args: ["--path", attack]), attack)
+            XCTAssertEqual(
+                ArgvBuilder.remote(words, target: .machine("main"), cli: cli)?.arguments.suffix(2),
+                ["--path", attack], attack)
+        }
+    }
+
+    func testABadNameOrFlagIsRefusedBeforeAnythingRuns() {
+        for name in [
+            "app/clock", "acme-tools", "acme-tools/load; rm -rf ~", "-x/load", "acme-tools/-rf", "acme-tools/--flag",
+            "{{inputs.pkg}}/load", "acme-tools/{{inputs.cmd}}", "acme-tools/load\nid", "$(id)/load", "",
+        ] {
+            XCTAssertThrowsError(try ArgvBuilder.packageProvider(provider(name)), name) {
+                guard case .refused? = $0 as? WidgetCommandError else { return XCTFail("\($0)") }
+            }
+        }
+        for key in ["x; rm", "-all", "All", "a b", "", "1st", "a\nb", "$(id)"] {
+            XCTAssertThrowsError(try ArgvBuilder.packageProvider(provider(with: [key: "v"])), key) {
+                guard case .refused? = $0 as? WidgetCommandError else { return XCTFail("\($0)") }
+            }
+        }
+    }
+
+    func testAPackageCommandNeverRunsOnThisMac() {
+        XCTAssertNil(ArgvBuilder.local(
+            .packageCommand(package: "acme-tools", command: "load", args: []), environment: [:], home: home))
+        XCTAssertNil(ArgvBuilder.remote(.packageCommand(package: "acme-tools", command: "load", args: []), target: .local, cli: cli))
+    }
 }

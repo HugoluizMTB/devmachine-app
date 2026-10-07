@@ -5,6 +5,7 @@ public enum TargetCommand: Equatable, Sendable {
     case argv([String])
     case shell(line: String, environment: [String: String])
     case packageScript(package: String, script: String, args: [String])
+    case packageCommand(package: String, command: String, args: [String])
 }
 
 /// A process ready to start, so tests can check exactly what would run.
@@ -108,6 +109,25 @@ public enum ArgvBuilder {
         .argv(["tmux", "capture-pane", "-p", "-e", "-t", session])
     }
 
+    /// A `with` key becomes `--<key>`, so it must read as one flag.
+    public static var flagName: Regex<Substring> { /[a-z][a-z0-9_-]*/ }
+
+    /// Each `with` pair is two argv items in key order: a value is never
+    /// split, quoted or read by a shell, whatever it holds.
+    public static func packageProvider(_ source: PackageProviderSource) throws -> TargetCommand {
+        guard let parts = PackageProviderName.parts(source.name) else {
+            throw WidgetCommandError.refused("source.name \"\(source.name)\" is not <package>/<command>")
+        }
+        var args: [String] = []
+        for key in source.with.keys.sorted() {
+            guard key.wholeMatch(of: flagName) != nil else {
+                throw WidgetCommandError.refused("source.with.\(key) is not a flag name")
+            }
+            args += ["--\(key)", source.with[key] ?? ""]
+        }
+        return .packageCommand(package: parts.package, command: parts.command, args: args)
+    }
+
     /// `devmachine run` as the CLI plan's Appendix B fixes it: `--machine`
     /// before `run`, `--workspace` after it, never both. A shell line goes
     /// through `--argv` as `env NAME=value … /bin/sh -c <line>`: each pair is
@@ -128,6 +148,8 @@ public enum ArgvBuilder {
             tail = ["--argv", "--", env] + pairs + [shell, "-c", line]
         case let .packageScript(package, script, args):
             tail = ["--package", package, "--script", script, "--"] + args
+        case let .packageCommand(package, command, args):
+            tail = ["--package", package, "--", command] + args
         }
         return ProcessInvocation(executable: cli.executable, arguments: head + tail, environment: cli.environment)
     }
@@ -151,7 +173,7 @@ public enum ArgvBuilder {
         case let .shell(line, values):
             variables.merge(values) { _, value in value }
             return ProcessInvocation(executable: shell, arguments: ["-c", line], environment: variables, currentDirectory: home)
-        case .packageScript:
+        case .packageScript, .packageCommand:
             return nil
         }
     }
