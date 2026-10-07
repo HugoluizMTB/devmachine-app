@@ -46,6 +46,17 @@ final class StreamSessionTests: XCTestCase {
         XCTAssertEqual(StreamSession.lineLimit(5000), 2000)
     }
 
+    func testAFreedSessionIsNotKeptAliveByItsBatchLoop() async {
+        weak var freed: StreamSession?
+        do {
+            let session = StreamSession(launcher: launcher, keep: 10)
+            session.start(tail, remote: false)
+            freed = session
+        }
+        try? await Task.sleep(for: .milliseconds(300))
+        XCTAssertNil(freed)
+    }
+
     func testStopSendsSIGTERMAndIgnoresTheExit() async {
         let session = StreamSession(launcher: launcher, keep: 10)
         var ended = false

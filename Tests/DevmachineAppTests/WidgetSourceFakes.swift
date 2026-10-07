@@ -73,6 +73,7 @@ final class ScriptedSourceRunner: SourceRunner, @unchecked Sendable {
     private var gated: Bool
     private var waiting: [CheckedContinuation<Void, Never>] = []
     private var received: [SourceRunRequest] = []
+    private var cancelledFetches = 0
 
     init(_ answers: [Result<SourceRunResult, SourceError>] = [.success(.output(.text("ok")))], gated: Bool = false) {
         self.answers = answers
@@ -89,13 +90,17 @@ final class ScriptedSourceRunner: SourceRunner, @unchecked Sendable {
             }
             if go { continuation.resume() }
         }
-        try Task.checkCancellation()
+        if Task.isCancelled {
+            lock.withLock { cancelledFetches += 1 }
+            throw CancellationError()
+        }
         if let blocked = try SourceApprovalGate.blocked(request) { return .needsApproval(blocked) }
         let answer = lock.withLock { answers.count > 1 ? answers.removeFirst() : answers[0] }
         return try answer.get()
     }
 
     var calls: Int { lock.withLock { received.count } }
+    var cancelled: Int { lock.withLock { cancelledFetches } }
     var requests: [SourceRunRequest] { lock.withLock { received } }
 
     func release() {

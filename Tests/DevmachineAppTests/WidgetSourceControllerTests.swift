@@ -45,10 +45,10 @@ final class WidgetSourceControllerTests: XCTestCase {
     private func entry(
         _ id: String = "disk", run: String = "df", every: WidgetEvery = .interval(60), inline: Bool = true,
         mode: CommandMode = .poll, view: String = "text", parse: ParseMode = .text, visible: Bool = true,
-        target: WidgetTarget = .local
+        target: WidgetTarget = .local, shell: Bool = false, args: [String] = []
     ) -> SourceWidgetEntry {
         let source = WidgetSource.command(CommandSource(
-            run: run, script: nil, args: [], shell: false, target: target, every: mode == .stream ? .continuous : every,
+            run: run, script: nil, args: args, shell: shell, target: target, every: mode == .stream ? .continuous : every,
             timeout: 30, mode: mode, keep: 3, parse: parse))
         var widgetView = WidgetView(kind: view)
         if view == "sparkline" { widgetView.unit = "%" }
@@ -178,6 +178,53 @@ final class WidgetSourceControllerTests: XCTestCase {
         command.release()
         await waitUntil { self.controller.state("disk").output == .text("ok") }
         XCTAssertFalse(controller.state("disk").isRunning)
+    }
+
+    func testLeavingHomeCancelsARunningPoll() async {
+        command = ScriptedSourceRunner(gated: true)
+        controller = makeController()
+        controller.start()
+        controller.update([entry(every: .interval(60), inline: false)])
+        await waitUntil { self.command.calls == 1 }
+        controller.stop()
+        XCTAssertFalse(controller.state("disk").isRunning)
+        command.release()
+        await waitUntil { self.command.cancelled == 1 }
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(controller.state("disk").output)
+        XCTAssertFalse(controller.state("disk").isRunning)
+    }
+
+    func testDenyCancelsARunningPoll() async {
+        command = ScriptedSourceRunner(gated: true)
+        controller = makeController()
+        controller.start()
+        controller.update([entry()])
+        controller.approve("disk")
+        await waitUntil { self.command.calls == 1 }
+        controller.deny("disk")
+        XCTAssertFalse(controller.state("disk").isRunning)
+        command.release()
+        await waitUntil { self.command.cancelled == 1 }
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(controller.state("disk").output)
+        guard case .denied = controller.approvalState("disk") else { return XCTFail() }
+    }
+
+    func testASourceWhoseHashCannotBeBuiltNeverRuns() async {
+        controller.start()
+        controller.update([entry(run: "echo hi", shell: true, args: ["x"])])
+        controller.approve("disk")
+        clock = clock.addingTimeInterval(600)
+        controller.tick()
+        controller.runNow("disk")
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(command.calls, 0)
+        XCTAssertEqual(controller.approvalState("disk"), .waiting(hash: ""))
+        guard case .refused? = controller.state("disk").error else {
+            return XCTFail("\(String(describing: controller.state("disk").error))")
+        }
+        XCTAssertTrue(controller.approvals.entries.isEmpty)
     }
 
     func testAnErrorKeepsTheLastGoodValue() async {

@@ -125,8 +125,9 @@ final class WidgetSourceController: ObservableObject {
             schedule.resumeAll()
             replaceJobs()
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self else { return timer.invalidate() }
+            MainActor.assumeIsolated { self.tick() }
         }
         tick()
     }
@@ -135,6 +136,7 @@ final class WidgetSourceController: ObservableObject {
         isStarted = false
         timer?.invalidate()
         timer = nil
+        for id in Array(runs.keys) { cancelRun(id) }
         for id in Array(streams.keys) { stopStream(id) }
         heldStreams.removeAll()
     }
@@ -167,7 +169,10 @@ final class WidgetSourceController: ObservableObject {
         } catch {
             Self.log.error("saving widget approvals failed: \(error.localizedDescription, privacy: .public)")
         }
-        if decision == .denied { stopStream(id) }
+        if decision == .denied {
+            cancelRun(id)
+            stopStream(id)
+        }
         schedule.resumeAll()
         replaceJobs()
         tick()
@@ -231,6 +236,7 @@ final class WidgetSourceController: ObservableObject {
         guard let run = runs.removeValue(forKey: id) else { return }
         run.task.cancel()
         schedule.finish(id)
+        if states[id]?.isRunning == true { states[id]?.isRunning = false }
     }
 
     private func finish(_ id: String, token: UUID, outcome: Outcome) {

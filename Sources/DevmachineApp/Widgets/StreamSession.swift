@@ -60,8 +60,8 @@ final class StreamSession {
         flushTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.batchInterval)
-                guard !Task.isCancelled else { return }
-                self?.flushNow()
+                guard let self, !Task.isCancelled else { return }
+                self.flushNow()
             }
         }
         Task { [weak self] in
