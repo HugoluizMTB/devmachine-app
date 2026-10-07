@@ -84,5 +84,15 @@ final class WidgetViewModelsTests: XCTestCase {
     func testTextTail() {
         XCTAssertEqual(TextTail.lines(of: "a\nb\nc", tail: 2), ["b", "c"])
         XCTAssertEqual(TextTail.lines(of: "a\nb", tail: nil), ["a", "b"])
+        XCTAssertEqual(TextTail.lines(of: "a\r\nb\n", tail: nil), ["a", "b"])
+        XCTAssertEqual(TextTail.lines(of: "a\nb", tail: -1), [])
+    }
+
+    func testDurationsOfAnySizeNeverTrap() {
+        XCTAssertEqual(NumberText.format(-3725, format: .duration, unit: nil), "-1h 2m")
+        XCTAssertEqual(NumberText.format(-0.2, format: .duration, unit: nil), "0s")
+        XCTAssertEqual(NumberText.format(1e30, format: .duration, unit: nil),
+                       NumberText.format(NumberText.longestDuration, format: .duration, unit: nil))
+        XCTAssertEqual(NumberText.format(-.infinity, format: .duration, unit: nil), NumberText.format(-.infinity, format: .plain, unit: nil))
     }
 }

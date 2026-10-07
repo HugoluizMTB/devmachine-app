@@ -1,10 +1,12 @@
 import Foundation
 
+/// A terminal colour: one of the 256 palette entries or a 24-bit value.
 public enum ANSIColor: Hashable, Sendable {
     case palette(Int)
     case rgb(UInt8, UInt8, UInt8)
 }
 
+/// A stretch of terminal text that shares one style.
 public struct ANSIRun: Hashable, Sendable {
     public var text: String
     public var foreground: ANSIColor?
@@ -31,59 +33,84 @@ public struct ANSIRun: Hashable, Sendable {
 /// A read-only screen (`capture-pane -e`, `zmx history --vt`) as styled runs:
 /// colour and weight kept, every other escape dropped.
 public enum ANSIText {
+    private static let escape: Unicode.Scalar = "\u{1B}"
+    private static let bell: Unicode.Scalar = "\u{07}"
+    private static let csiFinal: ClosedRange<UInt32> = 0x40...0x7E
+
+    private enum ExtendedColor {
+        case color(ANSIColor, codes: Int)
+        case outOfRange(codes: Int)
+        case malformed
+    }
+
     public static func lines(_ text: String) -> [[ANSIRun]] {
         var style = ANSIRun(text: "")
         var result: [[ANSIRun]] = []
         var rawLines = text.replacingOccurrences(of: "\r\n", with: "\n")
-            .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            .split(separator: "\n", omittingEmptySubsequences: false)
         if rawLines.last == "" { rawLines.removeLast() }
         for line in rawLines {
-            let redraw = line.split(separator: "\r", omittingEmptySubsequences: false).last.map(String.init) ?? ""
-            var runs: [ANSIRun] = []
-            var current = ""
-            var index = redraw.startIndex
-            func flush() {
-                guard !current.isEmpty else { return }
-                var run = style
-                run.text = current
-                if let last = runs.last, sameStyle(last, run) {
-                    runs[runs.count - 1].text += current
-                } else {
-                    runs.append(run)
-                }
-                current = ""
-            }
-            while index < redraw.endIndex {
-                let character = redraw[index]
-                guard character == "\u{1B}" else {
-                    current.append(character)
-                    index = redraw.index(after: index)
-                    continue
-                }
-                let next = redraw.index(after: index)
-                guard next < redraw.endIndex else { break }
-                if redraw[next] == "[" {
-                    var end = redraw.index(after: next)
-                    while end < redraw.endIndex, !(redraw[end].isLetter || redraw[end] == "~") { end = redraw.index(after: end) }
-                    guard end < redraw.endIndex else { break }
-                    if redraw[end] == "m" {
-                        flush()
-                        apply(String(redraw[redraw.index(after: next)..<end]), to: &style)
-                    }
-                    index = redraw.index(after: end)
-                } else if redraw[next] == "]" {
-                    var end = redraw.index(after: next)
-                    while end < redraw.endIndex, redraw[end] != "\u{07}", redraw[end] != "\u{1B}" { end = redraw.index(after: end) }
-                    index = end < redraw.endIndex ? redraw.index(after: end) : end
-                    if index < redraw.endIndex, redraw[index] == "\\" { index = redraw.index(after: index) }
-                } else {
-                    index = redraw.index(after: next)
-                }
-            }
-            flush()
-            result.append(runs)
+            let redraw = line.split(separator: "\r", omittingEmptySubsequences: false).last ?? ""
+            result.append(runs(of: Array(redraw.unicodeScalars), style: &style))
         }
         return result
+    }
+
+    private static func runs(of scalars: [Unicode.Scalar], style: inout ANSIRun) -> [ANSIRun] {
+        var runs: [ANSIRun] = []
+        var current = String.UnicodeScalarView()
+        func flush() {
+            guard !current.isEmpty else { return }
+            let text = String(current)
+            current = String.UnicodeScalarView()
+            if let last = runs.last, sameStyle(last, style) {
+                runs[runs.count - 1].text += text
+            } else {
+                var run = style
+                run.text = text
+                runs.append(run)
+            }
+        }
+        var index = 0
+        while index < scalars.count {
+            guard scalars[index] == escape else {
+                current.append(scalars[index])
+                index += 1
+                continue
+            }
+            let next = index + 1
+            guard next < scalars.count else { break }
+            switch scalars[next] {
+            case "[":
+                var end = next + 1
+                while end < scalars.count, !csiFinal.contains(scalars[end].value) { end += 1 }
+                guard end < scalars.count else {
+                    index = scalars.count
+                    continue
+                }
+                if scalars[end] == "m" {
+                    flush()
+                    var parameters = String.UnicodeScalarView()
+                    parameters.append(contentsOf: scalars[(next + 1)..<end])
+                    apply(String(parameters), to: &style)
+                }
+                index = end + 1
+            case "]":
+                var end = next + 1
+                while end < scalars.count, scalars[end] != bell, scalars[end] != escape { end += 1 }
+                if end < scalars.count, scalars[end] == bell {
+                    index = end + 1
+                } else if end + 1 < scalars.count, scalars[end + 1] == "\\" {
+                    index = end + 2
+                } else {
+                    index = end
+                }
+            default:
+                index = next + 1
+            }
+        }
+        flush()
+        return runs
     }
 
     private static func sameStyle(_ a: ANSIRun, _ b: ANSIRun) -> Bool {
@@ -92,11 +119,14 @@ public enum ANSIText {
     }
 
     private static func apply(_ parameters: String, to style: inout ANSIRun) {
-        var codes = parameters.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 }
-        if codes.isEmpty { codes = [0] }
+        let codes: [Int?] = parameters.split(separator: ";", omittingEmptySubsequences: false)
+            .map { $0.isEmpty ? 0 : Int($0) }
         var i = 0
         while i < codes.count {
-            let code = codes[i]
+            guard let code = codes[i] else {
+                i += 1
+                continue
+            }
             switch code {
             case 0: style = ANSIRun(text: "")
             case 1: style.bold = true
@@ -113,18 +143,32 @@ public enum ANSIText {
             case 90...97: style.foreground = .palette(code - 90 + 8)
             case 100...107: style.background = .palette(code - 100 + 8)
             case 38, 48:
-                var color: ANSIColor?
-                if i + 2 < codes.count, codes[i + 1] == 5 {
-                    color = .palette(codes[i + 2])
-                    i += 2
-                } else if i + 4 < codes.count, codes[i + 1] == 2 {
-                    color = .rgb(UInt8(clamping: codes[i + 2]), UInt8(clamping: codes[i + 3]), UInt8(clamping: codes[i + 4]))
-                    i += 4
+                switch extendedColor(Array(codes.dropFirst(i + 1))) {
+                case let .color(color, used):
+                    if code == 38 { style.foreground = color } else { style.background = color }
+                    i += used
+                case let .outOfRange(used):
+                    i += used
+                case .malformed:
+                    return
                 }
-                if code == 38 { style.foreground = color } else { style.background = color }
             default: break
             }
             i += 1
+        }
+    }
+
+    private static func extendedColor(_ codes: [Int?]) -> ExtendedColor {
+        guard let mode = codes.first ?? nil else { return .malformed }
+        switch mode {
+        case 5:
+            guard codes.count >= 2, let entry = codes[1] else { return .malformed }
+            return (0...255).contains(entry) ? .color(.palette(entry), codes: 2) : .outOfRange(codes: 2)
+        case 2:
+            guard codes.count >= 4, let r = codes[1], let g = codes[2], let b = codes[3] else { return .malformed }
+            return .color(.rgb(UInt8(clamping: r), UInt8(clamping: g), UInt8(clamping: b)), codes: 4)
+        default:
+            return .malformed
         }
     }
 }

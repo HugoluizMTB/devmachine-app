@@ -46,14 +46,18 @@ public enum NumberText {
         return plain((amount * 10).rounded() / 10) + " " + units[index]
     }
 
+    static let longestDuration: Double = 1e15
+
     private static func duration(_ value: Double) -> String {
-        let total = Int(value.rounded())
+        guard value.isFinite else { return plain(value) }
+        let total = Int(Swift.min(abs(value), longestDuration).rounded())
+        let sign = value < 0 && total > 0 ? "-" : ""
         let hours = total / 3600
         let minutes = (total % 3600) / 60
         let seconds = total % 60
-        if hours > 0 { return "\(hours)h \(minutes)m" }
-        if minutes > 0 { return "\(minutes)m \(seconds)s" }
-        return "\(seconds)s"
+        if hours > 0 { return "\(sign)\(hours)h \(minutes)m" }
+        if minutes > 0 { return "\(sign)\(minutes)m \(seconds)s" }
+        return "\(sign)\(seconds)s"
     }
 }
 
@@ -67,6 +71,8 @@ public struct ValueError: Error, Equatable, Sendable, CustomStringConvertible {
     public var description: String { message }
 }
 
+/// The one value a number, gauge, status or sparkline view shows, picked out
+/// of any source output with `view.value`.
 public enum ValueExtraction {
     public static func value(from output: SourceOutput, view: WidgetView) throws -> WidgetValue {
         switch output {
@@ -93,10 +99,12 @@ public enum ValueExtraction {
     }
 }
 
+/// How a gauge or status reads at a glance; `neutral` when no rule judges it.
 public enum WidgetLevel: Equatable, Sendable {
     case ok, warn, bad, neutral
 }
 
+/// A gauge's filled part (0...1), level and label, so the view only draws.
 public struct GaugeModel: Equatable, Sendable {
     public let fraction: Double
     public let level: WidgetLevel
@@ -154,6 +162,7 @@ public struct StatusModel: Equatable, Sendable {
     }
 }
 
+/// One row of a list view, its templates already filled.
 public struct ListItem: Equatable, Identifiable, Sendable {
     public let id: Int
     public let title: String
@@ -170,7 +179,13 @@ public struct ListItem: Equatable, Identifiable, Sendable {
     }
 }
 
+/// Fills `view.item` for each line or JSON array element; a link that is not
+/// http(s) is dropped.
 public enum ListModel {
+    static var itemTemplate: Regex<(Substring, Substring?)> {
+        /\{\{\s*item(?:\.([A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*))?\s*\}\}/
+    }
+
     public static func items(output: SourceOutput, template: ListItemTemplate) throws -> [ListItem] {
         let elements: [WidgetValue]
         switch output {
@@ -182,7 +197,7 @@ public enum ListModel {
         return elements.enumerated().map { index, element in
             func fill(_ text: String?) -> String? {
                 text.map { value in
-                    value.replacing(/\{\{\s*item(?:\.([A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*))?\s*\}\}/) { match in
+                    value.replacing(itemTemplate) { match in
                         guard let path = match.1 else { return element.text }
                         return JSONPath.value(String(path), in: element)?.text ?? ""
                     }
@@ -196,10 +211,13 @@ public enum ListModel {
     }
 }
 
+/// The last `view.tail` lines of a text, the way a log is read.
 public enum TextTail {
     public static func lines(of text: String, tail: Int?) -> [String] {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        guard let tail, lines.count > tail else { return lines }
-        return Array(lines.suffix(tail))
+        var lines = text.replacingOccurrences(of: "\r\n", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        if lines.last == "" { lines.removeLast() }
+        guard let tail else { return lines }
+        return Array(lines.suffix(Swift.max(0, tail)))
     }
 }
