@@ -177,4 +177,12 @@ final class StackRowModelTests: XCTestCase {
         XCTAssertNil(WidgetGalleryReasons.shared(widgets) { $0.single ? "Already there" : nil })
         XCTAssertNil(WidgetGalleryReasons.shared([]) { _ in "Board is read-only" })
     }
+
+    func testTheGalleryListsTheBuiltInWidgetsWhenTheCatalogDidNotLoad() {
+        XCTAssertEqual(WidgetGalleryContent.of(hasCatalog: true, entries: 3, failure: "offline"), .list(failure: nil, loading: false))
+        XCTAssertEqual(WidgetGalleryContent.of(hasCatalog: false, entries: 9, failure: "offline"), .list(failure: "offline", loading: false))
+        XCTAssertEqual(WidgetGalleryContent.of(hasCatalog: false, entries: 9, failure: nil), .list(failure: nil, loading: true))
+        XCTAssertEqual(WidgetGalleryContent.of(hasCatalog: false, entries: 0, failure: "offline"), .failure("offline"))
+        XCTAssertEqual(WidgetGalleryContent.of(hasCatalog: false, entries: 0, failure: nil), .loading)
+    }
 }

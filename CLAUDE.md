@@ -993,9 +993,12 @@ Rules:
   the panel looks as it did.
 - **The sidebar never empties.** The nine `devmachine-app/*` widgets resolve
   built in (`AppStackWidgets`) when the catalog lacks them; a catalog entry of
-  the same name wins. With no config path the default board draws in memory,
+  the same name wins, and the stack gallery lists them even while the
+  catalog loads or failed (`WidgetGalleryContent`, failure line above the
+  list). With no config path the default board draws in memory,
   read-only. An invalid file on first read draws the default read-only under
-  a `DMBanner` naming the file and line; nothing is written until it is valid.
+  a `DMBanner` naming the file and line (the last good layout once one was
+  read); nothing is written until it is valid.
 - **The chrome stays out of the way** (`StackRowModel.showsControls`). A
   widget with its own section header (shortcuts, monitors, shells,
   sub-agents, todo, pull-requests, links) shows grip, chevron and ⋯ in that

@@ -10,6 +10,22 @@ enum WidgetGalleryReasons {
     }
 }
 
+/// A sidebar lists its built-in widgets even while the catalog is loading
+/// or failed, so a removed Workspaces list can come back offline; Home has
+/// none, so it waits for the catalog as before.
+enum WidgetGalleryContent: Equatable {
+    case list(failure: String?, loading: Bool)
+    case failure(String)
+    case loading
+
+    static func of(hasCatalog: Bool, entries: Int, failure: String?) -> WidgetGalleryContent {
+        if hasCatalog { return .list(failure: nil, loading: false) }
+        if entries > 0 { return .list(failure: failure, loading: failure == nil) }
+        if let failure { return .failure(failure) }
+        return .loading
+    }
+}
+
 struct WidgetGalleryView: View {
     let surface: String
     let catalog: WidgetCatalog?
@@ -31,15 +47,23 @@ struct WidgetGalleryView: View {
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if let catalog {
+            switch WidgetGalleryContent.of(hasCatalog: catalog != nil, entries: entries.count, failure: failure) {
+            case let .list(failure, loading):
+                if let failure {
+                    DMBanner(message: "Could not fetch packages: \(failure)", lineLimit: 3) {
+                        DMButton("Try again", variant: .ghost, size: .small, action: onRetry)
+                    }
+                } else if loading {
+                    ProgressView().controlSize(.small)
+                }
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: m.space.xs) {
                         ForEach(entries) { row($0, in: catalog, showsReason: sharedReason == nil) }
                     }
                 }
-            } else if let failure {
+            case let .failure(failure):
                 DMErrorStateView(state: DMErrorState(title: "Could not fetch packages", message: failure), retry: onRetry)
-            } else {
+            case .loading:
                 ProgressView().controlSize(.small)
             }
         }
@@ -48,7 +72,7 @@ struct WidgetGalleryView: View {
         .frame(maxHeight: m.pt(480))
     }
 
-    private func row(_ widget: CatalogWidget, in catalog: WidgetCatalog, showsReason: Bool) -> some View {
+    private func row(_ widget: CatalogWidget, in catalog: WidgetCatalog?, showsReason: Bool) -> some View {
         let reason = blockedReason(widget)
         return HStack(alignment: .top, spacing: m.space.md) {
             VStack(alignment: .leading, spacing: m.space.xxs) {
