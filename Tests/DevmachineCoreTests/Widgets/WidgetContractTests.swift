@@ -5,15 +5,59 @@ final class WidgetContractTests: XCTestCase {
     private func fixture() throws -> Data {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/widget-contract-1.1.json")
+            .appendingPathComponent("Fixtures/widget-contract-1.2.json")
         return try Data(contentsOf: url)
     }
 
     func testTheGoldenContractIsTheOneThisAppImplements() throws {
         let decoded = try JSONDecoder().decode(WidgetContract.self, from: fixture())
-        XCTAssertEqual(decoded, WidgetContract.engine11)
-        XCTAssertEqual(WidgetContract.current, WidgetContract.engine11)
-        XCTAssertEqual(WidgetContract.current.engine, "1.1")
+        XCTAssertEqual(decoded, WidgetContract.engine12)
+        XCTAssertEqual(WidgetContract.current, WidgetContract.engine12)
+        XCTAssertEqual(WidgetContract.current.engine, "1.2")
+    }
+
+    func testBothSidebarsAreAvailableStacks() {
+        let contract = WidgetContract.current
+        for surface in ["sidebar", "context-sidebar"] {
+            XCTAssertEqual(contract.surfaces[surface]?.layout, "stack", surface)
+            XCTAssertEqual(contract.surfaces[surface]?.status, "available", surface)
+        }
+        XCTAssertEqual(contract.stackRow, 40)
+        XCTAssertEqual(contract.stackEntry.forbids, ["frame", "z"])
+        XCTAssertEqual(contract.stackEntry.size, "preset | auto")
+        XCTAssertEqual(contract.stackEntry.collapsed, "bool")
+    }
+
+    func testTheSidebarProvidersSayWhichContextTheyNeed() {
+        let contract = WidgetContract.current
+        XCTAssertEqual(contract.requiredContext(ofProvider: "app/session-context"), ["session"])
+        XCTAssertEqual(contract.requiredContext(ofProvider: "app/shortcuts"), ["session"])
+        XCTAssertEqual(contract.requiredContext(ofProvider: "app/workspaces"), [])
+        XCTAssertEqual(contract.requiredContext(ofProvider: "app/publish-port"), [])
+        XCTAssertEqual(contract.requiredContext(ofProvider: "app/clock"), [])
+        XCTAssertEqual(contract.requiredContext(ofProvider: "nope"), [])
+        for name in ["app/workspaces", "app/session-context", "app/shortcuts", "app/publish-port"] {
+            XCTAssertEqual(contract.minimumInterval(for: name), 5, name)
+        }
+    }
+
+    func testTheNineSidebarViewsGrowInAStack() {
+        let contract = WidgetContract.current
+        let accepts = [
+            "app.workspaces": "app/workspaces", "app.shortcuts": "app/shortcuts", "app.publish-port": "app/publish-port",
+            "app.monitors": "app/session-context", "app.shells": "app/session-context",
+            "app.sub-agents": "app/session-context", "app.todo": "app/session-context",
+            "app.pull-requests": "app/session-context", "app.links": "app/session-context",
+        ]
+        for (view, provider) in accepts {
+            XCTAssertEqual(contract.views[view]?.layouts, ["stack"], view)
+            XCTAssertTrue(contract.viewGrows(view), view)
+            XCTAssertTrue(contract.view(view, accepts: provider), view)
+        }
+        XCTAssertNil(contract.views["text"]?.layouts)
+        XCTAssertFalse(contract.viewGrows("text"))
+        XCTAssertFalse(contract.viewGrows("app.clock"))
+        XCTAssertFalse(contract.viewGrows("nope"))
     }
 
     func testPresetsAreCellsOfTheUnit() {

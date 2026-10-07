@@ -143,7 +143,7 @@ final class WidgetCatalogTests: XCTestCase {
         locked.available = false
         locked.unavailableReason = "add the package: devmachine packages add acme --machine <name>"
         var future = CatalogFixtures.clock
-        future.requiresEngine = ">= 1.2"
+        future.requiresEngine = ">= 1.3"
         var gauge = CatalogFixtures.summary
         gauge.viewKind = "gauge"
         let catalog = CatalogFixtures.catalog([locked, future, gauge])
@@ -154,7 +154,7 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertEqual(WidgetResolution.resolve(entry("github-prs/open"), in: catalog), .notFound(type: "github-prs/open"))
         XCTAssertEqual(
             WidgetResolution.resolve(entry("devmachine-app/clock"), in: catalog),
-            .needsNewerApp(type: "devmachine-app/clock", reason: "it needs engine >= 1.2; this app implements 1.1"))
+            .needsNewerApp(type: "devmachine-app/clock", reason: "it needs engine >= 1.3; this app implements 1.2"))
         XCTAssertEqual(
             WidgetResolution.resolve(entry("devmachine-app/summary"), in: catalog),
             .needsNewerApp(type: "devmachine-app/summary", reason: "this app has no view gauge for app/summary"))
@@ -250,5 +250,21 @@ final class WidgetCatalogTests: XCTestCase {
         let catalog = try WidgetCatalog.decode(fixture("widgets-list-cli-0.9.0.json"))
         XCTAssertFalse(catalog.widgets.isEmpty)
         XCTAssertTrue(catalog.widgets.allSatisfy { $0.source.kind == "provider" && !$0.source.name.isEmpty })
+    }
+
+    func testSingleIsReadAndDefaultsToFalse() throws {
+        let json = #"""
+        {"engine": "1.2", "packages_release": "2026.10.07", "widgets": [
+          {"name": "devmachine-app/workspaces", "package": "devmachine-app", "widget": "workspaces",
+           "single": true, "fits": ["stack"], "source": {"kind": "provider", "name": "app/workspaces", "every": "5s"},
+           "view": {"kind": "app.workspaces"}, "surfaces": ["sidebar", "context-sidebar"], "available": true},
+          {"name": "devmachine-app/links", "package": "devmachine-app", "widget": "links",
+           "fits": ["stack"], "source": {"kind": "provider", "name": "app/session-context", "every": "5s"},
+           "view": {"kind": "app.links"}, "surfaces": ["context-sidebar"], "available": true}]}
+        """#
+        let catalog = try WidgetCatalog.decode(Data(json.utf8))
+        XCTAssertEqual(catalog.widget(named: "devmachine-app/workspaces")?.single, true)
+        XCTAssertEqual(catalog.widget(named: "devmachine-app/links")?.single, false)
+        XCTAssertFalse(CatalogWidget.inline(id: "a", title: "A", sizes: [], fits: [], viewKind: "text").single)
     }
 }

@@ -20,14 +20,32 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         public let required: Bool
     }
 
+    /// `context` maps an area context key to `required` or `optional`; a
+    /// provider that needs `session` runs only where the area gives one.
     public struct Provider: Decodable, Equatable, Sendable {
         public let args: [String: ProviderArg]
         public let minEvery: String
         public let returns: [String: String]
+        public let context: [String: String]
 
         enum CodingKeys: String, CodingKey {
-            case args, returns
+            case args, returns, context
             case minEvery = "min_every"
+        }
+
+        public init(args: [String: ProviderArg], minEvery: String, returns: [String: String], context: [String: String] = [:]) {
+            self.args = args
+            self.minEvery = minEvery
+            self.returns = returns
+            self.context = context
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            args = try c.decode([String: ProviderArg].self, forKey: .args)
+            minEvery = try c.decode(String.self, forKey: .minEvery)
+            returns = try c.decode([String: String].self, forKey: .returns)
+            context = try c.decodeIfPresent([String: String].self, forKey: .context) ?? [:]
         }
     }
 
@@ -87,14 +105,37 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         }
     }
 
+    /// `layouts` limits where the view may sit (nil: anywhere); a view that
+    /// `grows` takes its content's height in a stack (`size: auto`).
     public struct ViewSpec: Decodable, Equatable, Sendable {
         public let accepts: [String]
         public let fields: [String: FieldSpec]?
+        public let layouts: [String]?
+        public let grows: Bool
 
-        public init(accepts: [String], fields: [String: FieldSpec]? = nil) {
+        enum CodingKeys: String, CodingKey { case accepts, fields, layouts, grows }
+
+        public init(accepts: [String], fields: [String: FieldSpec]? = nil, layouts: [String]? = nil, grows: Bool = false) {
             self.accepts = accepts
             self.fields = fields
+            self.layouts = layouts
+            self.grows = grows
         }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            accepts = try c.decode([String].self, forKey: .accepts)
+            fields = try c.decodeIfPresent([String: FieldSpec].self, forKey: .fields)
+            layouts = try c.decodeIfPresent([String].self, forKey: .layouts)
+            grows = try c.decodeIfPresent(Bool.self, forKey: .grows) ?? false
+        }
+    }
+
+    /// What a stack board entry may say instead of a canvas frame.
+    public struct StackEntrySpec: Decodable, Equatable, Sendable {
+        public let forbids: [String]
+        public let size: String
+        public let collapsed: String
     }
 
     public struct Formats: Decodable, Equatable, Sendable {
@@ -107,6 +148,8 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
     public let unit: Int
     public let snap: Int
     public let presets: [String: [Int]]
+    public let stackRow: Int
+    public let stackEntry: StackEntrySpec
     public let surfaces: [String: Surface]
     public let contextTypes: [String: [String: String]]
     public let providers: [String: Provider]
@@ -119,6 +162,8 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         case engine, layouts, unit, snap, presets, surfaces, providers, views, sources, formats
         case contextTypes = "context_types"
         case sourceKinds = "source_kinds"
+        case stackRow = "stack_row"
+        case stackEntry = "stack_entry"
     }
 
     public static let presetOrder = ["small", "medium", "large", "wide", "tall"]
@@ -130,6 +175,14 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
 
     public func minimumInterval(for provider: String) -> TimeInterval? {
         providers[provider].flatMap { GoDuration.seconds($0.minEvery) }
+    }
+
+    public func viewGrows(_ kind: String) -> Bool {
+        views[kind]?.grows ?? false
+    }
+
+    public func requiredContext(ofProvider name: String) -> Set<String> {
+        Set((providers[name]?.context ?? [:]).filter { $0.value == "required" }.keys)
     }
 
     public func view(_ kind: String, accepts provider: String) -> Bool {
@@ -154,24 +207,26 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
 }
 
 extension WidgetContract {
-    public static let current = engine11
+    public static let current = engine12
 
     private static let target = FieldSpec(type: "target", defaultValue: .string("local"))
     private static let timeout = FieldSpec(type: "duration", defaultValue: .string("30s"), max: .string("10m"))
 
-    public static let engine11 = WidgetContract(
-        engine: "1.1",
+    public static let engine12 = WidgetContract(
+        engine: "1.2",
         layouts: ["canvas", "stack", "slot"],
         unit: 80,
         snap: 8,
         presets: ["small": [2, 2], "medium": [4, 2], "large": [4, 4], "wide": [8, 2], "tall": [2, 4]],
+        stackRow: 40,
+        stackEntry: StackEntrySpec(forbids: ["frame", "z"], size: "preset | auto", collapsed: "bool"),
         surfaces: [
             "home": Surface(layout: "canvas", status: "available", context: [:]),
             "sidebar": Surface(
-                layout: "stack", status: "planned",
+                layout: "stack", status: "available",
                 context: ["selected": ContextSlot(type: "workspace", presence: "optional")]),
             "context-sidebar": Surface(
-                layout: "stack", status: "planned",
+                layout: "stack", status: "available",
                 context: [
                     "machine": ContextSlot(type: "machine", presence: "always"),
                     "session": ContextSlot(type: "session", presence: "always"),
@@ -200,12 +255,32 @@ extension WidgetContract {
             "app/harness-usage": Provider(
                 args: ["harness": ProviderArg(type: "string", required: true)], minEvery: "5s",
                 returns: ["harness": "string", "windows": "list", "error": "string?"]),
+            "app/workspaces": Provider(args: [:], minEvery: "5s", returns: ["workspaces": "workspace_sessions"]),
+            "app/session-context": Provider(
+                args: [:], minEvery: "5s",
+                returns: [
+                    "cwd": "path", "harness": "string?", "plan": "plan?", "prs": "list",
+                    "links": "list", "agents": "list", "monitors": "list", "shells": "list",
+                ],
+                context: ["session": "required"]),
+            "app/shortcuts": Provider(
+                args: [:], minEvery: "5s", returns: ["shortcuts": "list"], context: ["session": "required"]),
+            "app/publish-port": Provider(args: [:], minEvery: "5s", returns: ["available": "bool"]),
         ],
         views: [
             "app.clock": ViewSpec(accepts: ["app/clock"]),
             "app.summary": ViewSpec(accepts: ["app/summary"]),
             "app.machines": ViewSpec(accepts: ["app/machines"]),
             "app.harness-usage": ViewSpec(accepts: ["app/harness-usage"]),
+            "app.workspaces": ViewSpec(accepts: ["app/workspaces"], layouts: ["stack"], grows: true),
+            "app.shortcuts": ViewSpec(accepts: ["app/shortcuts"], layouts: ["stack"], grows: true),
+            "app.publish-port": ViewSpec(accepts: ["app/publish-port"], layouts: ["stack"], grows: true),
+            "app.monitors": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
+            "app.shells": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
+            "app.sub-agents": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
+            "app.todo": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
+            "app.pull-requests": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
+            "app.links": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
             "text": ViewSpec(accepts: ["text", "lines", "ansi"], fields: [
                 "wrap": FieldSpec(type: "bool", defaultValue: .bool(true)),
                 "tail": FieldSpec(type: "int", min: .int(1), max: .int(2000)),

@@ -125,6 +125,7 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
     public var sizes: [String]
     public var defaultSize: String
     public var places: [String]
+    public var single: Bool
     public var surfaces: [String]
     public var available: Bool
     public var unavailableReason: String
@@ -136,7 +137,7 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         sizes: [String], defaultSize: String, places: [String] = ["home"], surfaces: [String] = ["home"],
         available: Bool = true, unavailableReason: String = "",
         origin: String = "release", version: String = "", path: String = "",
-        view: WidgetValue? = nil, packagePath: String = ""
+        view: WidgetValue? = nil, packagePath: String = "", single: Bool = false
     ) {
         let parts = name.split(separator: "/", maxSplits: 1).map(String.init)
         self.name = name
@@ -160,11 +161,12 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         self.path = path
         self.view = view ?? .object(["kind": .string(viewKind)])
         self.packagePath = packagePath
+        self.single = single
     }
 
     enum CodingKeys: String, CodingKey {
         case name, package, widget, origin, version, path, summary, fits, context, inputs, source, view
-        case sizes, places, surfaces, available
+        case sizes, places, single, surfaces, available
         case requiresEngine = "requires_engine"
         case defaultSize = "default_size"
         case unavailableReason = "unavailable_reason"
@@ -194,6 +196,7 @@ public struct CatalogWidget: Decodable, Equatable, Sendable, Identifiable {
         sizes = try c.decodeIfPresent([String].self, forKey: .sizes) ?? []
         defaultSize = try c.decodeIfPresent(String.self, forKey: .defaultSize) ?? ""
         places = try c.decodeIfPresent([String].self, forKey: .places) ?? []
+        single = try c.decodeIfPresent(Bool.self, forKey: .single) ?? false
         surfaces = try c.decodeIfPresent([String].self, forKey: .surfaces) ?? []
         available = try c.decodeIfPresent(Bool.self, forKey: .available) ?? false
         unavailableReason = try c.decodeIfPresent(String.self, forKey: .unavailableReason) ?? ""
