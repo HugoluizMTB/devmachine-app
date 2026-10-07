@@ -246,7 +246,7 @@ final class InlineWidgetFormTests: XCTestCase {
         XCTAssertEqual(filled(.urlStatus).fields, ["title", "url", "every"])
         XCTAssertEqual(filled(.webPage).fields, ["title", "url", "every", "zoom"])
         XCTAssertEqual(filled(.session).fields, ["title", "target", "session", "every"])
-        XCTAssertEqual(filled(.prompt).fields, ["title", "harness", "prompt", "target", "every"])
+        XCTAssertEqual(filled(.prompt).fields, ["title", "harness", "permissionMode", "prompt", "target", "every"])
         XCTAssertEqual(filled(.command).fields, ["title", "run", "args", "target", "every", "parse", "view"])
         var shell = filled(.command)
         shell.commandStyle = .shell
@@ -255,5 +255,64 @@ final class InlineWidgetFormTests: XCTestCase {
 
     func testTemplatesNameThemselvesInAHeading() {
         XCTAssertEqual(InlineWidgetTemplate.allCases.map(\.noun), ["command", "URL status", "web page", "prompt", "session"])
+    }
+
+    func testThePickerListsOnlyTheChosenHarnesssModesFromTheContract() {
+        let byHarness = WidgetContract.current.sources["prompt"]?.fields["permission_mode"]?.byHarness ?? [:]
+        var form = filled(.prompt)
+        XCTAssertEqual(form.permissionMode, "")
+        XCTAssertEqual(form.permissionModes(), byHarness["claude"])
+        form.choosePermissionMode("acceptEdits")
+        form.chooseHarness("codex")
+        XCTAssertEqual(form.permissionModes(), byHarness["codex"])
+        XCTAssertEqual(form.permissionMode, "")
+        form.choosePermissionMode("workspace-write")
+        form.chooseHarness("codex")
+        XCTAssertEqual(form.permissionMode, "workspace-write")
+    }
+
+    func testAModeWithNoChecksSetsEveryToManualAndLocksIt() {
+        var form = filled(.prompt)
+        form.every = "30m"
+        form.choosePermissionMode("auto")
+        XCTAssertEqual(form.every, "30m")
+        XCTAssertFalse(form.everyLocked())
+        form.choosePermissionMode("bypassPermissions")
+        XCTAssertEqual(form.every, "manual")
+        XCTAssertTrue(form.everyLocked())
+        form.choosePermissionMode("plan")
+        XCTAssertFalse(form.everyLocked())
+        XCTAssertEqual(form.every, "manual")
+        XCTAssertFalse(filled(.command).everyLocked())
+    }
+
+    func testAPermissionModeIsWrittenReadAndFilledBack() throws {
+        let plain = filled(.prompt)
+        XCTAssertFalse(plain.yaml(surface: "home", id: "check").text.contains("permission_mode"))
+        var form = filled(.prompt)
+        form.chooseHarness("codex")
+        form.choosePermissionMode("danger-full-access")
+        let text = form.yaml(surface: "home", id: "check").text
+        XCTAssertTrue(text.contains("      harness: codex\n      permission_mode: danger-full-access\n      prompt: "))
+        let inline = try form.read(surface: "home", id: "check").get()
+        guard case let .prompt(source) = inline.source else { return XCTFail() }
+        XCTAssertEqual(source.permissionMode, "danger-full-access")
+        XCTAssertEqual(source.every, .manual)
+        let again = try XCTUnwrap(InlineWidgetForm(inline: inline, surface: "home"))
+        XCTAssertEqual(again.permissionMode, "danger-full-access")
+        XCTAssertTrue(again.everyLocked())
+        var renamed = again
+        renamed.title = "Other"
+        let kept = try renamed.read(surface: "home", id: "check", keeping: inline).get()
+        XCTAssertEqual(kept.sourceTree, inline.sourceTree)
+    }
+
+    func testATimerOnAModeWithNoChecksLandsOnTheModeField() {
+        var form = filled(.prompt)
+        form.choosePermissionMode("bypassPermissions")
+        form.every = "30m"
+        guard case let .failure(problem) = form.read(surface: "home", id: "check") else { return XCTFail("read") }
+        XCTAssertEqual(problem.field, "permissionMode")
+        XCTAssertTrue(problem.message.contains("runs without any check, so it runs only when you press refresh"), problem.message)
     }
 }

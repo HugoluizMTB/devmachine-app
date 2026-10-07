@@ -82,6 +82,7 @@ public struct InlineWidgetForm: Equatable, Sendable {
     public var url = ""
     public var zoom = "1"
     public var harness = "claude"
+    public var permissionMode = ""
     public var prompt = ""
     public var session = ""
 
@@ -128,6 +129,7 @@ public struct InlineWidgetForm: Equatable, Sendable {
         case let .prompt(prompt):
             form = InlineWidgetForm(template: .prompt)
             form.harness = prompt.harness.rawValue
+            form.permissionMode = prompt.permissionMode ?? ""
             form.prompt = prompt.prompt
             form.target = prompt.target
         case let .session(session):
@@ -158,13 +160,34 @@ public struct InlineWidgetForm: Equatable, Sendable {
             if usesValue(contract: contract) { shown.insert("value") }
         case .urlStatus: shown.formUnion(["url", "every"])
         case .webPage: shown.formUnion(["url", "every", "zoom"])
-        case .prompt: shown.formUnion(["harness", "prompt", "target", "every"])
+        case .prompt: shown.formUnion(["harness", "permissionMode", "prompt", "target", "every"])
         case .session: shown.formUnion(["target", "session", "every"])
         }
         return shown
     }
 
     public var fields: Set<String> { fields() }
+
+    /// The chosen harness's modes, in the contract's order.
+    public func permissionModes(contract: WidgetContract = .current) -> [String] {
+        PermissionModes.names(for: harness, contract: contract)
+    }
+
+    /// A mode with no checks runs only by hand, so Every stays manual.
+    public func everyLocked(contract: WidgetContract = .current) -> Bool {
+        template == .prompt && PermissionModes.isDangerous(permissionMode, contract: contract)
+    }
+
+    /// A mode belongs to one harness, so another harness drops it.
+    public mutating func chooseHarness(_ name: String, contract: WidgetContract = .current) {
+        harness = name
+        if !PermissionModes.names(for: name, contract: contract).contains(permissionMode) { permissionMode = "" }
+    }
+
+    public mutating func choosePermissionMode(_ mode: String, contract: WidgetContract = .current) {
+        permissionMode = mode
+        if PermissionModes.isDangerous(mode, contract: contract) { every = "manual" }
+    }
 
     /// A view's `value` picks out of JSON, so it is written only then.
     public func usesValue(contract: WidgetContract = .current) -> Bool {
@@ -268,6 +291,7 @@ public struct InlineWidgetForm: Equatable, Sendable {
         case .prompt:
             add("      kind: prompt", "prompt")
             add("      harness: \(Self.block(harness))", "harness")
+            if !permissionMode.isEmpty { add("      permission_mode: \(Self.block(permissionMode))", "permissionMode") }
             add("      prompt: \(Self.block(prompt))", "prompt")
             add("      target: \(targetText)", "target")
             add("      every: \(Self.block(every))", "every")
