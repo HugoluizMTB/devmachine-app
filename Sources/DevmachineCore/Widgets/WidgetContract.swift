@@ -116,7 +116,7 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
     }
 
     /// `layouts` limits where the view may sit (nil: anywhere); a view that
-    /// `grows` takes its content's height (`size: auto`) in a stack and on Home.
+    /// `grows` takes its content's height (`size: auto`) in a stack or on Home.
     public struct ViewSpec: Decodable, Equatable, Sendable {
         public let accepts: [String]
         public let fields: [String: FieldSpec]?
@@ -148,8 +148,6 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         public let collapsed: String
     }
 
-    /// What a Home (canvas) board entry may say: `size` takes a preset,
-    /// `custom` or `auto`, and the frame leaves `h` out with `auto`.
     public struct CanvasEntrySpec: Decodable, Equatable, Sendable {
         public let size: String
         public let frame: String

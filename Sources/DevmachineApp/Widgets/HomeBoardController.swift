@@ -173,8 +173,6 @@ final class HomeBoardController: ObservableObject {
         edit(id) { $0.frame = frame }
     }
 
-    /// `auto` is a growing widget dragged to within a snap of its content:
-    /// it goes back to following the content, with no height of its own.
     func resize(_ id: String, to frame: BoardFrame, auto: Bool, sizes: [String]) {
         edit(id) {
             if auto {

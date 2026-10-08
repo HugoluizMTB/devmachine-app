@@ -410,14 +410,11 @@ public enum BoardCodec {
         }
     }
 
-    /// The CLI's order for the presets in a message: smallest area first.
     private static func presetNames(_ contract: WidgetContract) -> [String] {
         func area(_ name: String) -> Int { contract.presets[name].map { $0.reduce(1, *) } ?? 0 }
         return contract.presets.keys.sorted().sorted { area($0) < area($1) }
     }
 
-    /// With `auto` the height is the content's, so `h` may be left out, and
-    /// one that is written is read and dropped.
     private static func decodeFrame(_ node: Node, owner: String, entryLine: Int?, auto: Bool) throws -> BoardFrame {
         guard let mapping = node.mapping else {
             throw BoardProblem(line: line(node), message: "frame of widget \"\(owner)\" must be {x: , y: , w: , h: }")

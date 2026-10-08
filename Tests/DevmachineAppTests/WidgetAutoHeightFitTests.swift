@@ -3,9 +3,6 @@ import SwiftUI
 import DevmachineCore
 @testable import DevmachineApp
 
-/// Draws the growing views the way a Home widget on `auto` draws them, with
-/// no height offered, and reads how tall they come out. `ImageRenderer` does
-/// not lay out a `ScrollView`, which is why a view that hugs has none.
 @MainActor
 final class WidgetAutoHeightFitTests: XCTestCase {
     private let width: CGFloat = 320

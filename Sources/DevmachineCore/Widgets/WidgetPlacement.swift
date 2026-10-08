@@ -3,9 +3,7 @@ import Foundation
 /// The board written when `home.yml` is missing or reset, laid out for the
 /// canvas width known at that moment (1280 when none is): every machine in a
 /// row at the top, the usage cards side by side under it, and the clock with
-/// the summary pill under it on the right edge. The machines, the pill and the
-/// usage cards are `auto`: they are as tall as their content, and the heights
-/// the layout reserves for them are estimates that only space the rows.
+/// the summary pill under it on the right edge.
 public enum DefaultBoard {
     public static let surface = "home"
     public static let fallbackWidth = 1280
@@ -22,7 +20,6 @@ public enum DefaultBoard {
     public static let usageMaxWidth = 480
     /// The summary pill drawn with two-digit counts.
     public static let summaryPillWidth = 336
-    /// What the layout reserves under the clock for the pill, which is shorter.
     public static let summaryHeight = 160
     public static let clockMaxWidth = 416
     private static let padding = 24
@@ -32,10 +29,8 @@ public enum DefaultBoard {
 
     public struct Layout: Equatable, Sendable {
         public let board: Board
-        /// The height reserved for each `auto` widget, by id.
         public let reserved: [String: Int]
 
-        /// The frames as the layout spaced them: an `auto` widget has its reserved height.
         public func spaced(_ id: String) -> BoardFrame? {
             guard let widget = board.widgets.first(where: { $0.id == id }) else { return nil }
             var frame = widget.frame
@@ -365,8 +360,6 @@ public enum WidgetPlacer {
             size: preset == nil ? BoardWidget.customSize : widget.defaultSize, z: board.topZ + 1)
     }
 
-    /// Where the board's widgets sit for the search of a free spot: an `auto`
-    /// widget takes the height of its default size (an inline one, 160).
     public static func occupied(
         by board: Board, catalog: WidgetCatalog?, contract: WidgetContract = .current
     ) -> [BoardFrame] {

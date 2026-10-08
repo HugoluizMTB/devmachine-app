@@ -80,8 +80,7 @@ public struct EditableEntry: Equatable, Sendable {
 }
 
 /// Where a new inline widget lands on a canvas: the first free spot at its
-/// preset, as a widget from the gallery lands. A view that grows is added
-/// `auto`; the spot is searched with the preset's height.
+/// preset, as a widget from the gallery lands.
 public enum InlineEntryPlacement {
     public static let fallback = CanvasSize(w: 320, h: 160)
 

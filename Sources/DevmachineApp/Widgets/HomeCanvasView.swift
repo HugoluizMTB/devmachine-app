@@ -343,8 +343,6 @@ private struct BoardCanvasLayer: View {
         return BoardFrame(x: Int(rect.minX.rounded()), y: Int(rect.minY.rounded()), w: size.w, h: size.h)
     }
 
-    /// An `auto` widget that is not a growing view, such as a placeholder
-    /// for a missing package, has no content to follow and takes a row pair.
     private func drawnHeight(_ widget: BoardWidget, resolution: WidgetResolution?, least: CanvasSize) -> Int {
         if grows(resolution) {
             return CanvasLayout.drawnHeight(of: widget, content: contentHeights[widget.id], grows: true)
@@ -352,9 +350,6 @@ private struct BoardCanvasLayer: View {
         return widget.isAuto ? StackLayout.placeholderHeight() : max(widget.frame.h, least.h)
     }
 
-    /// Every widget as drawn: its frame grown to the minimum and pulled
-    /// inside the canvas, then pushed down by any taller widget above it.
-    /// The dragged widget stays where the pointer holds it.
     private func layoutFrames(_ board: Board) -> [String: BoardFrame] {
         var frames: [String: BoardFrame] = [:]
         for widget in board.widgets {

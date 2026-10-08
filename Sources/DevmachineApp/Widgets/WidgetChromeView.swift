@@ -160,10 +160,8 @@ struct WidgetChromeView: View {
             .simultaneousGesture(TapGesture().onEnded { onFront() })
     }
 
-    /// A growing view on `auto` is drawn as tall as it is and tells the canvas
-    /// how tall that is. With a height of its own it fills that box, and a
-    /// copy no one sees measures what it would take unconstrained, so a drag
-    /// past the content knows where the content ends.
+    /// The unseen copy learns the unconstrained content height, so a drag past
+    /// the content knows where it ends.
     @ViewBuilder
     private var sizedContent: some View {
         if grows, widget.isAuto {

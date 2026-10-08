@@ -53,7 +53,6 @@ struct SummaryWidgetView: View {
     }
 }
 
-/// A widget that hugs is as tall as its pill; one that does not fills its box.
 struct SummaryPill: View {
     let sessions: Int
     let harnessSessions: Int
@@ -145,8 +144,6 @@ struct MachinesWidgetView: View {
     }
 }
 
-/// The stats cards in rows. In a box it draws as many as fit and names the
-/// rest ("+N more"); a widget that hugs draws every one, as tall as the rows.
 struct MachinesGridView: View {
     let machines: [StatsMachine]
     let size: CGSize

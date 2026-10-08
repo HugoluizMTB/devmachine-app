@@ -37,7 +37,6 @@ public struct CanvasMove: Equatable, Sendable {
     public let guides: [CanvasGuide]
 }
 
-/// A widget as the push-down sees it: where it is stored and how tall it is drawn.
 public struct CanvasPlacement: Equatable, Sendable {
     public let id: String
     public let x: Int
@@ -81,8 +80,6 @@ public enum CanvasLayout {
         return CanvasSize(w: cells.columns * contract.unit, h: cells.rows * contract.unit)
     }
 
-    /// A view that grows has no preset height to keep: the least it takes is
-    /// one stack row.
     public static func minimumSize(
         sizes: [String], grows: Bool = false, contract: WidgetContract = .current
     ) -> CanvasSize {
@@ -94,9 +91,6 @@ public enum CanvasLayout {
         return CanvasSize(w: width, h: grows ? contract.stackRow : height)
     }
 
-    /// `auto` follows the content. A stored height on a growing view is a
-    /// cap: it never draws taller than the content, nor shorter than a row.
-    /// Before the content is measured, a cap holds and `auto` takes one row.
     public static func drawnHeight(
         of widget: BoardWidget, content: Int?, grows: Bool, contract: WidgetContract = .current
     ) -> Int {
@@ -127,10 +121,6 @@ public enum CanvasLayout {
         return CanvasResize(frame: next, auto: auto)
     }
 
-    /// Where each widget is drawn down the screen: its stored `y`, or just
-    /// under the drawn bottom of any widget above it that shares columns.
-    /// Widgets are taken in stored `y` then `x` order. Never pulls up, and
-    /// the stored frames are not touched.
     public static func pushedDown(_ items: [CanvasPlacement]) -> [String: Int] {
         let ordered = items.enumerated().sorted { a, b in
             (a.element.y, a.element.x, a.offset) < (b.element.y, b.element.x, b.offset)
@@ -148,8 +138,6 @@ public enum CanvasLayout {
         return drawnY
     }
 
-    /// Back to the state a widget is added in: `auto` at its default width
-    /// when its view grows, else its default preset.
     public static func reset(
         _ widget: BoardWidget, defaultSize: String, grows: Bool, contract: WidgetContract = .current
     ) -> BoardWidget {

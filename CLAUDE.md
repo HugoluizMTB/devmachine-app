@@ -607,13 +607,18 @@ Rules:
   side by side in one row at the top (sized from `MachineStatsCard.width` and
   `MachinesWidgetView`'s spacing, for the machine count `StatsStore` knows, 3
   when none), one `devmachine-app/usage` per enabled harness under it (two
-  across from two harnesses, 336-480 wide, 600 tall: the full card with a
-  typical snapshot measures 591, at any width, so it never scrolls), and on
-  the right edge a 336-416 column with the clock and the summary pill under
-  it. The pill sits at the top of its widget so it reads as part of the
-  clock. `DefaultHomeBoardTests` pins the frames; `DefaultHomeBoardFitTests`
-  draws the real cards at those frames. The `HomeLayout` notes below describe
-  the pre-widget view.
+  across from two harnesses, 336-480 wide), and on the right edge a 336-416
+  column with the clock and the summary pill under it. Machines, usage and
+  the summary are `size: auto` (no `h` in their frame): they are as tall as
+  their content. `DefaultBoard.layout` also gives the height it reserved for
+  each one (machines: its rows; usage: 600, because the full card with a
+  typical snapshot measures 591 at any width; summary: 160) so the rows under
+  them are spaced; those heights only space the stored `y`, and the push-down
+  (below) fixes any overrun on screen. The clock stays fixed. The pill sits at
+  the top of its widget so it reads as part of the clock.
+  `DefaultHomeBoardTests` pins the frames; `DefaultHomeBoardFitTests` draws the
+  real cards against the reserved heights. The `HomeLayout` notes below
+  describe the pre-widget view.
 - **`HomeLayout.plan` decides from Home's width alone**; showing or hiding
   the sidebar only changes that width. The clock sits in the middle of all of
   Home when, there, it still clears the cards column by the gap
@@ -951,7 +956,7 @@ Rules:
   `YAMLScalarStyle.swift`, kept compatible with the CLI's `yaml.v3`. Cross-writer
   tests guard that: change the quoting and they fail.
 - **The golden fixture is the CLI's file.**
-  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.6.json` must stay
+  `Tests/DevmachineCoreTests/Fixtures/widget-contract-1.7.json` must stay
   byte-identical to `internal/widgets/testdata/contract.json` in the CLI repo.
   Change one, copy it to the other. `widgets schema --json` prints the same
   document re-indented, so the live test compares it as sorted-key JSON.
@@ -959,6 +964,53 @@ Rules:
   multiplies by the text scale to draw and divides to store, so the file reads
   the same at any setting. A window smaller than the layout moves widgets in on
   screen only.
+- **A widget is as tall as what it shows (engine 1.7).** A view with
+  `"grows": true` in the contract (summary, machines, harness usage, text,
+  number, status, list, markdown) has a natural height; the others (clock,
+  gauge, sparkline, web, terminal, pull-requests panel, usage panel) do not.
+  The rules are `CanvasLayout`, pure and tested:
+  - `size: auto` on Home, with `frame: {x, y, w}` and no `h` (`BoardWidget.isAuto`;
+    `frame.h` is 0 in memory, and the encoder writes nothing). A written `h` next
+    to `auto` is read and dropped. Without `auto`, `h` is required
+    (`<id>: frame needs h unless size is auto`); `auto` on a view that does not
+    grow is refused with the sidebar's own message (`BoardCodec` for an inline
+    widget, `WidgetResolution` for a typed one).
+  - Drawn height = `auto ? content : min(content, max(h, 40))`
+    (`drawnHeight`). A stored `h` on a growing view is a **cap**, never a
+    floor: an old `custom` 160 pt summary draws at its pill. A growing view has
+    no preset height minimum (one `stack_row`, 40 pt, when set by hand); its
+    minimum width is the smallest preset width. Other views keep today's minimum.
+  - The content height is measured by the view, not guessed. `WidgetChromeView`
+    draws an `auto` widget with `hugs: true` (every growing view then reports
+    its natural height: no `maxHeight: .infinity`, no `ScrollView`, no
+    `GeometryReader`; machines draw every card, list every row) and reads its
+    size with `onGeometryChange`. A widget with a cap draws in its box as
+    before and keeps an invisible hugging copy only to learn the content
+    height. `HomeCanvasView` stores the measure per id in board points; it is
+    never written to the file. **Never give a hugging view `size.height`:** it
+    would feed the last height back as the next offer and the widget could
+    never grow.
+  - **Push-down is display only** (`CanvasLayout.pushedDown`). Widgets are
+    taken by stored `y`, then `x`; a widget's drawn `y` is `max(stored y,
+    drawn bottom + 8 of every earlier widget whose columns overlap)`. It never
+    pulls up, and stored frames do not change until the person moves the
+    widget. A widget dragged is not pushed while it is held.
+  - **Resize**: width as before; for a growing view the stored `h` is the
+    height drawn at release, `min(dragged, content)`; within one snap (8 pt) of
+    the content the entry becomes `size: auto` (`resizedGrowing`).
+    The "..." Size picker lists Auto first for a growing view.
+  - **Reset size** ("..." menu, and a double-click on the resize corner)
+    returns a growing widget to `auto` at the width of its `default_size`, a
+    fixed one to its `default_size` preset (`CanvasLayout.reset`,
+    `HomeBoardController.resetSize`).
+  - New widgets (gallery, `WidgetPlacer.newInstance`, inline
+    `InlineEntryPlacement`) and the default board are `auto` for a growing
+    view. The spot search cannot measure, so an `auto` widget occupies the
+    height of its `default_size` (inline: 160), as the CLI's `widgets add`
+    does.
+  - `ImageRenderer` does not lay out a `ScrollView`, so the natural-height
+    tests (`WidgetAutoHeightFitTests`, `DMFitCheck`) draw the `hugs: true`
+    views, which have none.
 - **A widget's meaning comes from the CLI catalog** (`widgets list --format
   json`, `WidgetCatalogStore`). The app ships no `widget.yml`. An entry the
   catalog cannot resolve keeps its place as a placeholder, so a missing
@@ -1072,7 +1124,11 @@ Rules:
   300 ms write, an invalid file is never written over, reset keeps `.bak`).
   `surface:` must match the file. A stack entry has no `frame` and no `z`;
   its place is its index. Optional `size` is a preset (its rows × `stack_row`
-  40 pt) or `auto` for a view that grows; with no `size` it draws `auto` when
+  40 pt) or `auto` for a view that grows (since engine 1.7 that includes the
+  generic views text, number, status, list and markdown and the canvas app
+  views summary, machines and harness usage; on `auto` a source widget or a
+  canvas app view draws with `hugs: true`, as tall as its content, the same
+  rule as on Home); with no `size` it draws `auto` when
   the view grows, else the widget's `default_size`, its first size, or
   `medium` (`StackLayout.effectiveSize`). A widget the app adds (gallery or
   placement, `StackPlacer.newEntry`) is written with that size, `auto` or
@@ -1192,7 +1248,7 @@ Rules:
   `frame`.
 
 ## Choosing and editing widgets
-Engine 1.6. One mechanism for every widget, on Home, the sidebars and the
+Engine 1.7. One mechanism for every widget, on Home, the sidebars and the
 menu bar; the app has no code for a particular widget's choices.
 
 - **A `choice` input declares its list.** `inputs.<name>: {type: choice,
