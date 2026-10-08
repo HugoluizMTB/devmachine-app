@@ -318,8 +318,9 @@ public struct InlineWidgetForm: Equatable, Sendable {
         if template == .webPage { add("      zoom: \(zoomText)", "zoom") }
         if usesValue(contract: contract), !value.isEmpty { add("      value: \(Self.block(value))", "value") }
         if contract.layout(of: surface) == "canvas" {
-            add("    frame: {x: 0, y: 0, w: 320, h: 160}", nil)
-            add("    size: medium", nil)
+            let grows = contract.viewGrows(view)
+            add(grows ? "    frame: {x: 0, y: 0, w: 320}" : "    frame: {x: 0, y: 0, w: 320, h: 160}", nil)
+            add(grows ? "    size: auto" : "    size: medium", nil)
             add("    minimized: false", nil)
             add("    z: 1", nil)
         }

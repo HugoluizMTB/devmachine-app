@@ -208,6 +208,7 @@ private struct BoardCanvasLayer: View {
     @Environment(\.dmMetrics) private var m
     @State private var drag: CanvasDrag?
     @State private var pillSizes: [String: CGSize] = [:]
+    @State private var contentHeights: [String: Int] = [:]
     @State private var choosing: WidgetChoiceRequest?
 
     /// Before a pill has been drawn and measured, in points at 100%.
@@ -218,6 +219,7 @@ private struct BoardCanvasLayer: View {
         let start: BoardFrame
         var frame: BoardFrame
         var guides: [CanvasGuide]
+        var auto = false
     }
 
     private struct PlacesTrigger: Equatable {
@@ -237,8 +239,9 @@ private struct BoardCanvasLayer: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             if let board = store.board {
+                let frames = layoutFrames(board)
                 ForEach(board.widgets) { widget in
-                    widgetView(widget, board: board)
+                    widgetView(widget, board: board, frame: frames[widget.id])
                         .zIndex(CanvasLayout.stackLevel(of: widget, in: board, lifting: drag?.id))
                 }
             }
@@ -275,19 +278,19 @@ private struct BoardCanvasLayer: View {
         boardVisible.width > 0 && boardVisible.height > 0
     }
 
-    private func widgetView(_ widget: BoardWidget, board: Board) -> some View {
+    private func widgetView(_ widget: BoardWidget, board: Board, frame: BoardFrame?) -> some View {
         let resolution = controller.resolution(of: widget)
-        let current = drag.flatMap { $0.id == widget.id ? $0.frame : nil }
-        let display = CanvasLayout.toDisplay((current ?? displayFrame(widget, resolution: resolution)).rect, scale: scale)
+        let display = CanvasLayout.toDisplay((frame ?? displayFrame(widget, resolution: resolution)).rect, scale: scale)
         return WidgetChromeView(
             widget: widget, resolution: resolution, release: catalog.catalog?.packagesRelease ?? "",
             title: title(widget, resolution), size: display.size, editable: store.canEdit,
             onMoveChanged: { moveChanged(widget, translation: $0, board: board) },
             onMoveEnded: { moveEnded(widget) },
-            onResizeChanged: { resizeChanged(widget, translation: $0, resolution: resolution) },
+            onResizeChanged: { resizeChanged(widget, translation: $0, board: board, resolution: resolution) },
             onResizeEnded: { resizeEnded(widget, resolution: resolution) },
             onFront: { controller.bringToFront(widget.id) },
             onPreset: { controller.setPreset(widget.id, preset: $0) },
+            onReset: { controller.resetSize(widget.id) },
             onMinimize: { controller.setMinimized(widget.id, $0) },
             onRefresh: { refresh(widget, resolution) },
             onRemove: { controller.remove(widget.id) },
@@ -298,8 +301,19 @@ private struct BoardCanvasLayer: View {
             onChoose: { choice in
                 choosing = WidgetChoiceRequest(entryID: widget.id, input: choice, title: title(widget, resolution))
             },
-            onEdit: controller.offersEdit(widget.id) ? { editing = .edit(widget.id) } : nil)
+            onEdit: controller.offersEdit(widget.id) ? { editing = .edit(widget.id) } : nil,
+            onContentHeight: { contentHeightChanged(widget.id, $0) })
         .offset(x: display.minX, y: display.minY)
+    }
+
+    private func grows(_ resolution: WidgetResolution?) -> Bool {
+        guard case let .ready(resolved)? = resolution else { return false }
+        return resolved.grows
+    }
+
+    private func contentHeightChanged(_ id: String, _ points: CGFloat) {
+        let height = Int((Double(points) / scale).rounded(.up))
+        if contentHeights[id] != height { contentHeights[id] = height }
     }
 
     private func minimum(_ resolution: WidgetResolution?) -> CanvasSize {
@@ -322,25 +336,49 @@ private struct BoardCanvasLayer: View {
             size = CanvasSize(w: Int(pill.width.rounded(.up)), h: Int(pill.height.rounded(.up)))
         } else {
             let least = minimum(resolution)
-            size = CanvasSize(w: max(widget.frame.w, least.w), h: max(widget.frame.h, least.h))
+            size = CanvasSize(w: max(widget.frame.w, least.w), h: drawnHeight(widget, resolution: resolution, least: least))
         }
         let rect = CanvasLayout.clamped(
             BoardFrame(x: widget.frame.x, y: widget.frame.y, w: size.w, h: size.h), in: boardVisible)
         return BoardFrame(x: Int(rect.minX.rounded()), y: Int(rect.minY.rounded()), w: size.w, h: size.h)
     }
 
-    private func dragStart(_ widget: BoardWidget, resolution: WidgetResolution?) -> BoardFrame {
+    private func drawnHeight(_ widget: BoardWidget, resolution: WidgetResolution?, least: CanvasSize) -> Int {
+        if grows(resolution) {
+            return CanvasLayout.drawnHeight(of: widget, content: contentHeights[widget.id], grows: true)
+        }
+        return widget.isAuto ? StackLayout.placeholderHeight() : max(widget.frame.h, least.h)
+    }
+
+    private func layoutFrames(_ board: Board) -> [String: BoardFrame] {
+        var frames: [String: BoardFrame] = [:]
+        for widget in board.widgets {
+            if let drag, drag.id == widget.id {
+                frames[widget.id] = drag.frame
+            } else {
+                frames[widget.id] = displayFrame(widget, resolution: controller.resolution(of: widget))
+            }
+        }
+        let pushed = CanvasLayout.pushedDown(board.widgets.compactMap { widget in
+            frames[widget.id].map { CanvasPlacement(id: widget.id, x: $0.x, y: $0.y, w: $0.w, h: $0.h) }
+        })
+        for (id, y) in pushed where id != drag?.id { frames[id]?.y = y }
+        return frames
+    }
+
+    private func dragStart(_ widget: BoardWidget, board: Board) -> BoardFrame {
         if let drag, drag.id == widget.id { return drag.start }
-        return displayFrame(widget, resolution: resolution)
+        return layoutFrames(board)[widget.id] ?? displayFrame(widget, resolution: controller.resolution(of: widget))
     }
 
     private func moveChanged(_ widget: BoardWidget, translation: CGSize, board: Board) {
         guard store.canEdit else { return }
-        let start = dragStart(widget, resolution: controller.resolution(of: widget))
+        let start = dragStart(widget, board: board)
         let delta = CanvasLayout.toBoard(translation, scale: scale)
+        let frames = layoutFrames(board)
         let others = CanvasLayout.snapTargets(board.widgets, moving: widget.id) {
             controller.resolution(of: $0) != nil
-        }.map { displayFrame($0, resolution: controller.resolution(of: $0)) }
+        }.compactMap { frames[$0.id] }
         let move = CanvasLayout.moved(
             start, to: CGPoint(x: Double(start.x) + delta.width, y: Double(start.y) + delta.height), among: others)
         drag = CanvasDrag(id: widget.id, start: start, frame: move.frame, guides: move.guides)
@@ -354,20 +392,26 @@ private struct BoardCanvasLayer: View {
         controller.bringToFront(widget.id)
     }
 
-    private func resizeChanged(_ widget: BoardWidget, translation: CGSize, resolution: WidgetResolution?) {
+    private func resizeChanged(_ widget: BoardWidget, translation: CGSize, board: Board, resolution: WidgetResolution?) {
         guard store.canEdit else { return }
-        let start = dragStart(widget, resolution: resolution)
+        let start = dragStart(widget, board: board)
         let delta = CanvasLayout.toBoard(translation, scale: scale)
-        let frame = CanvasLayout.resized(
-            start, width: Double(start.w) + delta.width, height: Double(start.h) + delta.height,
-            minimum: minimum(resolution))
-        drag = CanvasDrag(id: widget.id, start: start, frame: frame, guides: [])
+        let width = Double(start.w) + delta.width, height = Double(start.h) + delta.height
+        if grows(resolution) {
+            let content = contentHeights[widget.id] ?? start.h
+            let result = CanvasLayout.resizedGrowing(
+                start, width: width, height: height, content: content, minimum: minimum(resolution))
+            drag = CanvasDrag(id: widget.id, start: start, frame: result.frame, guides: [], auto: result.auto)
+        } else {
+            let frame = CanvasLayout.resized(start, width: width, height: height, minimum: minimum(resolution))
+            drag = CanvasDrag(id: widget.id, start: start, frame: frame, guides: [])
+        }
     }
 
     private func resizeEnded(_ widget: BoardWidget, resolution: WidgetResolution?) {
         guard let drag, drag.id == widget.id else { return }
         self.drag = nil
-        controller.resize(widget.id, to: drag.frame, sizes: sizes(resolution))
+        controller.resize(widget.id, to: drag.frame, auto: drag.auto, sizes: sizes(resolution))
         controller.bringToFront(widget.id)
     }
 
@@ -404,7 +448,8 @@ private struct BoardCanvasLayer: View {
             guard !widget.minimized, case let .ready(resolved)? = controller.resolution(of: widget) else { return false }
             return resolved.viewKind == "app.clock"
         }
-        return clock.map { CanvasLayout.toDisplay(displayFrame($0, resolution: nil).rect, scale: scale) }
+        let frames = layoutFrames(board)
+        return clock.flatMap { frames[$0.id] }.map { CanvasLayout.toDisplay($0.rect, scale: scale) }
     }
 
     @ViewBuilder

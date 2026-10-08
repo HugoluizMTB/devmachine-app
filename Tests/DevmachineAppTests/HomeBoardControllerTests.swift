@@ -319,7 +319,7 @@ final class HomeBoardControllerTests: XCTestCase {
         controller.setPreset("summary", preset: "medium")
         controller.setMinimized("machines", true)
         controller.bringToFront("clock")
-        controller.resize("claude-usage", to: BoardFrame(x: 24, y: 360, w: 336, h: 160), sizes: ["small", "medium", "wide"])
+        controller.resize("claude-usage", to: BoardFrame(x: 24, y: 360, w: 336, h: 160), auto: false, sizes: ["small", "medium", "wide"])
         let board = try XCTUnwrap(controller.store?.board)
         let byID = Dictionary(uniqueKeysWithValues: board.widgets.map { ($0.id, $0) })
         XCTAssertEqual(byID["clock"]?.frame, BoardFrame(x: 400, y: 48, w: 320, h: 160))
@@ -330,6 +330,62 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertEqual(byID["claude-usage"]?.size, "custom")
         controller.store?.flush()
         XCTAssertEqual(try BoardCodec.decode(String(contentsOf: boardFile, encoding: .utf8)), board)
+    }
+
+    func testAGrowingWidgetResizedToItsContentGoesBackToAuto() throws {
+        let controller = makeController()
+        controller.resize(
+            "summary", to: BoardFrame(x: 920, y: 336, w: 336, h: 48), auto: true, sizes: ["medium", "wide"])
+        let summary = try XCTUnwrap(controller.store?.board?.widgets.first { $0.id == "summary" })
+        XCTAssertEqual(summary.size, "auto")
+        XCTAssertEqual(summary.frame, BoardFrame(x: 920, y: 336, w: 336, h: 0))
+    }
+
+    func testResizingAnAutoWidgetShorterStoresTheHeightAsACap() throws {
+        let controller = makeController()
+        controller.resize(
+            "machines", to: BoardFrame(x: 24, y: 24, w: 576, h: 120), auto: false, sizes: ["medium", "large", "tall"])
+        let machines = try XCTUnwrap(controller.store?.board?.widgets.first { $0.id == "machines" })
+        XCTAssertEqual(machines.size, "custom")
+        XCTAssertEqual(machines.frame, BoardFrame(x: 24, y: 24, w: 576, h: 120))
+    }
+
+    func testTheSizeMenuAutoKeepsThePlaceAndWidthAndDropsTheHeight() throws {
+        let controller = makeController()
+        controller.setPreset("machines", preset: "large")
+        controller.setPreset("machines", preset: "auto")
+        let machines = try XCTUnwrap(controller.store?.board?.widgets.first { $0.id == "machines" })
+        XCTAssertEqual(machines.size, "auto")
+        XCTAssertEqual(machines.frame, BoardFrame(x: 24, y: 24, w: 320, h: 0))
+    }
+
+    func testAPresetOnAnAutoWidgetGivesItsHeightBack() throws {
+        let controller = makeController()
+        controller.setPreset("summary", preset: "medium")
+        let summary = try XCTUnwrap(controller.store?.board?.widgets.first { $0.id == "summary" })
+        XCTAssertEqual(summary.size, "medium")
+        XCTAssertEqual(summary.frame, BoardFrame(x: 920, y: 336, w: 320, h: 160))
+    }
+
+    func testResetSizeReturnsAGrowingWidgetToAutoAndAFixedOneToItsDefaultPreset() throws {
+        let controller = makeController()
+        controller.resize("summary", to: BoardFrame(x: 920, y: 336, w: 400, h: 64), auto: false, sizes: ["medium", "wide"])
+        controller.resize("clock", to: BoardFrame(x: 840, y: 24, w: 416, h: 296), auto: false, sizes: ["small", "medium", "wide"])
+        controller.resetSize("summary")
+        controller.resetSize("clock")
+        let byID = Dictionary(uniqueKeysWithValues: (controller.store?.board?.widgets ?? []).map { ($0.id, $0) })
+        XCTAssertEqual(byID["summary"]?.size, "auto")
+        XCTAssertEqual(byID["summary"]?.frame, BoardFrame(x: 920, y: 336, w: 640, h: 0))
+        XCTAssertEqual(byID["clock"]?.size, "medium")
+        XCTAssertEqual(byID["clock"]?.frame, BoardFrame(x: 840, y: 24, w: 320, h: 160))
+        XCTAssertEqual(byID["clock"]?.z, 2)
+    }
+
+    func testResetSizeOfAnUnknownWidgetChangesNothing() {
+        let controller = makeController()
+        let before = controller.store?.board
+        controller.resetSize("ghost")
+        XCTAssertEqual(controller.store?.board, before)
     }
 
     func testBringingTheTopWidgetToFrontChangesNothing() throws {

@@ -127,7 +127,7 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertEqual(resolved.viewKind, "app.harness-usage")
         XCTAssertEqual(resolved.arguments, ["harness": "codex"])
         XCTAssertEqual(resolved.every, 60)
-        XCTAssertEqual(resolved.minimum, CanvasSize(w: 160, h: 160))
+        XCTAssertEqual(resolved.minimum, CanvasSize(w: 160, h: 40))
     }
 
     func testAnIntervalUnderTheProviderMinimumIsRaised() {
@@ -143,7 +143,7 @@ final class WidgetCatalogTests: XCTestCase {
         locked.available = false
         locked.unavailableReason = "add the package: devmachine packages add acme --machine <name>"
         var future = CatalogFixtures.clock
-        future.requiresEngine = ">= 1.7"
+        future.requiresEngine = ">= 1.8"
         var gauge = CatalogFixtures.summary
         gauge.viewKind = "gauge"
         let catalog = CatalogFixtures.catalog([locked, future, gauge])
@@ -154,7 +154,7 @@ final class WidgetCatalogTests: XCTestCase {
         XCTAssertEqual(WidgetResolution.resolve(entry("github-prs/open"), in: catalog), .notFound(type: "github-prs/open"))
         XCTAssertEqual(
             WidgetResolution.resolve(entry("devmachine-app/clock"), in: catalog),
-            .needsNewerApp(type: "devmachine-app/clock", reason: "it needs engine >= 1.7; this app implements 1.6"))
+            .needsNewerApp(type: "devmachine-app/clock", reason: "it needs engine >= 1.8; this app implements 1.7"))
         XCTAssertEqual(
             WidgetResolution.resolve(entry("devmachine-app/summary"), in: catalog),
             .needsNewerApp(type: "devmachine-app/summary", reason: "this app has no view gauge for app/summary"))

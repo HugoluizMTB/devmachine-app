@@ -6,10 +6,10 @@ final class DefaultHomeBoardTests: XCTestCase {
     private let padding = 24
     private let gap = 16
 
-    private func frame(_ board: Board, _ id: String) -> BoardFrame? { board.widgets.first { $0.id == id }?.frame }
+    private func frame(_ layout: DefaultBoard.Layout, _ id: String) -> BoardFrame? { layout.spaced(id) }
 
-    private func board(_ width: Int, harnesses: [String] = ["claude", "codex"], machines: Int = 3) -> Board {
-        DefaultBoard.make(harnesses: harnesses, canvasWidth: width, machines: machines)
+    private func board(_ width: Int, harnesses: [String] = ["claude", "codex"], machines: Int = 3) -> DefaultBoard.Layout {
+        DefaultBoard.layout(harnesses: harnesses, canvasWidth: width, machines: machines)
     }
 
     func testTheContractKeepsOnlyTheHarnessesItLists() {
@@ -24,8 +24,8 @@ final class DefaultHomeBoardTests: XCTestCase {
             widgets:
               - id: machines
                 type: devmachine-app/machines
-                frame: {x: 24, y: 24, w: 576, h: 136}
-                size: custom
+                frame: {x: 24, y: 24, w: 576}
+                size: auto
                 minimized: false
                 z: 1
               - id: clock
@@ -36,15 +36,15 @@ final class DefaultHomeBoardTests: XCTestCase {
                 z: 2
               - id: summary
                 type: devmachine-app/summary
-                frame: {x: 920, y: 336, w: 336, h: 160}
-                size: custom
+                frame: {x: 920, y: 336, w: 336}
+                size: auto
                 minimized: false
                 z: 3
               - id: claude-usage
                 type: devmachine-app/usage
                 with: {harness: claude}
-                frame: {x: 24, y: 176, w: 480, h: 600}
-                size: custom
+                frame: {x: 24, y: 176, w: 480}
+                size: auto
                 minimized: false
                 z: 4
 
@@ -52,36 +52,44 @@ final class DefaultHomeBoardTests: XCTestCase {
     }
 
     func testAnUnknownWidthLaysOutAt1280() {
-        XCTAssertEqual(DefaultBoard.make(harnesses: ["claude", "codex"]), board(1280))
+        XCTAssertEqual(DefaultBoard.make(harnesses: ["claude", "codex"]), board(1280).board)
         XCTAssertEqual(DefaultBoard.make(harnesses: ["claude"], canvasWidth: 0), DefaultBoard.make(harnesses: ["claude"]))
     }
 
     func testAnUnknownMachineCountSizesTheRowForThree() {
-        XCTAssertEqual(board(1600, machines: 0), board(1600, machines: 3))
+        XCTAssertEqual(board(1600, machines: 0).board, board(1600, machines: 3).board)
     }
 
     func testTheFramesAt1280And1600And2000() {
-        XCTAssertEqual(board(1280).widgets.map(\.frame), [
-            BoardFrame(x: 24, y: 24, w: 576, h: 136),
+        XCTAssertEqual(board(1280).board.widgets.map(\.frame), [
+            BoardFrame(x: 24, y: 24, w: 576, h: 0),
             BoardFrame(x: 840, y: 24, w: 416, h: 296),
-            BoardFrame(x: 920, y: 336, w: 336, h: 160),
-            BoardFrame(x: 24, y: 176, w: 392, h: 600),
-            BoardFrame(x: 432, y: 176, w: 392, h: 600),
+            BoardFrame(x: 920, y: 336, w: 336, h: 0),
+            BoardFrame(x: 24, y: 176, w: 392, h: 0),
+            BoardFrame(x: 432, y: 176, w: 392, h: 0),
         ])
-        XCTAssertEqual(board(1600).widgets.map(\.frame), [
-            BoardFrame(x: 24, y: 24, w: 576, h: 136),
+        XCTAssertEqual(board(1600).board.widgets.map(\.frame), [
+            BoardFrame(x: 24, y: 24, w: 576, h: 0),
             BoardFrame(x: 1160, y: 24, w: 416, h: 296),
-            BoardFrame(x: 1240, y: 336, w: 336, h: 160),
-            BoardFrame(x: 24, y: 176, w: 480, h: 600),
-            BoardFrame(x: 520, y: 176, w: 480, h: 600),
+            BoardFrame(x: 1240, y: 336, w: 336, h: 0),
+            BoardFrame(x: 24, y: 176, w: 480, h: 0),
+            BoardFrame(x: 520, y: 176, w: 480, h: 0),
         ])
-        XCTAssertEqual(board(2000).widgets.map(\.frame), [
-            BoardFrame(x: 24, y: 24, w: 576, h: 136),
+        XCTAssertEqual(board(2000).board.widgets.map(\.frame), [
+            BoardFrame(x: 24, y: 24, w: 576, h: 0),
             BoardFrame(x: 1560, y: 24, w: 416, h: 296),
-            BoardFrame(x: 1640, y: 336, w: 336, h: 160),
-            BoardFrame(x: 24, y: 176, w: 480, h: 600),
-            BoardFrame(x: 520, y: 176, w: 480, h: 600),
+            BoardFrame(x: 1640, y: 336, w: 336, h: 0),
+            BoardFrame(x: 24, y: 176, w: 480, h: 0),
+            BoardFrame(x: 520, y: 176, w: 480, h: 0),
         ])
+    }
+
+    func testTheMachinesTheSummaryAndTheUsageCardsFollowTheirContentAndTheClockIsFixed() {
+        let widgets = board(1280).board.widgets
+        for widget in widgets {
+            XCTAssertEqual(widget.isAuto, widget.id != "clock", widget.id)
+            XCTAssertEqual(widget.size, widget.id == "clock" ? "custom" : "auto", widget.id)
+        }
     }
 
     func testNoTwoWidgetsOverlapAndAllFitTheWidthOnTheGrid() {
@@ -90,10 +98,11 @@ final class DefaultHomeBoardTests: XCTestCase {
                 for machines in [1, 3, 6, 12] {
                     let label = "\(width) wide, \(count) harnesses, \(machines) machines"
                     let board = board(width, harnesses: Array(["claude", "codex", "kimi", "pi"].prefix(count)), machines: machines)
-                    XCTAssertTrue(board.widgets.allSatisfy { $0.frame.x % 8 == 0 && $0.frame.y % 8 == 0 }, label)
-                    XCTAssertTrue(board.widgets.allSatisfy { $0.frame.w % 8 == 0 && $0.frame.h % 8 == 0 }, label)
-                    XCTAssertEqual(Set(board.widgets.map(\.z)).count, board.widgets.count, label)
-                    let rects = board.widgets.map(\.frame.rect)
+                    let spaced = board.board.widgets.compactMap { board.spaced($0.id) }
+                    XCTAssertTrue(spaced.allSatisfy { $0.x % 8 == 0 && $0.y % 8 == 0 }, label)
+                    XCTAssertTrue(spaced.allSatisfy { $0.w % 8 == 0 && $0.h % 8 == 0 }, label)
+                    XCTAssertEqual(Set(board.board.widgets.map(\.z)).count, board.board.widgets.count, label)
+                    let rects = spaced.map(\.rect)
                     for (i, a) in rects.enumerated() {
                         XCTAssertGreaterThanOrEqual(Int(a.minX), padding, label)
                         XCTAssertGreaterThanOrEqual(Int(a.minY), padding, label)
@@ -176,15 +185,15 @@ final class DefaultHomeBoardTests: XCTestCase {
     }
 
     func testEveryUsageWidgetShowsTheFullCardAndNamesItsHarness() {
-        let board = board(1280)
-        let usage = board.widgets.filter { $0.type == "devmachine-app/usage" }
+        let layout = board(1280)
+        let usage = layout.board.widgets.filter { $0.type == "devmachine-app/usage" }
         XCTAssertEqual(usage.map { $0.with["harness"] }, [.string("claude"), .string("codex")])
-        XCTAssertTrue(usage.allSatisfy { $0.frame.h >= 240 })
+        XCTAssertTrue(usage.allSatisfy { (layout.spaced($0.id)?.h ?? 0) >= 240 })
     }
 
     func testNoHarnessKeepsMachinesClockAndPill() {
         let board = board(1280, harnesses: [])
-        XCTAssertEqual(board.widgets.map(\.id), ["machines", "clock", "summary"])
+        XCTAssertEqual(board.board.widgets.map(\.id), ["machines", "clock", "summary"])
         XCTAssertEqual(frame(board, "clock"), BoardFrame(x: 840, y: 24, w: 416, h: 296))
     }
 }

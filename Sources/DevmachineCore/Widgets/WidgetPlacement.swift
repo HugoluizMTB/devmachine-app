@@ -27,9 +27,27 @@ public enum DefaultBoard {
     private static let snap = 8
     private static let machineRowsMax = 2
 
+    public struct Layout: Equatable, Sendable {
+        public let board: Board
+        public let reserved: [String: Int]
+
+        public func spaced(_ id: String) -> BoardFrame? {
+            guard let widget = board.widgets.first(where: { $0.id == id }) else { return nil }
+            var frame = widget.frame
+            if let height = reserved[id] { frame.h = height }
+            return frame
+        }
+    }
+
     public static func make(
         harnesses: [String], canvasWidth: Int = fallbackWidth, machines: Int = fallbackMachines
     ) -> Board {
+        layout(harnesses: harnesses, canvasWidth: canvasWidth, machines: machines).board
+    }
+
+    public static func layout(
+        harnesses: [String], canvasWidth: Int = fallbackWidth, machines: Int = fallbackMachines
+    ) -> Layout {
         let width = canvasWidth > 0 ? canvasWidth : fallbackWidth
         let rightEdge = down(width - padding)
         let inner = rightEdge - padding
@@ -40,17 +58,17 @@ public enum DefaultBoard {
 
         let clock = clockFrame(x: columnX, width: columnWidth)
         let machinesRow = machinesSize(count: machines > 0 ? machines : fallbackMachines, within: leftWidth)
+        var reserved = ["machines": machinesRow.h, "summary": summaryHeight]
         var board = Board(surface: surface, widgets: [
             BoardWidget(
                 id: "machines", type: "devmachine-app/machines",
-                frame: BoardFrame(x: padding, y: padding, w: machinesRow.w, h: machinesRow.h),
-                size: BoardWidget.customSize, z: 1),
+                frame: BoardFrame(x: padding, y: padding, w: machinesRow.w, h: 0),
+                size: BoardWidget.autoSize, z: 1),
             BoardWidget(id: "clock", type: "devmachine-app/clock", frame: clock, size: BoardWidget.customSize, z: 2),
             BoardWidget(
                 id: "summary", type: "devmachine-app/summary",
-                frame: BoardFrame(
-                    x: rightEdge - summaryPillWidth, y: clock.y + clock.h + gap, w: summaryPillWidth, h: summaryHeight),
-                size: BoardWidget.customSize, z: 3),
+                frame: BoardFrame(x: rightEdge - summaryPillWidth, y: clock.y + clock.h + gap, w: summaryPillWidth, h: 0),
+                size: BoardWidget.autoSize, z: 3),
         ])
         let columns = usageColumns(count: harnesses.count, within: leftWidth)
         let cardWidth = columns > 0 ? min(usageMaxWidth, down((leftWidth - (columns - 1) * gap) / columns)) : 0
@@ -58,14 +76,16 @@ public enum DefaultBoard {
         for (index, harness) in harnesses.enumerated() {
             let column = index % columns
             let row = index / columns
+            let id = board.uniqueID(base: "\(harness)-usage")
+            reserved[id] = usageContentHeight
             board.widgets.append(BoardWidget(
-                id: board.uniqueID(base: "\(harness)-usage"), type: "devmachine-app/usage", with: ["harness": .string(harness)],
+                id: id, type: "devmachine-app/usage", with: ["harness": .string(harness)],
                 frame: BoardFrame(
                     x: padding + column * (cardWidth + gap), y: usageTop + row * (usageContentHeight + gap),
-                    w: cardWidth, h: usageContentHeight),
-                size: BoardWidget.customSize, z: 4 + index))
+                    w: cardWidth, h: 0),
+                size: BoardWidget.autoSize, z: 4 + index))
         }
-        return board
+        return Layout(board: board, reserved: reserved)
     }
 
     /// Tall enough that the clock's font is held back by its width, never
@@ -277,7 +297,8 @@ public enum WidgetPlacer {
                     let isFirst = option == values.first
                     if !showsOption(board, widget: widget, input: choice.input, option: option, key: key, isFirst: isFirst) {
                         var copy = newInstance(
-                            of: widget, on: board, canvasWidth: canvasWidth, contract: contract, idBase: "\(option)-usage")
+                            of: widget, on: board, canvasWidth: canvasWidth, contract: contract, idBase: "\(option)-usage",
+                            catalog: catalog)
                         copy.with = [choice.input: .string(option)]
                         board.widgets.append(copy)
                         boardChanged = true
@@ -290,7 +311,8 @@ public enum WidgetPlacer {
             if widget.inputs.values.contains(where: { $0.type == "choice" && $0.defaultValue == nil }) { continue }
             guard !placements.contains(widget.name, on: surface), isEligible(widget) else { continue }
             if !board.widgets.contains(where: { $0.type == widget.name }) && !isShown(widget) {
-                board.widgets.append(newInstance(of: widget, on: board, canvasWidth: canvasWidth, contract: contract))
+                board.widgets.append(
+                    newInstance(of: widget, on: board, canvasWidth: canvasWidth, contract: contract, catalog: catalog))
                 boardChanged = true
             }
             placements.insert(widget.name, on: surface)
@@ -316,15 +338,40 @@ public enum WidgetPlacer {
         }
     }
 
+    /// A view that grows is added `auto`, at the width of its default size,
+    /// and the spot is searched with that size's height: the CLI cannot
+    /// measure the content either, so both place a new widget on the same spot.
     public static func newInstance(
-        of widget: CatalogWidget, on board: Board, canvasWidth: Int, contract: WidgetContract = .current, idBase: String? = nil
+        of widget: CatalogWidget, on board: Board, canvasWidth: Int, contract: WidgetContract = .current,
+        idBase: String? = nil, catalog: WidgetCatalog? = nil
     ) -> BoardWidget {
         let preset = CanvasLayout.presetSize(widget.defaultSize, contract: contract)
         let size = preset ?? CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract)
-        let spot = CanvasLayout.firstFreeSpot(for: size, avoiding: board.widgets.map(\.frame), bandWidth: canvasWidth)
+        let spot = CanvasLayout.firstFreeSpot(
+            for: size, avoiding: occupied(by: board, catalog: catalog, contract: contract), bandWidth: canvasWidth)
+        let id = board.uniqueID(base: idBase ?? widget.name.replacingOccurrences(of: "/", with: "-"))
+        if contract.viewGrows(widget.viewKind) {
+            return BoardWidget(
+                id: id, type: widget.name, frame: BoardFrame(x: spot.x, y: spot.y, w: spot.w, h: 0),
+                size: BoardWidget.autoSize, z: board.topZ + 1)
+        }
         return BoardWidget(
-            id: board.uniqueID(base: idBase ?? widget.name.replacingOccurrences(of: "/", with: "-")), type: widget.name,
-            frame: spot, size: preset == nil ? BoardWidget.customSize : widget.defaultSize, z: board.topZ + 1)
+            id: id, type: widget.name, frame: spot,
+            size: preset == nil ? BoardWidget.customSize : widget.defaultSize, z: board.topZ + 1)
+    }
+
+    public static func occupied(
+        by board: Board, catalog: WidgetCatalog?, contract: WidgetContract = .current
+    ) -> [BoardFrame] {
+        board.widgets.map { widget in
+            guard widget.isAuto else { return widget.frame }
+            let preset = catalog?.widget(named: widget.type).flatMap {
+                CanvasLayout.presetSize($0.defaultSize, contract: contract)
+            }
+            var frame = widget.frame
+            frame.h = preset?.h ?? InlineEntryPlacement.fallback.h
+            return frame
+        }
     }
 
     public static func harness(of widget: CatalogWidget) -> String? {

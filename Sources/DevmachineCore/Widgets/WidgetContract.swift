@@ -116,7 +116,7 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
     }
 
     /// `layouts` limits where the view may sit (nil: anywhere); a view that
-    /// `grows` takes its content's height in a stack (`size: auto`).
+    /// `grows` takes its content's height (`size: auto`) in a stack or on Home.
     public struct ViewSpec: Decodable, Equatable, Sendable {
         public let accepts: [String]
         public let fields: [String: FieldSpec]?
@@ -146,6 +146,11 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         public let forbids: [String]
         public let size: String
         public let collapsed: String
+    }
+
+    public struct CanvasEntrySpec: Decodable, Equatable, Sendable {
+        public let size: String
+        public let frame: String
     }
 
     /// The menu bar title: one-line widgets drawn by `views`, text cut at
@@ -226,6 +231,7 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
     public let presets: [String: [Int]]
     public let stackRow: Int
     public let stackEntry: StackEntrySpec
+    public let canvasEntry: CanvasEntrySpec
     public let slotMax: Int
     public let slotEntry: SlotEntrySpec
     public let tabsEntry: TabsEntrySpec
@@ -247,6 +253,7 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
         case sourceKinds = "source_kinds"
         case stackRow = "stack_row"
         case stackEntry = "stack_entry"
+        case canvasEntry = "canvas_entry"
         case slotMax = "slot_max"
         case slotEntry = "slot_entry"
         case tabsEntry = "tabs_entry"
@@ -316,19 +323,21 @@ public struct WidgetContract: Decodable, Equatable, Sendable {
 }
 
 extension WidgetContract {
-    public static let current = engine16
+    public static let current = engine17
 
     private static let target = FieldSpec(type: "target", defaultValue: .string("local"))
     private static let timeout = FieldSpec(type: "duration", defaultValue: .string("30s"), max: .string("10m"))
 
-    public static let engine16 = WidgetContract(
-        engine: "1.6",
+    public static let engine17 = WidgetContract(
+        engine: "1.7",
         layouts: ["canvas", "stack", "slot", "tabs"],
         unit: 80,
         snap: 8,
         presets: ["small": [2, 2], "medium": [4, 2], "large": [4, 4], "wide": [8, 2], "tall": [2, 4]],
         stackRow: 40,
         stackEntry: StackEntrySpec(forbids: ["frame", "z"], size: "preset | auto", collapsed: "bool"),
+        canvasEntry: CanvasEntrySpec(
+            size: "preset | custom | auto", frame: "x, y, w, h; h left out with size auto"),
         slotMax: 3,
         slotEntry: SlotEntrySpec(
             forbids: ["frame", "size", "collapsed", "z", "minimized"],
@@ -397,9 +406,9 @@ extension WidgetContract {
             trust: ["official", "local", "third-party"]),
         views: [
             "app.clock": ViewSpec(accepts: ["app/clock"]),
-            "app.summary": ViewSpec(accepts: ["app/summary"]),
-            "app.machines": ViewSpec(accepts: ["app/machines"]),
-            "app.harness-usage": ViewSpec(accepts: ["app/harness-usage"]),
+            "app.summary": ViewSpec(accepts: ["app/summary"], grows: true),
+            "app.machines": ViewSpec(accepts: ["app/machines"], grows: true),
+            "app.harness-usage": ViewSpec(accepts: ["app/harness-usage"], grows: true),
             "app.workspaces": ViewSpec(accepts: ["app/workspaces"], layouts: ["stack"], grows: true),
             "app.shortcuts": ViewSpec(accepts: ["app/shortcuts"], layouts: ["stack"], grows: true),
             "app.publish-port": ViewSpec(accepts: ["app/publish-port"], layouts: ["stack"], grows: true),
@@ -415,14 +424,14 @@ extension WidgetContract {
             "text": ViewSpec(accepts: ["text", "lines", "ansi"], fields: [
                 "wrap": FieldSpec(type: "bool", defaultValue: .bool(true)),
                 "tail": FieldSpec(type: "int", min: .int(1), max: .int(2000)),
-            ]),
+            ], grows: true),
             "number": ViewSpec(accepts: ["number", "json", "app/open-pull-requests"], fields: [
                 "value": FieldSpec(type: "template"),
                 "unit": FieldSpec(type: "string"),
                 "format": FieldSpec(
                     type: "enum", defaultValue: .string("plain"), values: ["plain", "percent", "bytes", "duration"]),
                 "hide_zero": FieldSpec(type: "bool", defaultValue: .bool(false)),
-            ]),
+            ], grows: true),
             "gauge": ViewSpec(accepts: ["number", "json"], fields: [
                 "value": FieldSpec(type: "template"),
                 "min": FieldSpec(type: "number", defaultValue: .int(0)),
@@ -435,7 +444,7 @@ extension WidgetContract {
                 "value": FieldSpec(type: "template"),
                 "ok": FieldSpec(type: "rule"),
                 "warn": FieldSpec(type: "rule"),
-            ]),
+            ], grows: true),
             "list": ViewSpec(accepts: ["lines", "json"], fields: [
                 "item": FieldSpec(type: "object", fields: [
                     "title": FieldSpec(type: "template", defaultValue: .string("{{item}}")),
@@ -443,13 +452,13 @@ extension WidgetContract {
                     "status": FieldSpec(type: "template"),
                     "link": FieldSpec(type: "template"),
                 ]),
-            ]),
+            ], grows: true),
             "sparkline": ViewSpec(accepts: ["number", "json"], fields: [
                 "value": FieldSpec(type: "template"),
                 "unit": FieldSpec(type: "string"),
                 "max": FieldSpec(type: "number"),
             ]),
-            "markdown": ViewSpec(accepts: ["text"]),
+            "markdown": ViewSpec(accepts: ["text"], grows: true),
             "web": ViewSpec(accepts: ["kind:url"], fields: [
                 "zoom": FieldSpec(type: "number", defaultValue: .int(1), min: .double(0.5), max: .int(2)),
             ]),

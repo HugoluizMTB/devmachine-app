@@ -92,24 +92,31 @@ struct TextLinesView: View {
     let wrap: Bool
     let keepsColor: Bool
     let followsNewest: Bool
+    var hugs = false
     @State private var colored = ANSIRenderCache()
 
     var body: some View {
-        ScrollView(wrap ? .vertical : [.vertical, .horizontal]) {
-            Group {
-                if keepsColor {
-                    Text(colored.text(for: lines))
-                } else {
-                    Text(verbatim: lines.map(LogText.plain).joined(separator: "\n"))
-                }
-            }
-            .font(.dm(11, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.9))
-            .fixedSize(horizontal: !wrap, vertical: true)
-            .textSelection(.enabled)
-            .frame(maxWidth: wrap ? .infinity : nil, alignment: .leading)
+        if hugs {
+            if wrap { text } else { ScrollView(.horizontal) { text } }
+        } else {
+            ScrollView(wrap ? .vertical : [.vertical, .horizontal]) { text }
+                .defaultScrollAnchor(followsNewest ? .bottomLeading : .topLeading)
         }
-        .defaultScrollAnchor(followsNewest ? .bottomLeading : .topLeading)
+    }
+
+    private var text: some View {
+        Group {
+            if keepsColor {
+                Text(colored.text(for: lines))
+            } else {
+                Text(verbatim: lines.map(LogText.plain).joined(separator: "\n"))
+            }
+        }
+        .font(.dm(11, design: .monospaced))
+        .foregroundStyle(.white.opacity(0.9))
+        .fixedSize(horizontal: !wrap, vertical: true)
+        .textSelection(.enabled)
+        .frame(maxWidth: wrap ? .infinity : nil, alignment: .leading)
     }
 }
 
@@ -131,18 +138,23 @@ struct TerminalWidgetView: View {
 /// card, so the text keeps the default theme in the card's colours.
 struct MarkdownWidgetView: View {
     let text: String
+    var hugs = false
 
     var body: some View {
-        ScrollView(.vertical) {
-            Markdown(text)
-                .markdownTextStyle {
-                    ForegroundColor(.white.opacity(0.9))
-                    FontSize(DMFont.size(12))
-                }
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+        Group {
+            if hugs { page } else { ScrollView(.vertical) { page } }
         }
         .environment(\.openURL, OpenURLAction { url in PreviewURLPolicy.isWeb(url) ? .systemAction : .discarded })
+    }
+
+    private var page: some View {
+        Markdown(text)
+            .markdownTextStyle {
+                ForegroundColor(.white.opacity(0.9))
+                FontSize(DMFont.size(12))
+            }
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
 
@@ -152,25 +164,33 @@ struct ListWidgetView: View {
     let template: ListItemTemplate
     let output: SourceOutput
     let density: WidgetDensity
+    var hugs = false
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
         switch Result(catching: { try ListModel.items(output: output, template: template) }) {
         case let .success(items):
-            GeometryReader { proxy in
-                let fit = SourceWidgetLayout.listFit(
-                    count: items.count, height: proxy.size.height, rowHeight: m.pt(Self.rowHeight))
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(items.prefix(fit.rows)) { item in row(item) }
-                    if fit.more > 0 {
-                        Text(verbatim: "+\(fit.more) more")
-                            .font(.dm(10))
-                            .foregroundStyle(Color.dmMuted)
-                    }
+            if hugs {
+                rows(items, fit: (items.count, 0))
+            } else {
+                GeometryReader { proxy in
+                    rows(items, fit: SourceWidgetLayout.listFit(
+                        count: items.count, height: proxy.size.height, rowHeight: m.pt(Self.rowHeight)))
                 }
             }
         case let .failure(error):
             SourceErrorView(state: SourceErrorPresentation.state(title: "This list cannot be shown", error: error), density: density)
+        }
+    }
+
+    private func rows(_ items: [DevmachineCore.ListItem], fit: (rows: Int, more: Int)) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(items.prefix(fit.rows)) { item in row(item) }
+            if fit.more > 0 {
+                Text(verbatim: "+\(fit.more) more")
+                    .font(.dm(10))
+                    .foregroundStyle(Color.dmMuted)
+            }
         }
     }
 

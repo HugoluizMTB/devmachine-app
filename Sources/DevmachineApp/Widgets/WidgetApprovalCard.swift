@@ -83,6 +83,7 @@ struct WidgetApprovalCard: View {
     let state: ApprovalState
     let surface: String
     let size: CGSize
+    var hugs = false
     let onAllow: () -> Void
     let onDeny: () -> Void
     @Environment(\.dmMetrics) private var m
@@ -139,7 +140,7 @@ struct WidgetApprovalCard: View {
                 }
                 .font(.dm(10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
-            } else if !denied, WidgetDensity.of(width: size.width / m.pt(1), height: size.height / m.pt(1)) == .full {
+            } else if !denied, WidgetDensity.of(width: size.width / m.pt(1), height: hugs ? 0 : size.height / m.pt(1)) == .full {
                 Text(verbatim: WidgetApprovalText.warning(surface: surface))
                     .font(.dm(10))
                     .foregroundStyle(Color.dmMuted)
@@ -154,7 +155,7 @@ struct WidgetApprovalCard: View {
             .layoutPriority(1)
         }
         .padding(m.space.lg)
-        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .frame(width: size.width, height: hugs ? nil : size.height, alignment: .topLeading)
         .dmGlass(radius: DMRadius.card)
     }
 }
@@ -167,6 +168,7 @@ struct SourceWidgetCard: View {
     let source: ResolvedSource
     @ObservedObject var controller: WidgetSourceController
     let size: CGSize
+    var hugs = false
     let onOpenSession: (WidgetTarget, String) -> Void
 
     var body: some View {
@@ -179,14 +181,15 @@ struct SourceWidgetCard: View {
             let shown = Self.shownHash(approval)
             WidgetApprovalCard(
                 kind: WidgetApprovalText.kind(source.source), prompt: controller.approvalPrompt(for: source), state: approval == .notNeeded ? .waiting(hash: "") : approval,
-                surface: controller.surface, size: size,
+                surface: controller.surface, size: size, hugs: hugs,
                 onAllow: { controller.approve(id, hash: shown) }, onDeny: { controller.deny(id, hash: shown) })
         case .demo:
-            WidgetPlaceholderView(icon: "play.slash", title: title, detail: "Demo mode never runs widget commands.")
+            WidgetPlaceholderView(
+                icon: "play.slash", title: title, detail: "Demo mode never runs widget commands.", hugs: hugs)
         case .content:
             SourceWidgetContent(
                 title: title, source: source, state: controller.state(id), history: controller.history(id), size: size,
-                onRun: { controller.runNow(id) }, onOpenSession: sessionAction, webAddress: webAddress)
+                onRun: { controller.runNow(id) }, onOpenSession: sessionAction, webAddress: webAddress, hugs: hugs)
         }
     }
 

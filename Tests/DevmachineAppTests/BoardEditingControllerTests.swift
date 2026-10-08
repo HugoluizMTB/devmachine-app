@@ -142,8 +142,11 @@ final class BoardEditingControllerTests: XCTestCase {
         let id = controller.addInline(inline, title: "Disk", preset: "medium")
         XCTAssertEqual(id, "disk-2")
         let added = try XCTUnwrap(controller.store?.board?.widgets.last)
-        XCTAssertEqual(added.size, "medium")
-        XCTAssertFalse(controller.store!.board!.widgets.dropLast().contains { $0.frame.rect.intersects(added.frame.rect) })
+        XCTAssertEqual(added.size, "auto")
+        XCTAssertEqual(added.frame.h, 0)
+        let others = Board(surface: "home", widgets: Array(controller.store!.board!.widgets.dropLast()))
+        let reserved = CGRect(x: added.frame.x, y: added.frame.y, width: added.frame.w, height: 160)
+        XCTAssertFalse(WidgetPlacer.occupied(by: others, catalog: nil).contains { $0.rect.intersects(reserved) })
     }
 
     func testAStackEditAndAnInlineAddUseTheSameAPI() throws {

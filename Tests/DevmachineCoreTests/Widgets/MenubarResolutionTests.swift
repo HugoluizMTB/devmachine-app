@@ -195,7 +195,10 @@ final class MenubarResolutionTests: XCTestCase {
         XCTAssertNil(StackPlacer.newEntry(of: load, on: menubar).size)
         XCTAssertNil(StackPlacer.newEntry(of: load, on: panel).size)
         XCTAssertEqual(
-            StackPlacer.newEntry(of: load, on: DefaultStackBoard.make(surface: "sidebar")).size, .preset("small"))
+            StackPlacer.newEntry(of: load, on: DefaultStackBoard.make(surface: "sidebar")).size, .auto)
+        let dial = command("acme/dial", fits: ["slot", "tabs", "stack"], view: "gauge")
+        XCTAssertEqual(
+            StackPlacer.newEntry(of: dial, on: DefaultStackBoard.make(surface: "sidebar")).size, .preset("small"))
     }
 
     func testTabTitlesAreTodaysForTheBuiltIns() {

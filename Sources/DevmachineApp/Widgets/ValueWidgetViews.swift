@@ -25,11 +25,12 @@ struct NumberWidgetView: View {
     let view: WidgetView
     let output: SourceOutput
     let density: WidgetDensity
+    var hugs = false
 
     var body: some View {
         switch Result(catching: { try ValueExtraction.number(from: output, view: view) }) {
         case let .success(number) where view.hideZero && number == 0:
-            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+            Color.clear.frame(maxWidth: .infinity, maxHeight: hugs ? 0 : .infinity)
         case let .success(number):
             Text(verbatim: NumberText.format(number, format: view.format, unit: view.unit))
                 .font(.dm(density == .full ? 44 : 26, weight: .semibold, design: .rounded))
@@ -37,7 +38,7 @@ struct NumberWidgetView: View {
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.4)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: hugs ? nil : .infinity)
         case let .failure(error):
             ValueErrorText(error: error, density: density)
         }
@@ -113,6 +114,7 @@ struct StatusWidgetView: View {
     let view: WidgetView
     let output: SourceOutput
     let density: WidgetDensity
+    var hugs = false
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
@@ -129,7 +131,7 @@ struct StatusWidgetView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.5)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: hugs ? nil : .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
         case let .failure(error):
             ValueErrorText(error: error, density: density)

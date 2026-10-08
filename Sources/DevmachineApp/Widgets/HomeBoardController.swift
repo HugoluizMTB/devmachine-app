@@ -173,20 +173,40 @@ final class HomeBoardController: ObservableObject {
         edit(id) { $0.frame = frame }
     }
 
-    func resize(_ id: String, to frame: BoardFrame, sizes: [String]) {
+    func resize(_ id: String, to frame: BoardFrame, auto: Bool, sizes: [String]) {
         edit(id) {
-            $0.frame = frame
-            $0.size = CanvasLayout.sizeName(CanvasSize(w: frame.w, h: frame.h), sizes: sizes)
+            if auto {
+                $0.frame = BoardFrame(x: frame.x, y: frame.y, w: frame.w, h: 0)
+                $0.size = BoardWidget.autoSize
+            } else {
+                $0.frame = frame
+                $0.size = CanvasLayout.sizeName(CanvasSize(w: frame.w, h: frame.h), sizes: sizes)
+            }
         }
     }
 
     func setPreset(_ id: String, preset: String) {
+        if preset == BoardWidget.autoSize {
+            edit(id) {
+                $0.frame.h = 0
+                $0.size = BoardWidget.autoSize
+            }
+            return
+        }
         guard let size = CanvasLayout.presetSize(preset) else { return }
         edit(id) {
             $0.frame.w = size.w
             $0.frame.h = size.h
             $0.size = preset
         }
+    }
+
+    func resetSize(_ id: String) {
+        guard case let .ready(resolved)? = store?.board?.widgets.first(where: { $0.id == id }).flatMap(resolution(of:))
+        else { return }
+        let sizes = resolved.widget.sizes
+        let defaultSize = resolved.widget.defaultSize.isEmpty ? sizes.first ?? "medium" : resolved.widget.defaultSize
+        edit(id) { $0 = CanvasLayout.reset($0, defaultSize: defaultSize, grows: resolved.grows) }
     }
 
     func setMinimized(_ id: String, _ minimized: Bool) {
@@ -212,7 +232,7 @@ final class HomeBoardController: ObservableObject {
     @discardableResult
     func add(_ widget: CatalogWidget, canvasWidth: Int) -> Bool {
         guard let store, store.canEdit, let board = store.board else { return false }
-        let instance = WidgetPlacer.newInstance(of: widget, on: board, canvasWidth: canvasWidth)
+        let instance = WidgetPlacer.newInstance(of: widget, on: board, canvasWidth: canvasWidth, catalog: catalog.catalog)
         store.update { $0.widgets.append(instance) }
         var next = placements
         next.insert(widget.name, on: board.surface)
@@ -323,7 +343,7 @@ extension HomeBoardController: WidgetEditTarget {
         guard let store, store.canEdit, let board = store.board else { return nil }
         let id = board.uniqueID(base: title)
         let widget = InlineEntryPlacement.canvasWidget(
-            id: id, inline: inline, preset: preset, on: board, canvasWidth: canvasWidth)
+            id: id, inline: inline, preset: preset, on: board, canvasWidth: canvasWidth, catalog: catalog.catalog)
         store.update { $0.widgets.append(widget) }
         return id
     }

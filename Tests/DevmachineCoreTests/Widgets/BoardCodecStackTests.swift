@@ -153,12 +153,16 @@ final class BoardCodecStackTests: XCTestCase {
     }
 
     func testAnInlineWidgetMustFitAStackAndGrowForAuto() {
-        XCTAssertEqual(problem(inlineDisk), BoardProblem(
+        let gauge = inlineDisk
+            .replacingOccurrences(of: "every: 60s}", with: "every: 60s, parse: number}")
+            .replacingOccurrences(of: "view: {kind: text}", with: "view: {kind: gauge}")
+        XCTAssertEqual(problem(gauge), BoardProblem(
             line: 8,
-            message: "disk: size auto follows the content, and the text view does not grow: use small, medium, large, wide, tall"))
-        let sized = inlineDisk.replacingOccurrences(of: "    size: auto", with: "    sizes: [small]\n    size: auto")
+            message: "disk: size auto follows the content, and the gauge view does not grow: use small, medium, large, wide, tall"))
+        let sized = gauge.replacingOccurrences(of: "    size: auto", with: "    sizes: [small]\n    size: auto")
         XCTAssertEqual(problem(sized), BoardProblem(
-            line: 9, message: "disk: size auto follows the content, and the text view does not grow: use small"))
+            line: 9, message: "disk: size auto follows the content, and the gauge view does not grow: use small"))
+        XCTAssertNil(problem(inlineDisk))
         let outside = inlineDisk.replacingOccurrences(of: "    size: auto", with: "    sizes: [small]\n    size: large")
         XCTAssertEqual(problem(outside), BoardProblem(
             line: 9, message: "disk: size \"large\" in a sidebar is auto or one of small"))
@@ -174,7 +178,7 @@ final class BoardCodecStackTests: XCTestCase {
         views["text"] = WidgetContract.ViewSpec(accepts: text.accepts, fields: text.fields, layouts: textLayouts, grows: text.grows)
         return WidgetContract(
             engine: c.engine, layouts: c.layouts, unit: c.unit, snap: c.snap, presets: c.presets, stackRow: c.stackRow,
-            stackEntry: c.stackEntry, slotMax: c.slotMax, slotEntry: c.slotEntry, tabsEntry: c.tabsEntry,
+            stackEntry: c.stackEntry, canvasEntry: c.canvasEntry, slotMax: c.slotMax, slotEntry: c.slotEntry, tabsEntry: c.tabsEntry,
             surfaces: c.surfaces, contextTypes: c.contextTypes, providers: c.providers,
             packageProvider: c.packageProvider, views: views, sourceKinds: c.sourceKinds, sources: c.sources, formats: c.formats,
             inputTypes: c.inputTypes, optionSources: c.optionSources, entryOverrides: c.entryOverrides)

@@ -70,20 +70,21 @@ struct SourceWidgetContent: View {
     let onRun: () -> Void
     var onOpenSession: (() -> Void)?
     var webAddress: Result<URL, SourceError>?
+    var hugs = false
     @Environment(\.dmMetrics) private var m
 
     private var density: WidgetDensity {
-        WidgetDensity.of(width: size.width / m.pt(1), height: size.height / m.pt(1))
+        WidgetDensity.of(width: size.width / m.pt(1), height: hugs ? 0 : size.height / m.pt(1))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.sm) {
             header
             bodyView
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: hugs ? nil : .infinity, alignment: .topLeading)
         }
         .padding(m.space.lg)
-        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .frame(width: size.width, height: hugs ? nil : size.height, alignment: .topLeading)
         .dmGlass(radius: DMRadius.card)
     }
 
@@ -129,10 +130,13 @@ struct SourceWidgetContent: View {
                 quiet(state.ended ? "The stream ended. Press ▶ to start it again." : "Waiting for the first line…")
             } else {
                 TextLinesView(lines: TextTail.lines(of: state.lines.joined(separator: "\n"), tail: source.view.tail),
-                              wrap: source.view.wrap, keepsColor: source.view.kind == "terminal", followsNewest: true)
+                              wrap: source.view.wrap, keepsColor: source.view.kind == "terminal", followsNewest: true,
+                              hugs: hugs)
             }
         } else if let output = state.output {
-            OutputView(source: source, output: output, history: history, density: density, onOpenSession: onOpenSession)
+            OutputView(
+                source: source, output: output, history: history, density: density, onOpenSession: onOpenSession,
+                hugs: hugs)
         } else if let error = state.error {
             SourceErrorView(state: SourceErrorPresentation.state(error), density: density, retry: onRun)
         } else if state.isRunning {
@@ -216,28 +220,30 @@ private struct OutputView: View {
     let history: [SparklinePoint]
     let density: WidgetDensity
     let onOpenSession: (() -> Void)?
+    let hugs: Bool
 
     var body: some View {
         let view = source.view
         switch view.kind {
         case "number":
-            NumberWidgetView(view: view, output: output, density: density)
+            NumberWidgetView(view: view, output: output, density: density, hugs: hugs)
         case "gauge":
             GaugeWidgetView(view: view, output: output, density: density)
         case "status":
-            StatusWidgetView(view: view, output: output, density: density)
+            StatusWidgetView(view: view, output: output, density: density, hugs: hugs)
         case "sparkline":
             SparklineWidgetView(view: view, output: output, history: history, density: density)
         case "list":
-            ListWidgetView(template: view.item, output: output, density: density)
+            ListWidgetView(template: view.item, output: output, density: density, hugs: hugs)
         case "markdown":
-            MarkdownWidgetView(text: plainText(output))
+            MarkdownWidgetView(text: plainText(output), hugs: hugs)
         case "terminal":
             TerminalWidgetView(text: plainText(output), tail: view.tail, onOpen: onOpenSession)
         default:
             TextLinesView(
                 lines: TextTail.lines(of: plainText(output), tail: view.tail), wrap: view.wrap, keepsColor: false,
-                followsNewest: SourceWidgetLayout.followsNewestLine(kind: view.kind, every: source.every, tail: view.tail))
+                followsNewest: SourceWidgetLayout.followsNewestLine(kind: view.kind, every: source.every, tail: view.tail),
+                hugs: hugs)
         }
     }
 

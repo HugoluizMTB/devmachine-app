@@ -144,6 +144,8 @@ public struct ResolvedWidget: Equatable, Sendable {
     public var source: ResolvedSource? = nil
     public var title: String? = nil
     public var listArguments: [String: [String]] = [:]
+
+    public var grows: Bool { WidgetContract.current.viewGrows(viewKind) }
 }
 
 extension ResolvedSource {
@@ -190,6 +192,12 @@ public enum WidgetResolution: Equatable, Sendable {
                id: instance.id, type: instance.type, every: every, resolved: resolved, catalog: catalog, contract: contract) {
             return .refused(type: instance.type, reason: problem)
         }
+        if instance.isAuto, !contract.viewGrows(resolved.viewKind) {
+            let sizes = (resolved.widget.sizes.isEmpty ? WidgetContract.presetOrder : resolved.widget.sizes).joined(separator: ", ")
+            return .refused(
+                type: instance.type,
+                reason: "\(instance.id): size auto follows the content, and the \(resolved.viewKind) view does not grow: use \(sizes)")
+        }
         resolved.listArguments = ListArguments.of(resolved.widget, values: instance.with)
         return .ready(EntryOverrideRules.applied(resolved, title: instance.titleOverride, every: instance.everyOverride))
     }
@@ -220,7 +228,8 @@ public enum WidgetResolution: Equatable, Sendable {
         return .ready(ResolvedWidget(
             widget: widget, provider: provider, viewKind: widget.viewKind,
             arguments: WidgetTemplate.arguments(of: widget, values: instance.with), every: every,
-            minimum: CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract)))
+            minimum: CanvasLayout.minimumSize(
+                sizes: widget.sizes, grows: contract.viewGrows(widget.viewKind), contract: contract)))
     }
 
     private static func resolveSource(
@@ -257,7 +266,8 @@ public enum WidgetResolution: Equatable, Sendable {
         if thirdParty, source.runsCode, catalog.isStale { return .waitingForCatalog(type: widget.name) }
         return .ready(ResolvedWidget(
             widget: widget, provider: "", viewKind: view.kind, arguments: [:], every: every.seconds ?? 0,
-            minimum: CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract),
+            minimum: CanvasLayout.minimumSize(
+                sizes: widget.sizes, grows: contract.viewGrows(view.kind), contract: contract),
             source: ResolvedSource(
                 source: source, view: view, every: every, needsApproval: thirdParty && source.runsCode,
                 package: widget.package, packagePath: widget.packagePath, inputs: inputs,
@@ -276,7 +286,8 @@ public enum WidgetResolution: Equatable, Sendable {
         guard let inline = instance.inline else { return .notFound(type: instance.type) }
         let widget = CatalogWidget.inline(
             id: instance.id, title: inline.title, sizes: inline.sizes, fits: inline.fits, viewKind: inline.view.kind)
-        let minimum = CanvasLayout.minimumSize(sizes: widget.sizes, contract: contract)
+        let minimum = CanvasLayout.minimumSize(
+            sizes: widget.sizes, grows: contract.viewGrows(inline.view.kind), contract: contract)
         if case let .provider(provider) = inline.source {
             guard let floor = contract.minimumInterval(for: provider.name),
                   contract.view(inline.view.kind, accepts: provider.name)

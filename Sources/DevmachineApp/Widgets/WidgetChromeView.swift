@@ -48,6 +48,7 @@ struct WidgetChromeView: View {
     let onResizeEnded: () -> Void
     let onFront: () -> Void
     let onPreset: (String) -> Void
+    var onReset: () -> Void = {}
     let onMinimize: (Bool) -> Void
     let onRefresh: () -> Void
     let onRemove: () -> Void
@@ -57,6 +58,7 @@ struct WidgetChromeView: View {
     var choices: [ChoiceInput] = []
     var onChoose: (ChoiceInput) -> Void = { _ in }
     var onEdit: (() -> Void)? = nil
+    var onContentHeight: (CGFloat) -> Void = { _ in }
 
     @State private var hovering = false
     @State private var pillDragged = false
@@ -84,7 +86,12 @@ struct WidgetChromeView: View {
 
     private var presets: [String] {
         guard case let .ready(resolved)? = resolution else { return [] }
-        return WidgetContract.presetOrder.filter(resolved.widget.sizes.contains)
+        return (resolved.grows ? [BoardWidget.autoSize] : []) + WidgetContract.presetOrder.filter(resolved.widget.sizes.contains)
+    }
+
+    private var grows: Bool {
+        if case let .ready(resolved)? = resolution { return resolved.grows }
+        return false
     }
 
     private var moveGesture: some Gesture {
@@ -137,8 +144,7 @@ struct WidgetChromeView: View {
     }
 
     private var card: some View {
-        content
-            .frame(width: size.width, height: size.height)
+        sizedContent
             .overlay {
                 if hovering {
                     RoundedRectangle(cornerRadius: m.radius.card)
@@ -154,15 +160,46 @@ struct WidgetChromeView: View {
             .simultaneousGesture(TapGesture().onEnded { onFront() })
     }
 
+    /// The unseen copy learns the unconstrained content height, so a drag past
+    /// the content knows where it ends.
     @ViewBuilder
-    private var content: some View {
+    private var sizedContent: some View {
+        if grows, widget.isAuto {
+            content(hugs: true, size: size)
+                .frame(width: size.width, alignment: .topLeading)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onContentHeight($0) }
+                .frame(width: size.width, height: size.height, alignment: .top)
+        } else if grows {
+            content(hugs: false, size: size)
+                .frame(width: size.width, height: size.height)
+                .background(alignment: .topLeading) { naturalProbe }
+        } else {
+            content(hugs: false, size: size)
+                .frame(width: size.width, height: size.height)
+        }
+    }
+
+    private var naturalProbe: some View {
+        content(hugs: true, size: CGSize(width: size.width, height: 0))
+            .frame(width: size.width, alignment: .topLeading)
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onContentHeight($0) }
+            .opacity(0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func content(hugs: Bool, size: CGSize) -> some View {
         switch resolution {
         case let .ready(resolved)?:
             if let source = resolved.source, let sources {
                 SourceWidgetCard(
-                    id: widget.id, title: title, source: source, controller: sources, size: size, onOpenSession: onOpenSession)
+                    id: widget.id, title: title, source: source, controller: sources, size: size, hugs: hugs,
+                    onOpenSession: onOpenSession)
             } else {
-                AppWidgetView(resolved: resolved, size: size)
+                AppWidgetView(resolved: resolved, size: size, hugs: hugs)
             }
         case let .some(placeholder):
             WidgetPlaceholderView(
@@ -218,6 +255,7 @@ struct WidgetChromeView: View {
             }
             .pickerStyle(.inline)
         }
+        Button("Reset size") { onReset() }.disabled(!editable)
         Button("Minimize") { onMinimize(true) }
         Button("Refresh") { onRefresh() }
         ForEach(choices) { choice in
@@ -232,6 +270,7 @@ struct WidgetChromeView: View {
     }
 
     private func sizeLabel(_ preset: String) -> String {
+        if preset == BoardWidget.autoSize { return "Auto" }
         guard let cells = WidgetContract.current.presetCells(preset) else { return preset }
         return "\(preset.prefix(1).uppercased() + preset.dropFirst()) · \(cells.columns)×\(cells.rows)"
     }
@@ -243,6 +282,7 @@ struct WidgetChromeView: View {
             .frame(width: m.size(WidgetChromeLayout.resizeCorner).width, height: m.size(WidgetChromeLayout.resizeCorner).height)
             .contentShape(Rectangle())
             .canvasCursor(.crosshair)
+            .onTapGesture(count: 2) { onReset() }
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .updating($resizing) { _, held, _ in held = true }

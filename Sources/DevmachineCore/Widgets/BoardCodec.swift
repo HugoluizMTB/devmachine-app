@@ -196,15 +196,24 @@ public enum BoardCodec {
         guard let frameNode = fields["frame"] else {
             throw BoardProblem(line: line(node), message: "widget \"\(id)\" needs a frame: {x: , y: , w: , h: }")
         }
-        let frame = try decodeFrame(frameNode, owner: id)
         var size = BoardWidget.customSize
         if let sizeNode = fields["size"] {
-            guard let value = string(sizeNode), value == BoardWidget.customSize || contract.presets[value] != nil else {
-                let names = (WidgetContract.presetOrder + [BoardWidget.customSize]).joined(separator: ", ")
-                throw BoardProblem(line: line(sizeNode), message: "size of widget \"\(id)\" must be one of \(names)")
+            guard let value = string(sizeNode),
+                  value == BoardWidget.customSize || value == BoardWidget.autoSize || contract.presets[value] != nil
+            else {
+                throw BoardProblem(
+                    line: line(sizeNode),
+                    message: "\(id): size \"\(string(sizeNode) ?? "")\" is a preset (\(presetNames(contract).joined(separator: ", "))), custom or auto")
             }
             size = value
         }
+        if size == BoardWidget.autoSize, let kind = core.inline?.view.kind, !contract.viewGrows(kind) {
+            let sizes = (core.inline?.sizes.isEmpty == false ? core.inline?.sizes ?? [] : presetNames(contract)).joined(separator: ", ")
+            throw BoardProblem(
+                line: fields["size"].flatMap(line),
+                message: "\(id): size auto follows the content, and the \(kind) view does not grow: use \(sizes)")
+        }
+        let frame = try decodeFrame(frameNode, owner: id, entryLine: line(node), auto: size == BoardWidget.autoSize)
         var minimized = false
         if let minimizedNode = fields["minimized"] {
             guard let value = bool(minimizedNode) else {
@@ -401,7 +410,12 @@ public enum BoardCodec {
         }
     }
 
-    private static func decodeFrame(_ node: Node, owner: String) throws -> BoardFrame {
+    private static func presetNames(_ contract: WidgetContract) -> [String] {
+        func area(_ name: String) -> Int { contract.presets[name].map { $0.reduce(1, *) } ?? 0 }
+        return contract.presets.keys.sorted().sorted { area($0) < area($1) }
+    }
+
+    private static func decodeFrame(_ node: Node, owner: String, entryLine: Int?, auto: Bool) throws -> BoardFrame {
         guard let mapping = node.mapping else {
             throw BoardProblem(line: line(node), message: "frame of widget \"\(owner)\" must be {x: , y: , w: , h: }")
         }
@@ -409,6 +423,10 @@ public enum BoardCodec {
         var values: [String: Int] = [:]
         for key in frameKeys {
             guard let valueNode = fields[key] else {
+                if key == "h", auto { continue }
+                if key == "h" {
+                    throw BoardProblem(line: entryLine, message: "\(owner): frame needs h unless size is auto")
+                }
                 throw BoardProblem(line: line(node), message: "frame.\(key) of widget \"\(owner)\" is missing")
             }
             guard let value = int(valueNode) else {
@@ -417,6 +435,7 @@ public enum BoardCodec {
             if key == "x" || key == "y", value < 0 {
                 throw BoardProblem(line: line(valueNode), message: "frame.\(key) of widget \"\(owner)\" must be 0 or more")
             }
+            if key == "h", auto { continue }
             if key == "w" || key == "h", value <= 0 {
                 throw BoardProblem(line: line(valueNode), message: "frame.\(key) of widget \"\(owner)\" must be more than 0")
             }
@@ -532,7 +551,9 @@ public enum BoardCodec {
                     type: widget.type, with: widget.with, inline: widget.inline, title: widget.titleOverride,
                     every: widget.everyOverride))
                 let frame = widget.frame
-                lines.append("    frame: {x: \(frame.x), y: \(frame.y), w: \(frame.w), h: \(frame.h)}")
+                lines.append(widget.isAuto
+                    ? "    frame: {x: \(frame.x), y: \(frame.y), w: \(frame.w)}"
+                    : "    frame: {x: \(frame.x), y: \(frame.y), w: \(frame.w), h: \(frame.h)}")
                 lines.append("    size: \(text(widget.size))")
                 lines.append("    minimized: \(widget.minimized)")
                 lines.append("    z: \(widget.z)")

@@ -5,15 +5,27 @@ final class WidgetContractTests: XCTestCase {
     private func fixture() throws -> Data {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/widget-contract-1.6.json")
+            .appendingPathComponent("Fixtures/widget-contract-1.7.json")
         return try Data(contentsOf: url)
     }
 
     func testTheGoldenContractIsTheOneThisAppImplements() throws {
         let decoded = try JSONDecoder().decode(WidgetContract.self, from: fixture())
-        XCTAssertEqual(decoded, WidgetContract.engine16)
-        XCTAssertEqual(WidgetContract.current, WidgetContract.engine16)
-        XCTAssertEqual(WidgetContract.current.engine, "1.6")
+        XCTAssertEqual(decoded, WidgetContract.engine17)
+        XCTAssertEqual(WidgetContract.current, WidgetContract.engine17)
+        XCTAssertEqual(WidgetContract.current.engine, "1.7")
+    }
+
+    func testHomeGrowsForTheViewsWithANaturalHeight() {
+        let contract = WidgetContract.current
+        for kind in ["app.summary", "app.machines", "app.harness-usage", "text", "number", "status", "list", "markdown"] {
+            XCTAssertTrue(contract.viewGrows(kind), kind)
+        }
+        for kind in ["app.clock", "app.pull-requests-panel", "app.usage-panel", "gauge", "sparkline", "web", "terminal"] {
+            XCTAssertFalse(contract.viewGrows(kind), kind)
+        }
+        XCTAssertEqual(contract.canvasEntry.size, "preset | custom | auto")
+        XCTAssertEqual(contract.canvasEntry.frame, "x, y, w, h; h left out with size auto")
     }
 
     func testAPromptTakesItsHarnesssOwnPermissionModes() throws {
@@ -154,7 +166,7 @@ final class WidgetContractTests: XCTestCase {
             XCTAssertTrue(contract.view(view, accepts: provider), view)
         }
         XCTAssertNil(contract.views["text"]?.layouts)
-        XCTAssertFalse(contract.viewGrows("text"))
+        XCTAssertTrue(contract.viewGrows("text"))
         XCTAssertFalse(contract.viewGrows("app.clock"))
         XCTAssertFalse(contract.viewGrows("nope"))
     }

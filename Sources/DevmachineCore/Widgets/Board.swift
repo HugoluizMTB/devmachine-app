@@ -55,7 +55,8 @@ extension BoardScalar: Codable {
     }
 }
 
-/// A widget's place on a canvas, in points at 100% text size.
+/// A widget's place on a canvas, in points at 100% text size. `h` is 0 on a
+/// widget whose size is `auto`: its height is its content's, so none is stored.
 public struct BoardFrame: Hashable, Sendable {
     public var x: Int
     public var y: Int
@@ -99,6 +100,7 @@ public struct InlineWidget: Equatable, Sendable {
 
 public struct BoardWidget: Equatable, Sendable, Identifiable {
     public static let customSize = "custom"
+    public static let autoSize = "auto"
 
     public var id: String
     public var type: String
@@ -129,6 +131,8 @@ public struct BoardWidget: Equatable, Sendable, Identifiable {
     }
 
     public var isInline: Bool { inline != nil }
+
+    public var isAuto: Bool { size == Self.autoSize }
 
     public var package: String { String(type.split(separator: "/").first ?? "") }
 }
