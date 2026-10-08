@@ -25,6 +25,7 @@ struct StackJobsTrigger: Equatable {
 /// view holding the gesture is never moved or removed.
 struct StackBoardView: View {
     static let space = "stack"
+    static let cardInset: CGFloat = 14
 
     @ObservedObject private var controller: StackBoardController
     private let style: StackStyle
@@ -189,7 +190,8 @@ struct StackBoardView: View {
     @ViewBuilder
     private func content(_ entry: StackEntry, _ row: StackRowModel, _ resolution: WidgetResolution?) -> some View {
         let fixed: CGFloat? = if case let .fixed(points) = row.height { m.pt(points) } else { nil }
-        let size = CGSize(width: width, height: fixed ?? m.pt(CGFloat(StackLayout.placeholderHeight())))
+        let inset = m.pt(Self.cardInset)
+        let size = CGSize(width: max(0, width - 2 * inset), height: fixed ?? m.pt(CGFloat(StackLayout.placeholderHeight())))
         let hugs = fixed == nil
         switch resolution {
         case let .ready(resolved)?:
@@ -198,6 +200,7 @@ struct StackBoardView: View {
                     id: entry.id, title: row.title, source: source, controller: controller.sources, size: size, hugs: hugs,
                     onOpenSession: model.openWidgetSession)
                     .frame(height: hugs ? nil : size.height)
+                    .padding(.horizontal, inset)
             } else if let kind = StackAppViewKind(viewKind: resolved.viewKind) {
                 StackAppWidgetView(
                     kind: kind, preceding: controller.expandedAppKinds(provider: resolved.provider, before: entry.id))
@@ -205,12 +208,14 @@ struct StackBoardView: View {
             } else {
                 AppWidgetView(resolved: resolved, size: size, hugs: hugs)
                     .frame(width: size.width, height: hugs ? nil : size.height)
+                    .padding(.horizontal, inset)
             }
         case let .some(placeholder):
             WidgetPlaceholderView(
                 icon: "puzzlepiece.extension", title: WidgetResolutionCopy.title(placeholder),
                 detail: WidgetResolutionCopy.detail(placeholder, release: controller.catalog.catalog?.packagesRelease ?? ""))
                 .frame(width: size.width, height: size.height)
+                .padding(.horizontal, inset)
         case nil:
             Color.clear.frame(height: size.height)
         }
