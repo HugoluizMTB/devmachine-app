@@ -139,14 +139,17 @@ final class WidgetPlacementTests: XCTestCase {
 
     func testANewStackEntryTakesAutoWhenItGrowsElseItsDefaultSizeLikeTheCLI() {
         let board = StackBoard(surface: "context-sidebar", entries: [])
-        var noDefault = CatalogFixtures.machines
+        var fixed = CatalogFixtures.machines
+        fixed.viewKind = "app.clock"
+        var noDefault = fixed
         noDefault.defaultSize = ""
-        var bare = CatalogFixtures.machines
+        var bare = fixed
         bare.defaultSize = ""
         bare.sizes = []
         var links = CatalogFixtures.machines
         links.viewKind = "app.links"
-        XCTAssertEqual(StackPlacer.newEntry(of: CatalogFixtures.machines, on: board).size, .preset("large"))
+        XCTAssertEqual(StackPlacer.newEntry(of: fixed, on: board).size, .preset("large"))
+        XCTAssertEqual(StackPlacer.newEntry(of: CatalogFixtures.machines, on: board).size, .auto)
         XCTAssertEqual(StackPlacer.newEntry(of: noDefault, on: board).size, .preset("medium"))
         XCTAssertNil(StackPlacer.newEntry(of: bare, on: board).size)
         XCTAssertEqual(StackPlacer.newEntry(of: links, on: board).size, .auto)
@@ -154,6 +157,7 @@ final class WidgetPlacementTests: XCTestCase {
 
     func testAStackPlacesAWidgetOnceAtTheEnd() {
         var disk = CatalogFixtures.machines
+        disk.viewKind = "app.clock"
         disk.places = ["context-sidebar"]
         disk.surfaces = ["context-sidebar"]
         disk.fits = ["stack"]

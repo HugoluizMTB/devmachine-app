@@ -153,12 +153,16 @@ final class BoardCodecStackTests: XCTestCase {
     }
 
     func testAnInlineWidgetMustFitAStackAndGrowForAuto() {
-        XCTAssertEqual(problem(inlineDisk), BoardProblem(
+        let gauge = inlineDisk
+            .replacingOccurrences(of: "every: 60s}", with: "every: 60s, parse: number}")
+            .replacingOccurrences(of: "view: {kind: text}", with: "view: {kind: gauge}")
+        XCTAssertEqual(problem(gauge), BoardProblem(
             line: 8,
-            message: "disk: size auto follows the content, and the text view does not grow: use small, medium, large, wide, tall"))
-        let sized = inlineDisk.replacingOccurrences(of: "    size: auto", with: "    sizes: [small]\n    size: auto")
+            message: "disk: size auto follows the content, and the gauge view does not grow: use small, medium, large, wide, tall"))
+        let sized = gauge.replacingOccurrences(of: "    size: auto", with: "    sizes: [small]\n    size: auto")
         XCTAssertEqual(problem(sized), BoardProblem(
-            line: 9, message: "disk: size auto follows the content, and the text view does not grow: use small"))
+            line: 9, message: "disk: size auto follows the content, and the gauge view does not grow: use small"))
+        XCTAssertNil(problem(inlineDisk))
         let outside = inlineDisk.replacingOccurrences(of: "    size: auto", with: "    sizes: [small]\n    size: large")
         XCTAssertEqual(problem(outside), BoardProblem(
             line: 9, message: "disk: size \"large\" in a sidebar is auto or one of small"))
