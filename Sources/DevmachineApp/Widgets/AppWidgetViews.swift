@@ -43,16 +43,31 @@ struct ClockWidgetView: View {
 }
 
 struct SummaryWidgetView: View {
+    var hugs = false
     @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        SummaryPill(
+            sessions: model.sessionCount, harnessSessions: model.harnessSessionCount,
+            workspaces: model.visibleWorkspaces.count, hugs: hugs)
+    }
+}
+
+/// A widget that hugs is as tall as its pill; one that does not fills its box.
+struct SummaryPill: View {
+    let sessions: Int
+    let harnessSessions: Int
+    let workspaces: Int
+    var hugs = false
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
         HStack(spacing: m.space.sm) {
-            Text(verbatim: "\(model.sessionCount) sessions")
+            Text(verbatim: "\(sessions) sessions")
             Text(verbatim: "·")
-            Text(verbatim: "\(model.harnessSessionCount) with coding harnesses")
+            Text(verbatim: "\(harnessSessions) with coding harnesses")
             Text(verbatim: "·")
-            Text(verbatim: "\(model.visibleWorkspaces.count) workspaces")
+            Text(verbatim: "\(workspaces) workspaces")
         }
         .font(.dm(11, weight: .medium))
         .foregroundStyle(.white.opacity(0.65))
@@ -61,7 +76,7 @@ struct SummaryWidgetView: View {
         .padding(.vertical, m.space.md)
         .padding(.horizontal, m.space.lg)
         .dmGlass(radius: DMRadius.pill)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: hugs ? nil : .infinity, alignment: .top)
     }
 }
 
@@ -94,11 +109,11 @@ struct MachinesWidgetView: View {
 
     let size: CGSize
     var chosen: [String] = []
+    var hugs = false
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var stats: StatsStore
     @ObservedObject private var readiness = MachineReadinessStore.shared
     @Environment(\.dmMetrics) private var m
-    @State private var cardHeight: CGFloat?
     @State private var attentionHeight: CGFloat = 0
 
     private var machines: [StatsMachine] { MachinesFilter.shown(stats.machines, chosen: chosen) }
@@ -106,10 +121,6 @@ struct MachinesWidgetView: View {
     var body: some View {
         let attention = MachinesFilter.shown(names: readiness.machinesNeedingAttention, chosen: chosen)
         let gridHeight = size.height - (attention.isEmpty ? 0 : attentionHeight + m.pt(Self.cardSpacing))
-        let fit = CardGridFit.fit(
-            in: CGSize(width: size.width, height: max(0, gridHeight)),
-            card: CGSize(width: m.pt(MachineStatsCard.width), height: cardHeight ?? m.pt(Self.nominalCardHeight)),
-            spacing: m.pt(Self.cardSpacing))
         VStack(alignment: .leading, spacing: m.pt(Self.cardSpacing)) {
             if !attention.isEmpty {
                 VStack(alignment: .leading, spacing: m.pt(Self.cardSpacing)) {
@@ -120,17 +131,51 @@ struct MachinesWidgetView: View {
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { attentionHeight = $0 }
             }
-            grid(fit)
+            MachinesGridView(
+                machines: machines, size: CGSize(width: size.width, height: max(0, gridHeight)), hugs: hugs,
+                state: { stats.state(for: $0) }, containerCount: { model.visibleContainers(in: $0).count },
+                onOpen: { openStats($0) }, onShowAll: { model.showPage(.stats) })
         }
-        .frame(width: size.width, height: size.height, alignment: .topLeading)
-        .overlay(alignment: Self.moreChipAlignment) { moreChip(fit.hidden(of: machines.count)) }
+        .frame(width: size.width, height: hugs ? nil : size.height, alignment: .topLeading)
+    }
+
+    private func openStats(_ machine: String) {
+        stats.select(machine)
+        model.showPage(.stats)
+    }
+}
+
+/// The stats cards in rows. In a box it draws as many as fit and names the
+/// rest ("+N more"); a widget that hugs draws every one, as tall as the rows.
+struct MachinesGridView: View {
+    let machines: [StatsMachine]
+    let size: CGSize
+    var hugs = false
+    let state: (String) -> MachineStatsState?
+    let containerCount: (StatsSnapshot) -> Int
+    let onOpen: (String) -> Void
+    let onShowAll: () -> Void
+    @Environment(\.dmMetrics) private var m
+    @State private var cardHeight: CGFloat?
+
+    /// Stands for no limit: the fit counts rows from it, so it stays finite.
+    private static let unlimited: CGFloat = 1_000_000
+
+    var body: some View {
+        let fit = CardGridFit.fit(
+            in: CGSize(width: size.width, height: hugs ? Self.unlimited : size.height),
+            card: CGSize(width: m.pt(MachineStatsCard.width), height: cardHeight ?? m.pt(MachinesWidgetView.nominalCardHeight)),
+            spacing: m.pt(MachinesWidgetView.cardSpacing))
+        grid(fit)
+            .frame(width: size.width, height: hugs ? nil : size.height, alignment: .topLeading)
+            .overlay(alignment: MachinesWidgetView.moreChipAlignment) { moreChip(fit.hidden(of: machines.count)) }
     }
 
     private func grid(_ fit: CardGridFit) -> some View {
         let shown = Array(machines.prefix(fit.shown(of: machines.count)))
         let columns = max(1, fit.columns)
         let rows = stride(from: 0, to: shown.count, by: columns).map { Array(shown[$0..<min($0 + columns, shown.count)]) }
-        let spacing = m.pt(Self.cardSpacing) * fit.scale
+        let spacing = m.pt(MachinesWidgetView.cardSpacing) * fit.scale
         return VStack(alignment: .leading, spacing: spacing) {
             ForEach(rows, id: \.first?.id) { row in
                 HStack(alignment: .top, spacing: spacing) {
@@ -141,12 +186,12 @@ struct MachinesWidgetView: View {
     }
 
     private func card(_ machine: StatsMachine, scale: Double) -> some View {
-        let height = cardHeight ?? m.pt(Self.nominalCardHeight)
+        let height = cardHeight ?? m.pt(MachinesWidgetView.nominalCardHeight)
         return MachineStatsCard(
             machine: machine,
-            state: stats.state(for: machine.name),
-            containerCount: { model.visibleContainers(in: $0).count },
-            action: { openStats(machine.name) })
+            state: state(machine.name),
+            containerCount: containerCount,
+            action: { onOpen(machine.name) })
         .fixedSize()
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured in
             if measured > (cardHeight ?? 0) { cardHeight = measured }
@@ -158,15 +203,10 @@ struct MachinesWidgetView: View {
     @ViewBuilder
     private func moreChip(_ hidden: Int) -> some View {
         if hidden > 0 {
-            DMButton("+\(hidden) more", variant: .ghost, size: .small) { model.showPage(.stats) }
+            DMButton("+\(hidden) more", variant: .ghost, size: .small, action: onShowAll)
                 .dmGlass(radius: DMRadius.pill)
                 .help(Text(verbatim: "Open Stats to see every machine"))
         }
-    }
-
-    private func openStats(_ machine: String) {
-        stats.select(machine)
-        model.showPage(.stats)
     }
 }
 
@@ -189,6 +229,7 @@ enum UsageWidgetLayout {
 struct HarnessUsageWidgetView: View {
     let argument: String
     let size: CGSize
+    var hugs = false
     @EnvironmentObject private var usage: HarnessUsageStore
     @EnvironmentObject private var model: AppModel
     @Environment(\.harnessSettingsFacade) private var facade
@@ -200,14 +241,14 @@ struct HarnessUsageWidgetView: View {
         let descriptor = facade.descriptor(for: HarnessID(rawValue: harness))
         if let descriptor, let state = usage.state(for: harness) {
             Group {
-                if UsageWidgetLayout.showsFullCard(boardHeight: size.height / m.pt(1)) {
+                if hugs || UsageWidgetLayout.showsFullCard(boardHeight: size.height / m.pt(1)) {
                     HarnessUsageCardContent(
                         state: state,
                         title: "\(descriptor.shortTitle) Usage",
                         systemImage: descriptor.systemImage,
                         accent: descriptor.color,
                         onRefresh: refresh,
-                        scrollsContent: true)
+                        scrollsContent: !hugs)
                     .harnessUsageErrorView { error, retry in
                         DMErrorStateView(state: DMErrorState(error), retry: retry)
                             .padding(.vertical, m.space.md)
@@ -228,7 +269,8 @@ struct HarnessUsageWidgetView: View {
                 title: "\(descriptor?.shortTitle ?? harness) is off",
                 detail: "Turn it on in Settings → Harnesses to see its usage here.",
                 actionTitle: "Open Settings",
-                action: { model.openSettings(.harnesses) })
+                action: { model.openSettings(.harnesses) },
+                hugs: hugs)
         }
     }
 
@@ -311,6 +353,7 @@ struct WidgetPlaceholderView: View {
     let detail: String
     var actionTitle: String?
     var action: (() -> Void)?
+    var hugs = false
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
@@ -330,7 +373,7 @@ struct WidgetPlaceholderView: View {
             }
         }
         .padding(m.space.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: hugs ? nil : .infinity, alignment: .topLeading)
         .dmGlass(radius: DMRadius.card)
     }
 }
@@ -338,17 +381,18 @@ struct WidgetPlaceholderView: View {
 struct AppWidgetView: View {
     let resolved: ResolvedWidget
     let size: CGSize
+    var hugs = false
 
     var body: some View {
         switch resolved.viewKind {
         case "app.clock":
             ClockWidgetView(size: size)
         case "app.summary":
-            SummaryWidgetView()
+            SummaryWidgetView(hugs: hugs)
         case "app.machines":
-            MachinesWidgetView(size: size, chosen: resolved.listArguments["machines"] ?? [])
+            MachinesWidgetView(size: size, chosen: resolved.listArguments["machines"] ?? [], hugs: hugs)
         case "app.harness-usage":
-            HarnessUsageWidgetView(argument: resolved.arguments["harness"] ?? "", size: size)
+            HarnessUsageWidgetView(argument: resolved.arguments["harness"] ?? "", size: size, hugs: hugs)
         case "app.pull-requests-panel":
             PRsView()
                 .clipShape(RoundedRectangle(cornerRadius: DMRadius.card))
@@ -356,7 +400,7 @@ struct AppWidgetView: View {
         default:
             WidgetPlaceholderView(
                 icon: "questionmark.square.dashed", title: "Needs a newer app",
-                detail: "This app cannot draw \(resolved.viewKind).")
+                detail: "This app cannot draw \(resolved.viewKind).", hugs: hugs)
         }
     }
 }

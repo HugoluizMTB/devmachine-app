@@ -75,16 +75,17 @@ final class DefaultHomeBoardFitTests: XCTestCase {
 
     func testEveryUsageCardShowsItsWholeContentWithoutScrolling() {
         for width in widths {
-            let board = DefaultBoard.make(harnesses: ["claude", "codex"], canvasWidth: width, machines: 3)
-            for entry in board.widgets where entry.type == "devmachine-app/usage" {
+            let layout = DefaultBoard.layout(harnesses: ["claude", "codex"], canvasWidth: width, machines: 3)
+            for entry in layout.board.widgets where entry.type == "devmachine-app/usage" {
+                let reserved = try! XCTUnwrap(layout.spaced(entry.id)).h
                 for state in [Self.claude, Self.codex] {
                     let needed = usageHeight(state, width: entry.frame.w)
                     XCTAssertGreaterThan(needed, 400, "\(state.harnessID) drew its full card")
                     XCTAssertGreaterThanOrEqual(
-                        CGFloat(entry.frame.h), needed, "\(entry.id) at \(width) wide is too short for \(state.harnessID)")
+                        CGFloat(reserved), needed, "\(entry.id) at \(width) wide reserves too little for \(state.harnessID)")
                     XCTAssertGreaterThanOrEqual(CGFloat(DefaultBoard.usageContentHeight), needed.rounded(.up))
                 }
-                XCTAssertTrue(UsageWidgetLayout.showsFullCard(boardHeight: CGFloat(entry.frame.h)))
+                XCTAssertTrue(entry.isAuto)
             }
         }
     }
@@ -93,8 +94,8 @@ final class DefaultHomeBoardFitTests: XCTestCase {
         let card = CGSize(width: MachineStatsCard.width, height: machineCardHeight)
         for width in widths {
             for machines in 1...3 {
-                let board = DefaultBoard.make(harnesses: ["claude", "codex"], canvasWidth: width, machines: machines)
-                let frame = try! XCTUnwrap(board.widgets.first { $0.id == "machines" }?.frame)
+                let layout = DefaultBoard.layout(harnesses: ["claude", "codex"], canvasWidth: width, machines: machines)
+                let frame = try! XCTUnwrap(layout.spaced("machines"))
                 let fit = CardGridFit.fit(
                     in: CGSize(width: frame.w, height: frame.h), card: card, spacing: MachinesWidgetView.cardSpacing)
                 XCTAssertEqual(fit.scale, 1, "\(width) wide, \(machines) machines: cards drawn smaller")

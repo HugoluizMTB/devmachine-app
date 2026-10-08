@@ -189,20 +189,21 @@ struct StackBoardView: View {
     private func content(_ entry: StackEntry, _ row: StackRowModel, _ resolution: WidgetResolution?) -> some View {
         let fixed: CGFloat? = if case let .fixed(points) = row.height { m.pt(points) } else { nil }
         let size = CGSize(width: width, height: fixed ?? m.pt(CGFloat(StackLayout.placeholderHeight())))
+        let hugs = fixed == nil
         switch resolution {
         case let .ready(resolved)?:
             if let source = resolved.source {
                 SourceWidgetCard(
-                    id: entry.id, title: row.title, source: source, controller: controller.sources, size: size,
+                    id: entry.id, title: row.title, source: source, controller: controller.sources, size: size, hugs: hugs,
                     onOpenSession: model.openWidgetSession)
-                    .frame(height: size.height)
+                    .frame(height: hugs ? nil : size.height)
             } else if let kind = StackAppViewKind(viewKind: resolved.viewKind) {
                 StackAppWidgetView(
                     kind: kind, preceding: controller.expandedAppKinds(provider: resolved.provider, before: entry.id))
                     .frame(height: fixed)
             } else {
-                AppWidgetView(resolved: resolved, size: size)
-                    .frame(width: size.width, height: size.height)
+                AppWidgetView(resolved: resolved, size: size, hugs: hugs)
+                    .frame(width: size.width, height: hugs ? nil : size.height)
             }
         case let .some(placeholder):
             WidgetPlaceholderView(

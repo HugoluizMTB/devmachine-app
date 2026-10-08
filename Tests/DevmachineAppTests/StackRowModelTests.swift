@@ -95,8 +95,8 @@ final class StackRowModelTests: XCTestCase {
 
     func testTheSizeMenuTicksTheDefaultPresetWhenTheEntryHasNoSize() {
         let disk = CatalogWidget(
-            name: "acme/disk", fits: ["stack"], source: CatalogSource(name: "app/machines", every: "60s"),
-            viewKind: "app.machines", sizes: ["small", "medium", "large"], defaultSize: "medium",
+            name: "acme/disk", fits: ["stack"], source: CatalogSource(name: "app/clock", every: "60s"),
+            viewKind: "app.clock", sizes: ["small", "medium", "large"], defaultSize: "medium",
             surfaces: ["context-sidebar"])
         let catalog = WidgetCatalog(engine: "1.2", packagesRelease: "2026.10.07", widgets: [disk])
         let entry = StackEntry(id: "disk", type: "acme/disk")
