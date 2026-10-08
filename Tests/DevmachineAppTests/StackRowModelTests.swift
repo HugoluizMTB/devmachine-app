@@ -109,6 +109,27 @@ final class StackRowModelTests: XCTestCase {
         XCTAssertEqual(row.height, .fixed(80))
     }
 
+    func testAGrowingViewInASidebarTakesItsContentsHeightAndFixedViewsKeepTheirRows() {
+        let machines = CatalogWidget(
+            name: "acme/machines", fits: ["stack"], source: CatalogSource(name: "app/machines", every: "60s"),
+            viewKind: "app.machines", sizes: ["medium", "large"], defaultSize: "large", surfaces: ["sidebar"])
+        let clock = CatalogWidget(
+            name: "acme/clock", fits: ["stack"], source: CatalogSource(name: "app/clock", every: "60s"),
+            viewKind: "app.clock", sizes: ["small", "medium"], defaultSize: "medium", surfaces: ["sidebar"])
+        let catalog = WidgetCatalog(engine: "1.7", packagesRelease: "r", widgets: [machines, clock])
+        let board = StackBoard(surface: "sidebar", entries: [])
+        func row(_ entry: StackEntry) -> StackRowModel {
+            StackRowModel.make(
+                entry: entry, index: 0, count: 1,
+                resolution: StackResolution.resolve(entry, on: board, catalog: catalog), approval: nil, catalog: catalog)
+        }
+        let growing = row(StackEntry(id: "m", type: "acme/machines", size: .auto))
+        XCTAssertEqual(growing.height, .content)
+        XCTAssertEqual(growing.sizeChoices.first, .auto)
+        XCTAssertEqual(row(StackEntry(id: "m", type: "acme/machines")).height, .content)
+        XCTAssertEqual(row(StackEntry(id: "c", type: "acme/clock")).height, .fixed(80))
+    }
+
     func testAWidgetThatCannotResolveKeepsTheSizeItsEntryNames() {
         let entry = StackEntry(id: "todo", type: "devmachine-app/todo", size: .auto)
         XCTAssertEqual(model(entry, board: StackBoard(surface: "sidebar", entries: [entry])).size, .auto)
