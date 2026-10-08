@@ -548,6 +548,8 @@ final class AppModel: ObservableObject {
     @Published var pendingBulkDelete: [SessionRef]? = nil
     /// The session ⌘W or the sidebar asked to end, waiting for a confirm.
     @Published var pendingEndSession: SessionEndRequest? = nil
+    /// The session the sidebar or ⌘K asked to share, waiting in the Share sheet.
+    @Published var pendingShare: SessionShareRequest? = nil
     @Published var selectedSessions: Set<SessionRef> = []
     @Published var activeTasks: [BGTask] = []
     @Published var showCommandPalette = false
@@ -1432,6 +1434,13 @@ final class AppModel: ObservableObject {
         }
         let range = anchorIndex <= refIndex ? anchorIndex...refIndex : refIndex...anchorIndex
         selectedSessions = Set(flattened[range])
+    }
+
+    /// Opens the Share sheet for a session on a workspace. A session on this
+    /// Mac runs under zmx, not tmux on a machine, so it has nothing to share.
+    func requestShare(_ ref: SessionRef) {
+        guard let workspace = workspaces.first(where: { $0.alias == ref.alias }), !workspace.isLocal else { return }
+        pendingShare = SessionShareRequest(alias: ref.alias, workspace: workspace.name, session: ref.name)
     }
 
     @discardableResult

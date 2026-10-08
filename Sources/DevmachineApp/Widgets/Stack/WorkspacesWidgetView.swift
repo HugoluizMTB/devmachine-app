@@ -13,6 +13,7 @@ struct WorkspacesWidgetView: View {
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @ObservedObject private var readiness = MachineReadinessStore.shared
     @ObservedObject private var machines = MachinesStore.shared
+    @ObservedObject private var shares = SessionShareStore.shared
     @State private var dragging: SidebarDragItem?
 
     var body: some View {
@@ -301,11 +302,13 @@ struct WorkspacesWidgetView: View {
         // selection is not "where you are" — only stacked sessions are.
         let isOpen = model.activePage == nil && model.selection == .session(alias: alias, name: s.name)
         let isMultiSelected = model.selectedSessions.contains(ref)
+        let shared = shares.liveShare(alias: alias, session: s.name)
         return row(
             title: s.name,
             badges: model.badges(for: s),
             windows: s.windows,
-            selected: isOpen || isMultiSelected || model.isStacked(ref)
+            selected: isOpen || isMultiSelected || model.isStacked(ref),
+            shared: shared
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -334,6 +337,17 @@ struct WorkspacesWidgetView: View {
                 Button("Rename…") {
                     model.pendingRename = (alias: alias, old: s.name)
                 }
+                Divider()
+                if let shared {
+                    if let url = shared.url {
+                        Button("Copy share link") { Pasteboard.copy(url) }
+                    }
+                    Button("Add 30 minutes") { Task { await shares.extend(shared) } }
+                    Button("Stop sharing") { Task { await shares.stop(shared) } }
+                } else {
+                    Button("Share…") { model.requestShare(ref) }
+                }
+                Divider()
                 Button("Delete", role: .destructive) {
                     model.askToEndSession(.session(alias: alias, name: s.name))
                 }
@@ -348,7 +362,8 @@ struct WorkspacesWidgetView: View {
         title: String,
         badges: [HarnessBadgePresentation],
         windows: Int?,
-        selected: Bool
+        selected: Bool,
+        shared: SessionShareRecord? = nil
     ) -> some View {
         let icons = HarnessIconLibrary.bundled
         let glyph = SessionRowGlyph(
@@ -366,9 +381,14 @@ struct WorkspacesWidgetView: View {
             ) : nil,
             title: title,
             selected: selected,
-            trailing: windows.map { count in
-                AnyView(Text(verbatim: "\(count)").font(.dm(11)).foregroundStyle(Color.dmMuted))
-            },
+            trailing: (windows != nil || shared != nil) ? AnyView(
+                HStack(spacing: m.space.xs) {
+                    if let shared { SessionShareBadge(record: shared) }
+                    if let windows {
+                        Text(verbatim: "\(windows)").font(.dm(11)).foregroundStyle(Color.dmMuted)
+                    }
+                }
+            ) : nil,
             trailingHover: glyph.hoverBadges.isEmpty ? nil : AnyView(
                 HStack(spacing: m.space.xs) {
                     ForEach(glyph.hoverBadges) { badge in

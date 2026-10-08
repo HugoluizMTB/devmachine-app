@@ -193,6 +193,22 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(session?.action, .openSession(.session(alias: "acme-devmachine", name: "dash")))
     }
 
+    func testOnlyAWorkspaceSessionCanBeShared() {
+        var current = context()
+        current.sessions = [
+            PaletteItem(
+                id: "acme-devmachine/dash", title: "dash", subtitle: "acme",
+                target: .session(alias: "acme-devmachine", name: "dash"), badges: []),
+            PaletteItem(
+                id: "local/notes", title: "notes", subtitle: "This Mac",
+                target: .localSession(name: "notes", path: "/Users/alice/notes"), badges: []),
+        ]
+        let share = command("session.share.acme-devmachine/dash", in: current)
+        XCTAssertEqual(share?.title, "Share dash…")
+        XCTAssertEqual(share?.action, .shareSession(SessionRef(alias: "acme-devmachine", name: "dash")))
+        XCTAssertNil(command("session.share.local/notes", in: current))
+    }
+
     func testSynonymsReachTheirScreens() {
         let all = commands(context())
         func top(_ query: String) -> String? {

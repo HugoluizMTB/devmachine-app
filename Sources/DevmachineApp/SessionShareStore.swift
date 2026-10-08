@@ -1,0 +1,206 @@
+import Foundation
+import DevmachineCore
+
+protocol SessionShareRunning: Sendable {
+    func run(_ arguments: [String]) async throws -> CLIOutput
+}
+
+/// Runs `devmachine run --package session-share` off the main thread, with
+/// the same ssh agent the rest of the app hands the CLI.
+struct ProcessSessionShareRunner: SessionShareRunning {
+    var cli: @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() }
+
+    func run(_ arguments: [String]) async throws -> CLIOutput {
+        let cli = self.cli
+        return try await Task.detached {
+            let instance = try cli()
+            let result = try instance.runner.runCapturing(
+                executable: instance.executable, args: arguments, environment: instance.environment())
+            return CLIOutput(stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode)
+        }.value
+    }
+}
+
+/// A session the person asked to share, waiting in the Share sheet.
+struct SessionShareRequest: Identifiable, Equatable {
+    let alias: String
+    let workspace: String
+    let session: String
+    var id: String { "\(alias)/\(session)" }
+}
+
+/// What the result sheet shows once `start` answered: the link and the
+/// password, or why it failed.
+enum SessionShareOutcome: Identifiable, Equatable {
+    case started(SessionShareRecord, password: String?)
+    case failed(DMErrorState)
+
+    var id: String {
+        switch self {
+        case let .started(record, _): return record.id
+        case let .failed(state): return state.title
+        }
+    }
+}
+
+/// The shares this Mac started: who is shared, until when, and the history
+/// Settings lists. Everything that writes (start, stop, extend) runs only
+/// from a button the person pressed; the poll only reads.
+@MainActor
+final class SessionShareStore: ObservableObject {
+    static let shared = NSClassFromString("XCTestCase") == nil && !DemoMode.isActive
+        ? SessionShareStore(
+            runner: ProcessSessionShareRunner(), history: SessionShareHistory(fileURL: SessionShareHistory.defaultFileURL),
+            polls: true)
+        : SessionShareStore(
+            runner: ProcessSessionShareRunner(cli: {
+                throw DevmachineCLIError.commandFailed("no CLI under tests or in demo mode")
+            }),
+            history: SessionShareHistory(fileURL: nil))
+
+    @Published private(set) var records: [SessionShareRecord]
+    @Published var outcome: SessionShareOutcome?
+    @Published private(set) var busy: Set<String> = []
+
+    private let runner: any SessionShareRunning
+    private let history: SessionShareHistory
+    private let now: () -> Date
+    private var pollTask: Task<Void, Never>?
+    var pollInterval: UInt64 = 30_000_000_000
+    var isPaused: (String) -> Bool = { AppModel.shared?.isPollingPaused(alias: $0) ?? false }
+
+    /// Only the app's own store polls; a test drives `refresh` itself.
+    private let polls: Bool
+
+    init(
+        runner: any SessionShareRunning, history: SessionShareHistory, polls: Bool = false,
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.runner = runner
+        self.history = history
+        self.polls = polls
+        self.now = now
+        records = history.load()
+    }
+
+    func liveShare(alias: String, session: String) -> SessionShareRecord? {
+        let at = now()
+        return records.first { $0.alias == alias && $0.session == session && $0.isLive(at: at) }
+    }
+
+    var liveRecords: [SessionShareRecord] {
+        let at = now()
+        return records.filter { $0.isLive(at: at) }
+    }
+
+    func start(_ request: SessionShareRequest, name: String, mode: SessionShareMode, duration: SessionShareDuration) async {
+        let task = AppModel.shared?.beginTask(label: "Sharing \(request.session)…", total: 1)
+        defer { if let task { AppModel.shared?.finishTask(task) } }
+        busy.insert(request.id)
+        defer { busy.remove(request.id) }
+        let arguments = SessionShareCommand.startArguments(
+            workspace: request.workspace, session: request.session, mode: mode, duration: duration, name: name)
+        do {
+            let output = try await runner.run(arguments)
+            guard output.exitCode == 0 else {
+                outcome = .failed(Self.failure("Couldn't share \(request.session)", output: output, workspace: request.workspace))
+                return
+            }
+            let started = try SessionShareCommand.parseStart(output.stdout)
+            let record = SessionShareRecord(started.share, workspace: request.workspace, alias: request.alias)
+            records.removeAll { $0.id == record.id }
+            records.insert(record, at: 0)
+            persist()
+            outcome = .started(record, password: started.password)
+            startPolling()
+        } catch {
+            outcome = .failed(DMErrorState(title: "Couldn't share \(request.session)", message: Self.describe(error)))
+        }
+    }
+
+    func stop(_ record: SessionShareRecord) async {
+        await change(record, label: "Stopping the share of \(record.session)…", failureTitle: "Couldn't stop sharing \(record.session)",
+            arguments: SessionShareCommand.stopArguments(workspace: record.workspace, id: record.id))
+    }
+
+    func extend(_ record: SessionShareRecord, by duration: String = "30m") async {
+        await change(record, label: "Adding time to \(record.session)…", failureTitle: "Couldn't add time to \(record.session)",
+            arguments: SessionShareCommand.extendArguments(workspace: record.workspace, id: record.id, by: duration))
+    }
+
+    private func change(_ record: SessionShareRecord, label: String, failureTitle: String, arguments: [String]) async {
+        let task = AppModel.shared?.beginTask(label: label, total: 1)
+        defer { if let task { AppModel.shared?.finishTask(task) } }
+        busy.insert(record.id)
+        defer { busy.remove(record.id) }
+        do {
+            let output = try await runner.run(arguments)
+            guard output.exitCode == 0 else {
+                outcome = .failed(Self.failure(failureTitle, output: output, workspace: record.workspace))
+                return
+            }
+            let share = try SessionShareCommand.parseShare(output.stdout)
+            update(record.id) { $0.update(from: share) }
+        } catch {
+            outcome = .failed(DMErrorState(title: failureTitle, message: Self.describe(error)))
+        }
+    }
+
+    /// Reads every workspace that has a live share, one after the other, as
+    /// the session sweep does. A paused workspace is left alone.
+    func refresh() async {
+        let workspaces = Dictionary(liveRecords.map { ($0.workspace, $0.alias) }, uniquingKeysWith: { first, _ in first })
+        for (workspace, alias) in workspaces.sorted(by: { $0.key < $1.key }) where !isPaused(alias) {
+            guard let output = try? await runner.run(SessionShareCommand.listArguments(workspace: workspace)),
+                  output.exitCode == 0,
+                  let shares = try? SessionShareCommand.parseList(output.stdout) else { continue }
+            let merged = SessionShareHistory.merge(records, with: shares, workspace: workspace, now: now())
+            if merged != records {
+                records = merged
+                persist()
+            }
+        }
+    }
+
+    func startPolling() {
+        guard polls, pollTask == nil else { return }
+        pollTask = Task { [weak self] in
+            while let self, !Task.isCancelled, !self.liveRecords.isEmpty {
+                await self.refresh()
+                try? await Task.sleep(nanoseconds: self.pollInterval)
+            }
+            self?.pollTask = nil
+        }
+    }
+
+    func clearEnded() {
+        let at = now()
+        records.removeAll { !$0.isLive(at: at) }
+        persist()
+    }
+
+    private func update(_ id: String, _ change: (inout SessionShareRecord) -> Void) {
+        guard let i = records.firstIndex(where: { $0.id == id }) else { return }
+        change(&records[i])
+        persist()
+    }
+
+    private func persist() {
+        try? history.save(records)
+    }
+
+    static func failure(_ title: String, output: CLIOutput, workspace: String) -> DMErrorState {
+        let message = output.stderr.isEmpty ? output.stdout : output.stderr
+        if SessionShareCommand.isMissingPackage(message) {
+            return DMErrorState(
+                title: title,
+                cause: "The workspace \(workspace) does not have the session-share package yet. Add it in Settings → Packages, then sync.",
+                details: message)
+        }
+        return DMErrorState(title: title, cause: FailureCause(message: message)?.summary, details: message)
+    }
+
+    private static func describe(_ error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+}
