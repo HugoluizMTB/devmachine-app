@@ -37,6 +37,28 @@ public struct CanvasMove: Equatable, Sendable {
     public let guides: [CanvasGuide]
 }
 
+/// A widget as the push-down sees it: where it is stored and how tall it is drawn.
+public struct CanvasPlacement: Equatable, Sendable {
+    public let id: String
+    public let x: Int
+    public let y: Int
+    public let w: Int
+    public let h: Int
+
+    public init(id: String, x: Int, y: Int, w: Int, h: Int) {
+        self.id = id
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+    }
+}
+
+public struct CanvasResize: Equatable, Sendable {
+    public let frame: BoardFrame
+    public let auto: Bool
+}
+
 /// Canvas geometry in board points (100% text size). The view multiplies by
 /// the text scale to draw and divides to store, so the file never depends
 /// on Settings.
@@ -59,11 +81,88 @@ public enum CanvasLayout {
         return CanvasSize(w: cells.columns * contract.unit, h: cells.rows * contract.unit)
     }
 
-    public static func minimumSize(sizes: [String], contract: WidgetContract = .current) -> CanvasSize {
+    /// A view that grows has no preset height to keep: the least it takes is
+    /// one stack row.
+    public static func minimumSize(
+        sizes: [String], grows: Bool = false, contract: WidgetContract = .current
+    ) -> CanvasSize {
         let all = sizes.compactMap { presetSize($0, contract: contract) }
         let fallback = presetSize("small", contract: contract) ?? CanvasSize(w: 160, h: 160)
-        guard let width = all.map(\.w).min(), let height = all.map(\.h).min() else { return fallback }
-        return CanvasSize(w: width, h: height)
+        guard let width = all.map(\.w).min(), let height = all.map(\.h).min() else {
+            return grows ? CanvasSize(w: fallback.w, h: contract.stackRow) : fallback
+        }
+        return CanvasSize(w: width, h: grows ? contract.stackRow : height)
+    }
+
+    /// `auto` follows the content. A stored height on a growing view is a
+    /// cap: it never draws taller than the content, nor shorter than a row.
+    /// Before the content is measured, a cap holds and `auto` takes one row.
+    public static func drawnHeight(
+        of widget: BoardWidget, content: Int?, grows: Bool, contract: WidgetContract = .current
+    ) -> Int {
+        guard grows else { return widget.frame.h }
+        if widget.isAuto { return content ?? contract.stackRow }
+        let cap = max(widget.frame.h, contract.stackRow)
+        return content.map { min($0, cap) } ?? cap
+    }
+
+    public static func placement(
+        of widget: BoardWidget, content: Int?, grows: Bool, contract: WidgetContract = .current
+    ) -> CanvasPlacement {
+        CanvasPlacement(
+            id: widget.id, x: widget.frame.x, y: widget.frame.y, w: widget.frame.w,
+            h: drawnHeight(of: widget, content: content, grows: grows, contract: contract))
+    }
+
+    /// The height the person dragged to, cut at the content. Within one snap
+    /// of the content the widget goes back to `auto`, so a drag to "as tall as
+    /// it is" does not freeze a height the content will outgrow.
+    public static func resizedGrowing(
+        _ frame: BoardFrame, width: Double, height: Double, content: Int, minimum: CanvasSize
+    ) -> CanvasResize {
+        let dragged = max(minimum.h, snapped(height))
+        let drawn = min(dragged, content)
+        let auto = content - drawn <= snap
+        let next = BoardFrame(x: frame.x, y: frame.y, w: max(minimum.w, snapped(width)), h: auto ? content : drawn)
+        return CanvasResize(frame: next, auto: auto)
+    }
+
+    /// Where each widget is drawn down the screen: its stored `y`, or just
+    /// under the drawn bottom of any widget above it that shares columns.
+    /// Widgets are taken in stored `y` then `x` order. Never pulls up, and
+    /// the stored frames are not touched.
+    public static func pushedDown(_ items: [CanvasPlacement]) -> [String: Int] {
+        let ordered = items.enumerated().sorted { a, b in
+            (a.element.y, a.element.x, a.offset) < (b.element.y, b.element.x, b.offset)
+        }.map(\.element)
+        var drawnY: [String: Int] = [:]
+        var above: [CanvasPlacement] = []
+        for item in ordered {
+            var y = item.y
+            for earlier in above where earlier.x < item.x + item.w && item.x < earlier.x + earlier.w {
+                y = max(y, (drawnY[earlier.id] ?? earlier.y) + earlier.h + gap)
+            }
+            drawnY[item.id] = y
+            above.append(item)
+        }
+        return drawnY
+    }
+
+    /// Back to the state a widget is added in: `auto` at its default width
+    /// when its view grows, else its default preset.
+    public static func reset(
+        _ widget: BoardWidget, defaultSize: String, grows: Bool, contract: WidgetContract = .current
+    ) -> BoardWidget {
+        var next = widget
+        let preset = presetSize(defaultSize, contract: contract)
+        if grows {
+            next.size = BoardWidget.autoSize
+            next.frame = BoardFrame(x: widget.frame.x, y: widget.frame.y, w: preset?.w ?? widget.frame.w, h: 0)
+        } else if let preset {
+            next.size = defaultSize
+            next.frame = BoardFrame(x: widget.frame.x, y: widget.frame.y, w: preset.w, h: preset.h)
+        }
+        return next
     }
 
     public static func sizeName(_ size: CanvasSize, sizes: [String], contract: WidgetContract = .current) -> String {

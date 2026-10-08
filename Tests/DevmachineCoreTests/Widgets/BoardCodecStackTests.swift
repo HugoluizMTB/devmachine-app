@@ -174,7 +174,7 @@ final class BoardCodecStackTests: XCTestCase {
         views["text"] = WidgetContract.ViewSpec(accepts: text.accepts, fields: text.fields, layouts: textLayouts, grows: text.grows)
         return WidgetContract(
             engine: c.engine, layouts: c.layouts, unit: c.unit, snap: c.snap, presets: c.presets, stackRow: c.stackRow,
-            stackEntry: c.stackEntry, slotMax: c.slotMax, slotEntry: c.slotEntry, tabsEntry: c.tabsEntry,
+            stackEntry: c.stackEntry, canvasEntry: c.canvasEntry, slotMax: c.slotMax, slotEntry: c.slotEntry, tabsEntry: c.tabsEntry,
             surfaces: c.surfaces, contextTypes: c.contextTypes, providers: c.providers,
             packageProvider: c.packageProvider, views: views, sourceKinds: c.sourceKinds, sources: c.sources, formats: c.formats,
             inputTypes: c.inputTypes, optionSources: c.optionSources, entryOverrides: c.entryOverrides)
