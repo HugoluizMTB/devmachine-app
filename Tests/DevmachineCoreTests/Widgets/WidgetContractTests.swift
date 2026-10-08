@@ -222,4 +222,15 @@ final class WidgetContractTests: XCTestCase {
         XCTAssertNil(GoDuration.seconds(""))
         XCTAssertNil(GoDuration.seconds("abc"))
     }
+
+    func testGoDurationReadsExactlyWhatGoReads() {
+        let table: [(String, TimeInterval?)] = [
+            (" 5m", nil), ("5m ", nil), ("-5m", -300), ("+5m", 300), ("0", 0), ("-0", 0), ("+0", 0),
+            ("1h30m", 5400), ("5", nil), ("\u{661}m", nil), ("-", nil), ("+", nil), (".s", nil), ("1.5s", 1.5),
+            (".5s", 0.5), ("1\u{B5}s", 1e-6), ("1us", 1e-6), ("1ns", 1e-9), ("5x", nil), ("1m-1s", nil),
+        ]
+        for (text, expected) in table {
+            XCTAssertEqual(GoDuration.seconds(text), expected, "\(text.debugDescription)")
+        }
+    }
 }

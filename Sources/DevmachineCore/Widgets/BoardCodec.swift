@@ -155,7 +155,7 @@ public enum BoardCodec {
                 throw BoardProblem(line: line(typeNode), message: "type \"\(typeName)\" must be <package>/<widget>")
             }
             type = typeName
-            with = try fields["with"].map { try scalars($0, owner: id) } ?? [:]
+            with = try fields["with"].map { try scalars($0, owner: id, withLine: keyLines["with"]) } ?? [:]
             titleOverride = try fields["title"].map { try Self.titleOverride($0, id: id) }
             everyOverride = try fields["every"].map { try Self.everyOverride($0, id: id) }
         } else if let everyNode = fields["every"] {
@@ -425,7 +425,7 @@ public enum BoardCodec {
         return BoardFrame(x: values["x"] ?? 0, y: values["y"] ?? 0, w: values["w"] ?? 0, h: values["h"] ?? 0)
     }
 
-    private static func scalars(_ node: Node, owner: String) throws -> [String: BoardScalar] {
+    private static func scalars(_ node: Node, owner: String, withLine: Int?) throws -> [String: BoardScalar] {
         guard let mapping = node.mapping else {
             throw BoardProblem(line: line(node), message: "with of widget \"\(owner)\" must be a mapping of input values")
         }
@@ -437,7 +437,7 @@ public enum BoardCodec {
             if let sequence = valueNode.sequence {
                 values[key] = .list(try sequence.map { item in
                     guard let text = item.scalar?.string else {
-                        throw BoardProblem(line: line(item), message: "\(owner): input \"\(key)\" takes a list of names, written [a, b]")
+                        throw BoardProblem(line: withLine, message: "\(owner): input \"\(key)\" takes a list of names, written [a, b]")
                     }
                     return text
                 })

@@ -170,8 +170,9 @@ public enum WidgetSourceReader {
             guard let seconds = GoDuration.seconds(text) else {
                 throw WidgetSpecProblem(["every"], "source.every \"\(text)\" is a duration such as 60s, or manual")
             }
-            if let minimum, let floor = GoDuration.seconds(minimum), seconds < floor {
-                throw WidgetSpecProblem(["every"], "source.every \(text) is below the \(kind) minimum of \(minimum)")
+            let floor = minimum.flatMap(GoDuration.seconds) ?? 0
+            if seconds < floor {
+                throw WidgetSpecProblem(["every"], "source.every \(text) is below the \(kind) minimum of \(minimum ?? "")")
             }
             return .interval(seconds)
         }
