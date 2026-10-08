@@ -1138,6 +1138,12 @@ Rules:
   collapsed`; inline `id, title, source, view, sizes, fits, size, collapsed`;
   `size` only when set, `collapsed` only when true. Inline `source` and
   `view` are written back as they were read, byte for byte.
+- **A row's width is the scroll view's content width, never the scroll
+  view's own** (`StackBoardView` measures the `VStack` inside the
+  `ScrollView`). A row pinned to the scroll view's width is wider than its
+  content area by the scroller; a row with a fixed height hid that, but one
+  that hugs its height (`auto`) made the panel 15 pt wider on every layout
+  pass and hung the main thread.
 - **The default boards are today's UI** (`DefaultStackBoard`): `[workspaces]`
   and `[shortcuts, publish-port, monitors, shells, sub-agents, todo,
   pull-requests, links]`, every entry `type: devmachine-app/<id>`,
