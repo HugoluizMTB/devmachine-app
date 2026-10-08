@@ -226,6 +226,17 @@ final class InlineWidgetFormTests: XCTestCase {
         XCTAssertFalse(form.yaml(surface: "home", id: "check").text.contains("\n      x"))
     }
 
+    func testTheCheckedHomeEntryIsAutoOnlyForAViewThatGrows() {
+        var form = filled(.command)
+        form.view = "text"
+        let grows = form.yaml(surface: "home", id: "check").text
+        XCTAssertTrue(grows.contains("    frame: {x: 0, y: 0, w: 320}\n    size: auto\n"))
+        form.parse = "number"
+        form.view = "gauge"
+        let fixed = form.yaml(surface: "home", id: "check").text
+        XCTAssertTrue(fixed.contains("    frame: {x: 0, y: 0, w: 320, h: 160}\n    size: medium\n"))
+    }
+
     func testAValueIsWrittenOnlyWhenTheViewUsesIt() {
         var form = filled(.command)
         form.parse = "json"

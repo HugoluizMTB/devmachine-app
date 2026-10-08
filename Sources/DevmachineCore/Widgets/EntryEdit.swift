@@ -80,15 +80,24 @@ public struct EditableEntry: Equatable, Sendable {
 }
 
 /// Where a new inline widget lands on a canvas: the first free spot at its
-/// preset, as a widget from the gallery lands.
+/// preset, as a widget from the gallery lands. A view that grows is added
+/// `auto`; the spot is searched with the preset's height.
 public enum InlineEntryPlacement {
+    public static let fallback = CanvasSize(w: 320, h: 160)
+
     public static func canvasWidget(
         id: String, inline: InlineWidget, preset: String, on board: Board, canvasWidth: Int,
-        contract: WidgetContract = .current
+        catalog: WidgetCatalog? = nil, contract: WidgetContract = .current
     ) -> BoardWidget {
         let known = CanvasLayout.presetSize(preset, contract: contract)
-        let size = known ?? CanvasSize(w: 320, h: 160)
-        let spot = CanvasLayout.firstFreeSpot(for: size, avoiding: board.widgets.map(\.frame), bandWidth: canvasWidth)
+        let size = known ?? fallback
+        let spot = CanvasLayout.firstFreeSpot(
+            for: size, avoiding: WidgetPlacer.occupied(by: board, catalog: catalog, contract: contract), bandWidth: canvasWidth)
+        if contract.viewGrows(inline.view.kind) {
+            return BoardWidget(
+                id: id, type: "", frame: BoardFrame(x: spot.x, y: spot.y, w: spot.w, h: 0),
+                size: BoardWidget.autoSize, z: board.topZ + 1, inline: inline)
+        }
         return BoardWidget(
             id: id, type: "", frame: spot, size: known == nil ? BoardWidget.customSize : preset,
             z: board.topZ + 1, inline: inline)

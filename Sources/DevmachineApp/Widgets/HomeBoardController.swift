@@ -212,7 +212,7 @@ final class HomeBoardController: ObservableObject {
     @discardableResult
     func add(_ widget: CatalogWidget, canvasWidth: Int) -> Bool {
         guard let store, store.canEdit, let board = store.board else { return false }
-        let instance = WidgetPlacer.newInstance(of: widget, on: board, canvasWidth: canvasWidth)
+        let instance = WidgetPlacer.newInstance(of: widget, on: board, canvasWidth: canvasWidth, catalog: catalog.catalog)
         store.update { $0.widgets.append(instance) }
         var next = placements
         next.insert(widget.name, on: board.surface)
@@ -323,7 +323,7 @@ extension HomeBoardController: WidgetEditTarget {
         guard let store, store.canEdit, let board = store.board else { return nil }
         let id = board.uniqueID(base: title)
         let widget = InlineEntryPlacement.canvasWidget(
-            id: id, inline: inline, preset: preset, on: board, canvasWidth: canvasWidth)
+            id: id, inline: inline, preset: preset, on: board, canvasWidth: canvasWidth, catalog: catalog.catalog)
         store.update { $0.widgets.append(widget) }
         return id
     }

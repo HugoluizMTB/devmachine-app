@@ -35,10 +35,55 @@ final class WidgetPlacementTests: XCTestCase {
         XCTAssertTrue(result.placementsChanged)
         let added = result.board.widgets.last
         XCTAssertEqual(added?.id, "devmachine-app-summary")
-        XCTAssertEqual(added?.frame, BoardFrame(x: 352, y: 24, w: 640, h: 160))
-        XCTAssertEqual(added?.size, "wide")
+        XCTAssertEqual(added?.frame, BoardFrame(x: 352, y: 24, w: 640, h: 0))
+        XCTAssertEqual(added?.size, "auto")
         XCTAssertEqual(added?.z, 2)
         XCTAssertTrue(result.placements.contains("devmachine-app/summary", on: "home"))
+    }
+
+    func testAGrowingWidgetIsAddedAutoAtItsDefaultWidth() {
+        let board = Board(surface: "home", widgets: [])
+        let machines = WidgetPlacer.newInstance(of: CatalogFixtures.machines, on: board, canvasWidth: 1280)
+        XCTAssertEqual(machines.size, "auto")
+        XCTAssertEqual(machines.frame, BoardFrame(x: 24, y: 24, w: 320, h: 0))
+        let clock = WidgetPlacer.newInstance(of: CatalogFixtures.clock, on: board, canvasWidth: 1280)
+        XCTAssertEqual(clock.size, "medium")
+        XCTAssertEqual(clock.frame, BoardFrame(x: 24, y: 24, w: 320, h: 160))
+    }
+
+    func testTheNextWidgetKeepsClearOfAnAutoOneByItsDefaultHeight() {
+        var board = Board(surface: "home", widgets: [])
+        let first = WidgetPlacer.newInstance(of: CatalogFixtures.machines, on: board, canvasWidth: 400, catalog: CatalogFixtures.catalog([CatalogFixtures.machines]))
+        board.widgets.append(first)
+        let second = WidgetPlacer.newInstance(
+            of: CatalogFixtures.clock, on: board, canvasWidth: 400, catalog: CatalogFixtures.catalog([CatalogFixtures.machines]))
+        XCTAssertEqual(second.frame.y, 24 + 320 + CanvasLayout.gap)
+    }
+
+    func testAnInlineWidgetIsAddedAutoWhenItsViewGrows() throws {
+        let board = Board(surface: "home", widgets: [])
+        let text = try inline(view: "text", parse: "text")
+        let grows = InlineEntryPlacement.canvasWidget(id: "disk", inline: text, preset: "medium", on: board, canvasWidth: 1280)
+        XCTAssertEqual(grows.size, "auto")
+        XCTAssertEqual(grows.frame, BoardFrame(x: 24, y: 24, w: 320, h: 0))
+        let gauge = try inline(view: "gauge", parse: "number")
+        let fixed = InlineEntryPlacement.canvasWidget(id: "dial", inline: gauge, preset: "medium", on: board, canvasWidth: 1280)
+        XCTAssertEqual(fixed.size, "medium")
+        XCTAssertEqual(fixed.frame, BoardFrame(x: 24, y: 24, w: 320, h: 160))
+    }
+
+    private func inline(view: String, parse: String) throws -> InlineWidget {
+        let text = """
+            format: 1
+            surface: home
+            widgets:
+              - id: w
+                title: W
+                source: {kind: command, run: uptime, target: local, every: 60s, parse: \(parse)}
+                view: {kind: \(view)}
+                frame: {x: 0, y: 0, w: 320, h: 160}
+            """
+        return try XCTUnwrap(try BoardCodec.decode(text).widgets.first?.inline)
     }
 
     func testARemovedWidgetDoesNotComeBack() {
