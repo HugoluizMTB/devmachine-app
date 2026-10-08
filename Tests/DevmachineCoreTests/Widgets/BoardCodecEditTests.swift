@@ -67,6 +67,16 @@ final class BoardCodecEditTests: XCTestCase {
         }
     }
 
+    func testABadItemInAMultiLineListIsRefusedAtTheWithKey() {
+        let text = home.replacingOccurrences(
+            of: "with: {machines: [main, here]}", with: "with:\n      machines:\n        - main\n        - {a: b}")
+        XCTAssertThrowsError(try BoardCodec.decode(text)) { error in
+            XCTAssertEqual(
+                error as? BoardProblem,
+                BoardProblem(line: 7, message: "machines: input \"machines\" takes a list of names, written [a, b]"))
+        }
+    }
+
     func testAnEmptyTitleIsRefused() {
         let text = home.replacingOccurrences(of: "title: Servers", with: "title: \"\"")
         XCTAssertThrowsError(try BoardCodec.decode(text)) { error in
