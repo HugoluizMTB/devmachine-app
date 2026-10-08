@@ -77,6 +77,10 @@ struct StackBoardView: View {
                 addRow
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { addRowHeight = $0 }
             }
+            // Measured inside the scroll view: a row pinned to the scroll view's own width is wider than its
+            // content area by the scroller, and a row that hugs its height then widens the panel on every pass.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .overlay(alignment: .topLeading) { dropLine }
             .coordinateSpace(name: Self.space)
         }
@@ -87,10 +91,7 @@ struct StackBoardView: View {
         .sheet(item: $editing) { request in
             WidgetEditorSheet(request: request, target: controller, onDone: { editing = nil })
         }
-        .onGeometryChange(for: CGSize.self) { $0.size } action: {
-            viewport = $0.height
-            width = $0.width
-        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
         .onHover { panelHovered = $0 }
         .onAppear {
             controller.runtime.providers = AppWidgetProviders(usage: usage, stats: stats, prs: prStore)
