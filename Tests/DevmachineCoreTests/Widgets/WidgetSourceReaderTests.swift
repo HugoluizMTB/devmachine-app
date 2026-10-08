@@ -93,6 +93,7 @@ final class WidgetSourceReaderTests: XCTestCase {
             ("templated script", with(["run": nil, "script": .string("/x/{{inputs.a}}")]), ["script"],
              "source.script cannot hold a template"),
             ("below minimum", with(["every": .string("1s")]), ["every"], "source.every 1s is below the command minimum of 5s"),
+            ("negative every", with(["every": .string("-5s")]), ["every"], "source.every -5s is below the command minimum of 5s"),
             ("no every", with(["every": nil]), ["every"], "needs source.every"),
             ("bad every", with(["every": .string("soon")]), ["every"], "a duration such as 60s, or manual"),
             ("timeout too long", with(["timeout": .string("11m")]), ["timeout"], "source.timeout 11m is above the 10m maximum"),
