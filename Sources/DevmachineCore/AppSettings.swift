@@ -100,6 +100,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// A session running a known harness shows that harness's icon before
     /// its name in the sidebar. Off by default: the sidebar stays as it was.
     public var showsHarnessIcons: Bool
+    public var showsBusySpinner: Bool
+    public var showsBranch: Bool
+    public var showsSessionAge: Bool
+    public var showsAttention: Bool
     /// How those icons are drawn: in the harness's brand colors, or in the
     /// row's own tint.
     public var harnessIconStyle: HarnessIconStyle
@@ -174,6 +178,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         remoteTerminalMode: RemoteTerminalMode = .automatic,
         copyOnSelect: Bool = true,
         showsHarnessIcons: Bool = false,
+        showsBusySpinner: Bool = true,
+        showsBranch: Bool = true,
+        showsSessionAge: Bool = true,
+        showsAttention: Bool = true,
         harnessIconStyle: HarnessIconStyle = .color,
         hiddenWorkspaces: [String] = [],
         workspaceAliases: [String: String] = [:],
@@ -200,6 +208,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.remoteTerminalMode = remoteTerminalMode
         self.copyOnSelect = copyOnSelect
         self.showsHarnessIcons = showsHarnessIcons
+        self.showsBusySpinner = showsBusySpinner
+        self.showsBranch = showsBranch
+        self.showsSessionAge = showsSessionAge
+        self.showsAttention = showsAttention
         self.harnessIconStyle = harnessIconStyle
         self.hiddenWorkspaces = hiddenWorkspaces
         self.workspaceAliases = workspaceAliases
@@ -225,6 +237,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case opsRepoPath, hostAlias, publicIP, baseDomain, sshAgentSocket, wallpaper
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging, remoteTerminalMode
         case copyOnSelect, showsHarnessIcons, harnessIconStyle
+        case showsBusySpinner, showsBranch, showsSessionAge, showsAttention
         case hiddenWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram, linkOpening
         case operatorProgram, operatorSessionEnabled
@@ -257,6 +270,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
             try values.decodeIfPresent(RemoteTerminalMode.self, forKey: .remoteTerminalMode) ?? .automatic
         copyOnSelect = try values.decodeIfPresent(Bool.self, forKey: .copyOnSelect) ?? true
         showsHarnessIcons = try values.decodeIfPresent(Bool.self, forKey: .showsHarnessIcons) ?? false
+        showsBusySpinner = try values.decodeIfPresent(Bool.self, forKey: .showsBusySpinner) ?? true
+        showsBranch = try values.decodeIfPresent(Bool.self, forKey: .showsBranch) ?? true
+        showsSessionAge = try values.decodeIfPresent(Bool.self, forKey: .showsSessionAge) ?? true
+        showsAttention = try values.decodeIfPresent(Bool.self, forKey: .showsAttention) ?? true
         harnessIconStyle = (try? values.decodeIfPresent(HarnessIconStyle.self, forKey: .harnessIconStyle)) ?? .color
         linkOpening = (try? values.decodeIfPresent(LinkOpening.self, forKey: .linkOpening)) ?? .defaultBrowser
         operatorProgram = try? values.decodeIfPresent(SessionLaunchChoice.self, forKey: .operatorProgram)
@@ -315,6 +332,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(remoteTerminalMode, forKey: .remoteTerminalMode)
         try values.encode(copyOnSelect, forKey: .copyOnSelect)
         try values.encode(showsHarnessIcons, forKey: .showsHarnessIcons)
+        try values.encode(showsBusySpinner, forKey: .showsBusySpinner)
+        try values.encode(showsBranch, forKey: .showsBranch)
+        try values.encode(showsSessionAge, forKey: .showsSessionAge)
+        try values.encode(showsAttention, forKey: .showsAttention)
         try values.encode(harnessIconStyle, forKey: .harnessIconStyle)
         try values.encode(hiddenWorkspaces, forKey: .hiddenWorkspaces)
         try values.encode(workspaceAliases, forKey: .workspaceAliases)

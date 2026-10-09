@@ -584,3 +584,27 @@ final class AppSettingsLinkOpeningTests: XCTestCase {
         XCTAssertEqual(decoded.linkOpening, .inApp)
     }
 }
+
+final class SessionIndicatorSettingTests: XCTestCase {
+    func testSessionIndicatorTogglesDefaultOnForOldSettings() throws {
+        let data = Data(#"{"opsRepoPath":"/tmp","hostAlias":"h","publicIP":"203.0.113.10","baseDomain":"example.com"}"#.utf8)
+        let s = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertTrue(s.showsBusySpinner)
+        XCTAssertTrue(s.showsBranch)
+        XCTAssertTrue(s.showsSessionAge)
+        XCTAssertTrue(s.showsAttention)
+    }
+
+    func testSessionIndicatorTogglesRoundTrip() throws {
+        var s = AppSettings.empty
+        s.showsBusySpinner = false
+        s.showsBranch = false
+        s.showsSessionAge = false
+        s.showsAttention = false
+        let back = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(s))
+        XCTAssertFalse(back.showsBusySpinner)
+        XCTAssertFalse(back.showsBranch)
+        XCTAssertFalse(back.showsSessionAge)
+        XCTAssertFalse(back.showsAttention)
+    }
+}

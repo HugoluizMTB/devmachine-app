@@ -114,6 +114,10 @@ struct SetupPage: View {
     @State private var remoteTerminalMode = RemoteTerminalMode.automatic
     @State private var copyOnSelect = true
     @State private var showsHarnessIcons = false
+    @State private var showsBusySpinner = true
+    @State private var showsBranch = true
+    @State private var showsSessionAge = true
+    @State private var showsAttention = true
     @State private var harnessIconStyle = HarnessIconStyle.color
     @State private var linkOpening = LinkOpening.defaultBrowser
     @State private var hiddenWorkspaces: [String] = []
@@ -151,6 +155,10 @@ struct SetupPage: View {
             remoteTerminalMode: remoteTerminalMode,
             copyOnSelect: copyOnSelect,
             showsHarnessIcons: showsHarnessIcons,
+            showsBusySpinner: showsBusySpinner,
+            showsBranch: showsBranch,
+            showsSessionAge: showsSessionAge,
+            showsAttention: showsAttention,
             harnessIconStyle: harnessIconStyle,
             hiddenWorkspaces: hiddenWorkspaces,
             enabledHarnesses: enabledHarnesses,
@@ -988,6 +996,36 @@ struct SetupPage: View {
                 .fixedSize()
             }
             .disabled(!showsHarnessIcons)
+            Toggle(isOn: $showsBusySpinner) {
+                Text(verbatim: "Show a spinner while the agent works")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            Toggle(isOn: $showsBranch) {
+                Text(verbatim: "Show branch or folder")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            Toggle(isOn: $showsSessionAge) {
+                Text(verbatim: "Show how long the session has run")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            Toggle(isOn: $showsAttention) {
+                Text(verbatim: "Show a dot when the agent asks for attention")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            note("Spinner and attention work for remote sessions. "
+                + "Attention needs the agent to ring the terminal bell.")
         }
     }
 
@@ -1341,6 +1379,10 @@ struct SetupPage: View {
             remoteTerminalMode = current.remoteTerminalMode
             copyOnSelect = current.copyOnSelect
             showsHarnessIcons = current.showsHarnessIcons
+            showsBusySpinner = current.showsBusySpinner
+            showsBranch = current.showsBranch
+            showsSessionAge = current.showsSessionAge
+            showsAttention = current.showsAttention
             harnessIconStyle = current.harnessIconStyle
             linkOpening = current.linkOpening
             hiddenWorkspaces = current.hiddenWorkspaces
