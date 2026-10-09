@@ -381,14 +381,13 @@ struct WorkspacesWidgetView: View {
                     switch shown.leading {
                     case .spinner:
                         ProgressView()
-                            .controlSize(.mini)
-                            .scaleEffect(0.6)
-                            .frame(width: m.pt(10), height: m.pt(10))
+                            .controlSize(.small)
+                            .frame(width: m.pt(14), height: m.pt(14))
                     case .attention:
                         Circle()
                             .fill(Color.orange)
-                            .frame(width: m.pt(6), height: m.pt(6))
-                            .frame(width: m.pt(10), height: m.pt(10))
+                            .frame(width: m.pt(8), height: m.pt(8))
+                            .frame(width: m.pt(14), height: m.pt(14))
                             .help("The agent asked for attention")
                     case .none:
                         EmptyView()
