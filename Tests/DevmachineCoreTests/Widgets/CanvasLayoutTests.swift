@@ -168,4 +168,69 @@ final class CanvasLayoutTests: XCTestCase {
 
         XCTAssertEqual(board.widgets.map { CanvasLayout.stackLevel(of: $0, in: board, lifting: nil) }, [2, 1])
     }
+
+    private func rect(_ x: Double, _ w: Double, y: Double = 0, h: Double = 100) -> CGRect {
+        CGRect(x: x, y: y, width: w, height: h)
+    }
+
+    func testAWidgetKeepsItsCentreInProportionWhenTheCanvasWidens() {
+        let xs = CanvasLayout.aligned(["clock": rect(350, 300)], from: 1000, to: 1200)
+        XCTAssertEqual(xs["clock"], 450)
+    }
+
+    func testAWidgetAtAnEdgeStaysAtThatEdge() {
+        let xs = CanvasLayout.aligned(
+            ["left": rect(24, 200), "right": rect(756, 220)], from: 1000, to: 1200)
+        XCTAssertEqual(xs["left"], 24)
+        XCTAssertEqual(xs["right"], 956)
+    }
+
+    func testWidgetsThatTouchMoveTogetherAndKeepTheirGaps() {
+        let xs = CanvasLayout.aligned(
+            ["a": rect(300, 128), "b": rect(436, 128), "c": rect(572, 128), "far": rect(300, 128, y: 400)],
+            from: 1000, to: 1200)
+        XCTAssertEqual(xs["a"], 400)
+        XCTAssertEqual(xs["b"], 536)
+        XCTAssertEqual(xs["c"], 672)
+        XCTAssertEqual(xs["far"] ?? 0, 366.99, accuracy: 0.01)
+    }
+
+    func testAWidgetJustPastTheMarginStaysInsideIt() {
+        let xs = CanvasLayout.aligned(["a": rect(30, 200)], from: 1200, to: 1000)
+        XCTAssertGreaterThan(xs["a"] ?? 0, 24)
+        XCTAssertLessThan(xs["a"] ?? 0, 30)
+    }
+
+    func testAligningBackGivesTheStoredPlaces() {
+        let stored = [
+            "edge": rect(24, 200), "near": rect(30, 160, y: 400), "clock": rect(350, 300, y: 200),
+            "a": rect(300, 128, y: 600), "b": rect(436, 128, y: 600), "usage": rect(756, 220),
+        ]
+        var drawn = stored
+        for (id, x) in CanvasLayout.aligned(stored, from: 1000, to: 1200) { drawn[id]?.origin.x = x }
+        let back = CanvasLayout.aligned(drawn, from: 1200, to: 1000)
+        for (id, frame) in stored { XCTAssertEqual(back[id] ?? -1, frame.minX, accuracy: 0.001, id) }
+    }
+
+    func testAWidgetDroppedBesideAGroupKeepsItsGapAfterTheRoundTrip() {
+        let stored = ["a": rect(300, 128), "b": rect(436, 128)]
+        var drawn = stored
+        for (id, x) in CanvasLayout.aligned(stored, from: 1000, to: 1200) { drawn[id]?.origin.x = x }
+        drawn["c"] = rect(drawn["b"]!.maxX + 8, 128)
+        var next = drawn
+        for (id, x) in CanvasLayout.aligned(drawn, from: 1200, to: 1000) { next[id]?.origin.x = x }
+        let shown = CanvasLayout.aligned(next, from: 1000, to: 1200)
+        for id in ["a", "b", "c"] { XCTAssertEqual(shown[id] ?? -1, drawn[id]!.minX, accuracy: 0.001, id) }
+    }
+
+    func testAGroupWiderThanEitherCanvasStaysPut() {
+        XCTAssertEqual(CanvasLayout.aligned(["wide": rect(100, 900)], from: 1200, to: 900), ["wide": 100])
+        XCTAssertEqual(CanvasLayout.aligned(["wide": rect(100, 900)], from: 900, to: 1200), ["wide": 100])
+    }
+
+    func testTheSameWidthMovesNothing() {
+        let stored = ["a": rect(333, 100)]
+        XCTAssertEqual(CanvasLayout.aligned(stored, from: 1000, to: 1000), ["a": 333])
+        XCTAssertEqual(CanvasLayout.aligned(stored, from: 0, to: 1000), ["a": 333])
+    }
 }
