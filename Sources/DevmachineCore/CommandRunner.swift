@@ -16,6 +16,13 @@ public protocol CommandRunner: Sendable {
         executable: String, args: [String], environment: [String: String]?, input: Data?,
         onBytesWritten: (@Sendable (Int) -> Void)?
     ) throws -> (stdout: String, stderr: String, exitCode: Int32)
+    /// Hands each stderr line to `onStderrLine` while the command runs, for
+    /// one that reports its own progress there. The result still holds all
+    /// of stderr.
+    func runCapturing(
+        executable: String, args: [String], environment: [String: String]?,
+        onStderrLine: @escaping @Sendable (String) -> Void
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32)
 }
 
 public extension CommandRunner {
@@ -47,6 +54,16 @@ public extension CommandRunner {
             executable: executable, args: args, environment: environment, input: input,
             onBytesWritten: onBytesWritten)
         return (stdout, "", 0)
+    }
+
+    /// Fakes answer at once, so their lines come after the fact.
+    func runCapturing(
+        executable: String, args: [String], environment: [String: String]?,
+        onStderrLine: @escaping @Sendable (String) -> Void
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        let result = try runCapturing(executable: executable, args: args, environment: environment)
+        result.stderr.split(separator: "\n").forEach { onStderrLine(String($0)) }
+        return result
     }
 }
 
@@ -80,8 +97,26 @@ public struct ProcessRunner: CommandRunner {
     }
 
     public func runCapturing(
+        executable: String, args: [String], environment: [String: String]?,
+        onStderrLine: @escaping @Sendable (String) -> Void
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        try capture(
+            executable: executable, args: args, environment: environment, input: nil,
+            onBytesWritten: nil, onStderrLine: onStderrLine)
+    }
+
+    public func runCapturing(
         executable: String, args: [String], environment: [String: String]?, input: Data?,
         onBytesWritten: (@Sendable (Int) -> Void)?
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        try capture(
+            executable: executable, args: args, environment: environment, input: input,
+            onBytesWritten: onBytesWritten, onStderrLine: nil)
+    }
+
+    private func capture(
+        executable: String, args: [String], environment: [String: String]?, input: Data?,
+        onBytesWritten: (@Sendable (Int) -> Void)?, onStderrLine: (@Sendable (String) -> Void)?
     ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
         // Under XCTest a real ssh must never run: `~/.ssh/config` maps every
         // `*-devmachine` alias to the real host, so a fixture alias such as
@@ -131,7 +166,7 @@ public struct ProcessRunner: CommandRunner {
         let drain = DispatchGroup()
         drain.enter()
         DispatchQueue.global(qos: .utility).async {
-            errBox.data = errHandle.readDataToEndOfFile()
+            errBox.data = Self.drain(errHandle, onLine: onStderrLine)
             drain.leave()
         }
         let data = out.fileHandleForReading.readDataToEndOfFile()
@@ -143,6 +178,26 @@ public struct ProcessRunner: CommandRunner {
             String(data: errBox.data, encoding: .utf8) ?? "",
             process.terminationStatus
         )
+    }
+}
+
+extension ProcessRunner {
+    /// Reads to the end, in whatever pieces the pipe gives, cutting lines as
+    /// they complete; a last line with no newline still counts.
+    fileprivate static func drain(_ handle: FileHandle, onLine: (@Sendable (String) -> Void)?) -> Data {
+        guard let onLine else { return handle.readDataToEndOfFile() }
+        var all = Data()
+        var pending = Data()
+        while case let chunk = handle.availableData, !chunk.isEmpty {
+            all.append(chunk)
+            pending.append(chunk)
+            while let newline = pending.firstIndex(of: 0x0A) {
+                onLine(String(decoding: pending[pending.startIndex..<newline], as: UTF8.self))
+                pending.removeSubrange(pending.startIndex...newline)
+            }
+        }
+        if !pending.isEmpty { onLine(String(decoding: pending, as: UTF8.self)) }
+        return all
     }
 }
 

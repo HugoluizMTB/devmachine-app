@@ -128,6 +128,14 @@ private struct DMComponentsGallery: View {
                 DMAgeLabel(since: Date().addingTimeInterval(-300))
             }
             MachineJobToastGallery()
+            HStack(alignment: .top, spacing: 8) {
+                DMToastCard(task: BGTask(
+                    id: UUID(), label: "Downloading report.zip", completed: 18_000_000, total: 50_000_000,
+                    showsCount: false))
+                DMToastCard(task: BGTask(
+                    id: UUID(), label: "Downloading site", completed: 0, total: 0, showsCount: false,
+                    detail: "12.4 MB"))
+            }
             DMBanner(message: "Couldn't refresh: ssh: connect to host timed out", lineLimit: 2) {
                 DMIconButton(systemImage: "arrow.clockwise", tint: nil) {}
             }

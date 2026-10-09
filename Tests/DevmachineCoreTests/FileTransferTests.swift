@@ -82,4 +82,48 @@ final class FileTransferTests: XCTestCase {
         XCTAssertEqual(FileTransfer.promisedName(of: "/home/acme/site", isDirectory: true), "site.tar.gz")
         XCTAssertEqual(FileTransfer.promisedName(of: "/home/acme/a b.png", isDirectory: false), "a b.png")
     }
+
+    func testProgressArgumentsAskForProgressBeforeThePaths() {
+        let args = FileTransfer.downloadArguments(paths: ["-rf"], workspace: "acme", to: "/tmp/x", progress: true)
+        XCTAssertEqual(args, ["--format", "json", "download", "--workspace", "acme", "--to", "/tmp/x", "--progress", "--", "-rf"])
+    }
+
+    func testParseProgressReadsALineAndNothingElse() {
+        XCTAssertEqual(
+            FileTransfer.parseProgress(#"{"remote":"/home/acme/a.png","done":512,"total":2048}"#),
+            DownloadProgress(remote: "/home/acme/a.png", done: 512, total: 2048))
+        XCTAssertNil(FileTransfer.parseProgress("error: 1 of 2 paths were not downloaded"))
+        XCTAssertNil(FileTransfer.parseProgress(""))
+    }
+
+    func testAnOlderCLIWithoutProgressIsToldApart() {
+        XCTAssertTrue(FileTransfer.isUnknownFlag(
+            "Error: unknown flag: --progress\nUsage: ...", FileTransfer.progressFlag))
+        XCTAssertFalse(FileTransfer.isUnknownFlag("Error: /x does not exist\n", FileTransfer.progressFlag))
+    }
+
+    func testWithoutProgressKeepsOnlyWhatAPersonShouldRead() {
+        let stderr = #"{"remote":"/a","done":0,"total":3}"# + "\nerror: /b does not exist\n"
+        XCTAssertEqual(FileTransfer.withoutProgress(stderr), "error: /b does not exist\n")
+    }
+
+    func testTallyAddsEveryFileAndKeepsTheLatestCountOfEach() {
+        var tally = DownloadTally()
+        tally.record(DownloadProgress(remote: "/a", done: 0, total: 100))
+        tally.record(DownloadProgress(remote: "/b", done: 0, total: 300))
+        tally.record(DownloadProgress(remote: "/a", done: 60, total: 100))
+        tally.record(DownloadProgress(remote: "/a", done: 100, total: 100))
+        tally.record(DownloadProgress(remote: "/b", done: 50, total: 300))
+        XCTAssertEqual(tally.done, 150)
+        XCTAssertEqual(tally.total, 400)
+    }
+
+    func testTallyHasNoTotalWhileAFolderIsAmongThem() {
+        var tally = DownloadTally()
+        XCTAssertNil(tally.total)
+        tally.record(DownloadProgress(remote: "/a", done: 10, total: 100))
+        tally.record(DownloadProgress(remote: "/site", done: 4096, total: 0))
+        XCTAssertNil(tally.total)
+        XCTAssertEqual(tally.done, 4106)
+    }
 }

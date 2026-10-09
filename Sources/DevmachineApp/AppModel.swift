@@ -14,6 +14,27 @@ struct BGTask: Identifiable, Equatable {
     /// Bytes read as "1048576 of 2097152", which says nothing. A job counted in
     /// bytes shows the bar alone.
     var showsCount: Bool = true
+    /// What a job of no known size has done so far, in place of the count.
+    var detail: String?
+
+    /// A counted job of 0 items has nothing left to do; a job counted in bytes
+    /// with a total of 0 does not know its size yet.
+    var isDone: Bool { total > 0 ? completed >= total : showsCount }
+
+    /// A download's bytes so far. Until there is a total (none has come yet,
+    /// or a folder is among the paths) the bar stays empty and the card says
+    /// how much has arrived.
+    mutating func showBytes(done: Int64, total: Int64?) {
+        if let total {
+            self.total = Int(clamping: total)
+            completed = Int(clamping: min(done, total))
+            detail = nil
+        } else {
+            self.total = 0
+            completed = 0
+            detail = done > 0 ? ByteCountFormatter.string(fromByteCount: done, countStyle: .file) : nil
+        }
+    }
 }
 
 struct PaletteItem: Identifiable {
@@ -481,6 +502,13 @@ final class AppModel: ObservableObject {
 
     func advanceTransfer(_ id: UUID, done: Int) {
         setTask(id, completed: done)
+    }
+
+    func advanceDownload(_ id: UUID, done: Int64, total: Int64?) {
+        guard let i = activeTasks.firstIndex(where: { $0.id == id }) else { return }
+        var task = activeTasks[i]
+        task.showBytes(done: done, total: total)
+        if task != activeTasks[i] { activeTasks[i] = task }
     }
 
     func endTransfer(_ id: UUID) {
@@ -1487,7 +1515,9 @@ final class AppModel: ObservableObject {
 
     func finishTask(_ id: UUID) {
         if let i = activeTasks.firstIndex(where: { $0.id == id }) {
+            activeTasks[i].total = max(activeTasks[i].total, 1)
             activeTasks[i].completed = activeTasks[i].total
+            activeTasks[i].detail = nil
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             self.activeTasks.removeAll { $0.id == id }
