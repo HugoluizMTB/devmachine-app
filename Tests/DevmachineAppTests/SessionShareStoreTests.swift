@@ -37,10 +37,11 @@ final class SessionShareStoreTests: XCTestCase {
 
         XCTAssertEqual(runner.calls, [SessionShareCommand.startArguments(
             workspace: "acme", session: "main", mode: .write, duration: .twoHours, name: "Pairing")])
-        guard case let .started(record, password) = store.outcome?.result else {
+        guard case let .started(record, password, unpublished) = store.outcome?.result else {
             return XCTFail("outcome = \(String(describing: store.outcome))")
         }
         XCTAssertEqual(password, "v3bd-28s5-nave-dvcg")
+        XCTAssertNil(unpublished)
         XCTAssertEqual(record.alias, "acme-devmachine")
         XCTAssertEqual(store.liveShare(alias: "acme-devmachine", session: "main")?.id, "wvx3januvgyj")
         XCTAssertNil(store.liveShare(alias: "acme-devmachine", session: "other"))
@@ -61,6 +62,52 @@ final class SessionShareStoreTests: XCTestCase {
         XCTAssertTrue(state.cause?.contains("Settings → Packages") ?? false)
         XCTAssertEqual(state.details, refused)
         XCTAssertTrue(store.records.isEmpty)
+    }
+
+    private static func localStart() -> String {
+        let local = shareJSON().replacingOccurrences(of: "https://share.example.com", with: "http://127.0.0.1:7711")
+        return #"{"version": 1, "password": "p", "share": \#(local)}"#
+    }
+
+    @MainActor
+    func testALocalLinkIsPublishedBeforeItIsShown() async {
+        let (store, runner) = store([
+            CLIOutput(stdout: Self.localStart(), stderr: "", exitCode: 0),
+            CLIOutput(stdout: #"{"domain": "example.com"}"#, stderr: "", exitCode: 0),
+            CLIOutput(stdout: #"{"status": "live"}"#, stderr: "", exitCode: 0),
+            CLIOutput(stdout: #"{"version": 1, "current": {"kind": "proxy", "url": "https://share-acme.example.com"}}"#, stderr: "", exitCode: 0),
+        ])
+
+        await store.start(request, name: "", mode: .read, duration: .oneHour)
+
+        XCTAssertEqual(runner.calls.dropFirst().map { $0 }, [
+            SessionShareCommand.configArguments,
+            ["--format", "json", "expose", "add", "acme", "7711", "--host", "share-acme.example.com", "--publish"],
+            SessionShareCommand.proxyArguments(workspace: "acme", url: "https://share-acme.example.com"),
+        ])
+        guard case let .started(record, _, unpublished) = store.outcome?.result else {
+            return XCTFail("outcome = \(String(describing: store.outcome))")
+        }
+        XCTAssertNil(unpublished)
+        XCTAssertEqual(record.url, "https://share-acme.example.com/s/wvx3januvgyj/")
+    }
+
+    @MainActor
+    func testWithNoDomainAndNoFunnelTheSheetSaysWhyTheLinkIsLocal() async {
+        let (store, runner) = store([
+            CLIOutput(stdout: Self.localStart(), stderr: "", exitCode: 0),
+            CLIOutput(stdout: #"{"domain": ""}"#, stderr: "", exitCode: 0),
+            CLIOutput(stdout: "", stderr: "session-share: this machine may not use Funnel", exitCode: 1),
+        ])
+
+        await store.start(request, name: "", mode: .read, duration: .oneHour)
+
+        XCTAssertEqual(runner.calls.last, SessionShareCommand.funnelArguments(workspace: "acme"))
+        guard case let .started(_, _, unpublished) = store.outcome?.result else {
+            return XCTFail("outcome = \(String(describing: store.outcome))")
+        }
+        XCTAssertEqual(unpublished?.title, "The link only opens on the machine")
+        XCTAssertTrue(unpublished?.cause?.contains("Settings → General") ?? false)
     }
 
     @MainActor

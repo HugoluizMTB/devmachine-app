@@ -156,6 +156,51 @@ public enum SessionShareCommand {
         run(workspace: workspace, ["shares"])
     }
 
+    /// Each workspace runs its own share server, so each gets its own name.
+    public static func publicHost(workspace: String, domain: String) -> String {
+        "share-\(workspace.lowercased()).\(domain)"
+    }
+
+    /// The port the share server listens on, read from the local link it gave.
+    public static func port(of url: String) -> Int? {
+        URL(string: url)?.port
+    }
+
+    public static func exposeAddArguments(workspace: String, port: Int, host: String) -> [String] {
+        ["--format", "json", "expose", "add", workspace, String(port), "--host", host, "--publish"]
+    }
+
+    public static func proxyArguments(workspace: String, url: String) -> [String] {
+        run(workspace: workspace, ["expose", "proxy", "--url", url, "--json"])
+    }
+
+    public static func funnelArguments(workspace: String) -> [String] {
+        run(workspace: workspace, ["expose", "funnel", "--json"])
+    }
+
+    public static let configArguments = ["--format", "json", "config", "show"]
+
+    /// A link to the same share under a published base address.
+    public static func link(base: String, id: String) -> String {
+        base.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/s/\(id)/"
+    }
+
+    public static func parseDomain(_ output: String) -> String? {
+        struct Config: Decodable { let domain: String? }
+        let domain = (try? JSONDecoder().decode(Config.self, from: Data(output.utf8)))?.domain?
+            .trimmingCharacters(in: .whitespaces)
+        return domain?.isEmpty == false ? domain : nil
+    }
+
+    private struct ExposeBody: Decodable {
+        struct Current: Decodable { let url: String }
+        let current: Current?
+    }
+
+    public static func parseExposedURL(_ output: String) throws -> String? {
+        try decode(ExposeBody.self, output).current?.url
+    }
+
     private static var decoder: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in

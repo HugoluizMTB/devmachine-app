@@ -34,15 +34,16 @@ struct SessionShareRequest: Identifiable, Equatable {
 /// failure with the same title still replaces the first on screen.
 struct SessionShareOutcome: Identifiable, Equatable {
     enum Result: Equatable {
-        case started(SessionShareRecord, password: String?)
+        /// `unpublished` says why the link only opens on the machine.
+        case started(SessionShareRecord, password: String?, unpublished: DMErrorState?)
         case failed(DMErrorState)
     }
 
     let id = UUID()
     let result: Result
 
-    static func started(_ record: SessionShareRecord, password: String?) -> Self {
-        Self(result: .started(record, password: password))
+    static func started(_ record: SessionShareRecord, password: String?, unpublished: DMErrorState? = nil) -> Self {
+        Self(result: .started(record, password: password, unpublished: unpublished))
     }
 
     static func failed(_ state: DMErrorState) -> Self {
@@ -114,15 +115,78 @@ final class SessionShareStore: ObservableObject {
                 return
             }
             let started = try SessionShareCommand.parseStart(output.stdout)
-            let record = SessionShareRecord(started.share, workspace: request.workspace, alias: request.alias)
+            var record = SessionShareRecord(started.share, workspace: request.workspace, alias: request.alias)
+            var unpublished: DMErrorState?
+            if started.share.isLocalOnly, let local = started.share.url {
+                switch await publish(workspace: request.workspace, localURL: local) {
+                case let .success(base): record.url = SessionShareCommand.link(base: base, id: record.id)
+                case let .failure(problem): unpublished = problem.state
+                }
+            }
             records.removeAll { $0.id == record.id }
             records.insert(record, at: 0)
             persist()
-            outcome = .started(record, password: started.password)
+            outcome = .started(record, password: started.password, unpublished: unpublished)
             startPolling()
         } catch {
             outcome = .failed(DMErrorState(title: "Couldn't share \(request.session)", message: Self.describe(error)))
         }
+    }
+
+    struct PublishProblem: Error {
+        let state: DMErrorState
+    }
+
+    /// The share server listens only on the machine. The first share of a
+    /// workspace publishes it once, at `share-<workspace>.<domain>` through
+    /// `devmachine expose`, or on Tailscale Funnel when no domain is set, and
+    /// tells the tool that address so every later link starts with it.
+    private func publish(workspace: String, localURL: String) async -> Result<String, PublishProblem> {
+        let title = "The link only opens on the machine"
+        guard let port = SessionShareCommand.port(of: localURL) else {
+            return .failure(PublishProblem(state: DMErrorState(title: title, message: "No port in \(localURL).")))
+        }
+        let config = try? await runner.run(SessionShareCommand.configArguments)
+        guard let domain = config.flatMap({ SessionShareCommand.parseDomain($0.stdout) }) else {
+            return await publishOnFunnel(workspace: workspace, title: title)
+        }
+        let host = SessionShareCommand.publicHost(workspace: workspace, domain: domain)
+        let task = AppModel.shared?.beginTask(label: "Publishing \(host)…", total: 1)
+        defer { if let task { AppModel.shared?.finishTask(task) } }
+        do {
+            let added = try await runner.run(SessionShareCommand.exposeAddArguments(workspace: workspace, port: port, host: host))
+            let message = added.stderr.isEmpty ? added.stdout : added.stderr
+            guard added.exitCode == 0 || message.contains("already") else {
+                return .failure(PublishProblem(state: DMErrorState(
+                    title: title, cause: "Publishing \(host) failed.", details: message)))
+            }
+            let base = "https://\(host)"
+            let recorded = try await runner.run(SessionShareCommand.proxyArguments(workspace: workspace, url: base))
+            guard recorded.exitCode == 0 else {
+                return .failure(PublishProblem(state: DMErrorState(
+                    title: title, cause: "\(host) is published, but session-share did not take the address.",
+                    details: recorded.stderr.isEmpty ? recorded.stdout : recorded.stderr)))
+            }
+            return .success(base)
+        } catch {
+            return .failure(PublishProblem(state: DMErrorState(title: title, message: Self.describe(error))))
+        }
+    }
+
+    private func publishOnFunnel(workspace: String, title: String) async -> Result<String, PublishProblem> {
+        let output: CLIOutput
+        do {
+            output = try await runner.run(SessionShareCommand.funnelArguments(workspace: workspace))
+        } catch {
+            return .failure(PublishProblem(state: DMErrorState(title: title, message: Self.describe(error))))
+        }
+        if output.exitCode == 0, let url = (try? SessionShareCommand.parseExposedURL(output.stdout)) ?? nil {
+            return .success(url)
+        }
+        return .failure(PublishProblem(state: DMErrorState(
+            title: title,
+            cause: "No domain is set in the devmachine configuration, and Tailscale Funnel is not available on this machine. Set a domain in Settings → General, then share again.",
+            details: output.stderr.isEmpty ? output.stdout : output.stderr)))
     }
 
     func stop(_ record: SessionShareRecord) async {

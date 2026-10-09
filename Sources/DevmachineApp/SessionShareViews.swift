@@ -158,8 +158,8 @@ struct ShareOutcomeSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
             switch outcome.result {
-            case let .started(record, password):
-                started(record, password: password)
+            case let .started(record, password, unpublished):
+                started(record, password: password, unpublished: unpublished)
             case let .failed(state):
                 DMErrorStateView(state: state, startsExpanded: true)
                 HStack {
@@ -173,7 +173,7 @@ struct ShareOutcomeSheet: View {
     }
 
     @ViewBuilder
-    private func started(_ record: SessionShareRecord, password: String?) -> some View {
+    private func started(_ record: SessionShareRecord, password: String?, unpublished: DMErrorState?) -> some View {
         VStack(alignment: .leading, spacing: m.space.xs) {
             Text("Sharing \(record.session)").font(.headline)
             Text("\(record.mode.title) until \(SessionShareText.time(record.expiresAt)).")
@@ -182,13 +182,14 @@ struct ShareOutcomeSheet: View {
         }
         if let url = record.url {
             DMSectionLabel(text: "Link")
-            DMCommandBlock(url, wraps: true)
-            if SessionShareInfo.isLoopback(url) {
-                HStack(spacing: m.space.xs) {
-                    Text("This link only opens on the machine until its share server is published.")
+            if let unpublished {
+                DMErrorStateView(state: unpublished)
+            } else {
+                DMCommandBlock(url, wraps: true)
+                if !SessionShareInfo.isLoopback(url) {
+                    Text("The first visit to a newly published address can take a few seconds while its certificate is issued.")
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
-                    Link("How", destination: SessionShareText.guideURL).font(.dm(11))
                 }
             }
         }
