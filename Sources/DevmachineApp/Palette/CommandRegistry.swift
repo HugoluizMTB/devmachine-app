@@ -181,11 +181,21 @@ enum CommandRegistry {
     }
 
     private static func sessionCommands(_ context: PaletteContext) -> [PaletteCommand] {
-        context.sessions.map { item in
-            PaletteCommand(
+        context.sessions.flatMap { item -> [PaletteCommand] in
+            var commands = [PaletteCommand(
                 id: "session.\(item.id)", title: item.title, subtitle: item.subtitle,
                 category: .session, systemImage: "terminal", keywords: ["switch", "jump"],
-                badges: item.badges, action: .openSession(item.target))
+                badges: item.badges, action: .openSession(item.target))]
+            // A session on this Mac runs under zmx, not tmux on a machine, so
+            // only a workspace's session can be shared.
+            if case let .session(alias, name) = item.target {
+                commands.append(PaletteCommand(
+                    id: "session.share.\(item.id)", title: "Share \(name)…", subtitle: item.subtitle,
+                    category: .session, systemImage: "person.2",
+                    keywords: ["share", "invite", "guest", "pair", "link", "watch"],
+                    action: .shareSession(SessionRef(alias: alias, name: name))))
+            }
+            return commands
         }
     }
 

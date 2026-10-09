@@ -108,6 +108,7 @@ struct PaletteDispatcher {
         case .addWidget: model.requestWidgetGallery()
         case let .sendFile(kind): system.chooseFileAndSend(to: kind)
         case .endSession: model.requestEndSession()
+        case let .shareSession(ref): model.requestShare(ref)
         case .findFile: model.showFileSearch = true
         case .refresh: refreshCurrentScreen()
         case .toggleSidebar: model.sidebarCollapsed.toggle()

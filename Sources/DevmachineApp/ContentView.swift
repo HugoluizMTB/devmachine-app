@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var contextDragStartWidth: CGFloat?
     @StateObject private var quickPublish = QuickPublishState()
     @ObservedObject private var previews = PreviewStore.shared
+    @ObservedObject private var shares = SessionShareStore.shared
     @ObservedObject private var split = DocumentSplitState.shared
     @ObservedObject private var compat = WidgetCompatibilityStore.shared
     @State private var sidebarButtonFrame: CGRect?
@@ -179,6 +180,23 @@ struct ContentView: View {
                 LocalRenameSheet(handle: pending.handle, currentName: pending.current)
                     .environmentObject(model)
             }
+        }
+        .sheet(item: $model.pendingShare) { request in
+            ShareFlowSheet(request: request, shares: shares, onClose: { model.pendingShare = nil })
+        }
+        // Stop and extend from the sidebar answer here; a share started from
+        // the Share sheet answers inside that sheet.
+        .sheet(item: Binding(
+            get: { model.pendingShare == nil ? shares.outcome : nil },
+            set: { shares.outcome = $0 }
+        )) { outcome in
+            ShareOutcomeSheet(
+                outcome: outcome,
+                onStop: { record in
+                    shares.outcome = nil
+                    Task { await shares.stop(record) }
+                },
+                onClose: { shares.outcome = nil })
         }
         .sheet(isPresented: Binding(
             get: { model.pendingEndSession != nil },

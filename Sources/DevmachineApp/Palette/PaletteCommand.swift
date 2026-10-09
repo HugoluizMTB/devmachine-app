@@ -46,6 +46,7 @@ enum PaletteAction: Equatable {
     case addWidget
     case sendFile(TerminalKind)
     case endSession
+    case shareSession(SessionRef)
     case findFile
     case refresh
     case toggleSidebar

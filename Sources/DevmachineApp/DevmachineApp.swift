@@ -83,12 +83,18 @@ struct DevmachineApp: App {
                 .environmentObject(healthCheckStore)
                 .environmentObject(usageStore)
                 .environmentObject(settingsStore)
+                .environmentObject(SessionShareStore.shared)
                 .environment(\.harnessSettingsFacade, harnessSettingsFacade)
                 .environment(\.widgetOptionSources, .live(stats: statsStore, model: model, usage: usageStore, facade: harnessSettingsFacade))
                 .environment(\.dmMetrics, metrics)
                 .environment(\.dmOpenCLIUpdate, { [model] in model.openSettings(.about) })
                 .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
                 .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
+                .onAppear {
+                    let chat = SessionChatStore.shared
+                    SessionShareStore.shared.onChange = { chat.track($0) }
+                    SessionShareStore.shared.startPolling()
+                }
                 .onAppear {
                     let stats = statsStore
                     caddyStore.statsSnapshot = { stats.state(for: $0)?.snapshot }

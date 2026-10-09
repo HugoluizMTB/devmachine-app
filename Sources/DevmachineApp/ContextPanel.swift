@@ -19,6 +19,7 @@ enum ContextTab: String, CaseIterable {
     case preview
     case files
     case git
+    case chat
 
     var title: String {
         switch self {
@@ -26,6 +27,7 @@ enum ContextTab: String, CaseIterable {
         case .preview: return "Preview"
         case .files: return "Files"
         case .git: return "Git"
+        case .chat: return "Chat"
         }
     }
 }
@@ -39,6 +41,7 @@ struct ContextPanel: View {
     @StateObject private var gitContext = ContextGitStatusStore()
     @ObservedObject private var readiness = MachineReadinessStore.shared
     @ObservedObject private var machines = MachinesStore.shared
+    @ObservedObject private var shares = SessionShareStore.shared
     @EnvironmentObject private var fileTreeStore: FileTreeStore
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var stats: StatsStore
@@ -60,6 +63,17 @@ struct ContextPanel: View {
     private var session: (alias: String, name: String)? {
         guard case let .session(alias, name) = model.selection else { return nil }
         return (alias, name)
+    }
+
+    /// The live share of the selected session, when this Mac started one.
+    private var sharedRecord: SessionShareRecord? {
+        guard let session else { return nil }
+        return shares.liveShare(alias: session.alias, session: session.name)
+    }
+
+    /// Chat is a tab only while the selected session is shared.
+    private var tabs: [ContextTab] {
+        ContextTab.allCases.filter { $0 != .chat || sharedRecord != nil }
     }
 
     private var workspaceName: String? {
@@ -102,6 +116,12 @@ struct ContextPanel: View {
                 GitTab(store: gitStore, target: commandTarget, workspace: workspaceName)
             } else {
                 message("No session")
+            }
+        case .chat:
+            if let sharedRecord {
+                SessionChatView(record: sharedRecord).id(sharedRecord.id)
+            } else {
+                message("This session is not shared. Right-click it in the sidebar and choose Share…")
             }
         }
     }
@@ -175,7 +195,7 @@ struct ContextPanel: View {
             padding: EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14),
             label: {
                 DMTabStrip(
-                    tabs: ContextTab.allCases,
+                    tabs: tabs,
                     selection: $model.contextTab,
                     title: { $0.title },
                     fontSize: 11,
