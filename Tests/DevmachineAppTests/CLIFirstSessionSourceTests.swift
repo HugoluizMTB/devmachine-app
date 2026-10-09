@@ -168,17 +168,19 @@ final class CLIFirstSessionSourceTests: XCTestCase {
         }
     }
 
-    func testACLIThatFailsOutrightHandsOnlyThatSweepToSSH() throws {
+    func testACLIThatFailsOutrightFailsEveryWorkspaceWithoutLoggingInOverSSH() {
         let runner = SessionsCLIRunner(result: ("", "no configuration found", 1))
         let fallback = RecordingFallback()
-        let source = source(runner, fallback: fallback)
 
-        let first = source.sessions(for: [acme, beta], settings: .empty)
-        _ = source.sessions(for: [acme], settings: .empty)
+        let results = source(runner, fallback: fallback).sessions(for: [acme, beta], settings: .empty)
 
-        XCTAssertEqual(runner.calls.count, 2)
-        XCTAssertEqual(fallback.calls, [[acme.alias, beta.alias], [acme.alias]])
-        XCTAssertEqual(try first[beta.alias]?.get().map(\.name), ["from-ssh"])
+        XCTAssertEqual(fallback.calls, [])
+        for alias in [acme.alias, beta.alias] {
+            XCTAssertThrowsError(try results[alias]?.get()) { error in
+                XCTAssertEqual(
+                    error as? SessionStoreError, SessionStoreError(failure: .unreachable, stderr: "no configuration found"))
+            }
+        }
     }
 
     func testAnOlderCLISwitchesToSSHForTheRestOfTheRun() throws {

@@ -45,7 +45,10 @@ struct CLIFirstSessionSource: SessionListSource {
             state.withLock { $0.useFallback = true }
             return fallback.sessions(for: workspaces, settings: settings)
         } catch {
-            return fallback.sessions(for: workspaces, settings: settings)
+            // Not the ssh fallback: that would log into every workspace every
+            // 5 s with no pause check, which is how a machine bans the Mac.
+            let failure = SessionStoreError(failure: .unreachable, stderr: error.localizedDescription)
+            return results(for: workspaces) { _ in .failure(failure) }
         }
         var reported: [String: CLISessionWorkspace] = [:]
         for entry in list.workspaces where reported[entry.name] == nil {
