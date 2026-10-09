@@ -375,29 +375,33 @@ struct WorkspacesWidgetView: View {
             showsHarnessIcons: settingsStore.settings?.showsHarnessIcons ?? false,
             badges: badges,
             hasIcon: icons.hasIcon(for:))
+        let settings = settingsStore.settings ?? .empty
+        let reservesSlot = glyph.reservesLeadingSlot || settings.showsBusySpinner || settings.showsAttention
         return DMRow(
-            leading: (glyph.reservesLeadingSlot || shown.leading != .none) ? AnyView(
+            leading: reservesSlot ? AnyView(
                 Group {
                     switch shown.leading {
                     case .spinner:
                         ProgressView()
                             .controlSize(.small)
-                            .frame(width: m.pt(14), height: m.pt(14))
+                            .scaleEffect(14.0 / 16.0)
                     case .attention:
                         Circle()
                             .fill(Color.orange)
                             .frame(width: m.pt(8), height: m.pt(8))
-                            .frame(width: m.pt(14), height: m.pt(14))
                             .help("The agent asked for attention")
-                    case .none:
+                    case .none where glyph.reservesLeadingSlot:
                         SidebarHarnessIcon(
                             icon: glyph.icon.flatMap {
                                 icons.icon(for: $0, style: settingsStore.settings?.harnessIconStyle ?? .color)
                             },
                             showsTerminal: glyph.showsTerminal,
                             help: badges.first { $0.id == glyph.icon }?.helpText)
+                    case .none:
+                        Color.clear
                     }
                 }
+                .frame(width: m.pt(14), height: m.pt(14))
             ) : nil,
             title: title,
             subtitle: shown.subtitle,
