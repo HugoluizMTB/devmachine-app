@@ -66,7 +66,13 @@ final class SessionShareStore: ObservableObject {
             }),
             history: SessionShareHistory(fileURL: nil))
 
-    @Published private(set) var records: [SessionShareRecord]
+    @Published private(set) var records: [SessionShareRecord] {
+        didSet { if records != oldValue { onChange?(liveRecords) } }
+    }
+    /// Called with the live shares whenever the list changes.
+    var onChange: (([SessionShareRecord]) -> Void)? {
+        didSet { onChange?(liveRecords) }
+    }
     @Published var outcome: SessionShareOutcome?
     @Published private(set) var busy: Set<String> = []
 

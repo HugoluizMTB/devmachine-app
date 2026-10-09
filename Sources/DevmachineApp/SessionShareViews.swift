@@ -43,13 +43,22 @@ enum SessionShareText {
 /// The mark beside a shared session's name. Orange when the guest can type.
 struct SessionShareBadge: View {
     let record: SessionShareRecord
+    @ObservedObject private var chat = SessionChatStore.shared
 
     var body: some View {
-        Image(systemName: "person.2.fill")
-            .font(.dm(9))
-            .foregroundStyle(record.mode == .write ? Color.orange : Color.dmRowText)
-            .help(SessionShareText.help(record))
-            .accessibilityLabel(SessionShareText.help(record))
+        let unread = chat.unread[record.id] ?? 0
+        HStack(spacing: 2) {
+            Image(systemName: unread > 0 ? "bubble.left.and.bubble.right.fill" : "person.2.fill")
+                .font(.dm(9))
+                .foregroundStyle(unread > 0 ? Color.accentColor : record.mode == .write ? Color.orange : Color.dmRowText)
+            if unread > 0 {
+                Text(verbatim: unread > 9 ? "9+" : "\(unread)")
+                    .font(.dm(9, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .help(unread > 0 ? "\(unread) new chat message\(unread == 1 ? "" : "s") · " + SessionShareText.help(record) : SessionShareText.help(record))
+        .accessibilityLabel(SessionShareText.help(record))
     }
 }
 
@@ -274,5 +283,112 @@ struct SharesSettingsView: View {
         }
         .padding(.horizontal, m.space.md)
         .padding(.vertical, m.space.sm)
+    }
+}
+
+/// The owner's side of the chat beside a shared session: what guests wrote,
+/// a field to answer, and the share's own actions.
+struct SessionChatView: View {
+    @Environment(\.dmMetrics) private var m
+    let record: SessionShareRecord
+    @ObservedObject private var chat = SessionChatStore.shared
+    @ObservedObject private var shares = SessionShareStore.shared
+    @State private var draft = ""
+
+    private var messages: [SessionChatMessage] { chat.messages[record.id] ?? [] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: m.space.sm) {
+                        if messages.isEmpty {
+                            Text("No messages yet. Guests write here from the shared page.")
+                                .font(.dm(11))
+                                .foregroundStyle(Color.dmMuted)
+                                .padding(.top, m.space.md)
+                        }
+                        ForEach(messages) { message in
+                            bubble(message).id(message.id)
+                        }
+                    }
+                    .padding(m.space.md)
+                }
+                .onChange(of: messages.count) {
+                    if let last = messages.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                }
+                .onAppear {
+                    if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
+            }
+            if let failure = chat.failure[record.id] {
+                Text(failure)
+                    .font(.dm(11))
+                    .foregroundStyle(Color.orange)
+                    .padding(.horizontal, m.space.md)
+            }
+            composer
+        }
+        .onAppear { chat.markRead(record.id) }
+        .onDisappear { if chat.visible == record.id { chat.visible = nil } }
+        .onChange(of: messages.count) { chat.markRead(record.id) }
+    }
+
+    private var header: some View {
+        HStack(spacing: m.space.sm) {
+            SessionShareBadge(record: record)
+            Text("\(record.mode.title) until \(SessionShareText.time(record.expiresAt))")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+            Spacer(minLength: m.space.xs)
+            if let url = record.url { DMCopyButton(text: url, title: "Link") }
+            DMButton("+30 min", variant: .ghost, size: .small) { Task { await shares.extend(record) } }
+            DMButton("Stop", variant: .ghostDanger, size: .small, isLoading: shares.busy.contains(record.id)) {
+                Task { await shares.stop(record) }
+            }
+        }
+        .padding(.horizontal, m.space.md)
+        .padding(.vertical, m.space.sm)
+    }
+
+    private func bubble(_ message: SessionChatMessage) -> some View {
+        VStack(alignment: .leading, spacing: m.pt(2)) {
+            Text(verbatim: "\(message.isOwner ? "You" : message.from) · \(SessionChatStore.isPending(message) ? "sending…" : SessionShareText.time(message.ts))")
+                .font(.dm(10))
+                .foregroundStyle(Color.dmMuted)
+            Text(verbatim: message.text)
+                .font(.dm(12))
+                .foregroundStyle(Color.dmRowText)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, m.space.sm)
+        .padding(.vertical, m.space.xs)
+        .background(
+            RoundedRectangle(cornerRadius: m.radius.row, style: .continuous)
+                .fill(message.isOwner ? Color.dmActive : Color.dmHover))
+        .frame(maxWidth: .infinity, alignment: message.isOwner ? .trailing : .leading)
+    }
+
+    private var composer: some View {
+        HStack(spacing: m.space.sm) {
+            TextField("Message the guests", text: $draft)
+                .textFieldStyle(.plain)
+                .dmField()
+                .onSubmit(send)
+            DMButton(icon: "paperplane.fill", label: "Send", variant: .primary, size: .small,
+                     isLoading: chat.sending.contains(record.id), action: send)
+        }
+        .padding(m.space.md)
+    }
+
+    private func send() {
+        let text = String(draft.prefix(500))
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        draft = ""
+        Task {
+            if await !chat.send(text, to: record), draft.isEmpty { draft = text }
+        }
     }
 }

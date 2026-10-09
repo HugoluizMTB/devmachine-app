@@ -147,4 +147,20 @@ final class SessionShareTests: XCTestCase {
         record.markEnded("expired", at: now.addingTimeInterval(5))
         XCTAssertEqual(record.endReason, "revoked")
     }
+
+    func testChatLinesAreReadOneByOne() {
+        let line = #"{"message":{"from":"bob","id":"a1","role":"guest","text":"hi <b>there</b>","ts":"2026-10-08T23:31:05.123456789Z"},"version":1}"#
+        let message = SessionShareCommand.parseChatLine(line)
+        XCTAssertEqual(message?.from, "bob")
+        XCTAssertEqual(message?.text, "hi <b>there</b>")
+        XCTAssertEqual(message?.isOwner, false)
+        XCTAssertNil(SessionShareCommand.parseChatLine("Warning: Permanently added the host key"))
+        XCTAssertNil(SessionShareCommand.parseChatLine(line.replacingOccurrences(of: #""version":1"#, with: #""version":2"#)))
+        XCTAssertEqual(
+            SessionShareCommand.chatFollowArguments(workspace: "acme", id: "wvx3januvgyj").suffix(4),
+            ["chat", "wvx3januvgyj", "--follow", "--json"])
+        XCTAssertEqual(
+            SessionShareCommand.chatSendArguments(workspace: "acme", id: "wvx3januvgyj", text: "-rf /").suffix(5),
+            ["chat", "wvx3januvgyj", "--message", "-rf /", "--json"])
+    }
 }

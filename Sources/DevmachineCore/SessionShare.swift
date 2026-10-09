@@ -120,6 +120,26 @@ public struct SessionShareInfo: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// A chat message beside a shared session. The tool has already removed
+/// control, escape and invisible characters from `text`.
+public struct SessionChatMessage: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let ts: Date
+    public let from: String
+    public let role: String
+    public let text: String
+
+    public var isOwner: Bool { role == "owner" }
+
+    public init(id: String, ts: Date, from: String, role: String, text: String) {
+        self.id = id
+        self.ts = ts
+        self.from = from
+        self.role = role
+        self.text = text
+    }
+}
+
 public struct SessionShareStarted: Equatable, Sendable {
     public let share: SessionShareInfo
     public let password: String?
@@ -179,6 +199,29 @@ public enum SessionShareCommand {
     }
 
     public static let configArguments = ["--format", "json", "config", "show"]
+
+    /// One long run that prints the chat so far, then each new message, one
+    /// JSON line each, until it is stopped.
+    public static func chatFollowArguments(workspace: String, id: String) -> [String] {
+        run(workspace: workspace, ["chat", id, "--follow", "--json"])
+    }
+
+    public static func chatSendArguments(workspace: String, id: String, text: String) -> [String] {
+        run(workspace: workspace, ["chat", id, "--message", text, "--json"])
+    }
+
+    private struct ChatLine: Decodable {
+        let version: Int
+        let message: SessionChatMessage
+    }
+
+    /// A line of `chat --follow --json`, or nil for anything else the stream
+    /// carries (ssh noise, a warning).
+    public static func parseChatLine(_ line: String) -> SessionChatMessage? {
+        guard line.hasPrefix("{"), let parsed = try? decoder.decode(ChatLine.self, from: Data(line.utf8)),
+              parsed.version == jsonVersion else { return nil }
+        return parsed.message
+    }
 
     /// A link to the same share under a published base address.
     public static func link(base: String, id: String) -> String {

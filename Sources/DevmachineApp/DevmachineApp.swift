@@ -90,7 +90,11 @@ struct DevmachineApp: App {
                 .environment(\.dmOpenCLIUpdate, { [model] in model.openSettings(.about) })
                 .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
                 .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
-                .onAppear { SessionShareStore.shared.startPolling() }
+                .onAppear {
+                    let chat = SessionChatStore.shared
+                    SessionShareStore.shared.onChange = { chat.track($0) }
+                    SessionShareStore.shared.startPolling()
+                }
                 .onAppear {
                     let stats = statsStore
                     caddyStore.statsSnapshot = { stats.state(for: $0)?.snapshot }

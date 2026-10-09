@@ -339,6 +339,7 @@ struct WorkspacesWidgetView: View {
                 }
                 Divider()
                 if let shared {
+                    Button("Open chat") { model.openChat(ref) }
                     if let url = shared.url {
                         Button("Copy share link") { Pasteboard.copy(url) }
                     }

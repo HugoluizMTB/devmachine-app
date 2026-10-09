@@ -1436,6 +1436,13 @@ final class AppModel: ObservableObject {
         selectedSessions = Set(flattened[range])
     }
 
+    /// Opens a shared session with its chat beside it.
+    func openChat(_ ref: SessionRef) {
+        clickSession(ref)
+        contextTab = .chat
+        contextCollapsed = false
+    }
+
     /// Opens the Share sheet for a session on a workspace. A session on this
     /// Mac runs under zmx, not tmux on a machine, so it has nothing to share.
     func requestShare(_ ref: SessionRef) {
