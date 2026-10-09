@@ -160,6 +160,11 @@ final class DMComponentsFitTests: XCTestCase {
         DMFitCheck.assertFits("toast") {
             DMToastCard(task: BGTask(id: UUID(), label: "Sending mockup.png", completed: 3, total: 8))
         }
+        DMFitCheck.assertFits("toast with no size yet") {
+            DMToastCard(task: BGTask(
+                id: UUID(), label: "Downloading a-long-folder-name", completed: 0, total: 0, showsCount: false,
+                detail: "128.4 MB"))
+        }
         DMFitCheck.assertFits("job card") {
             DMJobCard(title: "Publishing app.example.com…", status: .attention, steps: [
                 DMJobStep(id: "dns", title: "Create the DNS record by hand", state: .attention, detail: "app A 203.0.113.10"),

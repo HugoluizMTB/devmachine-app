@@ -420,18 +420,42 @@ struct DevmachineCLI: Sendable {
 
     /// Saves `paths` from the workspace into `directory` on this Mac. The CLI
     /// answers per path, so one missing file does not hide the others.
-    func download(paths: [String], workspace: String, to directory: String) throws -> [DownloadedFile] {
-        let result = try runner.runCapturing(
-            executable: executable,
-            args: FileTransfer.downloadArguments(paths: paths, workspace: workspace, to: directory),
-            environment: environment()
-        )
+    /// `progress` gets each running count while the bytes arrive; a CLI too
+    /// old to send them still downloads, with no counts.
+    func download(
+        paths: [String], workspace: String, to directory: String,
+        progress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) throws -> [DownloadedFile] {
+        var result: (stdout: String, stderr: String, exitCode: Int32)
+        if let progress {
+            result = try runner.runCapturing(
+                executable: executable,
+                args: FileTransfer.downloadArguments(paths: paths, workspace: workspace, to: directory, progress: true),
+                environment: environment(),
+                onStderrLine: { line in FileTransfer.parseProgress(line).map(progress) }
+            )
+            if FileTransfer.isUnknownFlag(result.stderr, FileTransfer.progressFlag) {
+                result = try runDownload(paths: paths, workspace: workspace, to: directory)
+            }
+        } else {
+            result = try runDownload(paths: paths, workspace: workspace, to: directory)
+        }
         if let files = FileTransfer.parseDownloads(result.stdout) { return files }
         if FileTransfer.isUnknownCommand(result.stderr, FileTransfer.downloadCommand) {
             throw DevmachineCLIError.needsNewerCLI(FileTransfer.downloadCommand)
         }
+        result.stderr = FileTransfer.withoutProgress(result.stderr)
         try requireSuccess(result)
         throw DevmachineCLIError.commandFailed("The CLI gave no result for the download.")
+    }
+
+    private func runDownload(paths: [String], workspace: String, to directory: String) throws
+        -> (stdout: String, stderr: String, exitCode: Int32) {
+        try runner.runCapturing(
+            executable: executable,
+            args: FileTransfer.downloadArguments(paths: paths, workspace: workspace, to: directory),
+            environment: environment()
+        )
     }
 
     /// Sends `files` into `directory` in the workspace's home.

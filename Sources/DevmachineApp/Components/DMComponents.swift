@@ -309,10 +309,14 @@ struct DMToastCard: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: m.space.sm)
-                if task.completed >= task.total {
+                if task.isDone {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                         .font(.dm(12))
+                } else if let detail = task.detail {
+                    Text(verbatim: detail)
+                        .font(.dm(11))
+                        .foregroundStyle(.secondary)
                 } else if task.showsCount {
                     // `Text("\(int)")` localizes: pt-BR renders 5182 as 5.182.
                     Text(verbatim: "\(task.completed) of \(task.total)")

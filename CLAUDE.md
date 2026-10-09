@@ -270,7 +270,9 @@ Rules:
   that appears and disappears inside a `VStack` has no fixed height, so it
   pushes everything below it down and back on every tick; the sidebar's old
   "Connecting…" bar did that on every 60s sweep. A job counted in bytes sets
-  `showsCount = false` (the bar alone), and one that ends at once uses
+  `showsCount = false` (the bar alone); while its size is unknown (a folder
+  download, packed as it travels) it keeps `total` 0 and puts the bytes so
+  far in `detail` (`BGTask.showBytes`). One that ends at once uses
   `dropTask` so it does not blink a finished card. The small
   `ProgressView().controlSize(.small)` inside a panel stays what it is: that
   panel loading its own content, not a job. A `devmachine` run against a
