@@ -5,7 +5,7 @@ struct DevmachineServices: Sendable {
 
     init(
         workspaceSource: any WorkspaceSource = CLIWorkspaceSource(),
-        sessionSource: any SessionListSource = CommandSessionSource(),
+        sessionSource: any SessionListSource = CLIFirstSessionSource(),
         contextSource: any ContextSource = DemoMode.defaultContextSource()
     ) {
         self.workspaceSource = workspaceSource
