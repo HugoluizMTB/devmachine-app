@@ -64,8 +64,36 @@ struct CommandSessionSource: SessionListSource {
             executable: "/bin/ps", args: ProcessTree.listArguments, environment: nil) {
             entries = ProcessTree.parse(processes)
         }
+        let ages = sessions.isEmpty ? [:] : ElapsedTime.parse(
+            (try? localRunner.run(
+                executable: "/bin/ps", args: ElapsedTime.psArguments(sessions.map(\.pid)),
+                environment: nil)) ?? "")
+        var branches: [String: String?] = [:]
+        for directory in Set(sessions.compactMap(\.directory)) {
+            branches[directory] = branch(in: directory)
+        }
+        let indicators = Dictionary(
+            sessions.map { session in
+                (session.name, SessionIndicators(
+                    path: session.directory,
+                    branch: session.directory.flatMap { branches[$0] ?? nil },
+                    ageSeconds: ages[session.pid]))
+            },
+            uniquingKeysWith: { first, _ in first })
         return LocalSessionSnapshot(
             sessions: sessions,
-            harnesses: facade.detect(sessions: sessions, entries: entries))
+            harnesses: facade.detect(sessions: sessions, entries: entries),
+            indicators: indicators)
+    }
+
+    private func branch(in directory: String) -> String? {
+        guard let name = GitHead.branch(fromAbbrevRef: (try? localRunner.run(
+            executable: "/usr/bin/git", args: GitHead.abbrevRefArguments(directory),
+            environment: nil)) ?? "")
+        else { return nil }
+        guard name == "HEAD" else { return name }
+        return GitHead.branch(fromAbbrevRef: (try? localRunner.run(
+            executable: "/usr/bin/git", args: GitHead.shortSHAArguments(directory),
+            environment: nil)) ?? "")
     }
 }
