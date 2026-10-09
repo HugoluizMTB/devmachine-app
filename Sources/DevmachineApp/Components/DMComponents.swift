@@ -32,6 +32,9 @@ struct DMRow: View {
     var titleColor: Color = .dmRowText
     var selected: Bool = false
     var outerHorizontalPadding: CGFloat = DMRowInset.outer
+    /// Replaces the inner leading padding, so a row's glyph can line up with
+    /// a header above it.
+    var contentLeading: CGFloat?
     /// Pushes trailing to the right and makes the background fill the full width.
     /// List rows (default). The ops footer passes false to hug the text.
     var fillWidth: Bool = true
@@ -73,7 +76,8 @@ struct DMRow: View {
             if hovering, let trailingHover { trailingHover }
             if let trailing { trailing }
         }
-        .padding(.horizontal, m.row.horizontal)
+        .padding(.leading, contentLeading.map { m.pt($0) } ?? m.row.horizontal)
+        .padding(.trailing, m.row.horizontal)
         .padding(.vertical, m.row.vertical)
         .background(DMRowBackground(selected: selected, hovering: hovering))
         .padding(.horizontal, m.pt(outerHorizontalPadding))

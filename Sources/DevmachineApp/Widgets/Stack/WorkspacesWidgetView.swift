@@ -377,7 +377,7 @@ struct WorkspacesWidgetView: View {
             hasIcon: icons.hasIcon(for:))
         return DMRow(
             leading: (glyph.reservesLeadingSlot || shown.leading != .none) ? AnyView(
-                HStack(spacing: m.space.xs) {
+                Group {
                     switch shown.leading {
                     case .spinner:
                         ProgressView()
@@ -390,9 +390,6 @@ struct WorkspacesWidgetView: View {
                             .frame(width: m.pt(14), height: m.pt(14))
                             .help("The agent asked for attention")
                     case .none:
-                        EmptyView()
-                    }
-                    if glyph.reservesLeadingSlot {
                         SidebarHarnessIcon(
                             icon: glyph.icon.flatMap {
                                 icons.icon(for: $0, style: settingsStore.settings?.harnessIconStyle ?? .color)
@@ -405,6 +402,7 @@ struct WorkspacesWidgetView: View {
             title: title,
             subtitle: shown.subtitle,
             selected: selected,
+            contentLeading: DMRowInset.horizontal - DMRowInset.outer,
             trailing: (windows != nil || shared != nil || shown.age != nil) ? AnyView(
                 HStack(spacing: m.space.xs) {
                     if let shared { SessionShareBadge(record: shared) }
