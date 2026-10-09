@@ -56,6 +56,7 @@ struct SessionShareBadge: View {
 struct ShareSessionSheet: View {
     @Environment(\.dmMetrics) private var m
     let request: SessionShareRequest
+    var isSharing = false
     let onCancel: () -> Void
     let onShare: (String, SessionShareMode, SessionShareDuration) -> Void
     @State private var name: String
@@ -63,10 +64,11 @@ struct ShareSessionSheet: View {
     @State private var duration: SessionShareDuration = .oneHour
 
     init(
-        request: SessionShareRequest, onCancel: @escaping () -> Void,
+        request: SessionShareRequest, isSharing: Bool = false, onCancel: @escaping () -> Void,
         onShare: @escaping (String, SessionShareMode, SessionShareDuration) -> Void
     ) {
         self.request = request
+        self.isSharing = isSharing
         self.onCancel = onCancel
         self.onShare = onShare
         _name = State(initialValue: request.session)
@@ -99,12 +101,51 @@ struct ShareSessionSheet: View {
             HStack {
                 Spacer()
                 DMButton("Cancel", variant: .outline, action: onCancel)
-                DMButton("Share", systemImage: "person.2") { onShare(name, mode, duration) }
+                DMButton("Share", systemImage: "person.2", isLoading: isSharing) { onShare(name, mode, duration) }
                     .keyboardShortcut(.defaultAction)
             }
         }
         .padding(m.pt(20))
         .frame(width: m.pt(400))
+    }
+}
+
+/// The Share sheet and what it answered, in one sheet: a second sheet opened
+/// while the first is closing can be dropped by SwiftUI on macOS, and the
+/// password is shown only there.
+struct ShareFlowSheet: View {
+    let request: SessionShareRequest
+    @ObservedObject var shares: SessionShareStore
+    let onClose: () -> Void
+    @State private var sharing = false
+    @State private var outcomeID: UUID?
+
+    var body: some View {
+        if let outcome = shares.outcome, outcome.id == outcomeID {
+            ShareOutcomeSheet(
+                outcome: outcome,
+                onStop: { record in
+                    close()
+                    Task { await shares.stop(record) }
+                },
+                onClose: close)
+        } else {
+            ShareSessionSheet(
+                request: request, isSharing: sharing, onCancel: onClose,
+                onShare: { name, mode, duration in
+                    sharing = true
+                    Task {
+                        await shares.start(request, name: name, mode: mode, duration: duration)
+                        outcomeID = shares.outcome?.id
+                        sharing = false
+                    }
+                })
+        }
+    }
+
+    private func close() {
+        shares.outcome = nil
+        onClose()
     }
 }
 
@@ -116,7 +157,7 @@ struct ShareOutcomeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.lg) {
-            switch outcome {
+            switch outcome.result {
             case let .started(record, password):
                 started(record, password: password)
             case let .failed(state):

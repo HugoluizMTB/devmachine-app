@@ -182,15 +182,14 @@ struct ContentView: View {
             }
         }
         .sheet(item: $model.pendingShare) { request in
-            ShareSessionSheet(
-                request: request,
-                onCancel: { model.pendingShare = nil },
-                onShare: { name, mode, duration in
-                    model.pendingShare = nil
-                    Task { await shares.start(request, name: name, mode: mode, duration: duration) }
-                })
+            ShareFlowSheet(request: request, shares: shares, onClose: { model.pendingShare = nil })
         }
-        .sheet(item: $shares.outcome) { outcome in
+        // Stop and extend from the sidebar answer here; a share started from
+        // the Share sheet answers inside that sheet.
+        .sheet(item: Binding(
+            get: { model.pendingShare == nil ? shares.outcome : nil },
+            set: { shares.outcome = $0 }
+        )) { outcome in
             ShareOutcomeSheet(
                 outcome: outcome,
                 onStop: { record in

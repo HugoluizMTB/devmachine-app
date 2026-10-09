@@ -37,7 +37,7 @@ final class SessionShareStoreTests: XCTestCase {
 
         XCTAssertEqual(runner.calls, [SessionShareCommand.startArguments(
             workspace: "acme", session: "main", mode: .write, duration: .twoHours, name: "Pairing")])
-        guard case let .started(record, password) = store.outcome else {
+        guard case let .started(record, password) = store.outcome?.result else {
             return XCTFail("outcome = \(String(describing: store.outcome))")
         }
         XCTAssertEqual(password, "v3bd-28s5-nave-dvcg")
@@ -54,13 +54,24 @@ final class SessionShareStoreTests: XCTestCase {
 
         await store.start(request, name: "", mode: .read, duration: .oneHour)
 
-        guard case let .failed(state) = store.outcome else {
+        guard case let .failed(state) = store.outcome?.result else {
             return XCTFail("outcome = \(String(describing: store.outcome))")
         }
         XCTAssertEqual(state.title, "Couldn't share main")
         XCTAssertTrue(state.cause?.contains("Settings → Packages") ?? false)
         XCTAssertEqual(state.details, refused)
         XCTAssertTrue(store.records.isEmpty)
+    }
+
+    @MainActor
+    func testTheSameFailureTwiceIsANewOutcome() async {
+        let refused = CLIOutput(stdout: "", stderr: "session-share: no such tmux session \"main\"", exitCode: 1)
+        let (store, _) = store([refused, refused])
+        await store.start(request, name: "", mode: .read, duration: .oneHour)
+        let first = store.outcome
+        await store.start(request, name: "", mode: .read, duration: .oneHour)
+        XCTAssertEqual(first?.result, store.outcome?.result)
+        XCTAssertNotEqual(first?.id, store.outcome?.id)
     }
 
     @MainActor

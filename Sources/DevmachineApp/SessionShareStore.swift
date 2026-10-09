@@ -29,17 +29,24 @@ struct SessionShareRequest: Identifiable, Equatable {
     var id: String { "\(alias)/\(session)" }
 }
 
-/// What the result sheet shows once `start` answered: the link and the
-/// password, or why it failed.
-enum SessionShareOutcome: Identifiable, Equatable {
-    case started(SessionShareRecord, password: String?)
-    case failed(DMErrorState)
+/// What the result sheet shows once a call answered: the link and the
+/// password, or why it failed. Each answer has its own id, so a second
+/// failure with the same title still replaces the first on screen.
+struct SessionShareOutcome: Identifiable, Equatable {
+    enum Result: Equatable {
+        case started(SessionShareRecord, password: String?)
+        case failed(DMErrorState)
+    }
 
-    var id: String {
-        switch self {
-        case let .started(record, _): return record.id
-        case let .failed(state): return state.title
-        }
+    let id = UUID()
+    let result: Result
+
+    static func started(_ record: SessionShareRecord, password: String?) -> Self {
+        Self(result: .started(record, password: password))
+    }
+
+    static func failed(_ state: DMErrorState) -> Self {
+        Self(result: .failed(state))
     }
 }
 
