@@ -28,6 +28,7 @@ struct DMRow: View {
     /// and a colour, such as a spoken label.
     var leading: AnyView?
     let title: String
+    var subtitle: String?
     var titleColor: Color = .dmRowText
     var selected: Bool = false
     var outerHorizontalPadding: CGFloat = DMRowInset.outer
@@ -50,10 +51,24 @@ struct DMRow: View {
                     .font(.dm(iconSize))
                     .foregroundStyle(iconColor)
             }
-            Text(title)
-                .font(.dm(DMMetrics.baseFontSize))
-                .foregroundStyle(titleColor)
-                .lineLimit(1)
+            if let subtitle {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.dm(DMMetrics.baseFontSize))
+                        .foregroundStyle(titleColor)
+                        .lineLimit(1)
+                    Text(verbatim: subtitle)
+                        .font(.dm(10.5))
+                        .foregroundStyle(Color.dmMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            } else {
+                Text(title)
+                    .font(.dm(DMMetrics.baseFontSize))
+                    .foregroundStyle(titleColor)
+                    .lineLimit(1)
+            }
             if fillWidth { Spacer() }
             if hovering, let trailingHover { trailingHover }
             if let trailing { trailing }

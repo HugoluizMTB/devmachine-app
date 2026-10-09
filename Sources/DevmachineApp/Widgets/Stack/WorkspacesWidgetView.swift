@@ -265,7 +265,8 @@ struct WorkspacesWidgetView: View {
             // A session the multiplexer does not have yet is a name waiting for
             // a shell, so it carries no client count.
             windows: live ? 1 : nil,
-            selected: isOpen
+            selected: isOpen,
+            indicators: model.indicators(for: s)
         )
             .contentShape(Rectangle())
             .onTapGesture { model.clickLocalSession(item) }
@@ -308,7 +309,8 @@ struct WorkspacesWidgetView: View {
             badges: model.badges(for: s),
             windows: s.windows,
             selected: isOpen || isMultiSelected || model.isStacked(ref),
-            shared: shared
+            shared: shared,
+            indicators: s.indicators
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -364,27 +366,52 @@ struct WorkspacesWidgetView: View {
         badges: [HarnessBadgePresentation],
         windows: Int?,
         selected: Bool,
-        shared: SessionShareRecord? = nil
+        shared: SessionShareRecord? = nil,
+        indicators: SessionIndicators? = nil
     ) -> some View {
         let icons = HarnessIconLibrary.bundled
+        let shown = SessionRowIndicators(indicators, settings: settingsStore.settings ?? .empty)
         let glyph = SessionRowGlyph(
             showsHarnessIcons: settingsStore.settings?.showsHarnessIcons ?? false,
             badges: badges,
             hasIcon: icons.hasIcon(for:))
         return DMRow(
-            leading: glyph.reservesLeadingSlot ? AnyView(
-                SidebarHarnessIcon(
-                    icon: glyph.icon.flatMap {
-                        icons.icon(for: $0, style: settingsStore.settings?.harnessIconStyle ?? .color)
-                    },
-                    showsTerminal: glyph.showsTerminal,
-                    help: badges.first { $0.id == glyph.icon }?.helpText)
+            leading: (glyph.reservesLeadingSlot || shown.leading != .none) ? AnyView(
+                HStack(spacing: m.space.xs) {
+                    switch shown.leading {
+                    case .spinner:
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.6)
+                            .frame(width: m.pt(10), height: m.pt(10))
+                    case .attention:
+                        Circle()
+                            .fill(Color.orange)
+                            .frame(width: m.pt(6), height: m.pt(6))
+                            .frame(width: m.pt(10), height: m.pt(10))
+                            .help("The agent asked for attention")
+                    case .none:
+                        EmptyView()
+                    }
+                    if glyph.reservesLeadingSlot {
+                        SidebarHarnessIcon(
+                            icon: glyph.icon.flatMap {
+                                icons.icon(for: $0, style: settingsStore.settings?.harnessIconStyle ?? .color)
+                            },
+                            showsTerminal: glyph.showsTerminal,
+                            help: badges.first { $0.id == glyph.icon }?.helpText)
+                    }
+                }
             ) : nil,
             title: title,
+            subtitle: shown.subtitle,
             selected: selected,
-            trailing: (windows != nil || shared != nil) ? AnyView(
+            trailing: (windows != nil || shared != nil || shown.age != nil) ? AnyView(
                 HStack(spacing: m.space.xs) {
                     if let shared { SessionShareBadge(record: shared) }
+                    if let age = shown.age {
+                        Text(verbatim: age).font(.dm(11)).foregroundStyle(Color.dmMuted)
+                    }
                     if let windows {
                         Text(verbatim: "\(windows)").font(.dm(11)).foregroundStyle(Color.dmMuted)
                     }
