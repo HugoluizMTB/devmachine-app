@@ -657,8 +657,16 @@ final class AppModel: ObservableObject {
     /// sharing one on-disk domain, and failing depending on run order.
     /// `NSClassFromString` finds the XCTest framework itself, which is loaded
     /// under both.
-    private static var isRunningTests: Bool {
+    nonisolated private static var isRunningTests: Bool {
         NSClassFromString("XCTestCase") != nil
+    }
+
+    /// Under XCTest no CLI is found: the real one would open ssh as a child,
+    /// which `ProcessRunner`'s guard does not see. Tests that want the CLI
+    /// path inject one.
+    nonisolated private static func defaultResolveCLI() throws -> DevmachineCLI {
+        guard !isRunningTests else { throw DevmachineCLIError.executableNotFound([]) }
+        return try DevmachineCLI.resolve()
     }
 
     private static func defaultDefaults() -> UserDefaults {
@@ -683,7 +691,8 @@ final class AppModel: ObservableObject {
             CLIAutoDetect.detect(cli: { try DevmachineCLI.resolve() })
         },
         defaults: UserDefaults = AppModel.defaultDefaults(),
-        cache: DataCache = DataCache()
+        cache: DataCache = DataCache(),
+        resolveCLI: (@Sendable () throws -> DevmachineCLI)? = nil
     ) {
         self.cache = cache
         self.store = store
@@ -694,9 +703,11 @@ final class AppModel: ObservableObject {
            let saved = try? JSONDecoder().decode(SidebarOrder.self, from: data) {
             self.sidebarOrder = saved
         }
-        let services = services ?? DevmachineServices(sessionSource: CommandSessionSource(
-            store: store, localRunner: localRunner, zmxPath: zmxPath,
-            facade: SessionHarnessFacade(registry: harnessSettingsFacade.registry)))
+        let services = services ?? DevmachineServices(sessionSource: CLIFirstSessionSource(
+            cli: resolveCLI ?? { try AppModel.defaultResolveCLI() },
+            fallback: CommandSessionSource(
+                store: store, localRunner: localRunner, zmxPath: zmxPath,
+                facade: SessionHarnessFacade(registry: harnessSettingsFacade.registry))))
         self.services = services
         self.context = ContextStore(services: services, cache: cache)
         self.harnessSettingsFacade = harnessSettingsFacade

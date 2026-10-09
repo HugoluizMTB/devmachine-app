@@ -1668,6 +1668,37 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(sender.sent.isEmpty)
     }
 
+    func testAppModelTestsNeverResolveTheRealCLI() async throws {
+        let runner = HarnessProcessRunner(remoteListing: "dash|1\n@@PANES@@\ndash|claude")
+        let model = AppModel(store: SessionStore(runner: runner))
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+
+        model.refreshAll()
+
+        try await waitUntil { !model.isSweeping }
+        XCTAssertEqual(runner.callCount(for: "/usr/bin/ssh"), 1)
+        XCTAssertEqual(model.sessionsByAlias["acme-devmachine"]?.map(\.name), ["dash"])
+    }
+
+    func testTheAppListsRemoteSessionsThroughTheCLI() async throws {
+        let cliRunner = SessionsCLIRunner(result: (
+            #"{"workspaces":[{"name":"acme","machine":"main","sessions":[{"name":"web","windows":1,"#
+                + #""path":"/home/acme/web","branch":"main","age_seconds":60,"harnesses":[],"busy":true,"attention":false}]}]}"#,
+            "", 0))
+        let sshRunner = HarnessProcessRunner()
+        let model = AppModel(
+            store: SessionStore(runner: sshRunner),
+            resolveCLI: { DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: cliRunner) })
+        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
+
+        model.refreshAll()
+
+        try await waitUntil { !model.isSweeping }
+        XCTAssertEqual(cliRunner.calls.count, 1)
+        XCTAssertEqual(sshRunner.callCount(for: "/usr/bin/ssh"), 0)
+        XCTAssertEqual(model.sessionsByAlias["acme-devmachine"]?.first?.indicators?.busy, true)
+    }
+
     private let acme = Workspace(name: "acme", alias: "acme-devmachine")
     private let beta = Workspace(name: "beta", alias: "beta-devmachine")
 
