@@ -239,6 +239,33 @@ final class CLIFirstSessionSourceTests: XCTestCase {
         XCTAssertEqual(sessions.first?.indicators?.ageSeconds, 60)
     }
 
+    func testAUsableCLIAsksAllWorkspacesAtOnce() {
+        let runner = SessionsCLIRunner(result: (output(workspace("acme")), "", 0))
+
+        XCTAssertTrue(source(runner).asksAllAtOnce)
+    }
+
+    func testAMissingCLIDoesNotAskAllAtOnce() {
+        let source = CLIFirstSessionSource(
+            cli: { throw DevmachineCLIError.executableNotFound(["/opt/homebrew/bin/devmachine"]) },
+            fallback: RecordingFallback())
+
+        XCTAssertFalse(source.asksAllAtOnce)
+    }
+
+    func testAnOlderCLIStopsAskingAllAtOnce() {
+        let runner = SessionsCLIRunner(result: ("", "Error: unknown command \"sessions\" for \"devmachine\"", 1))
+        let source = source(runner)
+
+        _ = source.sessions(for: [acme], settings: .empty)
+
+        XCTAssertFalse(source.asksAllAtOnce)
+    }
+
+    func testTheSSHSourceAsksOneWorkspaceAtATime() {
+        XCTAssertFalse(RecordingFallback().asksAllAtOnce)
+    }
+
     func testLocalSessionsStayWithTheFallback() throws {
         let runner = SessionsCLIRunner(result: ("", "", 0))
         let fallback = RecordingFallback()

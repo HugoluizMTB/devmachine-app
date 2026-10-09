@@ -566,60 +566,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(runner.calls(for: "beta-devmachine"), 1)
     }
 
-    func testSelectingASessionPollsOnlyTheSelectedAlias() {
-        let runner = CountingRunner()
-        let model = AppModel(store: SessionStore(runner: runner))
-        model.workspaces = [
-            Workspace(name: "acme", alias: "acme-devmachine"),
-            Workspace(name: "beta", alias: "beta-devmachine")
-        ]
-        model.sessionsByAlias = [
-            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [.claude])]
-        ]
-
-        model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
-
-        XCTAssertTrue(model.hasSelectionPollTimer)
-        XCTAssertEqual(model.selectionPollTarget, "acme-devmachine")
-    }
-
-    func testChangingSelectionRetargetsThePoll() {
-        let runner = CountingRunner()
-        let model = AppModel(store: SessionStore(runner: runner))
-        model.workspaces = [
-            Workspace(name: "acme", alias: "acme-devmachine"),
-            Workspace(name: "beta", alias: "beta-devmachine")
-        ]
-        model.sessionsByAlias = [
-            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [.claude])],
-            "beta-devmachine": [TmuxSession(name: "web", windows: 1, harnesses: [.claude])]
-        ]
-
-        model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
-        XCTAssertEqual(model.selectionPollTarget, "acme-devmachine")
-
-        model.clickSession(SessionRef(alias: "beta-devmachine", name: "web"))
-        XCTAssertEqual(model.selectionPollTarget, "beta-devmachine")
-    }
-
-    func testSelectionStartsThePollAndHomeStopsIt() {
-        let runner = CountingRunner()
-        let model = AppModel(store: SessionStore(runner: runner))
-        model.workspaces = [Workspace(name: "acme", alias: "acme-devmachine")]
-        model.sessionsByAlias = [
-            "acme-devmachine": [TmuxSession(name: "dash", windows: 1, harnesses: [.claude])]
-        ]
-
-        model.clickSession(SessionRef(alias: "acme-devmachine", name: "dash"))
-        XCTAssertTrue(model.hasSelectionPollTimer)
-        XCTAssertEqual(model.selectionPollTarget, "acme-devmachine")
-
-        model.goHome()
-
-        XCTAssertFalse(model.hasSelectionPollTimer)
-        XCTAssertNil(model.selectionPollTarget)
-    }
-
     func testTheLastPaletteItemIsTheLocalOperatorSession() {
         let model = AppModel(store: SessionStore(runner: CountingRunner()))
         model.settings = AppSettings(
@@ -1423,7 +1369,6 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertNil(model.sessionsByAlias["initech-devmachine"])
         XCTAssertNil(model.selection)
-        XCTAssertNil(model.selectionPollTarget)
     }
 
     @MainActor
@@ -1723,6 +1668,122 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(sender.sent.isEmpty)
     }
 
+    private let acme = Workspace(name: "acme", alias: "acme-devmachine")
+    private let beta = Workspace(name: "beta", alias: "beta-devmachine")
+
+    private func sweepModel(_ source: SweepRecordingSource) -> AppModel {
+        let model = AppModel(
+            services: DevmachineServices(
+                workspaceSource: FixtureWorkspaceSource(values: []), sessionSource: source,
+                contextSource: FixtureContextSource()),
+            detectSettings: { .empty })
+        model.workspaces = [acme, beta]
+        return model
+    }
+
+    private func sweep(_ model: AppModel) async throws {
+        model.refreshAll()
+        try await waitUntil { !model.isSweeping }
+    }
+
+    func testSweepAsksAllWorkspacesInOneCall() async throws {
+        let source = SweepRecordingSource(asksAllAtOnce: true)
+        let model = sweepModel(source)
+
+        try await sweep(model)
+
+        XCTAssertEqual(source.batchCalls, [[acme.alias, beta.alias]])
+        XCTAssertEqual(source.singleCalls, [])
+        XCTAssertEqual(model.sessionsByAlias[acme.alias]?.map(\.name), ["dash"])
+        XCTAssertEqual(model.sessionsByAlias[beta.alias]?.map(\.name), ["dash"])
+    }
+
+    func testSweepSkipsPausedWorkspace() async throws {
+        let source = SweepRecordingSource(asksAllAtOnce: true)
+        let model = sweepModel(source)
+        model.noteSSHFailure(alias: acme.alias, .authDenied)
+
+        try await sweep(model)
+
+        XCTAssertEqual(source.batchCalls, [[beta.alias]])
+    }
+
+    func testSweepAppliesEachResult() async throws {
+        let source = SweepRecordingSource(asksAllAtOnce: true)
+        source.fail(beta.alias, with: SessionListError(problem: .tmuxMissing, stderr: "tmux: command not found"))
+        let model = sweepModel(source)
+
+        try await sweep(model)
+
+        XCTAssertEqual(model.sessionsByAlias[acme.alias]?.map(\.name), ["dash"])
+        XCTAssertNil(model.sessionProblems[acme.alias])
+        XCTAssertNotNil(model.sessionProblems[beta.alias])
+        XCTAssertNil(model.sessionsByAlias[beta.alias])
+    }
+
+    func testTheSweepCardShowsOnlyOnTheFirstSweep() async throws {
+        let source = SweepRecordingSource(asksAllAtOnce: true)
+        let model = sweepModel(source)
+
+        try await sweep(model)
+        model.refreshAll()
+
+        XCTAssertTrue(model.isSweeping)
+        XCTAssertTrue(model.activeTasks.isEmpty)
+        try await waitUntil { !model.isSweeping }
+    }
+
+    func testATickOnABatchedSourceSweepsEveryWorkspaceInOneCall() async throws {
+        let source = SweepRecordingSource(asksAllAtOnce: true)
+        let model = sweepModel(source)
+        model.selection = .session(alias: acme.alias, name: "dash")
+
+        model.tick()
+        try await waitUntil { !model.isSweeping }
+        model.tick()
+        try await waitUntil { !model.isSweeping }
+
+        XCTAssertEqual(source.batchCalls, [[acme.alias, beta.alias], [acme.alias, beta.alias]])
+        XCTAssertEqual(source.singleCalls, [])
+    }
+
+    func testATickOnTheSSHPathPollsTheSelectedWorkspaceAndSweepsOnceAMinute() async throws {
+        let source = SweepRecordingSource(asksAllAtOnce: false)
+        let model = sweepModel(source)
+        var now = Date(timeIntervalSince1970: 1_000_000)
+        model.sweepClock = { now }
+        model.selection = .session(alias: acme.alias, name: "dash")
+
+        model.tick()
+        try await waitUntil { !model.isSweeping }
+        XCTAssertEqual(source.singleCalls, [acme.alias, beta.alias])
+
+        now += 5
+        model.tick()
+        try await waitUntil { source.singleCalls.count == 3 }
+        XCTAssertEqual(source.singleCalls.last, acme.alias)
+
+        now += 55
+        model.tick()
+        try await waitUntil { source.singleCalls.count == 5 && !model.isSweeping }
+        XCTAssertEqual(source.singleCalls, [acme.alias, beta.alias, acme.alias, acme.alias, beta.alias])
+        XCTAssertEqual(source.batchCalls, [])
+    }
+
+    func testATickOnTheSSHPathWithNothingSelectedOnlySweeps() async throws {
+        let source = SweepRecordingSource(asksAllAtOnce: false)
+        let model = sweepModel(source)
+        var now = Date(timeIntervalSince1970: 1_000_000)
+        model.sweepClock = { now }
+
+        model.tick()
+        try await waitUntil { !model.isSweeping }
+        now += 5
+        model.tick()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(source.singleCalls, [acme.alias, beta.alias])
+    }
 }
 
 private final class ThrowingRunner: CommandRunner, @unchecked Sendable {
@@ -1779,5 +1840,68 @@ private final class UnreachableRunner: CommandRunner, @unchecked Sendable {
     func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
         -> (stdout: String, stderr: String, exitCode: Int32) {
         ("", "ssh: connect to host port 22: Operation timed out", 255)
+    }
+}
+
+/// Records which workspaces each call asked for, one at a time or all at
+/// once, and answers each from a script.
+private final class SweepRecordingSource: SessionListSource, @unchecked Sendable {
+    let asksAllAtOnce: Bool
+    private let lock = NSLock()
+    private var failures: [String: any Error] = [:]
+    private var storedSingle: [String] = []
+    private var storedBatch: [[String]] = []
+
+    init(asksAllAtOnce: Bool) {
+        self.asksAllAtOnce = asksAllAtOnce
+    }
+
+    func fail(_ alias: String, with error: any Error) {
+        lock.lock()
+        failures[alias] = error
+        lock.unlock()
+    }
+
+    func sessions(for workspace: Workspace, settings: AppSettings) throws -> [TmuxSession] {
+        lock.lock()
+        storedSingle.append(workspace.alias)
+        let failure = failures[workspace.alias]
+        lock.unlock()
+        if let failure { throw failure }
+        return [TmuxSession(name: "dash", windows: 1, harnesses: [])]
+    }
+
+    func sessions(
+        for workspaces: [Workspace], settings: AppSettings
+    ) -> [String: Result<[TmuxSession], any Error>] {
+        lock.lock()
+        storedBatch.append(workspaces.map(\.alias))
+        let failures = failures
+        lock.unlock()
+        var results: [String: Result<[TmuxSession], any Error>] = [:]
+        for workspace in workspaces {
+            if let failure = failures[workspace.alias] {
+                results[workspace.alias] = .failure(failure)
+            } else {
+                results[workspace.alias] = .success([TmuxSession(name: "dash", windows: 1, harnesses: [])])
+            }
+        }
+        return results
+    }
+
+    func localSessions(settings: AppSettings) throws -> LocalSessionSnapshot {
+        LocalSessionSnapshot(sessions: [], harnesses: [:])
+    }
+
+    var singleCalls: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedSingle
+    }
+
+    var batchCalls: [[String]] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedBatch
     }
 }

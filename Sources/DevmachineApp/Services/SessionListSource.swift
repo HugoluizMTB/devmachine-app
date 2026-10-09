@@ -8,6 +8,10 @@ struct LocalSessionSnapshot: Equatable, Sendable {
 }
 
 protocol SessionListSource: Sendable {
+    /// True when `sessions(for: [Workspace])` asks every workspace in one
+    /// call. False means it logs into each one in turn, so the app keeps its
+    /// slower sweep that stops at a paused workspace.
+    var asksAllAtOnce: Bool { get }
     func sessions(for workspace: Workspace, settings: AppSettings) throws -> [TmuxSession]
     func sessions(
         for workspaces: [Workspace], settings: AppSettings
@@ -16,6 +20,8 @@ protocol SessionListSource: Sendable {
 }
 
 extension SessionListSource {
+    var asksAllAtOnce: Bool { false }
+
     /// Keyed by workspace alias. A source that can ask every workspace in one
     /// call overrides this.
     func sessions(

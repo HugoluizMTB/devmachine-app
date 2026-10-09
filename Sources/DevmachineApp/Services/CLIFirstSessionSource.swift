@@ -23,6 +23,8 @@ struct CLIFirstSessionSource: SessionListSource {
         self.fallback = fallback
     }
 
+    var asksAllAtOnce: Bool { currentCLI() != nil }
+
     func sessions(for workspace: Workspace, settings: AppSettings) throws -> [TmuxSession] {
         guard let result = sessions(for: [workspace], settings: settings)[workspace.alias] else {
             throw Self.notReported(workspace)

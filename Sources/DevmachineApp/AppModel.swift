@@ -633,10 +633,10 @@ final class AppModel: ObservableObject {
     private let detectSettings: @Sendable () -> CLIDetectedSettings
     private var navigationHistory = NavigationHistory(initial: .home)
     private var isRestoringNavigation = false
-    private var selectionPollTimer: Timer? = nil
-    private var selectionPollAlias: String? = nil
     private var refreshingAliases: Set<String> = []
     private var sweepInFlight = false
+    private var hasSweptOnce = false
+    private var lastSweepAt: Date?
     private var sweepTimer: Timer? = nil
     private var localScanTimer: Timer? = nil
     // Workspaces that appeared while the app was open and have not logged in
@@ -731,11 +731,6 @@ final class AppModel: ObservableObject {
             updateSidebarOrder { $0.removeWorkspace(alias) }
             sessionsByAlias[alias] = nil
             offlineAliases.remove(alias)
-            if selectionPollAlias == alias {
-                selectionPollTimer?.invalidate()
-                selectionPollTimer = nil
-                selectionPollAlias = nil
-            }
         }
         if case let .session(alias, _) = selection,
            WorkspaceVisibility.isHidden(alias, hidden: hidden) {
@@ -855,9 +850,6 @@ final class AppModel: ObservableObject {
             drop(ref, item: .session(alias: ref.alias, name: ref.name))
         }
     }
-
-    var hasSelectionPollTimer: Bool { selectionPollTimer != nil }
-    var selectionPollTarget: String? { selectionPollAlias }
 
     func newSession(alias: String) {
         pendingNewSessionAlias = alias
@@ -1838,11 +1830,9 @@ final class AppModel: ObservableObject {
         showCachedSessions()
         refreshAll()
         checkPackageGate()
-        // A slow sweep of every workspace so an offline one comes back on its
-        // own; the 5s timer only follows the selected one.
         sweepTimer?.invalidate()
-        sweepTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshAll() }
+        sweepTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick() }
         }
         scanLocalSessions()
         localScanTimer?.invalidate()
@@ -1978,38 +1968,76 @@ final class AppModel: ObservableObject {
         }
         guard !targets.isEmpty else { return }
         sweepInFlight = true
-        let sweepTask = beginTask(label: "Connecting workspaces…", total: targets.count)
+        lastSweepAt = sweepClock()
+        // Only the first sweep is a card: at one sweep every 5 s it would
+        // otherwise blink in the corner all the time.
+        let sweepTask = hasSweptOnce ? nil : beginTask(label: "Connecting workspaces…", total: targets.count)
+        hasSweptOnce = true
         sweepTaskID = sweepTask
         for ws in targets { refreshingAliases.insert(ws.alias) }
         let source = services.sessionSource
+        let asksAllAtOnce = source.asksAllAtOnce
         let settings = settings ?? .empty
         Task.detached {
-            for ws in targets {
-                // An unreachable machine met earlier in this sweep paused
-                // the rest of its workspaces.
-                let paused = await MainActor.run { self.isPollingPaused(alias: ws.alias) }
-                let outcome = paused ? nil : Result { try source.sessions(for: ws, settings: settings) }
+            if asksAllAtOnce {
+                let results = source.sessions(for: targets, settings: settings)
                 await MainActor.run {
-                    if let outcome { self.apply(outcome, alias: ws.alias) }
-                    self.bumpTask(sweepTask)
+                    for ws in targets {
+                        // A failure applied earlier in this loop may have
+                        // paused the rest of its machine.
+                        if !self.isPollingPaused(alias: ws.alias), let outcome = results[ws.alias] {
+                            self.apply(outcome, alias: ws.alias)
+                        }
+                        if let sweepTask { self.bumpTask(sweepTask) }
+                    }
+                }
+            } else {
+                for ws in targets {
+                    // An unreachable machine met earlier in this sweep paused
+                    // the rest of its workspaces.
+                    let paused = await MainActor.run { self.isPollingPaused(alias: ws.alias) }
+                    let outcome = paused ? nil : Result { try source.sessions(for: ws, settings: settings) }
+                    await MainActor.run {
+                        if let outcome { self.apply(outcome, alias: ws.alias) }
+                        if let sweepTask { self.bumpTask(sweepTask) }
+                    }
                 }
             }
             await MainActor.run {
                 for ws in targets { self.refreshingAliases.remove(ws.alias) }
                 self.sweepInFlight = false
                 self.sweepTaskID = nil
-                self.dropTask(sweepTask)
+                if let sweepTask { self.dropTask(sweepTask) }
                 for ws in targets { self.refreshAgainIfAsked(ws.alias) }
             }
         }
+    }
+
+    /// When the last sweep started is measured against this; tests move it.
+    var sweepClock: @MainActor () -> Date = { Date() }
+
+    /// Every 5 s. A source that asks every workspace in one call sweeps them
+    /// all each time. The ssh path keeps its old load: the selected
+    /// workspace every 5 s, and every workspace once a minute, one at a time,
+    /// so an offline one comes back on its own.
+    func tick() {
+        if services.sessionSource.asksAllAtOnce {
+            refreshAll()
+            return
+        }
+        if let lastSweepAt, sweepClock().timeIntervalSince(lastSweepAt) < 60 {
+            if case let .session(alias, _) = selection { refresh(alias: alias) }
+            return
+        }
+        refreshAll()
     }
 
     func refresh(alias: String) {
         guard !DemoMode.isActive, !isPollingPaused(alias: alias),
               let ws = visibleWorkspaces.first(where: { $0.alias == alias }) else { return }
         // A refused host key fails the same way until someone reviews it: the
-        // 5s selection poll leaves it to the 60s sweep instead of a handshake
-        // every tick. Retry and a trust clear the problem first.
+        // 5s poll of the selected workspace leaves it to the sweep instead of
+        // a handshake every tick. Retry and a trust clear the problem first.
         guard sessionProblems[alias]?.isHostKeyRejected != true else { return }
         // Each try before the sync is one more denied login toward a ban:
         // only a configuration change or Try again asks again.
@@ -2132,7 +2160,7 @@ final class AppModel: ObservableObject {
     }
 
     /// True while a failure holds this workspace back from every automatic
-    /// login: the sweep, the selection poll, the context and the copy mode
+    /// login: the sweep, the selected workspace's poll, the context and the copy mode
     /// check. Try again and opening a session still log in once.
     func isPollingPaused(alias: String) -> Bool {
         guard let pause = pollPauses[alias] else { return false }
@@ -2252,11 +2280,9 @@ final class AppModel: ObservableObject {
             hasTarget: selectedSessionTarget != nil, boardNeedsContext: contextBoardNeedsSessionContext),
               let target = selectedSessionTarget else {
             context.stop()
-            updateSelectionPoll()
             return
         }
         context.start(target, harnesses: selectedSessionHarnesses, settings: settings ?? .empty)
-        updateSelectionPoll()
     }
 
     var showsContextPanel: Bool { selection != nil && activePage == nil }
@@ -2329,23 +2355,6 @@ final class AppModel: ObservableObject {
                 session: name, path: session.flatMap(localWorkingDirectory) ?? path)
         case nil:
             return nil
-        }
-    }
-
-    // 5s poll of only the selected session's workspace; no session selected, no poll.
-    private func updateSelectionPoll() {
-        guard case let .session(alias, _) = selection else {
-            selectionPollTimer?.invalidate()
-            selectionPollTimer = nil
-            selectionPollAlias = nil
-            return
-        }
-        guard selectionPollAlias != alias || selectionPollTimer == nil else { return }
-
-        selectionPollAlias = alias
-        selectionPollTimer?.invalidate()
-        selectionPollTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh(alias: alias) }
         }
     }
 }
