@@ -119,7 +119,7 @@ struct ContextPanel: View {
             }
         case .chat:
             if let sharedRecord {
-                SessionChatView(record: sharedRecord)
+                SessionChatView(record: sharedRecord).id(sharedRecord.id)
             } else {
                 message("This session is not shared. Right-click it in the sidebar and choose Share…")
             }

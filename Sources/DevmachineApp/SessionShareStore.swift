@@ -244,8 +244,12 @@ final class SessionShareStore: ObservableObject {
         pollTask = Task { [weak self] in
             while let self, !Task.isCancelled, !self.liveRecords.isEmpty {
                 await self.refresh()
+                // A share can run out by time alone, with nothing in the
+                // records changing: the live list is handed over every round.
+                self.onChange?(self.liveRecords)
                 try? await Task.sleep(nanoseconds: self.pollInterval)
             }
+            self?.onChange?(self?.liveRecords ?? [])
             self?.pollTask = nil
         }
     }

@@ -35,6 +35,16 @@ final class SessionChatStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testABurstOfLinesKeepsItsOrder() async {
+        let lines = (1...40).map { Self.line(String(format: "m%02d", $0), from: "bob", role: "guest", text: "\($0)") }
+        let store = SessionChatStore(streamer: FakeChatStreamer(lines: lines), runner: FakeSessionShareRunner([]))
+        store.follow(record)
+        await waitUntil { store.messages[self.record.id]?.count == 40 }
+        XCTAssertEqual(store.messages[record.id]?.map(\.text), (1...40).map { "\($0)" })
+        store.track([])
+    }
+
+    @MainActor
     func testSendUsesMessageSoAnyTextGetsThrough() async {
         let runner = FakeSessionShareRunner([CLIOutput(stdout: "{}", stderr: "", exitCode: 0)])
         let store = SessionChatStore(streamer: FakeChatStreamer(lines: []), runner: runner)

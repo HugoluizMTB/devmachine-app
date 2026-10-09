@@ -66,13 +66,19 @@ final class SessionChatStore: ObservableObject {
         let arguments = SessionShareCommand.chatFollowArguments(workspace: record.workspace, id: id)
         streams[id] = Task { [weak self] in
             while !Task.isCancelled {
-                let status = try? await self?.streamer.stream(arguments) { line in
+                guard let streamer = self?.streamer, let delay = self?.retryDelay else { return }
+                let status = try? await streamer.stream(arguments) { line in
                     guard let message = SessionShareCommand.parseChatLine(line) else { return }
-                    Task { @MainActor in self?.receive(message, share: id) }
+                    // The main queue runs blocks in the order they were sent,
+                    // so a burst of lines (history after a reconnect) keeps
+                    // its order; separate tasks would not promise that.
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { self?.receive(message, share: id) }
+                    }
                 }
                 if Task.isCancelled { return }
-                await MainActor.run { self?.failure[id] = status == 0 ? nil : "The chat connection dropped; reconnecting." }
-                try? await Task.sleep(nanoseconds: self?.retryDelay ?? 5_000_000_000)
+                self?.failure[id] = status == 0 ? nil : "The chat connection dropped; reconnecting."
+                try? await Task.sleep(nanoseconds: delay)
             }
         }
     }
