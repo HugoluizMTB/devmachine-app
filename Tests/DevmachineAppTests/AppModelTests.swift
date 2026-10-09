@@ -276,7 +276,8 @@ final class AppModelTests: XCTestCase {
         try await waitUntil { model.localSessionHarnesses.keys.count == 2 }
         XCTAssertEqual(model.localSessionHarnesses["acme"], [.claude, .codex])
         XCTAssertEqual(model.localSessionHarnesses["beta"], [])
-        XCTAssertEqual(runner.callCount(for: "/bin/ps"), 1)
+        XCTAssertEqual(
+            runner.recordedCalls.filter { $0.executable == "/bin/ps" && $0.args == ProcessTree.listArguments }.count, 1)
     }
 
     func testBadgesFollowRegistryOrderInsteadOfSetOrder() {

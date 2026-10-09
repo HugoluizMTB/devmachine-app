@@ -43,8 +43,7 @@ struct CLIFirstSessionSource: SessionListSource {
             state.withLock { $0.useFallback = true }
             return fallback.sessions(for: workspaces, settings: settings)
         } catch {
-            let failure = SessionStoreError(failure: .unreachable, stderr: error.localizedDescription)
-            return results(for: workspaces) { _ in .failure(failure) }
+            return fallback.sessions(for: workspaces, settings: settings)
         }
         var reported: [String: CLISessionWorkspace] = [:]
         for entry in list.workspaces where reported[entry.name] == nil {
