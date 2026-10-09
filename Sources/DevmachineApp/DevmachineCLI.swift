@@ -299,6 +299,39 @@ struct ExposureListing: Codable, Equatable, Sendable {
     var caddyIsMissing: Bool { warning?.contains("caddy is not on") ?? false }
 }
 
+/// `devmachine sessions --format json`: every requested workspace, with its
+/// sessions or the reason they could not be listed.
+struct CLISessionList: Decodable, Equatable, Sendable {
+    let workspaces: [CLISessionWorkspace]
+}
+
+struct CLISessionWorkspace: Decodable, Equatable, Sendable {
+    let name: String
+    let sessions: [CLISession]
+    let error: CLISessionError?
+}
+
+struct CLISession: Decodable, Equatable, Sendable {
+    let name: String
+    let windows: Int
+    let path: String
+    let branch: String
+    let ageSeconds: Int
+    let harnesses: [String]
+    let busy: Bool
+    let attention: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case name, windows, path, branch, harnesses, busy, attention
+        case ageSeconds = "age_seconds"
+    }
+}
+
+struct CLISessionError: Decodable, Equatable, Sendable {
+    let kind: String
+    let message: String
+}
+
 enum DevmachineCLIError: LocalizedError, Equatable {
     case commandFailed(String)
     case executableNotFound([String])
@@ -676,6 +709,21 @@ struct DevmachineCLI: Sendable {
         }
         try requireSuccess(result)
         return Data(result.stdout.utf8)
+    }
+
+    /// The tmux sessions of every named workspace in one call. A workspace
+    /// that could not be listed carries its `error`; the call itself fails
+    /// only when the CLI cannot run it at all.
+    func sessions(workspaces: [String]) throws -> CLISessionList {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: ["--format", "json", "sessions"] + workspaces.flatMap { ["--workspace", $0] },
+            environment: environment())
+        if result.exitCode != 0, result.stderr.contains("unknown command \"sessions\"") {
+            throw DevmachineCLIError.needsNewerCLI("sessions")
+        }
+        try requireSuccess(result)
+        return try JSONDecoder().decode(CLISessionList.self, from: Data(result.stdout.utf8))
     }
 
     /// `packages add|rm`: changes the configuration only; a sync applies it.
