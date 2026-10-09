@@ -4,12 +4,36 @@ public struct TmuxSession: Codable, Equatable, Identifiable, Sendable {
     public let name: String
     public let windows: Int
     public let harnesses: Set<HarnessID>
+    public var indicators: SessionIndicators?
     public var id: String { name }
 
-    public init(name: String, windows: Int, harnesses: Set<HarnessID>) {
+    public init(
+        name: String, windows: Int, harnesses: Set<HarnessID>, indicators: SessionIndicators? = nil
+    ) {
         self.name = name
         self.windows = windows
         self.harnesses = harnesses
+        self.indicators = indicators
+    }
+}
+
+/// What a sidebar row can show about a session besides its name.
+public struct SessionIndicators: Codable, Equatable, Sendable {
+    public var path: String?
+    public var branch: String?
+    public var ageSeconds: Int?
+    public var busy: Bool
+    public var attention: Bool
+
+    public init(
+        path: String? = nil, branch: String? = nil, ageSeconds: Int? = nil,
+        busy: Bool = false, attention: Bool = false
+    ) {
+        self.path = path
+        self.branch = branch
+        self.ageSeconds = ageSeconds
+        self.busy = busy
+        self.attention = attention
     }
 }
 

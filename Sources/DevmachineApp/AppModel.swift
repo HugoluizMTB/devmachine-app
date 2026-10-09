@@ -140,6 +140,7 @@ final class AppModel: ObservableObject {
     /// session, keyed by the multiplexer name.
     @Published private(set) var liveLocalSessions: [ZmxSession] = []
     @Published private(set) var localSessionHarnesses: [String: Set<HarnessID>] = [:]
+    @Published private(set) var localSessionIndicators: [String: SessionIndicators] = [:]
 
     var localSessions: [LocalSession] {
         // Demo sessions never go through `addedLocalSessions`: that property
@@ -296,6 +297,10 @@ final class AppModel: ObservableObject {
         return sessionHarnessFacade.badges(for: localSessionHarnesses[name] ?? [])
     }
 
+    func indicators(for session: LocalSession) -> SessionIndicators? {
+        localSessionIndicators[LocalSessionScan.multiplexerName(of: session)]
+    }
+
     func uploadStoragePolicy(for kind: TerminalKind) -> UploadStoragePolicy {
         let harnesses: Set<HarnessID>
         switch kind {
@@ -340,6 +345,9 @@ final class AppModel: ObservableObject {
                 if self.localSessionHarnesses != snapshot.harnesses {
                     self.localSessionHarnesses = snapshot.harnesses
                 }
+                if self.localSessionIndicators != snapshot.indicators {
+                    self.localSessionIndicators = snapshot.indicators
+                }
                 // The working directory can change even when harnesses do not.
                 self.syncContext()
             }
@@ -350,10 +358,12 @@ final class AppModel: ObservableObject {
 
     /// Fills what a scan would have found, for tests that must not run `zmx`.
     func acceptLocalScanForTesting(
-        sessions: [ZmxSession], harnesses: [String: Set<HarnessID>]
+        sessions: [ZmxSession], harnesses: [String: Set<HarnessID>],
+        indicators: [String: SessionIndicators] = [:]
     ) {
         liveLocalSessions = sessions
         localSessionHarnesses = harnesses
+        localSessionIndicators = indicators
     }
 
     private var operatorPath: String {

@@ -4,11 +4,29 @@ import DevmachineCore
 struct LocalSessionSnapshot: Equatable, Sendable {
     let sessions: [ZmxSession]
     let harnesses: [String: Set<HarnessID>]
+    var indicators: [String: SessionIndicators] = [:]
 }
 
 protocol SessionListSource: Sendable {
     func sessions(for workspace: Workspace, settings: AppSettings) throws -> [TmuxSession]
+    func sessions(
+        for workspaces: [Workspace], settings: AppSettings
+    ) -> [String: Result<[TmuxSession], any Error>]
     func localSessions(settings: AppSettings) throws -> LocalSessionSnapshot
+}
+
+extension SessionListSource {
+    /// Keyed by workspace alias. A source that can ask every workspace in one
+    /// call overrides this.
+    func sessions(
+        for workspaces: [Workspace], settings: AppSettings
+    ) -> [String: Result<[TmuxSession], any Error>] {
+        var results: [String: Result<[TmuxSession], any Error>] = [:]
+        for workspace in workspaces {
+            results[workspace.alias] = Result { try sessions(for: workspace, settings: settings) }
+        }
+        return results
+    }
 }
 
 /// Keeps today's SSH and local multiplexer transport behind domain snapshots.
