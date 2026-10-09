@@ -16,6 +16,21 @@ struct TransferNotice: Identifiable, Equatable {
     }
 }
 
+/// The job card a download shows while its bytes arrive, the same card the
+/// workspace sweep uses.
+struct TransferCards: Sendable {
+    let begin: @MainActor @Sendable (String) -> UUID?
+    let advance: @MainActor @Sendable (UUID, Int64, Int64?) -> Void
+    let end: @MainActor @Sendable (UUID) -> Void
+
+    /// The result's notice takes the card's place, so the card goes at once
+    /// instead of lingering on a checkmark beside it.
+    static let app = TransferCards(
+        begin: { AppModel.shared?.beginTransfer(label: $0, total: 0) },
+        advance: { AppModel.shared?.advanceDownload($0, done: $1, total: $2) },
+        end: { AppModel.shared?.dropTask($0) })
+}
+
 /// Moves files between the Files tab and this Mac through the CLI, and keeps
 /// what the tab shows while that runs: which rows are busy, and the result.
 @MainActor
@@ -29,6 +44,7 @@ final class FileTransferStore: ObservableObject {
     private let downloadsDirectory: URL
     private let dragDirectory: URL
     private let home: String
+    private let cards: TransferCards
 
     init(
         cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
@@ -36,28 +52,53 @@ final class FileTransferStore: ObservableObject {
             .appendingPathComponent("Downloads"),
         dragDirectory: URL = FileManager.default.temporaryDirectory
             .appendingPathComponent("devmachine-drag"),
-        home: String = NSHomeDirectory()
+        home: String = NSHomeDirectory(),
+        cards: TransferCards = .app
     ) {
         self.cli = cli
         self.downloadsDirectory = downloadsDirectory
         self.dragDirectory = dragDirectory
         self.home = home
+        self.cards = cards
     }
 
     func download(_ paths: [String], workspace: String) async {
         guard !paths.isEmpty else { return }
         busy.formUnion(paths)
         defer { busy.subtract(paths) }
-        let cli = self.cli
         let directory = downloadsDirectory.path
         do {
-            let files = try await Task.detached {
-                try cli().download(paths: paths, workspace: workspace, to: directory)
-            }.value
+            let files = try await fetch(paths, workspace: workspace, into: directory)
             show(Self.notice(forDownloads: files, into: directory, home: home))
         } catch {
             show(Self.failure("Could not download \(Self.names(paths))", error))
         }
+    }
+
+    /// Runs the CLI with a card that follows its bytes. Every count is drawn
+    /// before the card goes, so a late one never lands on a closed card.
+    private func fetch(_ paths: [String], workspace: String, into directory: String) async throws
+        -> [DownloadedFile] {
+        let card = cards.begin("Downloading \(Self.names(paths))")
+        let (counts, feed) = AsyncStream.makeStream(of: DownloadProgress.self)
+        let cards = self.cards
+        let drawn = Task { @MainActor in
+            var tally = DownloadTally()
+            for await count in counts {
+                tally.record(count)
+                if let card { cards.advance(card, tally.done, tally.total) }
+            }
+        }
+        let cli = self.cli
+        let outcome = await Task.detached { () -> Result<[DownloadedFile], Error> in
+            defer { feed.finish() }
+            return Result {
+                try cli().download(paths: paths, workspace: workspace, to: directory) { feed.yield($0) }
+            }
+        }.value
+        await drawn.value
+        if let card { cards.end(card) }
+        return try outcome.get()
     }
 
     /// What a drop in Finder asks for: the file, saved where the system can
@@ -68,11 +109,8 @@ final class FileTransferStore: ObservableObject {
         defer { busy.remove(path) }
         let directory = dragDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let cli = self.cli
         do {
-            let files = try await Task.detached {
-                try cli().download(paths: [path], workspace: workspace, to: directory.path)
-            }.value
+            let files = try await fetch([path], workspace: workspace, into: directory.path)
             guard let file = files.first else {
                 throw DevmachineCLIError.commandFailed("The CLI gave no result for the download.")
             }

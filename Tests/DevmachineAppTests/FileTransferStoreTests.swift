@@ -30,15 +30,44 @@ private final class CannedRunner: CommandRunner, @unchecked Sendable {
     }
 }
 
+/// What a download did to its card, and whether the result was already on
+/// screen when the card went away.
+@MainActor
+private final class CardLog {
+    enum Event: Equatable {
+        case begin(String)
+        case advance(done: Int64, total: Int64?)
+        case end(noticeShown: Bool)
+    }
+
+    private(set) var events: [Event] = []
+    weak var transfers: FileTransferStore?
+
+    var cards: TransferCards {
+        TransferCards(
+            begin: { [self] label in
+                events.append(.begin(label))
+                return UUID()
+            },
+            advance: { [self] _, done, total in events.append(.advance(done: done, total: total)) },
+            end: { [self] _ in events.append(.end(noticeShown: transfers?.notice != nil)) })
+    }
+}
+
 @MainActor
 final class FileTransferStoreTests: XCTestCase {
-    private func store(_ runner: CannedRunner, downloads: URL = URL(fileURLWithPath: "/Users/alice/Downloads"))
-        -> FileTransferStore {
-        FileTransferStore(
+    private func store(
+        _ runner: CannedRunner, downloads: URL = URL(fileURLWithPath: "/Users/alice/Downloads"),
+        cards: CardLog? = nil
+    ) -> FileTransferStore {
+        let transfers = FileTransferStore(
             cli: { DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner) },
             downloadsDirectory: downloads,
             dragDirectory: FileManager.default.temporaryDirectory.appendingPathComponent("dm-drag-tests"),
-            home: "/Users/alice")
+            home: "/Users/alice",
+            cards: (cards ?? CardLog()).cards)
+        cards?.transfers = transfers
+        return transfers
     }
 
     private func folder() throws -> URL {
@@ -94,9 +123,59 @@ final class FileTransferStoreTests: XCTestCase {
         await transfers.download(["/home/acme/a b.png"], workspace: "acme")
 
         XCTAssertEqual(runner.calls.first, FileTransfer.downloadArguments(
-            paths: ["/home/acme/a b.png"], workspace: "acme", to: "/Users/alice/Downloads"))
+            paths: ["/home/acme/a b.png"], workspace: "acme", to: "/Users/alice/Downloads", progress: true))
         XCTAssertEqual(transfers.notice?.title, "Saved to ~/Downloads/a b.png")
         XCTAssertTrue(transfers.busy.isEmpty)
+    }
+
+    func testADownloadShowsItsBytesOnACardThatGoesBeforeTheNotice() async {
+        let progress = #"{"remote":"/home/acme/a.png","done":0,"total":8}"# + "\n"
+            + #"{"remote":"/home/acme/b.png","done":0,"total":2}"# + "\n"
+            + #"{"remote":"/home/acme/a.png","done":8,"total":8}"# + "\n"
+        let runner = CannedRunner(
+            #"[{"remote":"/home/acme/a.png","local":"/Users/alice/Downloads/a.png","bytes":8,"folder":false},"#
+                + #"{"remote":"/home/acme/b.png","bytes":0,"folder":false,"error":"/home/acme/b.png cannot be read"}]"#,
+            stderr: progress, exitCode: 1)
+        let cards = CardLog()
+        let transfers = store(runner, cards: cards)
+
+        await transfers.download(["/home/acme/a.png", "/home/acme/b.png"], workspace: "acme")
+
+        XCTAssertEqual(cards.events, [
+            .begin("Downloading 2 items"),
+            .advance(done: 0, total: 8), .advance(done: 0, total: 10), .advance(done: 8, total: 10),
+            .end(noticeShown: false),
+        ])
+        XCTAssertEqual(transfers.notice?.title, "Saved 1 of 2 to ~/Downloads")
+    }
+
+    func testAFolderDownloadCountsBytesWithNoTotal() async {
+        let progress = #"{"remote":"/home/acme/site","done":0,"total":0}"# + "\n"
+            + #"{"remote":"/home/acme/site","done":4096,"total":0}"# + "\n"
+        let runner = CannedRunner(
+            #"[{"remote":"/home/acme/site","local":"/Users/alice/Downloads/site.tar.gz","bytes":4096,"folder":true}]"#,
+            stderr: progress)
+        let cards = CardLog()
+        let transfers = store(runner, cards: cards)
+
+        await transfers.download(["/home/acme/site"], workspace: "acme")
+
+        XCTAssertEqual(cards.events, [
+            .begin("Downloading site"), .advance(done: 0, total: nil), .advance(done: 4096, total: nil),
+            .end(noticeShown: false),
+        ])
+    }
+
+    func testAFailedDownloadClosesItsCardAndSaysWhy() async {
+        let runner = CannedRunner("", stderr: "Error: no workspace named acme\n", exitCode: 1)
+        let cards = CardLog()
+        let transfers = store(runner, cards: cards)
+
+        await transfers.download(["/home/acme/a.png"], workspace: "acme")
+
+        XCTAssertEqual(cards.events, [.begin("Downloading a.png"), .end(noticeShown: false)])
+        XCTAssertEqual(transfers.notice?.title, "Could not download a.png")
+        XCTAssertEqual(transfers.notice?.detail, "Error: no workspace named acme")
     }
 
     func testAnOlderCLIIsToldToUpdate() async {

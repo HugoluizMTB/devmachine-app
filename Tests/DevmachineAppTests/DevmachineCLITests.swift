@@ -736,6 +736,92 @@ final class DevmachineCLITransferTests: XCTestCase {
         }
     }
 
+    /// Answers each call with the next canned result.
+    private final class QueuedCLIRunner: CommandRunner, @unchecked Sendable {
+        private let lock = NSLock()
+        private var results: [(stdout: String, stderr: String, exitCode: Int32)]
+        private var stored: [[String]] = []
+
+        init(_ results: [(String, String, Int32)]) {
+            self.results = results.map { (stdout: $0.0, stderr: $0.1, exitCode: $0.2) }
+        }
+
+        var calls: [[String]] {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
+
+        func run(executable: String, args: [String], environment: [String: String]?) throws -> String {
+            try runCapturing(executable: executable, args: args, environment: environment).stdout
+        }
+
+        func runCapturing(executable: String, args: [String], environment: [String: String]?) throws
+            -> (stdout: String, stderr: String, exitCode: Int32) {
+            lock.lock()
+            defer { lock.unlock() }
+            stored.append(args)
+            return results.isEmpty ? ("", "", 0) : results.removeFirst()
+        }
+    }
+
+    private final class ProgressLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [DownloadProgress] = []
+
+        func append(_ progress: DownloadProgress) {
+            lock.lock()
+            stored.append(progress)
+            lock.unlock()
+        }
+
+        var items: [DownloadProgress] {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
+    }
+
+    func testDownloadWithProgressHandsOnEveryProgressLine() throws {
+        let json = #"[{"remote":"/home/acme/a.png","local":"/Users/alice/Downloads/a.png","bytes":8,"folder":false}]"#
+        let stderr = #"{"remote":"/home/acme/a.png","done":0,"total":8}"# + "\n"
+            + #"{"remote":"/home/acme/a.png","done":8,"total":8}"# + "\n"
+        let runner = QueuedCLIRunner([(json, stderr, 0)])
+        let cli = DevmachineCLI(executable: executable, runner: runner)
+        let seen = ProgressLog()
+
+        let files = try cli.download(paths: ["/home/acme/a.png"], workspace: "acme", to: "/tmp") { seen.append($0) }
+
+        XCTAssertEqual(files.first?.local, "/Users/alice/Downloads/a.png")
+        XCTAssertEqual(seen.items.map(\.done), [0, 8])
+        XCTAssertEqual(runner.calls, [[
+            "--format", "json", "download", "--workspace", "acme", "--to", "/tmp", "--progress", "--",
+            "/home/acme/a.png"
+        ]])
+    }
+
+    func testDownloadOnACLIWithoutProgressRunsAgainWithoutIt() throws {
+        let json = #"[{"remote":"/a","local":"/tmp/a","bytes":1,"folder":false}]"#
+        let runner = QueuedCLIRunner([("", "Error: unknown flag: --progress\n", 1), (json, "", 0)])
+        let cli = DevmachineCLI(executable: executable, runner: runner)
+
+        let files = try cli.download(paths: ["/a"], workspace: "acme", to: "/tmp") { _ in }
+
+        XCTAssertEqual(files.first?.local, "/tmp/a")
+        XCTAssertEqual(runner.calls.count, 2)
+        XCTAssertFalse(runner.calls[1].contains("--progress"))
+    }
+
+    func testDownloadFailureLeavesTheProgressLinesOutOfTheMessage() {
+        let stderr = #"{"remote":"/a","done":0,"total":3}"# + "\nError: no workspace named acme\n"
+        let runner = QueuedCLIRunner([("", stderr, 1)])
+        let cli = DevmachineCLI(executable: executable, runner: runner)
+
+        XCTAssertThrowsError(try cli.download(paths: ["/a"], workspace: "acme", to: "/tmp") { _ in }) { error in
+            XCTAssertEqual(error as? DevmachineCLIError, .commandFailed("Error: no workspace named acme\n"))
+        }
+    }
+
     func testUploadPointsDirAtTheFolderAndReadsTheRemotePaths() throws {
         let json = #"[{"local":"/Users/alice/x.png","remote":"/home/acme/proj/x-20260930-143012.png","bytes":3}]"#
         let runner = CLIRecordingRunner(result: (json, "", 0))

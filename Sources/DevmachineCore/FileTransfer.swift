@@ -32,6 +32,43 @@ public struct UploadedFile: Decodable, Equatable, Sendable {
     }
 }
 
+/// One line of `devmachine download --progress`, on stderr: the bytes of one
+/// path so far. A folder's total is 0, since its archive is packed as it
+/// travels and has no size until it ends.
+public struct DownloadProgress: Decodable, Equatable, Sendable {
+    public let remote: String
+    public let done: Int64
+    public let total: Int64
+
+    public init(remote: String, done: Int64, total: Int64) {
+        self.remote = remote
+        self.done = done
+        self.total = total
+    }
+}
+
+/// Every path of one download, added up. The CLI sizes every path before the
+/// first byte moves, so the total is whole from the first lines on.
+public struct DownloadTally: Equatable, Sendable {
+    private var files: [String: DownloadProgress] = [:]
+
+    public init() {}
+
+    public mutating func record(_ progress: DownloadProgress) {
+        files[progress.remote] = progress
+    }
+
+    public var done: Int64 {
+        files.values.reduce(0) { $0 + $1.done }
+    }
+
+    /// Nil before the first line and while a folder is among the paths.
+    public var total: Int64? {
+        guard !files.isEmpty, files.values.allSatisfy({ $0.total > 0 }) else { return nil }
+        return files.values.reduce(0) { $0 + $1.total }
+    }
+}
+
 /// Moving files between this Mac and a workspace goes through the CLI, which
 /// owns the transfer rules: never overwrite, folders as one archive, names
 /// never read as shell syntax. The app only builds the arguments and reads
@@ -40,9 +77,14 @@ public enum FileTransfer {
     public static let downloadCommand = "download"
     public static let folderExtension = ".tar.gz"
 
+    public static let progressFlag = "--progress"
+
     /// Every path follows `--`, so a file called `-rf` stays a path.
-    public static func downloadArguments(paths: [String], workspace: String, to directory: String) -> [String] {
-        ["--format", "json", "download", "--workspace", workspace, "--to", directory, "--"] + paths
+    public static func downloadArguments(
+        paths: [String], workspace: String, to directory: String, progress: Bool = false
+    ) -> [String] {
+        ["--format", "json", "download", "--workspace", workspace, "--to", directory]
+            + (progress ? [progressFlag] : []) + ["--"] + paths
     }
 
     public static func uploadArguments(files: [String], workspace: String, directory: String) -> [String] {
@@ -62,6 +104,22 @@ public enum FileTransfer {
     /// An installed CLI older than the command answers with Cobra's own words.
     public static func isUnknownCommand(_ stderr: String, _ command: String) -> Bool {
         stderr.contains("unknown command \"\(command)\"")
+    }
+
+    /// A CLI older than a flag refuses the whole command before it connects.
+    public static func isUnknownFlag(_ stderr: String, _ flag: String) -> Bool {
+        stderr.contains("unknown flag: \(flag)")
+    }
+
+    public static func parseProgress(_ line: String) -> DownloadProgress? {
+        try? JSONDecoder().decode(DownloadProgress.self, from: Data(line.utf8))
+    }
+
+    /// stderr as an error message: the progress lines are for the bar.
+    public static func withoutProgress(_ stderr: String) -> String {
+        stderr.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { parseProgress(String($0)) == nil }
+            .joined(separator: "\n")
     }
 
     public static func displayPath(_ path: String, home: String = NSHomeDirectory()) -> String {
