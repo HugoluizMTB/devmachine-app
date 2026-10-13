@@ -11,6 +11,7 @@ public struct NativeContextEngine: Sendable {
     private let githubHosts: [String]
     private let roots: ContextRoots
     private let processNames: [HarnessID: Set<String>]
+    private let environment: [String: String]
 
     /// `processNames` maps each harness to the programs it runs as, so a
     /// pane command names its harness exactly.
@@ -20,7 +21,8 @@ public struct NativeContextEngine: Sendable {
         resolver: ContextGitHubResolver = ContextGitHubResolver(),
         githubHosts: [String] = ContextGitHubConfig.allHosts(),
         roots: ContextRoots = ContextRoots(),
-        processNames: [HarnessID: Set<String>] = [:]
+        processNames: [HarnessID: Set<String>] = [:],
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.runner = runner
         self.fileManager = fileManager
@@ -28,6 +30,7 @@ public struct NativeContextEngine: Sendable {
         self.githubHosts = githubHosts
         self.roots = roots
         self.processNames = processNames
+        self.environment = environment
     }
 
     /// `harnesses` are the ones already seen running in the session; their
@@ -70,9 +73,27 @@ public struct NativeContextEngine: Sendable {
             .sorted { $0.url < $1.url }
         let mappedLinks = contextMapLinks(links)
 
-        let plan: ContextEngineResult.Plan? = pass.todoItems.isEmpty
-            ? ContextPlanFile.mostRecent(project: project, touchedMarkdown: pass.touchedMarkdown, fileManager: fileManager)
-            : ContextEngineResult.Plan(title: "todos", source: "todos", items: pass.todoItems)
+        let isClaude = detection.harness == .claude
+        var todoItems = pass.todoItems
+        if isClaude {
+            let tasks = ClaudeTaskList.read(
+                directory: ClaudeTaskList.directory(
+                    sessionID: primary.path.deletingPathExtension().lastPathComponent,
+                    projectsDir: roots.claudeProjectsDir, environment: environment
+                ), fileManager: fileManager
+            )
+            if !tasks.isEmpty { todoItems = tasks }
+        }
+        let plan: ContextEngineResult.Plan?
+        if !todoItems.isEmpty {
+            plan = ContextEngineResult.Plan(title: "todos", source: "todos", items: todoItems)
+        } else if isClaude {
+            plan = nil
+        } else {
+            plan = ContextPlanFile.mostRecent(
+                project: project, touchedMarkdown: pass.touchedMarkdown, fileManager: fileManager
+            )
+        }
 
         return ContextEngineResult(
             cwd: project.path, harness: detection.harness, updatedAt: isoNow(now), plan: plan, prs: prs,

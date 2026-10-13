@@ -200,7 +200,7 @@ private let claudeTodoStateMap: [String: String] = [
     "completed": "done", "in_progress": "active", "pending": "pending",
 ]
 
-private func claudeTodoState(_ raw: String) -> String {
+func claudeTodoState(_ raw: String) -> String {
     claudeTodoStateMap[raw] ?? "pending"
 }
 
