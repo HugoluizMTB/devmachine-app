@@ -66,7 +66,7 @@ struct SidebarView: View {
                     .help("Refresh")
 
                 Menu {
-                    ForEach(model.workspaces) { ws in
+                    ForEach(model.visibleWorkspaces) { ws in
                         Button(ws.name) { model.newSession(alias: ws.alias) }
                     }
                     Divider()
