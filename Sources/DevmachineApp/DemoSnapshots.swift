@@ -415,6 +415,8 @@ enum DemoSnapshots {
     /// `DEVMACHINE_DEMO_HIDDEN=1` draws every window fully transparent and
     /// never brings the app forward: the capture reads the views, not the
     /// screen, so nothing needs to show on the Mac running it.
+    static let hiddenOrigin = NSPoint(x: -30_000, y: -30_000)
+
     static var isHidden: Bool {
         ProcessInfo.processInfo.environment["DEVMACHINE_DEMO_HIDDEN"] == "1"
     }
@@ -459,6 +461,9 @@ enum DemoSnapshots {
             window.alphaValue = 0
             window.ignoresMouseEvents = true
             window.orderFrontRegardless()
+            // Off every screen, so the pointer of whoever uses the Mac
+            // meanwhile cannot hover a row in the captured frames.
+            window.setFrameOrigin(hiddenOrigin)
         } else {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -982,6 +987,7 @@ enum DemoSnapshots {
         }
         window.setIsVisible(true)
         window.orderFrontRegardless()
+        if isHidden { window.setFrameOrigin(hiddenOrigin) }
         hosting.layoutSubtreeIfNeeded()
         if autosize {
             let fitted = hosting.fittingSize

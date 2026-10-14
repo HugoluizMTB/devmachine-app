@@ -84,6 +84,7 @@ struct OperatorChooserPage: View {
         ) {
             picture(option)
         }
+        .demoClickTarget("operator:\(Self.title(for: option))")
     }
 
     @ViewBuilder

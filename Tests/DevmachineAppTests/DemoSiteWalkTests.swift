@@ -57,7 +57,7 @@ final class DemoSiteWalkTests: XCTestCase {
     func testEverySceneOpensOnItsSubjectWithoutAClick() {
         XCTAssertEqual(DemoSiteWalk.scenes.map { $0.frames.first?.pointer }, Array(repeating: nil, count: 7))
         XCTAssertEqual(DemoSiteWalk.scenes.map { $0.frames.first?.step }, [
-            .operatorChat(0), .sidebar, .cli(0), .context(0), .publishedApps, .shareStart, .homeStart,
+            .operatorChooser, .sidebar, .cli(0), .context(0), .publishedApps, .shareStart, .homeStart,
         ])
     }
 
@@ -105,7 +105,8 @@ final class DemoSiteWalkTests: XCTestCase {
     func testEveryPointerNamesAControlTheAppMarks() {
         let targets = Set(DemoSiteWalk.scenes.flatMap(\.frames).compactMap(\.pointer?.spot.target))
         XCTAssertEqual(targets, [
-            "grid:acme-devmachine", "context:todo", "context:sub-agents", "context:pull-requests", "tab:Git",
+            "grid:acme-devmachine", "operator:Claude Code", "grid-right:claude — payments refactor",
+            "grid-size:claude — payments refactor", "context:todo", "context:sub-agents", "context:pull-requests", "tab:Git",
             "session:acme-devmachine/claude — payments refactor", "sheet:share", "sheet:done", "tab:Chat",
             "site:shop.acme.example.com", "sheet:share-name", "sheet:share-for", "sheet:share-mode",
             "sheet:share-link", "sheet:share-password",
@@ -120,6 +121,24 @@ final class DemoSiteWalkTests: XCTestCase {
             XCTAssertLessThanOrEqual(Set(labels).count, 4, scene.id)
             XCTAssertTrue(labels.allSatisfy { $0.count <= 45 }, scene.id)
         }
+    }
+
+    func testTheGridSceneOpensTheGridWithinASecondAndAHalf() throws {
+        let scene = try XCTUnwrap(DemoSiteWalk.scenes.first { $0.id == "sessions" })
+        let before = scene.frames.prefix { $0.step != .sessionGrid }
+        let opened = before.reduce(0) { $0 + $1.hold } + DemoPointer.clickSeconds
+        XCTAssertLessThanOrEqual(opened, 1.5)
+        XCTAssertEqual(scene.frames.map(\.step).suffix(4), [.gridMove, .gridHalf, .gridFull, .gridRestore])
+    }
+
+    func testTheOperatorSceneStartsOnTheAgentPicker() throws {
+        let scene = try XCTUnwrap(DemoSiteWalk.scenes.first)
+        XCTAssertEqual(scene.frames.prefix(3).map(\.step), [.operatorChooser, .operatorChooser, .operatorPick])
+    }
+
+    func testUmbrellaKeepsTwoSessionsInTheSidebar() {
+        XCTAssertEqual(DemoSiteWalk.sessions(busy: false, attention: false)["umbrella-devmachine"]?.count, 2)
+        XCTAssertEqual(DemoSiteWalk.sessions(busy: false, attention: false)["acme-devmachine"]?.count, 4)
     }
 
     func testTheSessionsSceneMarksOneRowBusyAndAnotherWaiting() {
@@ -144,14 +163,14 @@ final class DemoSiteWalkTests: XCTestCase {
         XCTAssertNotEqual(DemoSiteWalk.terminalKind, DemoSiteWalk.operatorKind)
     }
 
-    func testTheOperatorSceneAnswersThreeRequestsWithTheCLIsOwnWords() {
+    func testTheOperatorSceneAnswersTwoRequestsWithTheCLIsOwnWords() {
         let last = DemoSiteWalk.operatorPlayed.last?.transcript ?? ""
         for request in DemoSiteWalk.requests {
             XCTAssertTrue(last.contains(request), request)
         }
         XCTAssertTrue(last.contains("alice is in the configuration, on main, with the packages claude-code."))
         XCTAssertTrue(last.contains("added docker to machine main"))
-        XCTAssertTrue(last.contains("published: https://app.example.com -> acme:3000 on main."))
+        XCTAssertEqual(DemoSiteWalk.requests.count, 2)
         XCTAssertTrue(last.contains("memory  3.6G used of 3.8G, 210.0M available"))
         XCTAssertEqual(DemoSiteWalk.operatorPlayed.last?.label, DemoSiteWalk.answerLabel)
     }

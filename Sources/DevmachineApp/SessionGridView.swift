@@ -83,6 +83,7 @@ struct SessionGridView: View {
                 model.moveSessionGridCell(ref, by: -1)
             }
             .disabled(isFirst)
+            .demoClickTarget("grid-left:\(ref.name)")
 
             DMIconButton(
                 systemImage: sizeIcon(model.sessionGridCellSize(ref)), tint: nil,
@@ -91,11 +92,13 @@ struct SessionGridView: View {
                 model.cycleSessionGridCellSize(ref)
             }
             .help("Size: auto/half/full — click to cycle")
+            .demoClickTarget("grid-size:\(ref.name)")
 
             DMIconButton(systemImage: "chevron.right", tint: nil, hitSize: DMHitSize.strip) {
                 model.moveSessionGridCell(ref, by: 1)
             }
             .disabled(isLast)
+            .demoClickTarget("grid-right:\(ref.name)")
         }
         .font(.dm(11, weight: .medium))
         .foregroundStyle(.white.opacity(0.85))

@@ -50,6 +50,8 @@ enum DemoSiteWalk {
         var near: String?
         /// Beside the control's bottom-right corner rather than its top.
         var byCorner = false
+        /// Under the control, its trailing edge lined up with the control's.
+        var below = false
         /// Its leading edge here.
         var at: CGPoint?
         /// Its trailing edge here.
@@ -65,8 +67,8 @@ enum DemoSiteWalk {
     }
 
     enum Step: Equatable {
-        case operatorChat(Int)
-        case sidebar, busy, attention, sessionGrid
+        case operatorChooser, operatorPick, operatorChat(Int)
+        case sidebar, sessionGrid, gridMove, gridHalf, gridFull, gridRestore
         case cli(Int)
         case context(Int), contextGit
         case publishedApps, publishing, published
@@ -98,17 +100,35 @@ enum DemoSiteWalk {
         operatorScene, sessionsScene, cliScene, contextScene, publishScene, shareScene, homeScene,
     ]
 
-    private static let operatorScene = Scene(id: "operator", frames: operatorPlayed.indices.map { index in
+    private static let pickLabel = Label(text: "Pick your coding agent", at: CGPoint(x: 295, y: 340))
+
+    private static let operatorScene = Scene(id: "operator", frames: [
+        Frame(step: .operatorChooser, hold: 1.4, label: pickLabel),
+        Frame(step: .operatorChooser, hold: 0.6, pointer: .hover(Spot(target: "operator:Claude Code")), label: pickLabel),
+        Frame(step: .operatorPick, hold: 1.0, pointer: .click(Spot(target: "operator:Claude Code"))),
+    ] + operatorPlayed.indices.map { index in
         let played = operatorPlayed[index]
         let point = played.label == answerLabel ? operatorAnswerLabelPoint : operatorLabelPoint
         return Frame(step: .operatorChat(index), hold: played.hold, label: played.label.map { Label(text: $0, at: point) })
     })
 
+    private static let gridCell = "claude — payments refactor"
+
     private static let sessionsScene = Scene(id: "sessions", frames: [
-        Frame(step: .sidebar, hold: 2.4),
-        Frame(step: .busy, hold: 2.4),
-        Frame(step: .attention, hold: 2.8),
-        Frame(step: .sessionGrid, hold: 4.0, pointer: .click(Spot(target: "grid:acme-devmachine"))),
+        Frame(step: .sidebar, hold: 0.7),
+        Frame(step: .sessionGrid, hold: 1.2, pointer: .click(Spot(target: "grid:acme-devmachine"))),
+        Frame(
+            step: .gridMove, hold: 2.0, pointer: .click(Spot(target: "grid-right:\(gridCell)")),
+            label: Label(text: "Move it with its icons", near: "grid-right:\(gridCell)", below: true)),
+        Frame(
+            step: .gridHalf, hold: 1.4, pointer: .click(Spot(target: "grid-size:\(gridCell)")),
+            label: Label(text: "Resize a cell: auto, half, full", near: "grid-size:\(gridCell)", below: true)),
+        Frame(
+            step: .gridFull, hold: 2.4, pointer: .click(Spot(target: "grid-size:\(gridCell)")),
+            label: Label(text: "Give one the full width", near: "grid-size:\(gridCell)", below: true)),
+        Frame(
+            step: .gridRestore, hold: 2.6, pointer: .click(Spot(target: "grid-size:\(gridCell)")),
+            label: Label(text: "And back to the grid", near: "grid-size:\(gridCell)", below: true)),
     ])
 
     private static let cliScene = Scene(id: "cli", frames: cliPlayed.indices.map { index in
@@ -229,6 +249,11 @@ enum DemoSiteWalk {
         model.contextCollapsed = false
         model.sidebarCollapsed = false
         model.contextWidth = DMPaneWidth.context.ideal
+        var settings = SettingsStore.shared.settings ?? model.settings ?? .empty
+        settings.showsHarnessIcons = true
+        settings.harnessIconStyle = .color
+        SettingsStore.shared.settings = settings
+        model.settings = settings
     }
 
     /// With the Chat tab the panel has five tabs, and at its ideal width the
@@ -336,6 +361,7 @@ enum DemoSiteWalk {
         if let end = label.endingAt { return .trailing(end) }
         guard let near = label.near, let frame = rect(for: near, sheet: origin) else { return nil }
         if label.byCorner { return .leading(CGPoint(x: frame.maxX + 14, y: frame.maxY - 14)) }
+        if label.below { return .trailing(CGPoint(x: frame.maxX, y: frame.maxY + 26)) }
         return frame.minX > 420
             ? .trailing(CGPoint(x: frame.minX - 14, y: frame.minY + min(frame.height / 2, 24)))
             : .leading(CGPoint(x: frame.maxX + 14, y: frame.minY + min(frame.height / 2, 24)))
@@ -354,27 +380,36 @@ enum DemoSiteWalk {
     static func prepare(_ step: Step, environment: DemoSnapshots.Environment) async {
         let model = environment.model
         switch step {
+        case .operatorChooser:
+            guard model.activePage == nil || !isChooser(model.activePage) else { break }
+            reset(model)
+            model.sessionsByAlias = sessions(busy: true, attention: true)
+            model.contextCollapsed = true
+            model.goHome()
+            var settings = SettingsStore.shared.settings ?? .empty
+            settings.operatorProgram = nil
+            SettingsStore.shared.settings = settings
+            model.settings = settings
+            model.clickLocalSession(DemoSnapshots.operatorSelection)
+            try? await Task.sleep(nanoseconds: 400_000_000)
+        case .operatorPick:
+            DemoData.transcriptOverride = [operatorKind: operatorStart.joined(separator: "\n")]
+            model.chooseOperatorProgram(.harness(.claude))
         case let .operatorChat(index):
-            if index == 0 {
-                reset(model)
-                model.sessionsByAlias = sessions(busy: false, attention: false)
-                model.contextCollapsed = true
-                model.goHome()
-                model.selection = DemoSnapshots.operatorSelection
-            }
             DemoData.transcriptOverride = [operatorKind: operatorPlayed[index].transcript]
         case .sidebar:
             reset(model)
-            model.sessionsByAlias = sessions(busy: false, attention: false)
+            model.sessionsByAlias = sessions(busy: true, attention: true)
             model.contextCollapsed = true
             model.goHome()
             model.clickSession(contextSession)
-        case .busy:
-            model.sessionsByAlias = sessions(busy: true, attention: false)
-        case .attention:
-            model.sessionsByAlias = sessions(busy: true, attention: true)
         case .sessionGrid:
+            model.sessionGridCellSizes = [:]
             model.openSessionGrid(acme)
+        case .gridMove:
+            model.moveSessionGridCell(SessionRef(alias: acme, name: gridCell), by: 1)
+        case .gridHalf, .gridFull, .gridRestore:
+            model.cycleSessionGridCellSize(SessionRef(alias: acme, name: gridCell))
         case let .cli(index):
             if index == 0 {
                 reset(model)
@@ -553,9 +588,10 @@ enum DemoSiteWalk {
         "agy — search": SessionIndicators(branch: "feat/search", ageSeconds: 30_000),
     ]
 
+    /// umbrella keeps two sessions, so the sidebar fits the frame.
     static func sessions(busy: Bool, attention: Bool) -> [String: [TmuxSession]] {
         DemoData.sessionsByAlias.mapValues { list in
-            list.map { session in
+            list.prefix(list.count > 4 ? 2 : list.count).map { session in
                 var marked = session
                 var shown = indicators[session.name] ?? SessionIndicators(ageSeconds: 4_000)
                 shown.busy = busy && session.name == "claude — payments refactor"
@@ -695,7 +731,6 @@ enum DemoSiteWalk {
 
     static let requests = [
         "Add a workspace for alice on main with docker",
-        "Publish acme's port 3000 as app.example.com",
         "Why is staging slow?",
     ]
 
@@ -719,12 +754,6 @@ enum DemoSiteWalk {
         .print([""] + said(["alice is ready on main, with Docker. Open it with devmachine ssh alice."]) + [""], label: nil),
         .type(prompt: you, text: requests[1], label: nil),
         .print(
-            [""] + [ran("devmachine expose add acme 3000 --host app.example.com --publish")]
-                + output(["published: https://app.example.com -> acme:3000 on main."])
-                + [""] + said(["https://app.example.com now serves acme's port 3000."]) + [""],
-            label: nil),
-        .type(prompt: you, text: requests[2], label: nil),
-        .print(
             [""] + [ran("devmachine stats --machine staging")]
                 + output([
                     "machine staging (203.0.113.30)",
@@ -741,8 +770,14 @@ enum DemoSiteWalk {
             label: answerLabel),
     ]
 
-    static let operatorPlayed = play(
-        operatorBeats, start: ["\(bold)\(cyan)● Claude Code\(plain) — ~/.config/devmachine", ""])
+    static let operatorStart = ["\(bold)\(cyan)● Claude Code\(plain) — ~/.config/devmachine", ""]
+
+    static let operatorPlayed = play(operatorBeats, start: operatorStart)
+
+    private static func isChooser(_ page: AppPage?) -> Bool {
+        if case .operatorChooser = page { return true }
+        return false
+    }
 
     // MARK: - Context
 
