@@ -135,6 +135,9 @@ enum DemoSiteWalk {
     // MARK: - Running
 
     static func run(window: NSWindow, environment: DemoSnapshots.Environment, directory: URL) async {
+        environment.model.sidebarCollapsed = false
+        relayHome(environment.model)
+        try? await Task.sleep(nanoseconds: 300_000_000)
         for scene in scenes {
             let folder = directory.appendingPathComponent(scene.id, isDirectory: true)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -264,8 +267,6 @@ enum DemoSiteWalk {
             model.sessionsByAlias = sessions(busy: true, attention: true)
             model.contextTab = .context
             model.goHome()
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            relayHome(model)
             model.clickSession(shareSession)
         case .home:
             model.clickSession(shareSession)
@@ -275,8 +276,9 @@ enum DemoSiteWalk {
     }
 
     /// Home's board was written for the window the app opened with, before
-    /// the walk sized it; written again for this window, it lays the cards
-    /// out the way a person with this window first sees them.
+    /// the walk sized it; written again for this window before the first
+    /// scene, every scene that shows Home lays the cards out the way a person
+    /// with this window first sees them.
     private static func relayHome(_ model: AppModel) {
         let controller = HomeBoardController.shared
         try? FileManager.default.removeItem(at: BoardStore.homeFileURL(configDirectory: DemoMode.boardsFolder))
