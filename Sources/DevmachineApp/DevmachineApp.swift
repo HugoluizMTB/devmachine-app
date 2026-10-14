@@ -204,7 +204,7 @@ struct DevmachineApp: App {
                     withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed.toggle() }
                 }
                 .keyboardShortcut("b", modifiers: .command)
-                Button("Toggle Context") {
+                Button("Toggle Context Panel") {
                     withAnimation(.easeInOut(duration: 0.18)) { model.contextCollapsed.toggle() }
                 }
                 .keyboardShortcut("j", modifiers: .command)

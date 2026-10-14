@@ -102,7 +102,7 @@ struct ShareSessionSheet: View {
             }
             .pickerStyle(.segmented)
             if mode == .write {
-                Text("They can type into this session. In a shell, or by approving a tool in a coding harness, they run commands as \(request.workspace)'s account.")
+                Text("They can type into this session. In a shell, or by approving a tool in a coding agent, they run commands as \(request.workspace)'s account.")
                     .font(.dm(11))
                     .foregroundStyle(Color.orange)
                     .fixedSize(horizontal: false, vertical: true)

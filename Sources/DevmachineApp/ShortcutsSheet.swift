@@ -26,21 +26,21 @@ struct ShortcutsSheet: View {
         Group(title: "Sessions", items: [
             Shortcut(keys: ["⌘", "0"], action: "Home"),
             Shortcut(keys: ["⌘", "N"], action: "New session in the current folder"),
-            Shortcut(keys: ["⌘", "W"], action: "End the session on screen (asks first; a grid or no session closes the window)"),
+            Shortcut(keys: ["⌘", "W"], action: "End the session on screen (asks first; a session grid or no session closes the window)"),
             Shortcut(keys: ["⌘", "⇧", "↑"], action: "Previous session"),
             Shortcut(keys: ["⌘", "⇧", "↓"], action: "Next session"),
             Shortcut(keys: ["⌘", "⇧", "←"], action: "Back"),
             Shortcut(keys: ["⌘", "⇧", "→"], action: "Forward"),
-            Shortcut(keys: ["⌘", "⇧", "↩"], action: "Maximize the focused grid cell or preview / back again"),
+            Shortcut(keys: ["⌘", "⇧", "↩"], action: "Maximize the focused session grid cell or preview / back again"),
         ]),
         Group(title: "Sidebar", items: [
             Shortcut(keys: ["click"], action: "Open a session (click again → Home)"),
             Shortcut(keys: ["⌘", "click"], action: "Add/remove a session to the selection"),
             Shortcut(keys: ["⇧", "click"], action: "Select a range of sessions"),
-            Shortcut(keys: ["right-click"], action: "Rename, delete, or Stack to Home"),
-            Shortcut(keys: ["⊞"], action: "Workspace home: all its sessions in a grid"),
+            Shortcut(keys: ["right-click"], action: "Rename, end, or show in session grid"),
+            Shortcut(keys: ["⊞"], action: "Open session grid: all its sessions side by side"),
         ]),
-        Group(title: "Stack grid", items: [
+        Group(title: "Session grid", items: [
             Shortcut(keys: ["◀", "▶"], action: "Reorder a cell"),
             Shortcut(keys: ["⊞"], action: "Cycle cell size: auto → half → full"),
         ]),

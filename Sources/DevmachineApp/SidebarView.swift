@@ -31,7 +31,7 @@ struct SidebarView: View {
                 .help("Stats")
             if model.hasCaddyMachine {
                 footerButton("globe") { model.showPage(.subdomains) }
-                    .help("Subdomains")
+                    .help("Published apps")
             }
             footerButton("gearshape") { model.showPage(.setup) }
                 .help("Settings (⌘,)")

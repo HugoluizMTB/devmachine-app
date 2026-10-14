@@ -64,7 +64,7 @@ struct SummaryPill: View {
         HStack(spacing: m.space.sm) {
             Text(verbatim: "\(sessions) sessions")
             Text(verbatim: "·")
-            Text(verbatim: "\(harnessSessions) with coding harnesses")
+            Text(verbatim: "\(harnessSessions) running coding agents")
             Text(verbatim: "·")
             Text(verbatim: "\(workspaces) workspaces")
         }
@@ -264,7 +264,7 @@ struct HarnessUsageWidgetView: View {
             WidgetPlaceholderView(
                 icon: "gauge.with.dots.needle.33percent",
                 title: "\(descriptor?.shortTitle ?? harness) is off",
-                detail: "Turn it on in Settings → Harnesses to see its usage here.",
+                detail: "Turn it on in Settings → Coding agents to see its usage here.",
                 actionTitle: "Open Settings",
                 action: { model.openSettings(.harnesses) },
                 hugs: hugs)

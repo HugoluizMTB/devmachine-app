@@ -1610,7 +1610,7 @@ final class AppModel: ObservableObject {
     func deleteSessions(_ refs: [SessionRef]) {
         pendingBulkDelete = nil
         guard !refs.isEmpty else { return }
-        let taskId = beginTask(label: "Deleting sessions", total: refs.count)
+        let taskId = beginTask(label: "Ending sessions", total: refs.count)
         Task.detached { [store] in
             var failed: [(ref: SessionRef, reason: String)] = []
             for ref in refs {
@@ -1726,7 +1726,7 @@ final class AppModel: ObservableObject {
     }
 
     func deleteSession(alias: String, name: String) {
-        let taskId = beginTask(label: "Deleting \(name)", total: 1)
+        let taskId = beginTask(label: "Ending \(name)", total: 1)
         Task.detached { [store] in
             let failure = AppModel.killFailure {
                 try store.runCapturing(alias: alias, command: RemoteCommands.killSession(name: name))

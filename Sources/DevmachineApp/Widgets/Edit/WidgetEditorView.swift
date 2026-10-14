@@ -129,7 +129,7 @@ struct WidgetEditorView: View {
                 field("Zoom", "zoom") { TextField("1", text: Binding(get: { form.zoom }, set: { v in set { $0.zoom = v } })).dmField() }
             }
         case .prompt:
-            field("Harness", "harness") {
+            field("Coding agent", "harness") {
                 Picker(selection: Binding(get: { form.harness }, set: { v in set { $0.chooseHarness(v) } })) {
                     ForEach(WidgetContract.current.sources["prompt"]?.fields["harness"]?.values ?? [], id: \.self) {
                         Text(verbatim: $0).tag($0)
@@ -234,7 +234,7 @@ struct WidgetEditorView: View {
     private func permissionModePicker(_ form: InlineWidgetForm, set: @escaping (String) -> Void) -> some View {
         field("Permission mode", "permissionMode") {
             Picker(selection: Binding(get: { form.permissionMode }, set: set)) {
-                Text(verbatim: "Harness default").tag("")
+                Text(verbatim: "Coding agent default").tag("")
                 ForEach(form.permissionModes(), id: \.self) { mode in
                     Text(verbatim: PermissionModes.isDangerous(mode) ? "\(mode) (no checks)" : mode).tag(mode)
                 }

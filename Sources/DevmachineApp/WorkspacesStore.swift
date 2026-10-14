@@ -126,7 +126,7 @@ final class WorkspacesStore: ObservableObject {
     }
 
     /// Coding agents only for the harnesses turned on in Settings →
-    /// Harnesses; one the workspace already has stays, so it can be taken off.
+    /// Coding agents; one the workspace already has stays, so it can be taken off.
     var packageCards: [MachinePackageCard] {
         WorkspacePackageCatalog.cards(
             from: (machines.snapshot?.packages ?? []).map(\.info), keeping: flow?.current?.packages ?? [],

@@ -113,7 +113,7 @@ final class AddMachineModel: ObservableObject {
             memoryBytes: ProcessInfo.processInfo.physicalMemory, freeDiskBytes: free ?? nil)
     }
 
-    /// The harnesses enabled in Settings → Harnesses, and the ones whose
+    /// The harnesses enabled in Settings → Coding agents, and the ones whose
     /// folder this Mac has (what `skills add` itself would find).
     static func harnessesInUse(from options: [SkillAgent], home: String = NSHomeDirectory()) -> [SkillAgent] {
         let enabled = AppModel.shared?.settings?.enabledHarnesses ?? []

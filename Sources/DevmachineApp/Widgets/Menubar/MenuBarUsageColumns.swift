@@ -11,7 +11,7 @@ struct MenuBarUsageColumns: View {
 
     var body: some View {
         if usageStore.states.isEmpty {
-            Text(verbatim: "No local usage harnesses available")
+            Text(verbatim: "No coding agent with local usage available")
                 .foregroundStyle(Color.dmMuted)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

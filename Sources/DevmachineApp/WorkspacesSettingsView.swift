@@ -728,7 +728,7 @@ private struct WorkspaceAgentsNote: View {
                 .font(.dm(11))
                 .foregroundStyle(noneOn ? Color.orange : Color.dmMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            DMButton("Settings → Harnesses", variant: .link, size: .small, action: openHarnesses)
+            DMButton("Settings → Coding agents", variant: .link, size: .small, action: openHarnesses)
         }
     }
 }
@@ -991,11 +991,12 @@ enum WorkspacesContent {
 
     static let packagesLink = "Packages for this workspace →"
 
-    static let autoConnectSection = "This Mac"
+    static let autoConnectSection = "App settings"
     static let autoConnectTitle = "Auto-connect on startup"
     static let autoConnectNotes = [
         "Connects to this workspace's sessions when the app starts, so they open instantly.",
         "Counts toward the terminals kept open (Settings → Appearance → Terminal).",
+        "Saved in the app, not in your configuration.",
     ]
 
     /// The header's trail: the list's name, then the flow's.

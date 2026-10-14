@@ -21,7 +21,7 @@ enum CommandRegistry {
             + settingsCommands()
     }
 
-    private static let subdomainKeywords = ["dns", "domains", "caddy", "sites", "expose", "https", "publish"]
+    private static let subdomainKeywords = ["dns", "domains", "subdomains", "caddy", "sites", "apps", "expose", "https", "publish"]
     private static let workspaceKeywords = ["workspace", "account", "linux user", "packages", "sync"]
     private static let statsKeywords = ["ram", "memory", "disk", "cpu", "load", "containers", "usage"]
 
@@ -38,7 +38,7 @@ enum CommandRegistry {
                 systemImage: "chart.bar", keywords: statsKeywords, action: .showPage(.stats))),
             Entry(
                 command: PaletteCommand(
-                    id: "go.subdomains", title: "Subdomains", subtitle: "", category: .goTo,
+                    id: "go.subdomains", title: "Published apps", subtitle: "", category: .goTo,
                     systemImage: "globe", keywords: subdomainKeywords, action: .showPage(.subdomains)),
                 isAvailable: { $0.hasCaddyMachine }),
             Entry(command: PaletteCommand(
@@ -105,7 +105,7 @@ enum CommandRegistry {
                 isAvailable: { $0.hasCaddyMachine && publishWorkspace != nil }),
             Entry(
                 command: PaletteCommand(
-                    id: "action.add-subdomain", title: "Add subdomain…",
+                    id: "action.add-subdomain", title: "Add app…",
                     subtitle: context.subdomainsMachine ?? "", category: .action,
                     systemImage: "plus.circle", keywords: subdomainKeywords,
                     action: .addSubdomain(machine: context.subdomainsMachine)),
@@ -124,13 +124,13 @@ enum CommandRegistry {
                 id: "action.refresh", title: "Refresh", subtitle: "Current screen", category: .action,
                 systemImage: "arrow.clockwise", keywords: ["reload", "update"], action: .refresh)),
             Entry(command: PaletteCommand(
-                id: "action.toggle-sidebar", title: "Toggle workspaces sidebar", subtitle: "",
+                id: "action.toggle-sidebar", title: "Toggle sidebar", subtitle: "",
                 category: .action, systemImage: "sidebar.left", shortcut: "⌘B",
-                keywords: ["hide", "show", "panel"], action: .toggleSidebar)),
+                keywords: ["hide", "show", "panel", "workspaces"], action: .toggleSidebar)),
             Entry(command: PaletteCommand(
-                id: "action.toggle-context", title: "Toggle context sidebar", subtitle: "",
+                id: "action.toggle-context", title: "Toggle context panel", subtitle: "",
                 category: .action, systemImage: "sidebar.right", shortcut: "⌘J",
-                keywords: ["hide", "show", "panel", "git", "files"], action: .toggleContext)),
+                keywords: ["hide", "show", "panel", "context sidebar", "git", "files", "preview", "chat"], action: .toggleContext)),
             Entry(command: PaletteCommand(
                 id: "action.back", title: "Back", subtitle: "", category: .action,
                 systemImage: "chevron.left", shortcut: "⇧⌘←", keywords: ["previous", "history"],
@@ -149,7 +149,7 @@ enum CommandRegistry {
                 command: PaletteCommand(
                     id: "action.maximize", title: "Maximize pane", subtitle: "", category: .action,
                     systemImage: "arrow.up.left.and.arrow.down.right", shortcut: "⇧⌘↩",
-                    keywords: ["grid", "stack", "zoom"], action: .maximizePane),
+                    keywords: ["grid", "session grid", "stack", "zoom"], action: .maximizePane),
                 isAvailable: { context in
                     if case .sessionGrid = context.activePage { return true }
                     return context.currentTerminal != nil
@@ -229,9 +229,9 @@ enum CommandRegistry {
             category: .workspace, systemImage: "square.and.pencil",
             keywords: keywords + ["new", "session", "run", "type"], action: .customCommand(alias: alias)))
         commands.append(PaletteCommand(
-            id: "\(prefix).home", title: "Open workspace home", subtitle: workspace.name,
+            id: "\(prefix).home", title: "Open session grid", subtitle: workspace.name,
             category: .workspace, systemImage: "rectangle.grid.2x2",
-            keywords: keywords + ["grid", "stack", "all sessions"], action: .openSessionGrid(alias: alias)))
+            keywords: keywords + ["grid", "session grid", "stack", "home", "workspace home", "all sessions"], action: .openSessionGrid(alias: alias)))
         if workspace.isLocal {
             commands += context.localSessions.map { session in
                 PaletteCommand(
@@ -246,7 +246,7 @@ enum CommandRegistry {
                 category: .workspace, systemImage: "plus.rectangle",
                 keywords: keywords + ["new", "create", "session"], action: .newNamedSession(alias: alias)))
             commands.append(PaletteCommand(
-                id: "\(prefix).files", title: "Files…", subtitle: workspace.name,
+                id: "\(prefix).files", title: "Browse files…", subtitle: workspace.name,
                 category: .workspace, systemImage: "folder",
                 keywords: keywords + ["browse", "upload", "download"], action: .openFiles(alias: alias)))
             if context.hasCaddyMachine {
@@ -301,11 +301,11 @@ enum CommandRegistry {
                 action: .hostKey(machine: machine)))
             if context.hasCaddyMachine {
                 list.append(PaletteCommand(
-                    id: "machine.\(machine).subdomains", title: "Subdomains on \(machine)",
+                    id: "machine.\(machine).subdomains", title: "Published apps on \(machine)",
                     subtitle: "", category: .machine, systemImage: "globe",
                     keywords: [machine] + subdomainKeywords, action: .subdomains(machine: machine)))
                 list.append(PaletteCommand(
-                    id: "machine.\(machine).add-subdomain", title: "Add subdomain on \(machine)…",
+                    id: "machine.\(machine).add-subdomain", title: "Add app on \(machine)…",
                     subtitle: "", category: .machine, systemImage: "plus.circle",
                     keywords: [machine] + subdomainKeywords, action: .addSubdomain(machine: machine)))
             }

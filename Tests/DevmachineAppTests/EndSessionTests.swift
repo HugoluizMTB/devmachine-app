@@ -52,13 +52,13 @@ final class EndSessionTests: XCTestCase {
             item: .session(alias: acme.alias, name: "dash"), name: "dash", place: "acme"))
     }
 
-    func testASingleLocalSessionAsksToEndItOnThisMac() {
+    func testASingleLocalSessionAsksToEndItInLocal() {
         model.addLocalSession(path: "/Users/alice/dev/beta")
         model.selection = .localSession(name: "beta", path: "/Users/alice/dev/beta")
 
         XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .askToEndSession)
         XCTAssertEqual(model.pendingEndSession?.name, "beta")
-        XCTAssertEqual(model.pendingEndSession?.place, "This Mac")
+        XCTAssertEqual(model.pendingEndSession?.place, "Local")
     }
 
     func testDeletingAnUnselectedRemoteSessionAsksWithTheSameRequest() {

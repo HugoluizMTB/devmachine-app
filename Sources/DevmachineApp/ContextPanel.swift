@@ -212,7 +212,7 @@ struct ContextPanel: View {
                 DMIconButton(systemImage: "sidebar.right", size: 13, weight: .semibold) {
                     withAnimation(.easeInOut(duration: 0.18)) { model.contextCollapsed = true }
                 }
-                .help("Close context")
+                .help("Close context panel")
             }
         )
     }
@@ -263,7 +263,7 @@ struct ContextCollapsedStrip: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Open context")
+        .help("Open context panel")
         .background(Color.dmSidebarBg)
     }
 }

@@ -167,7 +167,7 @@ struct ContextSectionWidgetView: View {
         DMSection(
             contentSpacing: 9,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
-            label: { sectionLabel("TODO") },
+            label: { sectionLabel("TO-DO") },
             trailing: {
                 sectionTrailing(plan.map { "\($0.done)/\($0.total)" } ?? "0")
                 StackHeaderControls()
@@ -354,7 +354,7 @@ private struct ContextSkeleton: View {
                 section("MONITORS") { agentRows(1) }
                 section("SHELLS") { agentRows(2) }
                 section("SUB-AGENTS") { agentRows(1) }
-                section("TODO", spacing: 9) {
+                section("TO-DO", spacing: 9) {
                     DMSkeletonBlock(height: 5, radius: 3)
                     VStack(alignment: .leading, spacing: m.pt(3)) {
                         ForEach(0..<4, id: \.self) { index in

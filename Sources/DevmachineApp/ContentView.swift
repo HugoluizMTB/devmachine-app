@@ -210,14 +210,14 @@ struct ContentView: View {
             }
         }
         .confirmationDialog(
-            "Delete \(model.pendingBulkDelete?.count ?? 0) sessions? This kills their tmux sessions.",
+            "End \(model.pendingBulkDelete?.count ?? 0) sessions? This kills their tmux sessions.",
             isPresented: Binding(
                 get: { model.pendingBulkDelete != nil },
                 set: { if !$0 { model.pendingBulkDelete = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) {
+            Button("End \(model.pendingBulkDelete?.count ?? 0) sessions", role: .destructive) {
                 if let pending = model.pendingBulkDelete {
                     model.deleteSessions(pending)
                 }
@@ -522,7 +522,7 @@ private struct QuickSessionSheet: View {
 
             Picker("Workspace", selection: $destinationAlias) {
                 ForEach(model.sidebarWorkspaces) { workspace in
-                    Text(verbatim: workspace.isLocal ? "This Mac" : workspace.name)
+                    Text(verbatim: workspace.isLocal ? "Local" : workspace.name)
                         .tag(workspace.alias)
                 }
             }
@@ -534,7 +534,7 @@ private struct QuickSessionSheet: View {
                 }
             }
 
-            Text("The configured Terminal or coding harness opens automatically.")
+            Text("The configured Terminal or coding agent opens automatically.")
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
 
@@ -573,7 +573,7 @@ private struct QuickSessionSheet: View {
 extension ContentView {
     fileprivate func workspaceName(_ alias: String) -> String {
         guard let workspace = model.sidebarWorkspaces.first(where: { $0.alias == alias }) else { return alias }
-        return workspace.isLocal ? "This Mac" : workspace.name
+        return workspace.isLocal ? "Local" : workspace.name
     }
 
     fileprivate func runCustomCommand(_ raw: String, in alias: String) {

@@ -183,6 +183,15 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(command("action.add-subdomain", in: current)?.action, .addSubdomain(machine: "staging"))
     }
 
+    func testTheSessionGridCommandIsStillFoundByItsOldNames() throws {
+        let grid = try XCTUnwrap(command("ws.acme-devmachine.home", in: context()))
+        XCTAssertEqual(grid.title, "Open session grid")
+        XCTAssertEqual(grid.action, .openSessionGrid(alias: "acme-devmachine"))
+        for word in ["stack", "home", "grid"] {
+            XCTAssertTrue(grid.keywords.contains(word), word)
+        }
+    }
+
     func testSessionsBecomeSessionCommands() {
         var current = context()
         current.sessions = [PaletteItem(
@@ -200,7 +209,7 @@ final class CommandRegistryTests: XCTestCase {
                 id: "acme-devmachine/dash", title: "dash", subtitle: "acme",
                 target: .session(alias: "acme-devmachine", name: "dash"), badges: []),
             PaletteItem(
-                id: "local/notes", title: "notes", subtitle: "This Mac",
+                id: "local/notes", title: "notes", subtitle: "Local",
                 target: .localSession(name: "notes", path: "/Users/alice/notes"), badges: []),
         ]
         let share = command("session.share.acme-devmachine/dash", in: current)

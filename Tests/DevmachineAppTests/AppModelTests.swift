@@ -967,7 +967,7 @@ final class AppModelTests: XCTestCase {
         model.askToEndSession(.localSession(name: "acme", path: "/Users/alice/dev/acme"))
 
         XCTAssertEqual(model.pendingEndSession, SessionEndRequest(
-            item: .localSession(name: "acme", path: "/Users/alice/dev/acme"), name: "acme", place: "This Mac"))
+            item: .localSession(name: "acme", path: "/Users/alice/dev/acme"), name: "acme", place: "Local"))
         XCTAssertEqual(model.localSessions.map(\.handle), ["Operator", "acme"])
 
         model.confirmEndSession()

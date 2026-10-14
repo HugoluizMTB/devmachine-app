@@ -137,7 +137,7 @@ final class SetupPageTests: XCTestCase {
             contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
                 .deletingLastPathComponent().appendingPathComponent("Sources/DevmachineApp/SetupPage.swift"),
             encoding: .utf8)
-        let sidebars = try XCTUnwrap(source.range(of: "subsection(\"Sidebars\") {"))
+        let sidebars = try XCTUnwrap(source.range(of: "subsection(\"Sidebar and Context tab\") {"))
         let menubar = try XCTUnwrap(source.range(of: "subsection(\"Menu bar\") {"))
         XCTAssertLessThan(sidebars.lowerBound, menubar.lowerBound)
         XCTAssertTrue(source.contains("stackResetBlock(DefaultStackBoard.surfaces, hint: StackBoardCopy.resetHint)"))
@@ -194,6 +194,6 @@ final class SetupPageWallpaperTests: XCTestCase {
     func testSettingsHasGeneralAppearanceAndHealthCheckButNoTerminalPreviewsOrAdvanced() {
         XCTAssertEqual(
             SettingsSection.allCases.map(\.title),
-            ["General", "Machines", "Workspaces", "Packages", "Harnesses", "Shares", "Appearance", "Health check", "About"])
+            ["General", "Machines", "Workspaces", "Packages", "Coding agents", "Shares", "Appearance", "Health check", "About"])
     }
 }

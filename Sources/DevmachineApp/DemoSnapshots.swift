@@ -186,7 +186,7 @@ enum DemoSnapshots {
     /// The Operator walk (`DEVMACHINE_DEMO_WALK=operator`): the first open's
     /// chooser over the demo Mac's harness CLIs, Settings → General with the
     /// Operator switch on and off (the sidebar without it), and the
-    /// Operator's program in Settings → Harnesses.
+    /// Operator's program in Settings → Coding agents.
     static let operatorScreens: [Screen] = [
         Screen(id: "operator-chooser", fileName: "200-operator-chooser.png", settleNanoseconds: 700_000_000),
         Screen(id: "operator-general", fileName: "201-operator-general.png", settleNanoseconds: 500_000_000),
@@ -196,7 +196,7 @@ enum DemoSnapshots {
     ]
 
     /// The harness icon walk (`DEVMACHINE_DEMO_WALK=harness-icons`): acme's
-    /// workspace home with Settings → Harnesses → "Show harness icon" on.
+    /// session grid with Settings → Coding agents → "Show coding agent icon" on.
     static let harnessIconScreens: [Screen] = [
         Screen(id: "sidebar-harness-icons", fileName: "35-sidebar-harness-icons.png", settleNanoseconds: 900_000_000),
     ]

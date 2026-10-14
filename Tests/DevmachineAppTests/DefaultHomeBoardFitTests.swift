@@ -126,7 +126,7 @@ final class DefaultHomeBoardFitTests: XCTestCase {
                 HStack(spacing: DMSpace.sm) {
                     Text(verbatim: "24 sessions")
                     Text(verbatim: "·")
-                    Text(verbatim: "12 with coding harnesses")
+                    Text(verbatim: "12 running coding agents")
                     Text(verbatim: "·")
                     Text(verbatim: "18 workspaces")
                 }

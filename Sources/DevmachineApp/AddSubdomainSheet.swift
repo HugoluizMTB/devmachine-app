@@ -164,7 +164,7 @@ struct AddSubdomainSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.xl) {
-            Text("Add subdomain")
+            Text("Add app")
                 .font(.dm(14, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 

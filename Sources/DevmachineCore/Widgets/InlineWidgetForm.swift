@@ -25,7 +25,7 @@ public enum InlineWidgetTemplate: String, CaseIterable, Sendable, Identifiable {
         case .command: return "Run a command here or on a machine and show its output."
         case .urlStatus: return "Check that an address answers."
         case .webPage: return "Show a web page."
-        case .prompt: return "Ask a coding harness and show the answer."
+        case .prompt: return "Ask a coding agent and show the answer."
         case .session: return "Show the screen of a session."
         }
     }

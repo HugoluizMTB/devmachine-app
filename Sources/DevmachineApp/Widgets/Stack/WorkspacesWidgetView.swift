@@ -179,13 +179,13 @@ struct WorkspacesWidgetView: View {
                     tint: model.isWorkspaceInSessionGrid(alias) ? Color.accentColor : Color.dmMuted,
                     hitSize: DMHitSize.header
                 ) { model.openSessionGrid(alias) }
-                .help("Workspace home")
+                .help("Session grid")
 
                 if filesButton {
                     DMIconButton(systemImage: "folder", size: 11, hitSize: DMHitSize.header) {
                         openFiles(alias: alias)
                     }
-                    .help("Files…")
+                    .help("Browse files…")
                 }
 
                 if let action {
@@ -194,8 +194,8 @@ struct WorkspacesWidgetView: View {
             }
         )
         .contextMenu {
-            Button("Open workspace home") { model.openSessionGrid(alias) }
-            Button("Files…") { openFiles(alias: alias) }
+            Button("Open session grid") { model.openSessionGrid(alias) }
+            Button("Browse files…") { openFiles(alias: alias) }
             if alias != Workspace.local.alias, model.hasCaddyMachine {
                 Button("Publish a port…") {
                     model.requestPublish(workspace: title)
@@ -326,10 +326,10 @@ struct WorkspacesWidgetView: View {
         .sidebarDraggable(.session(s.name, in: alias), dragging: $dragging, model: model)
         .contextMenu {
             if model.selectedSessions.count > 1 && model.selectedSessions.contains(ref) {
-                Button("Stack to Home") {
+                Button("Show in session grid") {
                     model.showSessionGrid(Array(model.selectedSessions))
                 }
-                Button("Delete \(model.selectedSessions.count) sessions", role: .destructive) {
+                Button("End \(model.selectedSessions.count) sessions", role: .destructive) {
                     model.pendingBulkDelete = Array(model.selectedSessions)
                 }
             } else {
@@ -351,7 +351,7 @@ struct WorkspacesWidgetView: View {
                     Button("Share…") { model.requestShare(ref) }
                 }
                 Divider()
-                Button("Delete", role: .destructive) {
+                Button("End session", role: .destructive) {
                     model.askToEndSession(.session(alias: alias, name: s.name))
                 }
             }
@@ -360,7 +360,7 @@ struct WorkspacesWidgetView: View {
 
     /// Harness badges appear before the client count only under the pointer: a
     /// sidebar full of marks is noise, while hover makes one row easy to check.
-    /// Settings → Harnesses can move a harness's icon before the name instead.
+    /// Settings → Coding agents can move a harness's icon before the name instead.
     private func row(
         title: String,
         badges: [HarnessBadgePresentation],

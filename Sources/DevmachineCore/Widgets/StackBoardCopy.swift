@@ -30,6 +30,11 @@ public enum StackBoardCopy {
     public static func resetFailed(_ surface: String) -> String { "Could not reset the \(displayName(surface))" }
 
     private static func displayName(_ surface: String) -> String {
-        surface.replacingOccurrences(of: "-", with: " ")
+        switch surface {
+        case DefaultStackBoard.contextSidebar: return "Context tab"
+        case DefaultStackBoard.menubar: return "menu bar"
+        case DefaultStackBoard.menubarPanel: return "menu bar popover"
+        default: return surface.replacingOccurrences(of: "-", with: " ")
+        }
     }
 }

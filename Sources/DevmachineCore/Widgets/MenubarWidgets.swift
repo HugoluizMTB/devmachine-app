@@ -34,7 +34,7 @@ public enum AppMenubarWidgets {
         "usage-panel": Spec(
             provider: "app/usage-panel", view: .object(["kind": .string("app.usage-panel")]), fits: ["tabs"],
             surfaces: [DefaultStackBoard.menubarPanel], places: [DefaultStackBoard.menubarPanel], title: "Usage",
-            summary: "Coding harness usage, one column per harness."),
+            summary: "Coding agent usage, one column per coding agent."),
     ]
 
     public static var providers: [String: String] { specs.mapValues(\.provider) }

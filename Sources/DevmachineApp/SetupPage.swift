@@ -13,7 +13,7 @@ enum SettingsSection: String, CaseIterable {
         case .machines: return "Machines"
         case .workspaces: return "Workspaces"
         case .packages: return "Packages"
-        case .harnesses: return "Harnesses"
+        case .harnesses: return "Coding agents"
         case .shares: return "Shares"
         case .appearance: return "Appearance"
         case .healthCheck: return "Health check"
@@ -30,7 +30,7 @@ enum SettingsSection: String, CaseIterable {
         case .harnesses: return "Choose what new sessions start with."
         case .shares: return "Sessions this Mac shared: who can still join, and until when."
         case .appearance: return "The size of the interface, the wallpaper, and how a terminal looks."
-        case .healthCheck: return "Checks that this Mac, the devmachine CLI and your machines work together."
+        case .healthCheck: return "Checks that this Mac, the devmachine CLI and your machines work together. It runs devmachine doctor."
         case .about: return "This app's version and updates, and the devmachine CLI's."
         }
     }
@@ -436,7 +436,7 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: m.pt(28)) {
             wallpaperBlock
             subsection("Home") { homeLayoutBlock }
-            subsection("Sidebars") { stackResetBlock(DefaultStackBoard.surfaces, hint: StackBoardCopy.resetHint) }
+            subsection("Sidebar and Context tab") { stackResetBlock(DefaultStackBoard.surfaces, hint: StackBoardCopy.resetHint) }
             subsection("Menu bar") {
                 stackResetBlock(DefaultStackBoard.menubarSurfaces, hint: StackBoardCopy.menubarResetHint)
             }
@@ -690,7 +690,7 @@ struct SetupPage: View {
     private var harnessesBlock: some View {
         VStack(alignment: .leading, spacing: m.pt(30)) {
             VStack(alignment: .leading, spacing: m.pt(10)) {
-                settingsHeading("Available harnesses")
+                settingsHeading("Available coding agents")
                 let activatable = Set(harnessSettingsFacade.activatable(
                     available: machinesStore.workspacePackageNames).map(\.id))
                 ForEach(harnessSettingsFacade.harnesses) { descriptor in
@@ -717,9 +717,9 @@ struct SetupPage: View {
                         }
                     }
                 }
-                note("Turning a harness on adds it to the launch choices and to a new workspace's "
+                note("Turning a coding agent on adds it to the launch choices and to a new workspace's "
                     + "coding agents. Starting it on this Mac needs its CLI here; a remote workspace "
-                    + "never asks. Every harness is recognized in a session either way.")
+                    + "never asks. Every coding agent is recognized in a session either way.")
             }
 
             harnessIconToggle
@@ -727,7 +727,7 @@ struct SetupPage: View {
             VStack(alignment: .leading, spacing: m.pt(10)) {
                 settingsHeading("Session defaults")
                 launchChoicePicker(
-                    title: "This Mac",
+                    title: "Local",
                     detail: "New local sessions",
                     savedFor: Workspace.local.alias,
                     place: .thisMac,
@@ -771,7 +771,7 @@ struct SetupPage: View {
                     }
                 }
 
-                note("A harness or a custom command is typed into the new shell, "
+                note("A coding agent or a custom command is typed into the new shell, "
                     + "exactly as written. Leaving it keeps the session open, and "
                     + "sessions that already exist are never touched. An empty "
                     + "custom command opens a plain terminal.")
@@ -929,7 +929,7 @@ struct SetupPage: View {
     private func harnessActivationMessage(_ error: HarnessActivationError) -> String {
         switch error {
         case .harnessNotRegistered:
-            return "This harness is not available."
+            return "This coding agent is not available."
         }
     }
 
@@ -974,13 +974,13 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: m.space.sm) {
             settingsHeading("Sidebar")
             Toggle(isOn: $showsHarnessIcons) {
-                Text(verbatim: "Show harness icon in sidebar sessions")
+                Text(verbatim: "Show coding agent icon in sidebar sessions")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-            note("A session running a harness shows its icon before the name. "
+            note("A session running a coding agent shows its icon before the name. "
                 + "Terminal sessions show none.")
             HStack(spacing: m.space.lg) {
                 Text(verbatim: "Icon style")

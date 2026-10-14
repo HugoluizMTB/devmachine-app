@@ -96,11 +96,11 @@ struct SubdomainsView: View {
 
     private var header: some View {
         HStack(spacing: m.pt(10)) {
-            Text("Subdomains")
+            Text("Published apps")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 
-            DMSearchField(prompt: "Search subdomains", text: $searchText)
+            DMSearchField(prompt: "Search published apps", text: $searchText)
                 .frame(maxWidth: m.pt(240))
                 .padding(.horizontal, m.space.md)
                 .padding(.vertical, m.pt(5))
@@ -114,7 +114,7 @@ struct SubdomainsView: View {
             }
             DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { store.refresh() }
                 .help("Refresh")
-            DMButton("Add subdomain", systemImage: "plus", size: .small) {
+            DMButton("Add app", systemImage: "plus", size: .small) {
                 showAdd = true
             }
             .disabled(settingsStore.settings == nil)
@@ -304,8 +304,8 @@ struct SubdomainsView: View {
     }
 
     private var emptySitesText: String {
-        guard store.showsMachinePicker, let machine = store.selectedMachine else { return "No subdomains found" }
-        return "No subdomains on \(machine)"
+        guard store.showsMachinePicker, let machine = store.selectedMachine else { return "No published apps found" }
+        return "No published apps on \(machine)"
     }
 
     private func openRequestedAdd() {

@@ -13,7 +13,7 @@ public enum AppStackWidgets {
     public static let viewKinds = Set(providers.keys.map { "app.\($0)" })
     public static let titles: [String: String] = [
         "workspaces": "WORKSPACES", "shortcuts": "SHORTCUTS", "publish-port": "PUBLISH A PORT",
-        "monitors": "MONITORS", "shells": "SHELLS", "sub-agents": "SUB-AGENTS", "todo": "TODO",
+        "monitors": "MONITORS", "shells": "SHELLS", "sub-agents": "SUB-AGENTS", "todo": "TO-DO",
         "pull-requests": "PULL REQUESTS", "links": "LINKS",
     ]
     private static let summaries: [String: String] = [

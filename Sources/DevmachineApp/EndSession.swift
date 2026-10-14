@@ -69,7 +69,7 @@ extension AppModel {
     private func endPlace(_ item: SidebarItem) -> String {
         switch item {
         case let .session(alias, _): return workspaces.first { $0.alias == alias }?.name ?? alias
-        case .localSession: return "This Mac"
+        case .localSession: return "Local"
         }
     }
 }

@@ -36,7 +36,7 @@ struct OperatorChooserPage: View {
                     Text(verbatim: "You can change this later in")
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
-                    DMButton("Settings → Harnesses", variant: .link, size: .small) {
+                    DMButton("Settings → Coding agents", variant: .link, size: .small) {
                         model.openSettings(.harnesses)
                     }
                 }

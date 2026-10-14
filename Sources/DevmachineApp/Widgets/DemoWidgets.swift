@@ -10,7 +10,7 @@ extension DemoData {
             source: CatalogSource(name: "app/clock", every: "60s"), viewKind: "app.clock",
             sizes: ["small", "medium", "wide"], defaultSize: "medium"),
         CatalogWidget(
-            name: "devmachine-app/summary", summary: "Sessions, harness sessions and workspaces.",
+            name: "devmachine-app/summary", summary: "Sessions, coding agent sessions and workspaces.",
             source: CatalogSource(name: "app/summary", every: "30s"), viewKind: "app.summary",
             sizes: ["medium", "wide"], defaultSize: "wide"),
         CatalogWidget(
@@ -19,8 +19,8 @@ extension DemoData {
             source: CatalogSource(name: "app/machines", with: ["machines": "{{inputs.machines}}"], every: "90s"),
             viewKind: "app.machines", sizes: ["medium", "large", "tall"], defaultSize: "large"),
         CatalogWidget(
-            name: "devmachine-app/usage", summary: "A coding harness's usage windows.",
-            inputs: ["harness": CatalogInput(type: "choice", defaultValue: nil, summary: "Harness.", from: "harnesses")],
+            name: "devmachine-app/usage", summary: "A coding agent's usage windows.",
+            inputs: ["harness": CatalogInput(type: "choice", defaultValue: nil, summary: "Coding agent.", from: "harnesses")],
             source: CatalogSource(name: "app/harness-usage", with: ["harness": "{{inputs.harness}}"], every: "60s"),
             viewKind: "app.harness-usage", sizes: ["small", "medium", "wide"], defaultSize: "medium"),
         demoUsage(package: "claude-code", harness: "claude"),
@@ -34,7 +34,7 @@ extension DemoData {
 
     private static func demoUsage(package: String, harness: String) -> CatalogWidget {
         CatalogWidget(
-            name: "\(package)/usage", summary: "Coding-harness usage windows.",
+            name: "\(package)/usage", summary: "Coding agent usage windows.",
             source: CatalogSource(name: "app/harness-usage", with: ["harness": harness], every: "60s"),
             viewKind: "app.harness-usage", sizes: ["small", "medium", "wide"], defaultSize: "medium",
             path: "/Users/alice/.config/devmachine/cache/packages/v39/\(package)/widgets/usage")
