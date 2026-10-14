@@ -38,10 +38,18 @@ for scene in $SCENES; do
   # The fps filter holds the last frame as long as the gap before it, so
   # the scene is cut at the sum of its holds.
   seconds="$(awk '/^duration/ { total += $2 } END { print total }' "$list")"
+  # The screen is mostly still, so a keyframe every 10 s and slower presets
+  # shrink the files at the same crf, which is what sets the quality.
+  vp9=(-c:v libvpx-vp9 -b:v 0 -crf 32 -g 300 -row-mt 1 -tile-columns 2 -deadline good -cpu-used 0
+    -passlogfile "$OUT/$scene-vp9")
   ffmpeg -loglevel error -y -f concat -safe 0 -i "$list" -vf "$SCALE" -t "$seconds" \
-    -c:v libvpx-vp9 -b:v 0 -crf 32 -row-mt 1 -deadline good -cpu-used 2 -an "$OUT/$scene.webm"
+    "${vp9[@]}" -pass 1 -an -f null /dev/null
   ffmpeg -loglevel error -y -f concat -safe 0 -i "$list" -vf "$SCALE" -t "$seconds" \
-    -c:v libx264 -preset slow -crf 22 -tune stillimage -pix_fmt yuv420p -movflags +faststart -an "$OUT/$scene.mp4"
+    "${vp9[@]}" -pass 2 -an "$OUT/$scene.webm"
+  rm -f "$OUT/$scene-vp9"-*.log
+  ffmpeg -loglevel error -y -f concat -safe 0 -i "$list" -vf "$SCALE" -t "$seconds" \
+    -c:v libx264 -preset veryslow -crf 22 -tune stillimage -g 300 -pix_fmt yuv420p -movflags +faststart \
+    -an "$OUT/$scene.mp4"
   last="$(ls "$FRAMES/$scene"/*.png | sort | tail -n 1)"
   ffmpeg -loglevel error -y -i "$last" -vf "scale=${WIDTH}:${HEIGHT}:flags=lanczos" -quality 82 "$OUT/$scene-poster.webp"
 done
