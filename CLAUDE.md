@@ -1508,6 +1508,11 @@ once may fail there.
   resize move the real board frame step by step; the "Add a widget"
   popover is drawn under its button. A right-click's menu is
   not drawn: an `NSMenu` is a window the capture never sees.
+- A frame's `zoom` names a control the camera eases to (`DemoCamera`, 0.8 s,
+  1.8x), by cropping the real frame; a scene with any zoom is captured at 4x
+  so the zoomed text stays sharp. `SITE_DEMO_SCENES="context"` renders one
+  scene. The context scene's Links rows come from the app's own extraction
+  (`contextExtractRefs` + `contextMapLinks`) over the demo transcript.
 - `cacheDisplay` does not catch `NSProgressIndicator`'s animation, so a
   spinner is one still frame; Home's board is written again for the walk's
   window, since the one written at launch was laid out for a smaller one.

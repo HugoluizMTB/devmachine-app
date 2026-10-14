@@ -6,6 +6,7 @@
 #   scripts/site_demo_videos.sh <output-dir>
 #
 # SITE_DEMO_FRAMES=<dir> reuses frames a previous walk wrote there.
+# SITE_DEMO_SCENES="context home" renders and encodes only those scenes.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -19,7 +20,7 @@ OUT="$1"
 mkdir -p "$OUT"
 WIDTH=2520
 HEIGHT=1620
-SCENES="operator sessions cli context publish share home"
+SCENES="${SITE_DEMO_SCENES:-operator sessions cli context publish share home}"
 
 if [ -n "${SITE_DEMO_FRAMES:-}" ]; then
   FRAMES="$SITE_DEMO_FRAMES"
@@ -28,6 +29,7 @@ else
   trap 'rm -rf "$(dirname "$FRAMES")"' EXIT
   swift build
   DEVMACHINE_DEMO=1 DEVMACHINE_DEMO_HIDDEN=1 DEVMACHINE_DEMO_WALK=site \
+    DEVMACHINE_DEMO_SCENES="$(echo "$SCENES" | tr ' ' ',')" \
     DEVMACHINE_DEMO_SNAPSHOTS="$FRAMES" .build/debug/DevmachineApp
 fi
 

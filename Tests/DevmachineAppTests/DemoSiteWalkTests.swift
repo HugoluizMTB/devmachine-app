@@ -106,7 +106,8 @@ final class DemoSiteWalkTests: XCTestCase {
         let targets = Set(DemoSiteWalk.scenes.flatMap(\.frames).compactMap(\.pointer?.spot.target))
         XCTAssertEqual(targets, [
             "grid:acme-devmachine", "operator:Claude Code", "grid-right:claude — payments refactor",
-            "grid-size:claude — payments refactor", "context:todo", "context:sub-agents", "context:pull-requests", "tab:Git",
+            "grid-size:claude — payments refactor", "context:todo", "context:pull-requests",
+            "link:\(DemoSiteWalk.sentryURL)",
             "session:acme-devmachine/claude — payments refactor", "sheet:share", "sheet:done", "tab:Chat",
             "site:shop.acme.example.com", "sheet:share-name", "sheet:share-for", "sheet:share-mode",
             "sheet:share-link", "sheet:share-password",
@@ -183,15 +184,42 @@ final class DemoSiteWalkTests: XCTestCase {
         XCTAssertFalse(DemoData.terminalTranscript(for: kind).hasSuffix("$ devmachine sync"))
     }
 
-    func testTheContextSceneTicksATaskFinishesTheSubAgentAndTurnsThePullRequestGreen() throws {
+    func testTheContextSceneTicksATaskTurnsThePullRequestGreenAndCollectsALink() throws {
         let states = DemoSiteWalk.contextStates
         let done = states.map { $0.plan?.done ?? 0 }
         XCTAssertEqual(done, done.sorted())
         XCTAssertLessThan(done.first ?? 0, done.last ?? 0)
         XCTAssertEqual(states.first?.prs.first { $0.number == 415 }?.ci, "pending")
         XCTAssertEqual(states.last?.prs.first { $0.number == 415 }?.ci, "success")
-        XCTAssertEqual(states.map { $0.agents.first?.status }, [nil, nil, "running", "done", "done"])
         XCTAssertEqual(DemoSiteWalk.contextTranscripts.count, states.count)
+        let sentry = states.map { $0.links.contains { $0.url == DemoSiteWalk.sentryURL } }
+        XCTAssertEqual(sentry, [false, false, false, false, true])
+        XCTAssertTrue(DemoSiteWalk.contextTranscripts[3].contains(DemoSiteWalk.sentryURL))
+        XCTAssertEqual(states.last?.links.first { $0.url == DemoSiteWalk.sentryURL }?.kind, "sentry")
+        XCTAssertEqual(states.last?.links.map(\.label).contains("PAY-212"), true)
+    }
+
+    func testTheLinksStepLastsLongestAndTheCameraZoomsInAndBackOut() throws {
+        let scene = try XCTUnwrap(DemoSiteWalk.scenes.first { $0.id == "context" })
+        var seconds: [String: Double] = [:]
+        for frame in scene.frames {
+            guard let zoom = frame.zoom else { continue }
+            seconds[zoom, default: 0] += frame.hold + (frame.pointer?.seconds ?? 0)
+        }
+        let links = try XCTUnwrap(seconds["context:links"])
+        XCTAssertTrue(seconds.values.allSatisfy { $0 <= links })
+        XCTAssertNil(scene.frames.first?.zoom)
+        XCTAssertNil(scene.frames.last?.zoom)
+        XCTAssertEqual(DemoCamera.seconds, 0.8, accuracy: 0.01)
+        XCTAssertTrue((1.8...2).contains(DemoCamera.zoom))
+    }
+
+    func testTheCameraKeepsTheWindowShapeInsideTheWindow() {
+        let rect = DemoCamera.rect(around: CGRect(x: 1500, y: 900, width: 80, height: 40))
+        XCTAssertEqual(rect.width / rect.height, DemoCamera.window.width / DemoCamera.window.height, accuracy: 0.001)
+        XCTAssertTrue(DemoCamera.window.contains(rect))
+        XCTAssertEqual(DemoCamera.path(from: nil, to: rect).last, rect)
+        XCTAssertEqual(DemoCamera.path(from: rect, to: nil).last, DemoCamera.window)
     }
 
     func testTheDemoContextAnswersWithTheWalksStateWhileOneIsSet() throws {

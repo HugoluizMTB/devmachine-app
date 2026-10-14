@@ -64,7 +64,7 @@ struct ContextSectionWidgetView: View {
         case .subAgents: runningSection("SUB-AGENTS", state.agents).demoClickTarget("context:sub-agents")
         case .todo: todoSection(state.plan).demoClickTarget("context:todo")
         case .pullRequests: if !state.prs.isEmpty { prsSection(state.prs).demoClickTarget("context:pull-requests") }
-        case .links: if !state.links.isEmpty { linksSection(state.links) }
+        case .links: if !state.links.isEmpty { linksSection(state.links).demoClickTarget("context:links") }
         default: EmptyView()
         }
     }
@@ -321,6 +321,7 @@ struct ContextSectionWidgetView: View {
             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
         .onTapGesture { openLink(link.url) }
+        .demoClickTarget("link:\(link.url)")
         .contextMenu { linkMenu(link.url) }
     }
 

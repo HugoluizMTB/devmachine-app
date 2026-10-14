@@ -1007,10 +1007,20 @@ enum DemoSnapshots {
         write(SnapshotChrome.framed(flattenTransparency(rep), scale: scale, kind: kind), to: url)
     }
 
-    static func bitmap(of view: NSView) -> NSBitmapImageRep? {
-        guard view.bounds.width > 0, view.bounds.height > 0,
-              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
-        else { return nil }
+    /// At the window's own scale, or at `scale` pixels per point when given.
+    static func bitmap(of view: NSView, scale: CGFloat? = nil) -> NSBitmapImageRep? {
+        guard view.bounds.width > 0, view.bounds.height > 0 else { return nil }
+        let rep: NSBitmapImageRep?
+        if let scale {
+            rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: Int(view.bounds.width * scale),
+                pixelsHigh: Int(view.bounds.height * scale), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+            rep?.size = view.bounds.size
+        } else {
+            rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
+        }
+        guard let rep else { return nil }
         view.cacheDisplay(in: view.bounds, to: rep)
         return rep
     }
@@ -1022,8 +1032,10 @@ enum DemoSnapshots {
         try? data.write(to: url)
     }
 
-    static func writeFramed(_ rep: NSBitmapImageRep, scale: CGFloat, to url: URL) {
-        write(SnapshotChrome.framed(rep, scale: scale, kind: .window), to: url)
+    static func writeFramed(
+        _ rep: NSBitmapImageRep, scale: CGFloat, kind: SnapshotChrome.Kind = .window, to url: URL
+    ) {
+        write(SnapshotChrome.framed(rep, scale: scale, kind: kind), to: url)
     }
 
     /// A sheet lives in a window of its own, which a capture of the main

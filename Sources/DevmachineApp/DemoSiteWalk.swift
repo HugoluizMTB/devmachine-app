@@ -64,13 +64,16 @@ enum DemoSiteWalk {
         let hold: Double
         var pointer: Pointer?
         var label: Label?
+        /// The control the camera centres on, zoomed in; nil shows the whole
+        /// window.
+        var zoom: String?
     }
 
     enum Step: Equatable {
         case operatorChooser, operatorPick, operatorChat(Int)
         case sidebar, sessionGrid, gridMove, gridHalf, gridFull, gridRestore
         case cli(Int)
-        case context(Int), contextGit
+        case context(Int)
         case publishedApps, publishing, published
         case shareStart, shareSheet, shareLink, shared, chat, guestReply, ownerReply
         case homeStart, homeDrag(Int), homeResize(Int), homeGallery, homeAdded
@@ -81,7 +84,14 @@ enum DemoSiteWalk {
         let frames: [Frame]
 
         var seconds: Double {
-            frames.reduce(0) { $0 + $1.hold + ($1.pointer?.seconds ?? 0) }
+            var zoom: String?
+            var total = 0.0
+            for frame in frames {
+                if frame.zoom != zoom { total += DemoCamera.seconds }
+                zoom = frame.zoom
+                total += frame.hold + (frame.pointer?.seconds ?? 0)
+            }
+            return total
         }
     }
 
@@ -137,21 +147,29 @@ enum DemoSiteWalk {
             step: .cli(index), hold: played.hold, label: played.label.map { Label(text: $0, at: operatorLabelPoint) })
     })
 
+    /// The top of the terminal, where the agent's lines appear.
+    static let terminalCamera = "camera:terminal"
+
+    private static let linksLabel = Label(text: "Links from the session, collected for you", near: "context:links")
+
     private static let contextScene = Scene(id: "context", frames: [
-        Frame(step: .context(0), hold: 1.6),
+        Frame(step: .context(0), hold: 1.0),
+        Frame(step: .context(0), hold: 0.4, zoom: "context:todo"),
         Frame(
-            step: .context(1), hold: 2.3, pointer: .hover(Spot(target: "context:todo")),
-            label: Label(text: "The agent's to-do, live", near: "context:todo")),
+            step: .context(1), hold: 1.6, pointer: .hover(Spot(target: "context:todo")),
+            label: Label(text: "The agent's to-do, live", near: "context:todo"), zoom: "context:todo"),
         Frame(
-            step: .context(2), hold: 1.6, pointer: .hover(Spot(target: "context:sub-agents")),
-            label: Label(text: "Sub-agents it started", near: "context:sub-agents")),
-        Frame(step: .context(3), hold: 1.6, label: Label(text: "Sub-agents it started", near: "context:sub-agents")),
+            step: .context(2), hold: 1.6, pointer: .hover(Spot(target: "context:pull-requests")),
+            label: Label(text: "Its pull requests and CI", near: "context:pull-requests"),
+            zoom: "context:pull-requests"),
         Frame(
-            step: .context(4), hold: 2.4, pointer: .hover(Spot(target: "context:pull-requests")),
-            label: Label(text: "Its pull requests and CI", near: "context:pull-requests")),
+            step: .context(3), hold: 2.0,
+            label: Label(text: "The agent names an issue", at: CGPoint(x: 300, y: 380)), zoom: terminalCamera),
+        Frame(step: .context(4), hold: 2.4, label: linksLabel, zoom: "context:links"),
         Frame(
-            step: .contextGit, hold: 3.2, pointer: .click(Spot(target: "tab:Git")),
-            label: Label(text: "Branch and changes", endingAt: CGPoint(x: 1280, y: 86))),
+            step: .context(4), hold: 1.8, pointer: .hover(Spot(target: "link:\(sentryURL)")), label: linksLabel,
+            zoom: "context:links"),
+        Frame(step: .context(4), hold: 1.6),
     ])
 
     private static let publishLabel = Label(text: "Publish a port as an https app", at: CGPoint(x: 300, y: 340))
@@ -222,6 +240,13 @@ enum DemoSiteWalk {
 
     static func handles(_ id: String) -> Bool { id.hasPrefix("site-") }
 
+    /// `DEVMACHINE_DEMO_SCENES=context,home` renders only those scenes.
+    static func scenes(environment: [String: String]) -> [Scene] {
+        guard let raw = environment["DEVMACHINE_DEMO_SCENES"], !raw.isEmpty else { return scenes }
+        let ids = Set(raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+        return scenes.filter { ids.contains($0.id) }
+    }
+
     static func frameName(_ index: Int) -> String {
         String(format: "%03d.png", index + 1)
     }
@@ -269,22 +294,42 @@ enum DemoSiteWalk {
 
     static func run(window: NSWindow, environment: DemoSnapshots.Environment, directory: URL) async {
         environment.model.sidebarCollapsed = false
+        DemoClickTargets.frames[terminalCamera] = CGRect(x: 280, y: 40, width: 500, height: 320)
         relayHome(environment.model)
         try? await Task.sleep(nanoseconds: 300_000_000)
-        for scene in scenes {
+        for scene in scenes(environment: ProcessInfo.processInfo.environment) {
             let folder = directory.appendingPathComponent(scene.id, isDirectory: true)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             var holds: [Double] = []
             var pointer = restingPointer
             var last: Overlay?
             var scale: CGFloat = 2
+            var camera: CGRect?
+            let captureScale: CGFloat? = scene.frames.contains { $0.zoom != nil } ? DemoCamera.captureScale : nil
 
             func emit(_ rep: NSBitmapImageRep, hold: Double) {
-                DemoSnapshots.writeFramed(rep, scale: scale, to: folder.appendingPathComponent(frameName(holds.count)))
+                let url = folder.appendingPathComponent(frameName(holds.count))
+                if let camera {
+                    DemoSnapshots.writeFramed(
+                        DemoCamera.crop(rep, to: camera, scale: scale), scale: scale, kind: .panel, to: url)
+                } else {
+                    DemoSnapshots.writeFramed(rep, scale: scale, to: url)
+                }
                 holds.append(hold)
             }
 
             for frame in scene.frames {
+                if let before = last {
+                    let target = frame.zoom.flatMap { DemoClickTargets.frames[$0] }.map(DemoCamera.rect(around:))
+                    if target != camera {
+                        let still = DemoPointer.draw(on: before.image, at: pointer, ring: nil, scale: scale)
+                        for rect in DemoCamera.path(from: camera, to: target) {
+                            camera = rect
+                            emit(still, hold: DemoCamera.frameSeconds)
+                        }
+                        camera = target
+                    }
+                }
                 if let action = frame.pointer, let before = last {
                     if let target = point(for: action.spot, sheet: before.sheetOrigin) {
                         switch action {
@@ -312,7 +357,9 @@ enum DemoSiteWalk {
                 TerminalRegistry.shared.replayDemoTranscripts()
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 window.displayIfNeeded()
-                guard let content = window.contentView, let shot = DemoSnapshots.bitmap(of: content) else { continue }
+                guard let content = window.contentView,
+                      let shot = DemoSnapshots.bitmap(of: content, scale: captureScale)
+                else { continue }
                 scale = CGFloat(shot.pixelsWide) / content.bounds.width
                 var state = Overlay(image: DemoSnapshots.flattenTransparency(shot))
                 if let sheet = sheet(for: frame.step) {
@@ -436,8 +483,6 @@ enum DemoSiteWalk {
                 try? await Task.sleep(nanoseconds: 700_000_000)
             }
             model.context.retry()
-        case .contextGit:
-            model.contextTab = .git
         case .publishedApps:
             reset(model)
             model.sessionsByAlias = sessions(busy: true, attention: true)
@@ -792,19 +837,27 @@ enum DemoSiteWalk {
 
     private struct ContextStep {
         let done: Int
-        let agent: String?
         let ci: String
+        /// The agent has named the Sentry issue in the session.
+        let printed: Bool
+        /// The panel has read the session since then.
+        let collected: Bool
     }
 
     private static let contextSteps: [ContextStep] = [
-        ContextStep(done: 1, agent: nil, ci: "pending"),
-        ContextStep(done: 2, agent: nil, ci: "pending"),
-        ContextStep(done: 2, agent: "running", ci: "pending"),
-        ContextStep(done: 2, agent: "done", ci: "pending"),
-        ContextStep(done: 3, agent: "done", ci: "success"),
+        ContextStep(done: 1, ci: "pending", printed: false, collected: false),
+        ContextStep(done: 2, ci: "pending", printed: false, collected: false),
+        ContextStep(done: 2, ci: "success", printed: false, collected: false),
+        ContextStep(done: 2, ci: "success", printed: true, collected: false),
+        ContextStep(done: 2, ci: "success", printed: true, collected: true),
     ]
 
-    static let contextStates: [ContextState] = contextSteps.map { context(done: $0.done, agent: $0.agent, ci: $0.ci) }
+    static let sentryURL = "https://acme.sentry.io/issues/4211/"
+
+    static let contextStates: [ContextState] = contextSteps.map { step in
+        let source = contextTranscript(step, printed: step.collected)
+        return context(done: step.done, ci: step.ci, links: collectedLinks(source))
+    }
 
     static let contextKind = TerminalKind.remote(alias: contextSession.alias, session: contextSession.name)
 
@@ -812,14 +865,16 @@ enum DemoSiteWalk {
         "Reproduce with a fake gateway", "Add an idempotency key", "Cover the retry path in a test", "Update CHANGELOG",
     ]
 
+    static let contextTranscripts: [String] = contextSteps.map { contextTranscript($0, printed: $0.printed) }
+
     /// The session's own screen keeps pace with the panel: the same to-do
-    /// list, the sub-agent's call, the test run and the last edit.
-    static let contextTranscripts: [String] = contextSteps.map { step in
+    /// list, the pages the agent read, and the Sentry issue it names.
+    private static func contextTranscript(_ step: ContextStep, printed: Bool) -> String {
         var lines = [
             "\(bold)\(cyan)● Claude Code\(plain) — payments refactor",
             "",
-            "\(dim)Reading ChargeService.swift\(plain)",
-            "\(dim)Reading RefundService.swift\(plain)",
+            "Read https://linear.app/acme/issue/PAY-212",
+            "Read https://acme.example.com/docs/payments",
             "",
             "Found the retry loop that double-",
             "charges on a gateway timeout.",
@@ -835,26 +890,27 @@ enum DemoSiteWalk {
                 lines.append("  \(dim)○ \(text)\(plain)")
             }
         }
-        if let agent = step.agent {
-            lines += ["", "\(cyan)⏺\(plain) Task(Explore: find every retry caller)"]
-            lines.append(agent == "done"
-                ? "  \(dim)⎿ 3 callers, all through ChargeService\(plain)"
-                : "  \(dim)⎿ Searching…\(plain)")
-        }
-        if step.done >= 3 {
-            lines += [
-                "", "\(dim)$\(plain) swift test --filter Charge",
-                "\(green)Test Suite passed\(plain) at 09:14:02.", "\(green)  7 tests, 0 failures\(plain)",
-            ]
-        }
-        if step.done >= 4 {
-            lines += ["", "\(dim)~ CHANGELOG.md\(plain)", "\(green)+ Charges keep one idempotency key\(plain)"]
+        if printed {
+            lines += ["", "\(cyan)⏺\(plain) Sentry has the same timeout:", "  \(sentryURL)"]
         }
         lines += ["\(cyan)❯\(plain)"]
         return lines.joined(separator: "\n")
     }
 
-    private static func context(done: Int, agent: String?, ci: String) -> ContextState {
+    /// The links the app's own engine collects from that text: every URL,
+    /// labelled and badged by `contextMapLinks`, in its order.
+    static func collectedLinks(_ transcript: String) -> [ContextState.Link] {
+        let plainText = transcript.replacingOccurrences(
+            of: "\u{1B}\\[[0-9;]*m", with: "", options: .regularExpression)
+        let refs = contextExtractRefs(
+            blobs: [ContextRefBlob(text: plainText, timestamp: "")], defaultRepo: nil, githubHosts: ["github.com"])
+        let links = refs.links
+            .map { (url: $0.key, count: $0.value.count, lastTimestamp: $0.value.lastTimestamp) }
+            .sorted { $0.url < $1.url }
+        return contextMapLinks(links).map { ContextState.Link(url: $0.url, label: $0.label, kind: $0.kind) }
+    }
+
+    private static func context(done: Int, ci: String, links: [ContextState.Link]) -> ContextState {
         let items = planTexts.enumerated().map { index, text in
             ContextState.Plan.Item(
                 text: text, state: index < done ? "done" : (index == done ? "active" : "pending"))
@@ -873,8 +929,7 @@ enum DemoSiteWalk {
             plan: ContextState.Plan(
                 title: "Fix double-charge on gateway timeout", source: "session",
                 done: min(done, items.count), total: items.count, items: items),
-            prs: prs, links: base.links,
-            agents: agent.map { [ContextState.Agent(label: "Explore: find every retry caller", status: $0)] } ?? [])
+            prs: prs, links: links)
     }
 
     // MARK: - Publish and share
