@@ -61,9 +61,9 @@ struct ContextSectionWidgetView: View {
         switch kind {
         case .monitors: runningSection("MONITORS", state.monitors)
         case .shells: runningSection("SHELLS", state.shells)
-        case .subAgents: runningSection("SUB-AGENTS", state.agents)
-        case .todo: todoSection(state.plan)
-        case .pullRequests: if !state.prs.isEmpty { prsSection(state.prs) }
+        case .subAgents: runningSection("SUB-AGENTS", state.agents).demoClickTarget("context:sub-agents")
+        case .todo: todoSection(state.plan).demoClickTarget("context:todo")
+        case .pullRequests: if !state.prs.isEmpty { prsSection(state.prs).demoClickTarget("context:pull-requests") }
         case .links: if !state.links.isEmpty { linksSection(state.links) }
         default: EmptyView()
         }

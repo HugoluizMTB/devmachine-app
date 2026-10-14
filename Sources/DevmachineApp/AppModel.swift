@@ -167,7 +167,7 @@ final class AppModel: ObservableObject {
         // Demo sessions never go through `addedLocalSessions`: that property
         // persists to `UserDefaults` on every change, and a demo session has
         // no business surviving into the next real launch.
-        if DemoMode.isActive { return withoutHiddenOperator(DemoData.localSessions) }
+        if DemoMode.isActive { return withoutHiddenOperator(DemoData.localSessions + DemoData.walkLocalSessions) }
         let remembered = [LocalSession(name: Workspace.operatorSession, path: operatorPath)]
             + addedLocalSessions
         let all = LocalSessionScan.merge(

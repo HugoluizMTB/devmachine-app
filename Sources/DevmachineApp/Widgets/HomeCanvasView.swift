@@ -96,6 +96,7 @@ struct HomeCanvasView: View {
         let windowSpace = ContentView.windowSpace
         return DMButton(icon: "plus", label: "Add a widget") { showsGallery = true }
             .dmGlass(radius: DMRadius.pill)
+            .demoClickTarget("home:add")
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(windowSpace)) } action: {
                 addButtonInWindow = $0
             }
@@ -162,7 +163,7 @@ struct HomeCanvasView: View {
 
 /// The gallery redraws when the board's state changes, so Add is
 /// disabled (with the reason) while the board cannot be edited.
-private struct WidgetGalleryPopover: View {
+struct WidgetGalleryPopover: View {
     @ObservedObject var controller: HomeBoardController
     @ObservedObject var catalog: WidgetCatalogStore
     let canvasWidth: Int
@@ -315,6 +316,7 @@ private struct BoardCanvasLayer: View {
             },
             onEdit: controller.offersEdit(widget.id) ? { editing = .edit(widget.id) } : nil,
             onContentHeight: { contentHeightChanged(widget.id, $0) })
+        .demoClickTarget("widget:\(widget.id)")
         .offset(x: display.minX, y: display.minY)
     }
 

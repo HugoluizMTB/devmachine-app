@@ -141,6 +141,7 @@ struct WidgetGalleryView: View {
             if widget.available {
                 DMButton("Add", variant: .outline, size: .small) { onAdd(widget) }
                     .disabled(reason != nil)
+                    .demoClickTarget("sheet:gallery:\(widget.name)")
             }
         }
         .padding(m.space.sm)

@@ -4,36 +4,74 @@ import AppKit
 import DevmachineCore
 
 /// Debug builds only. The website's short loops, for
-/// `DEVMACHINE_DEMO_WALK=site`: five scenes, each a run of frames written to
+/// `DEVMACHINE_DEMO_WALK=site`: six scenes, each a run of frames written to
 /// `<scene>/NNN.png` with a `frames.ffconcat` beside them that says how long
 /// each frame stays on screen. `scripts/site_demo_videos.sh` turns each
 /// scene into a video. Every frame is the real window in a state the app can
 /// reach, drawn from demo data; nothing runs. A bitmap capture has no
-/// pointer, so the walk draws one: it moves to the control a state comes
-/// from, clicks, and stays there.
+/// pointer, so the walk draws one, with a short label where a step needs one.
 @MainActor
 enum DemoSiteWalk {
-    struct Click: Equatable {
-        /// A `demoClickTarget` id; `sheet:` ids sit in the sheet drawn over
-        /// the window.
+    /// A point on a control that marks itself with `demoClickTarget`;
+    /// `sheet:` ids sit in the sheet or popover drawn over the window.
+    struct Spot: Equatable {
+        enum Place: Equatable { case center, header, bottomTrailing }
+
         let target: String
-        var secondary = false
+        var place: Place = .center
+    }
+
+    enum Pointer: Equatable {
+        /// Moves there and clicks.
+        case click(Spot, secondary: Bool = false)
+        /// Moves there.
+        case hover(Spot)
+        /// Stays on the spot as it moves, the way a drag carries it.
+        case follow(Spot)
+
+        var spot: Spot {
+            switch self {
+            case let .click(spot, _), let .hover(spot), let .follow(spot): return spot
+            }
+        }
+
+        var seconds: Double {
+            switch self {
+            case .click: return DemoPointer.clickSeconds
+            case .hover: return DemoPointer.moveSeconds
+            case .follow: return 0
+            }
+        }
+    }
+
+    /// One short caption, beside a control or at a point in the window.
+    struct Label: Equatable {
+        let text: String
+        var near: String?
+        /// Beside the control's bottom-right corner rather than its top.
+        var byCorner = false
+        /// Its leading edge here.
+        var at: CGPoint?
+        /// Its trailing edge here.
+        var endingAt: CGPoint?
     }
 
     struct Frame: Equatable {
         let step: Step
         /// Seconds the frame stays on screen in the video.
         let hold: Double
-        var click: Click?
+        var pointer: Pointer?
+        var label: Label?
     }
 
     enum Step: Equatable {
+        case operatorChat(Int)
         case sidebar, busy, attention, sessionGrid
-        case operatorBefore, cli(Int)
-        case contextBefore, context(Int)
-        case publishBefore, publishedApps, publishing, published
+        case cli(Int)
+        case context(Int), contextGit
+        case publishedApps, publishing, published
         case sessionOpen, shareSheet, shareLink, shared, chat, guestReply
-        case homeBefore, home, homeWide
+        case homeStart, homeDrag(Int), homeResize(Int), homeGallery, homeAdded
     }
 
     struct Scene: Equatable {
@@ -41,51 +79,100 @@ enum DemoSiteWalk {
         let frames: [Frame]
 
         var seconds: Double {
-            frames.reduce(0) { $0 + $1.hold + ($1.click == nil ? 0 : DemoPointer.clickSeconds) }
+            frames.reduce(0) { $0 + $1.hold + ($1.pointer?.seconds ?? 0) }
         }
     }
 
     static let windowSize = NSSize(width: 1600, height: 1000)
 
     private static let acmeClaude = "session:acme-devmachine/claude — payments refactor"
+    private static let operatorLabelPoint = CGPoint(x: 1010, y: 96)
+    private static let operatorAnswerLabelPoint = CGPoint(x: 975, y: 546)
+    /// Where the pointer waits at the start of a scene: clear of the
+    /// terminal's text and of the labels.
+    private static let restingPointer = CGPoint(x: 1180, y: 770)
+    static let homeDragFrames = 5
+    static let homeResizeFrames = 4
 
-    static let scenes: [Scene] = [
-        Scene(id: "sessions", frames: [
-            Frame(step: .sidebar, hold: 1.4),
-            Frame(step: .busy, hold: 1.6),
-            Frame(step: .attention, hold: 1.8),
-            Frame(step: .sessionGrid, hold: 2.8, click: Click(target: "grid:acme-devmachine")),
-        ]),
-        Scene(id: "cli", frames: [Frame(step: .operatorBefore, hold: 0.8)]
-            + cliTranscripts.indices.map { index in
-                Frame(
-                    step: .cli(index), hold: index == cliTranscripts.count - 1 ? 2.8 : 0.7,
-                    click: index == 0 ? Click(target: "local:\(Workspace.operatorSession)") : nil)
-            }),
-        Scene(id: "context", frames: [Frame(step: .contextBefore, hold: 0.9)]
-            + contextStates.indices.map { index in
-                Frame(
-                    step: .context(index), hold: index == contextStates.count - 1 ? 2.4 : 1.2,
-                    click: index == 0 ? Click(target: "session:globex-devmachine/claude") : nil)
-            }),
-        Scene(id: "publish", frames: [
-            Frame(step: .publishBefore, hold: 0.6),
-            Frame(step: .publishedApps, hold: 0.7, click: Click(target: "footer:published-apps")),
-            Frame(step: .publishing, hold: 0.6),
-            Frame(step: .published, hold: 0.7),
-            Frame(step: .sessionOpen, hold: 0.5, click: Click(target: acmeClaude)),
-            Frame(step: .shareSheet, hold: 0.7, click: Click(target: acmeClaude, secondary: true)),
-            Frame(step: .shareLink, hold: 0.9, click: Click(target: "sheet:share")),
-            Frame(step: .shared, hold: 0.4, click: Click(target: "sheet:done")),
-            Frame(step: .chat, hold: 0.6, click: Click(target: "tab:Chat")),
-            Frame(step: .guestReply, hold: 1.3),
-        ]),
-        Scene(id: "home", frames: [
-            Frame(step: .homeBefore, hold: 0.7),
-            Frame(step: .home, hold: 2.4, click: Click(target: acmeClaude)),
-            Frame(step: .homeWide, hold: 2.8, click: Click(target: "footer:close-sidebar")),
-        ]),
-    ]
+    static let scenes: [Scene] = [operatorScene, sessionsScene, cliScene, contextScene, publishScene, homeScene]
+
+    private static let operatorScene = Scene(id: "operator", frames: operatorTranscripts.indices.map { index in
+        let point = index == operatorTranscripts.count - 1 ? operatorAnswerLabelPoint : operatorLabelPoint
+        let label: Label? = operatorLabels[index].map { Label(text: $0, at: point) }
+        return Frame(step: .operatorChat(index), hold: operatorHolds[index], label: label)
+    })
+
+    private static let sessionsScene = Scene(id: "sessions", frames: [
+        Frame(step: .sidebar, hold: 1.4),
+        Frame(step: .busy, hold: 1.6),
+        Frame(step: .attention, hold: 1.8),
+        Frame(step: .sessionGrid, hold: 2.8, pointer: .click(Spot(target: "grid:acme-devmachine"))),
+    ])
+
+    private static let cliScene = Scene(id: "cli", frames: cliFrames.indices.map { index in
+        let last = index == cliFrames.count - 1
+        let hold: Double = last ? 2.6 : (index < cliTyping.count ? 0.45 : 0.65)
+        let label: Label? = index < cliTyping.count + 2
+            ? Label(text: "Prefer a terminal? Type it yourself", at: operatorLabelPoint) : nil
+        return Frame(step: .cli(index), hold: hold, label: label)
+    })
+
+    private static let contextScene = Scene(id: "context", frames: [
+        Frame(step: .context(0), hold: 1.0),
+        Frame(
+            step: .context(1), hold: 1.3, pointer: .hover(Spot(target: "context:todo")),
+            label: Label(text: "The agent's to-do, live", near: "context:todo")),
+        Frame(
+            step: .context(2), hold: 0.9, pointer: .hover(Spot(target: "context:sub-agents")),
+            label: Label(text: "Sub-agents it started", near: "context:sub-agents")),
+        Frame(step: .context(3), hold: 0.9, label: Label(text: "Sub-agents it started", near: "context:sub-agents")),
+        Frame(
+            step: .context(4), hold: 1.4, pointer: .hover(Spot(target: "context:pull-requests")),
+            label: Label(text: "Its pull requests and CI", near: "context:pull-requests")),
+        Frame(
+            step: .contextGit, hold: 1.8, pointer: .click(Spot(target: "tab:Git")),
+            label: Label(text: "Branch and changes", endingAt: CGPoint(x: 1280, y: 86))),
+    ])
+
+    private static let publishScene = Scene(id: "publish", frames: [
+        Frame(step: .publishedApps, hold: 1.0),
+        Frame(step: .publishing, hold: 0.6),
+        Frame(step: .published, hold: 0.7),
+        Frame(step: .sessionOpen, hold: 0.5, pointer: .click(Spot(target: acmeClaude))),
+        Frame(step: .shareSheet, hold: 0.7, pointer: .click(Spot(target: acmeClaude), secondary: true)),
+        Frame(step: .shareLink, hold: 0.9, pointer: .click(Spot(target: "sheet:share"))),
+        Frame(step: .shared, hold: 0.4, pointer: .click(Spot(target: "sheet:done"))),
+        Frame(step: .chat, hold: 0.6, pointer: .click(Spot(target: "tab:Chat"))),
+        Frame(step: .guestReply, hold: 1.3),
+    ])
+
+    private static func carried(
+        _ step: (Int) -> Step, count: Int, target: String, place: Spot.Place, label: String
+    ) -> [Frame] {
+        (0..<count).map { index in
+            let spot = Spot(target: target, place: place)
+            let pointer: Pointer = index == 0 ? .click(spot) : .follow(spot)
+            let hold: Double = index == count - 1 ? 0.7 : 0.06
+            let caption = Label(text: label, near: target, byCorner: place == .bottomTrailing)
+            return Frame(step: step(index), hold: hold, pointer: pointer, label: caption)
+        }
+    }
+
+    private static let homeScene: Scene = {
+        let drag = carried(
+            { .homeDrag($0) }, count: homeDragFrames, target: "widget:\(codexUsage)", place: .header,
+            label: "Drag to arrange")
+        let resize = carried(
+            { .homeResize($0) }, count: homeResizeFrames, target: "widget:\(claudeUsage)", place: .bottomTrailing,
+            label: "Resize")
+        let add: [Frame] = [
+            Frame(
+                step: .homeGallery, hold: 1.0, pointer: .click(Spot(target: "home:add")),
+                label: Label(text: "Add any widget", near: "sheet:gallery")),
+            Frame(step: .homeAdded, hold: 1.8, pointer: .click(Spot(target: "sheet:gallery:\(summaryType)"))),
+        ]
+        return Scene(id: "home", frames: [Frame(step: .homeStart, hold: 1.2)] + drag + resize + add)
+    }()
 
     /// One entry per state, so `DEVMACHINE_DEMO_WALK=site` is a walk like
     /// the others; `run` draws the pointer frames between them.
@@ -121,6 +208,7 @@ enum DemoSiteWalk {
 
     static func reset(_ model: AppModel) {
         DemoData.transcriptOverride = [:]
+        DemoData.walkLocalSessions = []
         DemoContextOverride.shared.value = nil
         SessionShareStore.shared.seedDemo([])
         model.contextCollapsed = false
@@ -134,6 +222,11 @@ enum DemoSiteWalk {
 
     // MARK: - Running
 
+    private struct Overlay {
+        var image: NSBitmapImageRep
+        var sheetOrigin = CGPoint.zero
+    }
+
     static func run(window: NSWindow, environment: DemoSnapshots.Environment, directory: URL) async {
         environment.model.sidebarCollapsed = false
         relayHome(environment.model)
@@ -142,9 +235,8 @@ enum DemoSiteWalk {
             let folder = directory.appendingPathComponent(scene.id, isDirectory: true)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             var holds: [Double] = []
-            var pointer = CGPoint(x: windowSize.width * 0.62, y: windowSize.height * 0.56)
-            var base: NSBitmapImageRep?
-            var sheetOrigin = CGPoint.zero
+            var pointer = restingPointer
+            var last: Overlay?
             var scale: CGFloat = 2
 
             func emit(_ rep: NSBitmapImageRep, hold: Double) {
@@ -153,19 +245,27 @@ enum DemoSiteWalk {
             }
 
             for frame in scene.frames {
-                if let click = frame.click, point(for: click.target, sheet: sheetOrigin) == nil {
-                    FileHandle.standardError.write(Data("site walk: no click target \(click.target)\n".utf8))
-                }
-                if let click = frame.click, let before = base, let target = point(for: click.target, sheet: sheetOrigin) {
-                    for position in DemoPointer.path(from: pointer, to: target) {
-                        emit(DemoPointer.draw(on: before, at: position, ring: nil, scale: scale),
-                             hold: DemoPointer.moveFrameSeconds)
+                if let action = frame.pointer, let before = last {
+                    if let target = point(for: action.spot, sheet: before.sheetOrigin) {
+                        switch action {
+                        case .click, .hover:
+                            for position in DemoPointer.path(from: pointer, to: target) {
+                                emit(DemoPointer.draw(on: before.image, at: position, ring: nil, scale: scale),
+                                     hold: DemoPointer.moveFrameSeconds)
+                            }
+                            if case .click = action {
+                                for ring in DemoPointer.rings {
+                                    emit(DemoPointer.draw(on: before.image, at: target, ring: ring, scale: scale),
+                                         hold: DemoPointer.clickFrameSeconds)
+                                }
+                            }
+                            pointer = target
+                        case .follow:
+                            break
+                        }
+                    } else {
+                        FileHandle.standardError.write(Data("site walk: no target \(action.spot.target)\n".utf8))
                     }
-                    for ring in DemoPointer.rings {
-                        emit(DemoPointer.draw(on: before, at: target, ring: ring, scale: scale),
-                             hold: DemoPointer.clickFrameSeconds)
-                    }
-                    pointer = target
                 }
                 await prepare(frame.step, environment: environment)
                 try? await Task.sleep(nanoseconds: 350_000_000)
@@ -174,30 +274,64 @@ enum DemoSiteWalk {
                 window.displayIfNeeded()
                 guard let content = window.contentView, let shot = DemoSnapshots.bitmap(of: content) else { continue }
                 scale = CGFloat(shot.pixelsWide) / content.bounds.width
-                var state = DemoSnapshots.flattenTransparency(shot)
+                var state = Overlay(image: DemoSnapshots.flattenTransparency(shot))
                 if let sheet = sheet(for: frame.step) {
-                    let hosting = DemoSnapshots.standaloneView(sheet, fittingSize: NSSize(width: 480, height: 400))
-                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    let hosting = DemoSnapshots.standaloneView(sheet.view, fittingSize: NSSize(width: 480, height: 400))
+                    try? await Task.sleep(nanoseconds: 300_000_000)
                     if let sheetShot = DemoSnapshots.bitmap(of: hosting) {
-                        let drawn = DemoSnapshots.drawSheet(sheetShot, over: state, scale: scale)
-                        state = drawn.image
-                        sheetOrigin = drawn.origin
+                        let origin = sheet.below.flatMap { popoverOrigin(below: $0, width: hosting.bounds.width) }
+                        let drawn = DemoSnapshots.drawSheet(sheetShot, over: state.image, scale: scale, origin: origin)
+                        state = Overlay(image: drawn.image, sheetOrigin: drawn.origin)
+                        DemoClickTargets.frames["sheet:gallery"] = CGRect(origin: .zero, size: hosting.bounds.size)
                     }
                     hosting.window?.orderOut(nil)
                 }
-                base = state
-                emit(DemoPointer.draw(on: state, at: pointer, ring: nil, scale: scale), hold: frame.hold)
+                if case .follow = frame.pointer, let target = point(for: frame.pointer!.spot, sheet: state.sheetOrigin) {
+                    pointer = target
+                }
+                last = state
+                var image = state.image
+                if let label = frame.label, let place = labelPlace(label, sheet: state.sheetOrigin) {
+                    image = DemoPointer.drawLabel(label.text, on: image, place: place, scale: scale)
+                }
+                emit(DemoPointer.draw(on: image, at: pointer, ring: nil, scale: scale), hold: frame.hold)
             }
             try? Data(ffconcat(holds).utf8).write(to: folder.appendingPathComponent("frames.ffconcat"))
         }
     }
 
-    /// The centre of a control, in the main window's points from the top
-    /// left; a control in the sheet is moved by where the sheet was drawn.
-    private static func point(for target: String, sheet origin: CGPoint) -> CGPoint? {
+    private static func rect(for target: String, sheet origin: CGPoint) -> CGRect? {
         guard let frame = DemoClickTargets.frames[target] else { return nil }
-        let offset = target.hasPrefix("sheet:") ? origin : .zero
-        return CGPoint(x: frame.midX + offset.x, y: frame.midY + offset.y)
+        return target.hasPrefix("sheet:") ? frame.offsetBy(dx: origin.x, dy: origin.y) : frame
+    }
+
+    /// The spot on a control, in the main window's points from the top left.
+    private static func point(for spot: Spot, sheet origin: CGPoint) -> CGPoint? {
+        guard let frame = rect(for: spot.target, sheet: origin) else { return nil }
+        switch spot.place {
+        case .center: return CGPoint(x: frame.midX, y: frame.midY)
+        case .header: return CGPoint(x: frame.minX + min(60, frame.width / 2), y: frame.minY + 18)
+        case .bottomTrailing: return CGPoint(x: frame.maxX - 5, y: frame.maxY - 5)
+        }
+    }
+
+    /// Beside its control, on the side with room; or where it was put.
+    private static func labelPlace(_ label: Label, sheet origin: CGPoint) -> DemoPointer.LabelPlace? {
+        if let at = label.at { return .leading(at) }
+        if let end = label.endingAt { return .trailing(end) }
+        guard let near = label.near, let frame = rect(for: near, sheet: origin) else { return nil }
+        if label.byCorner { return .leading(CGPoint(x: frame.maxX + 14, y: frame.maxY - 14)) }
+        return frame.minX > 420
+            ? .trailing(CGPoint(x: frame.minX - 14, y: frame.minY + min(frame.height / 2, 24)))
+            : .leading(CGPoint(x: frame.maxX + 14, y: frame.minY + min(frame.height / 2, 24)))
+    }
+
+    /// Where a popover opened from `anchor` sits: under it, kept inside the
+    /// window.
+    private static func popoverOrigin(below anchor: String, width: CGFloat) -> CGPoint? {
+        guard let frame = DemoClickTargets.frames[anchor] else { return nil }
+        let x = min(frame.midX - width / 2, windowSize.width - width - 12)
+        return CGPoint(x: max(12, x), y: frame.maxY + 10)
     }
 
     // MARK: - Steps
@@ -205,10 +339,20 @@ enum DemoSiteWalk {
     static func prepare(_ step: Step, environment: DemoSnapshots.Environment) async {
         let model = environment.model
         switch step {
+        case let .operatorChat(index):
+            if index == 0 {
+                reset(model)
+                model.sessionsByAlias = sessions(busy: false, attention: false)
+                model.contextCollapsed = true
+                model.goHome()
+                model.selection = DemoSnapshots.operatorSelection
+            }
+            DemoData.transcriptOverride = [operatorKind: operatorTranscripts[index]]
         case .sidebar:
             reset(model)
             model.sessionsByAlias = sessions(busy: false, attention: false)
             model.contextCollapsed = true
+            model.goHome()
             model.clickSession(contextSession)
         case .busy:
             model.sessionsByAlias = sessions(busy: true, attention: false)
@@ -216,32 +360,40 @@ enum DemoSiteWalk {
             model.sessionsByAlias = sessions(busy: true, attention: true)
         case .sessionGrid:
             model.openSessionGrid(acme)
-        case .operatorBefore:
-            reset(model)
-            model.sessionsByAlias = sessions(busy: true, attention: true)
-            model.contextCollapsed = true
-            model.goHome()
-            model.clickSession(contextSession)
         case let .cli(index):
-            if index == 0 { model.selection = DemoSnapshots.operatorSelection }
-            DemoData.transcriptOverride = [operatorKind: cliTranscripts[index]]
-        case .contextBefore:
-            reset(model)
-            model.sessionsByAlias = sessions(busy: true, attention: true)
-            model.contextTab = .context
-            model.goHome()
+            if index == 0 {
+                reset(model)
+                model.sessionsByAlias = sessions(busy: true, attention: true)
+                DemoData.walkLocalSessions = [terminalSession]
+                model.contextCollapsed = true
+                model.goHome()
+                model.selection = .localSession(name: terminalSession.handle, path: terminalSession.path)
+            }
+            DemoData.transcriptOverride = [terminalKind: cliFrames[index]]
         case let .context(index):
             DemoContextOverride.shared.value = contextStates[index]
             DemoData.transcriptOverride = [contextKind: contextTranscripts[index]]
-            if index == 0 { model.clickSession(contextSession) }
+            if index == 0 {
+                reset(model)
+                DemoContextOverride.shared.value = contextStates[index]
+                DemoData.transcriptOverride = [contextKind: contextTranscripts[index]]
+                model.sessionsByAlias = sessions(busy: true, attention: true)
+                model.contextTab = .context
+                model.goHome()
+                model.clickSession(contextSession)
+                // The panel opens on the session's last answer and reads again
+                // a beat later; the walk waits for that read.
+                try? await Task.sleep(nanoseconds: 700_000_000)
+            }
             model.context.retry()
-        case .publishBefore:
+        case .contextGit:
+            model.contextTab = .git
+        case .publishedApps:
             reset(model)
             model.sessionsByAlias = sessions(busy: true, attention: true)
             model.contextTab = .context
             model.contextWidth = chatPanelWidth
             model.goHome()
-        case .publishedApps:
             DemoSnapshots.subdomainsInitialTab = .sites
             model.showPage(.subdomains)
             try? await Task.sleep(nanoseconds: 400_000_000)
@@ -262,16 +414,38 @@ enum DemoSiteWalk {
             model.contextTab = .chat
         case .guestReply:
             SessionChatStore.shared.receive(guestMessage, share: shareRecord.id)
-        case .homeBefore:
+        case .homeStart:
             reset(model)
             model.sessionsByAlias = sessions(busy: true, attention: true)
-            model.contextTab = .context
             model.goHome()
-            model.clickSession(shareSession)
-        case .home:
-            model.clickSession(shareSession)
-        case .homeWide:
-            model.sidebarCollapsed = true
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            relayHome(model)
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            homeStart = board()
+            if let summary = homeStart.first(where: { $0.type == summaryType }) {
+                HomeBoardController.shared.remove(summary.id)
+            }
+        case let .homeDrag(index):
+            guard let from = widget(codexUsage, in: homeStart), let clock = homeStart.first(where: { $0.type == clockType })
+            else { break }
+            let to = BoardFrame(x: clock.frame.x, y: clock.frame.y + clock.frame.h + 24, w: from.frame.w, h: from.frame.h)
+            let t = DemoPointer.easeInOut(Double(index + 1) / Double(homeDragFrames))
+            HomeBoardController.shared.move(codexUsage, to: lerp(from.frame, to, t))
+        case let .homeResize(index):
+            guard let claude = widget(claudeUsage, in: homeStart), let codex = widget(codexUsage, in: homeStart)
+            else { break }
+            let wide = codex.frame.x + codex.frame.w - claude.frame.x
+            let t = DemoPointer.easeInOut(Double(index + 1) / Double(homeResizeFrames))
+            var frame = claude.frame
+            frame.w = Int(Double(claude.frame.w) + Double(wide - claude.frame.w) * t)
+            HomeBoardController.shared.resize(claudeUsage, to: frame, auto: claude.size == BoardWidget.autoSize, sizes: [])
+        case .homeGallery:
+            break
+        case .homeAdded:
+            let controller = HomeBoardController.shared
+            if let summary = controller.catalog.catalog?.widgets.first(where: { $0.name == summaryType }) {
+                _ = controller.add(summary, canvasWidth: controller.canvasWidth)
+            }
         }
     }
 
@@ -286,20 +460,61 @@ enum DemoSiteWalk {
         controller.reload()
     }
 
-    /// A sheet drawn over the window for this state, as macOS shows it.
-    static func sheet(for step: Step) -> AnyView? {
+    // MARK: - Home
+
+    static let summaryType = "devmachine-app/summary"
+    private static let clockType = "devmachine-app/clock"
+    private static var homeStart: [BoardWidget] = []
+
+    /// The board ids Home's default layout gives the two usage cards.
+    static let codexUsage = "codex-usage"
+    static let claudeUsage = "claude-usage"
+
+    private static func board() -> [BoardWidget] {
+        HomeBoardController.shared.store?.board?.widgets ?? []
+    }
+
+    private static func widget(_ id: String, in widgets: [BoardWidget]) -> BoardWidget? {
+        widgets.first { $0.id == id }
+    }
+
+    private static func lerp(_ from: BoardFrame, _ to: BoardFrame, _ t: Double) -> BoardFrame {
+        func mix(_ a: Int, _ b: Int) -> Int { Int((Double(a) + Double(b - a) * t).rounded()) }
+        return BoardFrame(x: mix(from.x, to.x), y: mix(from.y, to.y), w: mix(from.w, to.w), h: mix(from.h, to.h))
+    }
+
+    // MARK: - Sheets
+
+    struct Sheet {
+        let view: AnyView
+        /// A popover opens under this control; a sheet, under the title bar.
+        var below: String?
+    }
+
+    /// A sheet or popover drawn over the window for this state, where macOS
+    /// shows it.
+    static func sheet(for step: Step) -> Sheet? {
         switch step {
         case .shareSheet:
-            return AnyView(ShareSessionSheet(
+            return Sheet(view: AnyView(ShareSessionSheet(
                 request: SessionShareRequest(alias: acme, workspace: "acme", session: shareSession.name),
-                onCancel: {}, onShare: { _, _, _ in }))
+                onCancel: {}, onShare: { _, _, _ in })))
         case .shareLink:
-            return AnyView(ShareOutcomeSheet(
-                outcome: .started(shareRecord, password: "otter-lamp-42"), onStop: { _ in }, onClose: {}))
+            return Sheet(view: AnyView(ShareOutcomeSheet(
+                outcome: .started(shareRecord, password: "otter-lamp-42"), onStop: { _ in }, onClose: {})))
+        case .homeGallery:
+            let controller = HomeBoardController.shared
+            return Sheet(
+                view: AnyView(WidgetGalleryPopover(
+                    controller: controller, catalog: controller.catalog, canvasWidth: controller.canvasWidth,
+                    onAdded: {}, onNewWidget: { _ in })
+                    .background(Color.dmSidebarBg)),
+                below: "home:add")
         default:
             return nil
         }
     }
+
     // MARK: - Sessions
 
     private static let acme = "acme-devmachine"
@@ -333,6 +548,11 @@ enum DemoSiteWalk {
 
     static let operatorKind = TerminalKind.local(
         session: Workspace.operatorSession, path: DemoData.operatorPath)
+
+    /// A plain shell on this Mac, for the scene where the commands are typed
+    /// by hand.
+    static let terminalSession = LocalSession(name: "terminal", path: "/Users/alice")
+    static let terminalKind = TerminalKind.local(session: terminalSession.handle, path: terminalSession.path)
 
     private static let dim = "\u{1B}[2m"
     private static let bold = "\u{1B}[1m"
@@ -401,6 +621,90 @@ enum DemoSiteWalk {
         cliSteps[...index].flatMap { $0 }.joined(separator: "\n")
     }
 
+    /// The prompt, then the first command half typed.
+    static let cliTyping = ["\(cyan)$\(plain) ", "\(cyan)$\(plain) \(bold)devmachine machines add --name main"]
+
+    static let cliFrames = cliTyping + cliTranscripts
+
+    // MARK: - Operator
+
+    private static let you = "\(bold)❯\(plain) "
+    private static func ran(_ command: String) -> String { "\(green)⏺\(plain) Bash(\(command))" }
+    private static func output(_ lines: [String]) -> [String] {
+        lines.enumerated().map { index, line in (index == 0 ? "  ⎿  " : "     ") + "\(dim)\(line)\(plain)" }
+    }
+    private static func said(_ lines: [String]) -> [String] {
+        lines.enumerated().map { index, line in (index == 0 ? "\(cyan)⏺\(plain) " : "  ") + line }
+    }
+
+    private static let requests = [
+        "Add a workspace for alice on main with claude-code and docker",
+        "Publish port 3000 of acme as app.example.com",
+        "Why is staging slow?",
+    ]
+
+    /// Each step adds what the Operator prints next: the request typed in
+    /// halves, the `devmachine` commands it runs with the CLI's own output,
+    /// and its answer.
+    private static let operatorSteps: [[String]] = [
+        ["\(bold)\(cyan)● Claude Code\(plain) — ~/.config/devmachine", "", you],
+        [you + String(requests[0].prefix(26))],
+        [you + requests[0], ""],
+        [ran("devmachine workspaces new alice --machine main --packages claude-code --yes")]
+            + output([
+                "alice is in the configuration, on main, with the packages claude-code.",
+                "The machine is untouched: `devmachine sync` is what creates the account.",
+            ])
+            + [ran("devmachine packages add docker --machine main")] + output(["added docker to machine main"]),
+        [ran("devmachine sync --machine main")] + output(["main: ok=91 changed=14 failed=0"]),
+        [""] + said(["alice is ready on main, with Claude Code, and main runs Docker.", "Open it with devmachine ssh alice."])
+            + ["", you],
+        [you + requests[1], ""],
+        [ran("devmachine expose add acme 3000 --host app.example.com --publish")]
+            + output([
+                "published: https://app.example.com -> acme:3000 on main. Caddy gets the certificate on the first",
+                "request, which can take a few seconds.",
+            ]),
+        [""] + said(["https://app.example.com now serves acme's port 3000."]) + ["", you],
+        [you + requests[2], ""],
+        [ran("devmachine stats --machine staging")]
+            + output([
+                "machine staging (203.0.113.30)",
+                "cpus    2, load 3.84 3.51 2.97",
+                "memory  3.6G used of 3.8G, 210.0M available",
+                "swap    1.9G used of 2.0G",
+                "disk    41.2G used of 78.0G, 36.8G free",
+            ]),
+        [""] + said([
+            "staging is short of memory: 3.6G of 3.8G is used and swap is almost full,",
+            "so it pages to disk. Load 3.84 on 2 CPUs. More memory, or one app less, fixes it.",
+        ]),
+    ]
+
+    /// A request typed in halves replaces its own line; anything else adds
+    /// lines under what is there.
+    static let operatorTranscripts: [String] = {
+        var lines: [String] = []
+        var shown: [String] = []
+        for step in operatorSteps {
+            if let first = step.first, first.hasPrefix(you), lines.last?.hasPrefix(you) == true {
+                lines.removeLast()
+            }
+            lines += step
+            shown.append(lines.joined(separator: "\n"))
+        }
+        return shown
+    }()
+
+    static let operatorHolds: [Double] = [0.7, 0.25, 0.7, 1.3, 0.9, 1.1, 0.7, 1.0, 1.0, 0.6, 1.1, 2.4]
+
+    static let operatorLabels: [String?] = [
+        "Ask in plain words", "Ask in plain words", "Ask in plain words",
+        "The Operator runs devmachine for you", "The Operator runs devmachine for you",
+        nil, nil, nil, nil, nil, nil,
+        "and tells you what it found",
+    ]
+
     // MARK: - Context
 
     static let contextSession = SessionRef(alias: "globex-devmachine", name: "claude")
@@ -419,11 +723,11 @@ enum DemoSiteWalk {
     }
 
     private static let contextSteps: [ContextStep] = [
+        ContextStep(done: 1, agent: nil, ci: "pending"),
         ContextStep(done: 2, agent: nil, ci: "pending"),
         ContextStep(done: 2, agent: "running", ci: "pending"),
         ContextStep(done: 2, agent: "done", ci: "pending"),
         ContextStep(done: 3, agent: "done", ci: "success"),
-        ContextStep(done: 4, agent: "done", ci: "success"),
     ]
 
     static let contextStates: [ContextState] = contextSteps.map { context(done: $0.done, agent: $0.agent, ci: $0.ci) }

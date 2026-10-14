@@ -1025,12 +1025,12 @@ enum DemoSnapshots {
     /// under the top edge. `origin` is the sheet's top-left corner in the
     /// window's points.
     static func drawSheet(
-        _ sheetRep: NSBitmapImageRep, over base: NSBitmapImageRep, scale: CGFloat
+        _ sheetRep: NSBitmapImageRep, over base: NSBitmapImageRep, scale: CGFloat, origin placed: CGPoint? = nil
     ) -> (image: NSBitmapImageRep, origin: CGPoint) {
         let size = NSSize(width: base.pixelsWide, height: base.pixelsHigh)
         let sheetSize = NSSize(width: sheetRep.pixelsWide, height: sheetRep.pixelsHigh)
-        let top = 28 * scale
-        let origin = CGPoint(x: (size.width - sheetSize.width) / 2 / scale, y: top / scale)
+        let origin = placed ?? CGPoint(x: (size.width - sheetSize.width) / 2 / scale, y: 28)
+        let top = origin.y * scale
         guard let combined = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: base.pixelsWide, pixelsHigh: base.pixelsHigh,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -1043,7 +1043,7 @@ enum DemoSnapshots {
         backdrop.addRepresentation(base)
         backdrop.draw(in: NSRect(origin: .zero, size: size))
         let sheetRect = NSRect(
-            x: (size.width - sheetSize.width) / 2, y: size.height - sheetSize.height - top,
+            x: origin.x * scale, y: size.height - sheetSize.height - top,
             width: sheetSize.width, height: sheetSize.height)
         let radius = SnapshotChrome.cornerRadius * scale
         let outline = NSBezierPath(roundedRect: sheetRect, xRadius: radius, yRadius: radius)

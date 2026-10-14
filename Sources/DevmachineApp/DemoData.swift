@@ -192,6 +192,9 @@ enum DemoData {
     /// Set only by the site walk, which feeds a terminal step by step.
     @MainActor static var transcriptOverride: [TerminalKind: String] = [:]
 
+    /// Sessions on this Mac that only the site walk shows.
+    @MainActor static var walkLocalSessions: [LocalSession] = []
+
     private static func rawTranscript(for kind: TerminalKind) -> String {
         switch kind {
         case let .remote(_, session):

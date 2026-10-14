@@ -1487,8 +1487,8 @@ once may fail there.
 ## Website videos
 - `scripts/site_demo_videos.sh <dir>` runs `DEVMACHINE_DEMO_WALK=site`
   (`DemoSiteWalk`) hidden, then writes `<scene>.webm`, `<scene>.mp4` and
-  `<scene>-poster.webp` for the five home-page loops (sessions, cli, context,
-  publish, home). The walk writes numbered frames per scene at 1600×1000 and a
+  `<scene>-poster.webp` for the six home-page loops (operator, sessions, cli,
+  context, publish, home). Each opens on its own subject, with no click first. The walk writes numbered frames per scene at 1600×1000 and a
   `frames.ffconcat` with each frame's hold; `SITE_DEMO_FRAMES=<dir>` re-encodes
   frames already written.
 - Every frame is a real app state from demo data. The walk's only setters are
@@ -1500,7 +1500,10 @@ once may fail there.
   its frames (`DemoPointer`): it eases to the control a state comes from,
   shows a shrinking ring for the click, and stays there. Controls mark
   themselves with `.demoClickTarget(id)`, which records their frame only
-  while a demo walk captures (`DemoClickTargets`). A right-click's menu is
+  while a demo walk captures (`DemoClickTargets`). Short captions are drawn
+  the same way (`DemoPointer.drawLabel`), one at a time. Home's drag and
+  resize move the real board frame step by step; the "Add a widget"
+  popover is drawn under its button. A right-click's menu is
   not drawn: an `NSMenu` is a window the capture never sees.
 - `cacheDisplay` does not catch `NSProgressIndicator`'s animation, so a
   spinner is one still frame; Home's board is written again for the walk's
