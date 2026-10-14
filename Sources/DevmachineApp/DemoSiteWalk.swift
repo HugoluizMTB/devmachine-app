@@ -707,7 +707,7 @@ enum DemoSiteWalk {
 
     // MARK: - Context
 
-    static let contextSession = SessionRef(alias: "globex-devmachine", name: "claude")
+    static let contextSession = SessionRef(alias: "acme-devmachine", name: "claude — payments refactor")
 
     private static let planTexts = [
         "Reproduce the double-charge with a fake gateway",
