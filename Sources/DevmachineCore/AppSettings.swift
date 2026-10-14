@@ -112,6 +112,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// appears on its own, which is what you want from a machine that gains
     /// contexts over time.
     public var hiddenWorkspaces: [String]
+    /// Workspaces, by ssh alias, whose sessions connect in the background at
+    /// startup, so opening one is instant. Off for every workspace by default.
+    public var autoConnectWorkspaces: [String]
     /// Workspace name → its ssh `Host` alias, as `devmachine aliases` reports
     /// it. Refreshed from the CLI on every launch and workspace load; a
     /// workspace missing from it falls back to `workspaceSuffix` guessing.
@@ -184,6 +187,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         showsAttention: Bool = true,
         harnessIconStyle: HarnessIconStyle = .color,
         hiddenWorkspaces: [String] = [],
+        autoConnectWorkspaces: [String] = [],
         workspaceAliases: [String: String] = [:],
         enabledHarnesses: [HarnessID] = [.claude],
         localSessionProgram: SessionLaunchChoice = .terminal,
@@ -214,6 +218,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.showsAttention = showsAttention
         self.harnessIconStyle = harnessIconStyle
         self.hiddenWorkspaces = hiddenWorkspaces
+        self.autoConnectWorkspaces = autoConnectWorkspaces
         self.workspaceAliases = workspaceAliases
         self.enabledHarnesses = enabledHarnesses
         self.localSessionProgram = localSessionProgram
@@ -238,7 +243,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging, remoteTerminalMode
         case copyOnSelect, showsHarnessIcons, harnessIconStyle
         case showsBusySpinner, showsBranch, showsSessionAge, showsAttention
-        case hiddenWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
+        case hiddenWorkspaces, autoConnectWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram, linkOpening
         case operatorProgram, operatorSessionEnabled
     }
@@ -280,6 +285,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         operatorSessionEnabled = (try? values.decodeIfPresent(Bool.self, forKey: .operatorSessionEnabled)) ?? true
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
+        autoConnectWorkspaces = try values.decodeIfPresent([String].self, forKey: .autoConnectWorkspaces) ?? []
         // Settings written before this existed decode to "nothing detected yet".
         workspaceAliases =
             try values.decodeIfPresent([String: String].self, forKey: .workspaceAliases) ?? [:]
@@ -338,6 +344,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(showsAttention, forKey: .showsAttention)
         try values.encode(harnessIconStyle, forKey: .harnessIconStyle)
         try values.encode(hiddenWorkspaces, forKey: .hiddenWorkspaces)
+        try values.encode(autoConnectWorkspaces, forKey: .autoConnectWorkspaces)
         try values.encode(workspaceAliases, forKey: .workspaceAliases)
         try values.encode(enabledHarnesses, forKey: .enabledHarnesses)
         try values.encode(localSessionProgram, forKey: .localSessionProgram)
