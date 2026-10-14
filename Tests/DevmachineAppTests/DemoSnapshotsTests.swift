@@ -318,9 +318,23 @@ final class DemoSnapshotsTests: XCTestCase {
     func testThePackagesWalkIsItsOwnSet() {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "packages"]).map(\.id), [
             "packages-all", "packages-selected", "packages-confirm", "packages-pending", "packages-running",
-            "packages-succeeded", "packages-failed",
+            "packages-succeeded", "packages-failed", "packages-mac",
         ])
-        XCTAssertEqual(Set(DemoSnapshots.packagesScreens.map(\.fileName)).count, 7)
+        XCTAssertEqual(Set(DemoSnapshots.packagesScreens.map(\.fileName)).count, 8)
+    }
+
+    func testThePackagesWalkShowsALinuxPackageOnARemoteMac() throws {
+        let snapshot = DemoPackages.macSnapshot()
+        let page = DemoPackages.page(for: "packages-mac")
+        let focus = page.focus(in: snapshot.targets)
+        let statuses = PackagesSettingsView.statuses(snapshot)
+        let fit = { (name: String) in
+            snapshot.systemFit(try XCTUnwrap(snapshot.entries.first { $0.name == name }), on: focus, statuses: statuses)
+        }
+        XCTAssertEqual(focus, [.machine("studio", isSelf: false)])
+        XCTAssertEqual(try fit("docker"), .blocked("Linux only"))
+        XCTAssertEqual(try fit("mac-ports"), .fits)
+        XCTAssertEqual(try fit("git"), .fits)
     }
 
     func testThePackagesWalkOpensPostgresAndSendsTwoPackagesToAMachineAndAWorkspace() {

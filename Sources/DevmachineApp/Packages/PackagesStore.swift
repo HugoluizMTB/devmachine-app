@@ -16,8 +16,23 @@ struct PackagesSnapshot: Equatable, Sendable {
         PackageStatusCheck.evaluate(entries: entries, target: target, lock: lock)
     }
 
+    /// This Mac is `macos` even when the CLI does not say so; any other
+    /// machine it never read is unknown.
     func platform(of target: PackageTarget) -> String? {
-        platforms[target.syncMachine]
+        if let reported = platforms[target.syncMachine] { return reported }
+        return targets.contains(.machine(target.syncMachine, isSelf: true)) ? "macos" : nil
+    }
+
+    /// Whether `entry` runs on the picked machine and workspace. Only the
+    /// picked ones of its own kind count; none picked means it fits.
+    func systemFit(
+        _ entry: PackageEntry, on focus: [PackageTarget], statuses: [PackageTarget: [String: PackageStatus]]
+    ) -> PackageSystemFit {
+        PackageAvailability.systemFit(
+            platforms: entry.platforms,
+            on: focus.filter { $0.scope == entry.scope }.map { target in
+                (system: platform(of: target), installed: (statuses[target]?[entry.name] ?? .available).isInstalled)
+            })
     }
 }
 

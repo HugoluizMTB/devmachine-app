@@ -188,6 +188,7 @@ struct PackagesSettingsView: View {
                                     for: entry, targets: focus.isEmpty ? snapshot.targets : focus, statuses: statuses),
                                 isSelected: page.selection.contains(entry.name),
                                 isExpanded: page.expanded == entry.name,
+                                systemFit: snapshot.systemFit(entry, on: focus, statuses: statuses),
                                 toggleSelected: { page.toggle(entry.name) },
                                 toggleExpanded: { page.toggleExpanded(entry.name) })
                             if page.expanded == entry.name {
@@ -203,7 +204,11 @@ struct PackagesSettingsView: View {
     private func rowPanel(
         _ entry: PackageEntry, snapshot: PackagesSnapshot, statuses: [PackageTarget: [String: PackageStatus]]
     ) -> some View {
-        let fitting = snapshot.targets.filter { PackageBatch.fits(entry, on: $0, platform: snapshot.platform(of: $0)) }
+        let fitting = snapshot.targets.filter { target in
+            PackageBatch.fits(
+                entry, on: target, platform: snapshot.platform(of: target),
+                status: statuses[target]?[entry.name] ?? .available)
+        }
         return VStack(alignment: .leading, spacing: m.space.md) {
             if fitting.isEmpty {
                 Text(verbatim: "No machine or workspace here can take this package.")

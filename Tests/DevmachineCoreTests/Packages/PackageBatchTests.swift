@@ -38,7 +38,7 @@ final class PackageBatchTests: XCTestCase {
 
         XCTAssertEqual(batch.edits.map(\.target), [main])
         XCTAssertEqual(batch.skips, [
-            PackageSkip(package: "docker", target: backup, reason: "Only for a Linux machine."),
+            PackageSkip(package: "docker", target: backup, reason: "Linux only."),
         ])
     }
 
@@ -66,5 +66,24 @@ final class PackageBatchTests: XCTestCase {
         XCTAssertTrue(PackageBatch.fits(entry("docker"), on: main))
         XCTAssertFalse(PackageBatch.fits(entry("docker"), on: acme))
         XCTAssertTrue(PackageBatch.fits(entry("nodejs", scope: "workspace"), on: acme))
+    }
+
+    func testAnInstalledPackageForAnotherSystemCanStillBeRemoved() {
+        let docker = PackageEntry(name: "docker", scope: "machine", source: "release", summary: "", category: nil,
+                                  platforms: ["linux"], needs: [], credentialNames: [], installedOn: [])
+        let batch = PackageBatch.plan(
+            packages: ["docker"], targets: [backup], action: .remove,
+            entries: [docker], statuses: { _ in ["docker": .applied] }, platform: { _ in "macos" })
+
+        XCTAssertEqual(batch.edits.map(\.target), [backup])
+        XCTAssertEqual(batch.skips, [])
+    }
+
+    func testAPackageForAnotherSystemOnlyFitsWhereItIsInstalled() {
+        let docker = PackageEntry(name: "docker", scope: "machine", source: "release", summary: "", category: nil,
+                                  platforms: ["linux"], needs: [], credentialNames: [], installedOn: [])
+        XCTAssertFalse(PackageBatch.fits(docker, on: backup, platform: "macos"))
+        XCTAssertTrue(PackageBatch.fits(docker, on: backup, platform: "macos", status: .applied))
+        XCTAssertTrue(PackageBatch.fits(docker, on: backup, platform: nil))
     }
 }
