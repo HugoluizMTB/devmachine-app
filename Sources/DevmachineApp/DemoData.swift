@@ -178,14 +178,19 @@ enum DemoData {
         // same way a live session does. Clearing the scrollback as well keeps
         // a replayed transcript from stacking the previous copy above it.
         let typed = typedAtPrompt[kind].map { " " + $0 } ?? ""
+        let transcript = transcriptOverride[kind] ?? rawTranscript(for: kind)
         return "\u{1B}[H\u{1B}[2J\u{1B}[3J"
-            + rawTranscript(for: kind).replacingOccurrences(of: "\n", with: "\r\n") + typed
+            + transcript.replacingOccurrences(of: "\n", with: "\r\n") + typed
     }
 
     /// Text sitting at a session's prompt, not yet sent, the way an upload
     /// leaves its path for the person to finish the sentence. Set only by the
     /// screenshot walk, for one screen.
     @MainActor static var typedAtPrompt: [TerminalKind: String] = [:]
+
+    /// A session's whole transcript, in place of the one its name picks.
+    /// Set only by the site walk, which feeds a terminal step by step.
+    @MainActor static var transcriptOverride: [TerminalKind: String] = [:]
 
     private static func rawTranscript(for kind: TerminalKind) -> String {
         switch kind {

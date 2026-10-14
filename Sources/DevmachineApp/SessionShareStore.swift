@@ -97,6 +97,12 @@ final class SessionShareStore: ObservableObject {
         records = history.load()
     }
 
+    #if DEBUG
+    func seedDemo(_ shown: [SessionShareRecord]) {
+        records = shown
+    }
+    #endif
+
     func liveShare(alias: String, session: String) -> SessionShareRecord? {
         let at = now()
         return records.first { $0.alias == alias && $0.session == session && $0.isLive(at: at) }

@@ -1484,6 +1484,22 @@ once may fail there.
   bug that is not there. Snapshot the header and the state, and check scrolled
   content in the running app.
 
+## Website videos
+- `scripts/site_demo_videos.sh <dir>` runs `DEVMACHINE_DEMO_WALK=site`
+  (`DemoSiteWalk`) hidden, then writes `<scene>.webm`, `<scene>.mp4` and
+  `<scene>-poster.webp` for the five home-page loops (sessions, cli, context,
+  publish, home). The walk writes numbered frames per scene at 1600×1000 and a
+  `frames.ffconcat` with each frame's hold; `SITE_DEMO_FRAMES=<dir>` re-encodes
+  frames already written.
+- Every frame is a real app state from demo data. The walk's only setters are
+  demo-only: `DemoData.transcriptOverride` (a terminal fed step by step),
+  `DemoContextOverride` (the context panel moving along) and
+  `SessionShareStore.seedDemo`. The Share sheets are drawn into the frame
+  where macOS shows them, since a sheet is a window of its own.
+- `cacheDisplay` does not catch `NSProgressIndicator`'s animation, so a
+  spinner is one still frame; Home's board is written again for the walk's
+  window, since the one written at launch was laid out for a smaller one.
+
 ## Build / test
 - `swift build` and `swift test` must be green before every commit.
 - Package a bundle with `./scripts/package_app.sh` (writes `build/DevmachineApp.app`);

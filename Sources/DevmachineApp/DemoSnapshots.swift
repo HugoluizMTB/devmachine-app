@@ -46,7 +46,11 @@ enum DemoSnapshots {
     /// `DEVMACHINE_DEMO_WINDOW=1100x700` captures at another size, to check
     /// that a layout stretches with the window.
     static var windowSize: NSSize {
-        guard let raw = ProcessInfo.processInfo.environment["DEVMACHINE_DEMO_WINDOW"] else {
+        let environment = ProcessInfo.processInfo.environment
+        guard let raw = environment["DEVMACHINE_DEMO_WINDOW"] else {
+            #if DEBUG
+            if environment["DEVMACHINE_DEMO_WALK"] == "site" { return DemoSiteWalk.windowSize }
+            #endif
             return defaultWindowSize
         }
         return parseWindowSize(raw) ?? defaultWindowSize
@@ -402,6 +406,7 @@ enum DemoSnapshots {
         case "machines-map": return DemoMachinesMap.screens
         case "map-wallpaper": return DemoMapWallpaper.screens
         case "workspaces": return DemoWorkspaces.screens
+        case "site": return DemoSiteWalk.screens
         #endif
         default: return screens
         }
@@ -452,13 +457,18 @@ enum DemoSnapshots {
         window.center()
         if isHidden {
             window.alphaValue = 0
+            window.ignoresMouseEvents = true
             window.orderFrontRegardless()
         } else {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
 
-        for screen in walk() {
+        let screens = walk()
+        #if DEBUG
+        if screens.contains(where: { DemoSiteWalk.handles($0.id) }) { DemoSiteWalk.writeTimings(into: directory) }
+        #endif
+        for screen in screens {
             await prepare(screen, environment: environment, mainWindow: window)
             try? await Task.sleep(nanoseconds: screen.settleNanoseconds)
             // A pane resized after its transcript was drawn (the grid, the
@@ -509,6 +519,15 @@ enum DemoSnapshots {
             case "file-transfer-saved", "file-transfer-failed":
                 view = fileTransferNotice(failed: screen.id == "file-transfer-failed")
             #if DEBUG
+            case _ where DemoSiteWalk.sheet(for: screen.id) != nil:
+                window.displayIfNeeded()
+                let sheet = standaloneView(
+                    DemoSiteWalk.sheet(for: screen.id), fittingSize: NSSize(width: 480, height: 400))
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                captureWithSheet(
+                    window.contentView ?? NSView(), sheet: sheet,
+                    to: directory.appendingPathComponent(screen.fileName))
+                continue
             case "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
                 view = await updateToastView(screen.id, model: environment.model)
             case "cli-update-available", "cli-update-running", "cli-update-updated", "cli-update-failed",
@@ -544,6 +563,7 @@ enum DemoSnapshots {
         DemoDNSWalk.reset()
         DemoPackages.reset()
         DemoMachinesMap.reset()
+        if screens.contains(where: { DemoSiteWalk.handles($0.id) }) { DemoSiteWalk.reset(environment.model) }
         #endif
         environment.model.goHome()
     }
@@ -567,6 +587,12 @@ enum DemoSnapshots {
         PreviewStore.shared.closeAll()
         settingsIssueRemedy = nil
         settingsNoMachine = false
+        #if DEBUG
+        if DemoSiteWalk.handles(screen.id) {
+            await DemoSiteWalk.prepare(screen.id, environment: environment)
+            return
+        }
+        #endif
         model.goHome()
         try? await Task.sleep(nanoseconds: 150_000_000)
         #if DEBUG
@@ -963,7 +989,10 @@ enum DemoSnapshots {
             contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = hosting
-        if isHidden { window.alphaValue = 0 }
+        if isHidden {
+            window.alphaValue = 0
+            window.ignoresMouseEvents = true
+        }
         window.setIsVisible(true)
         window.orderFrontRegardless()
         hosting.layoutSubtreeIfNeeded()
@@ -980,14 +1009,71 @@ enum DemoSnapshots {
     }
 
     private static func capture(_ view: NSView, kind: SnapshotChrome.Kind, to url: URL) {
+        guard let rep = bitmap(of: view) else { return }
+        let scale = CGFloat(rep.pixelsWide) / view.bounds.width
+        write(SnapshotChrome.framed(flattenTransparency(rep), scale: scale, kind: kind), to: url)
+    }
+
+    private static func bitmap(of view: NSView) -> NSBitmapImageRep? {
         guard view.bounds.width > 0, view.bounds.height > 0,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
-        else { return }
+        else { return nil }
         view.cacheDisplay(in: view.bounds, to: rep)
-        let scale = CGFloat(rep.pixelsWide) / view.bounds.width
-        let framed = SnapshotChrome.framed(flattenTransparency(rep), scale: scale, kind: kind)
-        guard let data = framed.representation(using: .png, properties: [:]) else { return }
+        return rep
+    }
+
+    private static func write(_ rep: NSBitmapImageRep, to url: URL) {
+        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url)
+    }
+
+    /// A sheet lives in a window of its own, which a capture of the main
+    /// window leaves out; it is drawn back in where macOS puts it, centred
+    /// under the top edge.
+    private static func captureWithSheet(_ view: NSView, sheet: NSView, to url: URL) {
+        guard let windowRep = bitmap(of: view), let sheetRep = bitmap(of: sheet) else { return }
+        let scale = CGFloat(windowRep.pixelsWide) / view.bounds.width
+        let base = flattenTransparency(windowRep)
+        let size = NSSize(width: base.pixelsWide, height: base.pixelsHigh)
+        guard let combined = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: base.pixelsWide, pixelsHigh: base.pixelsHigh,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+            let context = NSGraphicsContext(bitmapImageRep: combined)
+        else { return }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        let backdrop = NSImage(size: size)
+        backdrop.addRepresentation(base)
+        backdrop.draw(in: NSRect(origin: .zero, size: size))
+        let sheetSize = NSSize(width: sheetRep.pixelsWide, height: sheetRep.pixelsHigh)
+        let sheetRect = NSRect(
+            x: (size.width - sheetSize.width) / 2, y: size.height - sheetSize.height - 28 * scale,
+            width: sheetSize.width, height: sheetSize.height)
+        let radius = SnapshotChrome.cornerRadius * scale
+        let outline = NSBezierPath(roundedRect: sheetRect, xRadius: radius, yRadius: radius)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.55)
+        shadow.shadowBlurRadius = 30 * scale
+        shadow.shadowOffset = NSSize(width: 0, height: -8 * scale)
+        shadow.set()
+        NSColor(srgbRed: 0x16 / 255, green: 0x1B / 255, blue: 0x22 / 255, alpha: 1).setFill()
+        outline.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        NSGraphicsContext.saveGraphicsState()
+        outline.addClip()
+        let sheetImage = NSImage(size: sheetSize)
+        sheetImage.addRepresentation(sheetRep)
+        sheetImage.draw(in: sheetRect)
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor.white.withAlphaComponent(0.16).setStroke()
+        outline.lineWidth = scale
+        outline.stroke()
+        NSGraphicsContext.restoreGraphicsState()
+        write(SnapshotChrome.framed(combined, scale: scale, kind: .window), to: url)
     }
 
     /// SwiftTerm draws each terminal row as its own layer, only once that row

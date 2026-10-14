@@ -51,7 +51,21 @@ enum DemoMode {
 /// which shells out to the CLI or reads real session transcripts.
 struct DemoContextSource: ContextSource {
     func context(for target: CommandTarget, settings: AppSettings) throws -> ContextState? {
-        DemoData.contextState(for: target)
+        DemoContextOverride.shared.value ?? DemoData.contextState(for: target)
+    }
+}
+
+/// The context every session answers with while the site walk moves a plan
+/// along. Read off the main thread by `ContextStore`'s poll, hence the lock.
+final class DemoContextOverride: @unchecked Sendable {
+    static let shared = DemoContextOverride()
+
+    private let lock = NSLock()
+    private var stored: ContextState?
+
+    var value: ContextState? {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
     }
 }
 
