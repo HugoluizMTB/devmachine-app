@@ -200,6 +200,147 @@ final class PollPauseTests: XCTestCase {
         XCTAssertNil(model.pollPauses[acme.alias])
     }
 
+    func testRefusalsInARowDoubleThePauseUpToHalfAnHour() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .authDenied)
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        var now = Date()
+        model.pauseClock = { now }
+
+        var seen: [TimeInterval] = []
+        for _ in 0..<5 {
+            try await sweep(model)
+            let pause = try XCTUnwrap(model.pollPauses[acme.alias])
+            seen.append(pause.seconds)
+            now = pause.until.addingTimeInterval(1)
+        }
+
+        XCTAssertEqual(seen, [300, 600, 1200, 1800, 1800])
+        XCTAssertEqual(source.calls(acme.alias), 5, "one login per pause, never one per sweep")
+        XCTAssertEqual(
+            model.pollPauses[acme.alias]?.notice(workspace: "acme"),
+            "Login refused for acme. Paused checking it for 30 min so main doesn't block this Mac's IP.")
+        XCTAssertFalse(model.isPollingPaused(alias: beta.alias), "the sibling on main keeps its own login")
+        XCTAssertEqual(source.calls(beta.alias), 5)
+    }
+
+    func testTryAgainAsksDuringALongPauseAndASuccessResetsTheBackOff() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .authDenied)
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        try await sweep(model)
+        model.retry(alias: acme.alias)
+        try await waitFor { model.pollPauses[self.acme.alias]?.seconds == 600 }
+
+        source.fail(acme.alias, with: nil)
+        model.retry(alias: acme.alias)
+        try await waitFor { model.sessionsByAlias[self.acme.alias] != nil }
+        XCTAssertEqual(source.calls(acme.alias), 3)
+        XCTAssertNil(model.pollPauses[acme.alias])
+
+        source.fail(acme.alias, with: .authDenied)
+        try await sweep(model)
+        XCTAssertEqual(model.pollPauses[acme.alias]?.seconds, PollPause.loginRefusedSeconds)
+    }
+
+    func testALoginRefusedByTheCLIPausesThatWorkspaceAndItsSiblingKeepsBeingAsked() async throws {
+        let runner = SessionsCLIRunner(result: (
+            #"{"workspaces":["#
+                + #"{"name":"acme","machine":"main","sessions":[],"error":{"kind":"login-refused","#
+                + #""message":"acme@203.0.113.7: Permission denied (publickey)."}},"#
+                + #"{"name":"beta","machine":"main","sessions":[]},"#
+                + #"{"name":"gamma","machine":"edge","sessions":[]}]}"#, "", 0))
+        let cliSource = CLIFirstSessionSource(
+            cli: { DevmachineCLI(executable: "/opt/homebrew/bin/devmachine", runner: runner) },
+            fallback: ScriptedSessionSource())
+        let model = AppModel(
+            services: DevmachineServices(
+                workspaceSource: FixtureWorkspaceSource(values: []), sessionSource: cliSource,
+                contextSource: FixtureContextSource()),
+            detectSettings: { .empty })
+        let machines = ["acme": "main", "beta": "main", "gamma": "edge"]
+        model.machineForWorkspace = { machines[$0] }
+        model.workspaces = [acme, beta, gamma]
+
+        try await sweep(model)
+
+        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .loginRefused)
+        XCTAssertFalse(model.isPollingPaused(alias: beta.alias))
+        XCTAssertFalse(model.offlineAliases.contains(beta.alias))
+        XCTAssertFalse(model.offlineAliases.contains(acme.alias), "a refused login says nothing about the host")
+        XCTAssertEqual(model.sessionsByAlias[beta.alias], [])
+
+        try await sweep(model)
+
+        XCTAssertEqual(runner.calls.count, 2)
+        XCTAssertEqual(
+            runner.calls.last, ["--format", "json", "sessions", "--workspace", "beta", "--workspace", "gamma"])
+    }
+
+    func testAWorkspaceTheLockDoesNotNameIsNotAskedUntilASyncNamesIt() async throws {
+        let source = ScriptedSessionSource()
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        model.applySyncLock(PackagesLock(machines: [:], workspaces: ["beta": [], "gamma": []]))
+
+        try await sweep(model)
+        try await sweep(model)
+        model.refresh(alias: acme.alias)
+        try await settle()
+
+        XCTAssertEqual(source.calls(acme.alias), 0)
+        XCTAssertEqual(source.calls(beta.alias), 2)
+        XCTAssertEqual(model.sessionProblems[acme.alias]?.isAwaitingSync, true)
+        XCTAssertTrue(model.pollPauses.isEmpty)
+        XCTAssertFalse(model.offlineAliases.contains(acme.alias))
+        XCTAssertFalse(model.showsSessionSkeleton(alias: acme.alias))
+
+        model.applySyncLock(PackagesLock(machines: [:], workspaces: ["acme": [], "beta": [], "gamma": []]))
+        try await waitFor { model.sessionsByAlias[self.acme.alias] != nil }
+
+        XCTAssertEqual(source.calls(acme.alias), 1)
+        XCTAssertNil(model.sessionProblems[acme.alias])
+    }
+
+    func testTryAgainAsksAnUnsyncedWorkspaceOnceAndARefusalWaitsForTheSyncAgain() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .authDenied)
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        model.applySyncLock(PackagesLock(machines: [:], workspaces: ["beta": [], "gamma": []]))
+
+        model.retry(alias: acme.alias)
+        try await waitFor { source.calls(self.acme.alias) == 1 }
+        try await settle()
+        try await sweep(model)
+
+        XCTAssertEqual(source.calls(acme.alias), 1)
+        XCTAssertEqual(model.sessionProblems[acme.alias]?.isAwaitingSync, true)
+        XCTAssertNil(model.pollPauses[acme.alias], "a missing account is not a locked agent")
+        XCTAssertFalse(model.isPollingPaused(alias: beta.alias))
+    }
+
+    func testALockThatNamesNoWorkspaceHoldsNothingBack() async throws {
+        let source = ScriptedSessionSource()
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        model.applySyncLock(PackagesLock(machines: ["main": []]))
+
+        try await sweep(model)
+
+        XCTAssertEqual(source.calls(acme.alias), 1)
+        XCTAssertNil(model.sessionProblems[acme.alias])
+    }
+
+    func testAWorkspaceThatAnsweredIsAskedWhateverTheLockSays() async throws {
+        let source = ScriptedSessionSource()
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        try await sweep(model)
+
+        model.applySyncLock(PackagesLock(machines: [:], workspaces: ["beta": [], "gamma": []]))
+        try await sweep(model)
+
+        XCTAssertEqual(source.calls(acme.alias), 2)
+        XCTAssertNil(model.sessionProblems[acme.alias])
+    }
+
     func testAnUnreachableMachineSaysSoWithoutTheBanWarning() async throws {
         let source = ScriptedSessionSource()
         source.fail(acme.alias, with: .unreachable)

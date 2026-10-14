@@ -155,6 +155,22 @@ final class CLIFirstSessionSourceTests: XCTestCase {
         }
     }
 
+    func testALoginRefusedByTheCLIIsTheRefusedLoginTheSSHPathReports() {
+        let message = "the machine refused the login: acme@203.0.113.10: Permission denied (publickey)."
+        let runner = SessionsCLIRunner(result: (output(
+            workspace("acme", error: #"{"kind":"login-refused","message":"\#(message)"}"#),
+            workspace("beta", sessions: [session("web")])), "", 0))
+
+        let results = source(runner).sessions(for: [acme, beta], settings: .empty)
+
+        XCTAssertThrowsError(try results[acme.alias]?.get()) { error in
+            XCTAssertEqual((error as? SessionStoreError)?.failure, .authDenied)
+            XCTAssertEqual(
+                (error as? SessionStoreError)?.stderr.contains("Permission denied (publickey)."), true)
+        }
+        XCTAssertEqual(try results[beta.alias]?.get().map(\.name), ["web"])
+    }
+
     func testAWorkspaceTheCLIDidNotReportIsUnreachable() {
         let runner = SessionsCLIRunner(result: (output(workspace("acme")), "", 0))
 

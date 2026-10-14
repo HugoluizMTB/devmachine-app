@@ -24,35 +24,53 @@ struct PollPause: Equatable {
     /// is asked again sooner.
     static let loginRefusedSeconds: TimeInterval = 300
     static let unreachableSeconds: TimeInterval = 60
+    /// A workspace refused again right after its pause will most likely be
+    /// refused the next time too, so each refusal in a row doubles its pause,
+    /// up to this.
+    static let loginRefusedMaxSeconds: TimeInterval = 1800
+
+    static func loginRefusedSeconds(refusals: Int) -> TimeInterval {
+        let doublings = Double(max(refusals, 1) - 1)
+        return min(loginRefusedSeconds * pow(2, doublings), loginRefusedMaxSeconds)
+    }
 
     let reason: Reason
     let machine: String?
     let until: Date
+    let seconds: TimeInterval
 
-    init(reason: Reason, machine: String?, until: Date) {
+    init(reason: Reason, machine: String?, until: Date, seconds: TimeInterval? = nil) {
         self.reason = reason
         self.machine = machine
         self.until = until
+        self.seconds = seconds ?? (reason == .unreachable ? Self.unreachableSeconds : Self.loginRefusedSeconds)
     }
 
-    init(_ reason: Reason, machine: String?, from now: Date) {
-        let seconds = reason == .unreachable ? Self.unreachableSeconds : Self.loginRefusedSeconds
-        self.init(reason: reason, machine: machine, until: now.addingTimeInterval(seconds))
+    init(_ reason: Reason, machine: String?, from now: Date, refusals: Int = 1) {
+        let seconds: TimeInterval
+        switch reason {
+        case .unreachable: seconds = Self.unreachableSeconds
+        case .loginRefused: seconds = Self.loginRefusedSeconds(refusals: refusals)
+        case .machineLoginsRefused: seconds = Self.loginRefusedSeconds
+        }
+        self.init(reason: reason, machine: machine, until: now.addingTimeInterval(seconds), seconds: seconds)
     }
+
+    private var minutes: Int { max(Int((seconds / 60).rounded()), 1) }
 
     func notice(workspace: String) -> String {
         switch reason {
         case .loginRefused:
             let target = machine ?? "its machine"
-            return "Login refused for \(workspace). Paused checking it for 5 min "
+            return "Login refused for \(workspace). Paused checking it for \(minutes) min "
                 + "so \(target) doesn't block this Mac's IP."
         case .machineLoginsRefused:
             let target = machine ?? workspace
             return "Logins to several workspaces on \(target) were refused. Paused checking \(target) "
-                + "for 5 min so it doesn't block this Mac's IP."
+                + "for \(minutes) min so it doesn't block this Mac's IP."
         case .unreachable:
-            if let machine { return "Couldn't reach \(machine). Paused checking its workspaces for 1 min." }
-            return "Couldn't reach \(workspace). Paused checking it for 1 min."
+            if let machine { return "Couldn't reach \(machine). Paused checking its workspaces for \(minutes) min." }
+            return "Couldn't reach \(workspace). Paused checking it for \(minutes) min."
         }
     }
 }

@@ -670,6 +670,15 @@ final class AppModel: ObservableObject {
     // Workspaces that appeared while the app was open and have not logged in
     // yet: the CLI writes the alias before the sync creates the account.
     private var awaitingFirstLogin: Set<String> = []
+    // What the last sync applied (`packages.lock`). A workspace it does not
+    // name has no account yet, so every login to it is a failed one that
+    // fail2ban counts against this Mac.
+    private var syncLock: PackagesLock?
+    private var syncLockWatch: AnyCancellable?
+    // Listed their sessions at least once: the account exists, whatever the
+    // lock says.
+    private var loggedInAliases: Set<String> = []
+    private var loginRefusals: [String: Int] = [:]
     private let defaults: UserDefaults
 
     /// `swift test` runs unsandboxed on the developer's own Mac, so
@@ -1939,6 +1948,7 @@ final class AppModel: ObservableObject {
         if let loaded { forgetOrderOfRemovedWorkspaces(present: loaded) }
         hasLoadedWorkspaces = true
         showCachedSessions()
+        holdUnsyncedWorkspaces()
         refreshAll()
         checkPackageGate()
         sweepTimer?.invalidate()
@@ -1991,7 +2001,8 @@ final class AppModel: ObservableObject {
                 }
                 self.awaitingFirstLogin.formIntersection(next.map(\.alias))
             }
-            for alias in self.awaitingFirstLogin {
+            self.holdUnsyncedWorkspaces()
+            for alias in self.awaitingFirstLogin where !self.awaitsFirstSync(alias: alias) {
                 if self.sessionProblems[alias]?.isAwaitingSync == true { self.sessionProblems[alias] = nil }
                 self.refresh(alias: alias)
             }
@@ -2050,6 +2061,7 @@ final class AppModel: ObservableObject {
         for workspace in visibleWorkspaces where sessionsByAlias[workspace.alias] == nil {
             guard let cached = cache.cached(MachineDataKeys.sessions(workspace.alias)) else { continue }
             sessionsByAlias[workspace.alias] = cached.value
+            loggedInAliases.insert(workspace.alias)
             markAnswered(workspace.alias)
         }
     }
@@ -2202,6 +2214,8 @@ final class AppModel: ObservableObject {
             }
             cache.put(MachineDataKeys.sessions(alias), result)
             awaitingFirstLogin.remove(alias)
+            loggedInAliases.insert(alias)
+            loginRefusals[alias] = nil
             if offlineAliases.contains(alias) {
                 offlineAliases.remove(alias)
             }
@@ -2213,7 +2227,7 @@ final class AppModel: ObservableObject {
             let failure = (error as? SessionStoreError)?.failure
             // A refused login on a workspace that never logged in is its
             // missing account, not a locked agent: it pauses nothing.
-            if failure == .authDenied, awaitingFirstLogin.contains(alias) {
+            if failure == .authDenied, awaitingFirstLogin.contains(alias) || awaitsFirstSync(alias: alias) {
                 let problem = SessionProblem.awaitingSync(detail: (error as? SessionStoreError)?.stderr ?? "")
                 if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
                 offlineAliases.remove(alias)
@@ -2306,6 +2320,7 @@ final class AppModel: ObservableObject {
     /// the sidebar wrong for up to two minutes.
     func resumePollingAfterWake() {
         if !pollPauses.isEmpty { pollPauses = [:] }
+        loginRefusals = [:]
         sweepInFlight = false
         refreshingAliases.removeAll()
         refreshAll()
@@ -2339,7 +2354,9 @@ final class AppModel: ObservableObject {
                 announce(pause, alias: alias)
                 return
             }
-            let pause = PollPause(.loginRefused, machine: machine, from: pauseClock())
+            let refusals = (loginRefusals[alias] ?? 0) + 1
+            loginRefusals[alias] = refusals
+            let pause = PollPause(.loginRefused, machine: machine, from: pauseClock(), refusals: refusals)
             setPause(pause, alias: alias)
             if entering { announce(pause, alias: alias) }
         case .unreachable:
@@ -2356,6 +2373,46 @@ final class AppModel: ObservableObject {
                 }
                 markAnswered(ws.alias)
             }
+        }
+    }
+
+    /// Follows `packages.lock` as the readiness check reads it.
+    func followSyncLock<Locks: Publisher>(_ locks: Locks) where Locks.Output == PackagesLock?, Locks.Failure == Never {
+        syncLockWatch = locks.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] lock in
+            MainActor.assumeIsolated { self?.applySyncLock(lock) }
+        }
+    }
+
+    /// A workspace the lock does not name is not asked at all until a sync
+    /// names it; then it is asked at once.
+    func applySyncLock(_ lock: PackagesLock?) {
+        syncLock = lock
+        holdUnsyncedWorkspaces()
+        for ws in visibleWorkspaces where sessionProblems[ws.alias]?.isAwaitingSync == true {
+            guard lock?.workspaces[ws.name] != nil else { continue }
+            sessionProblems[ws.alias] = nil
+            refresh(alias: ws.alias)
+        }
+    }
+
+    /// An older CLI writes no workspaces into the lock, and a lock that
+    /// names none of them cannot tell a new workspace from an old one: both
+    /// say nothing, and the workspace is asked as before.
+    func awaitsFirstSync(alias: String) -> Bool {
+        guard let syncLock, !syncLock.workspaces.isEmpty, !loggedInAliases.contains(alias),
+              let workspace = workspaces.first(where: { $0.alias == alias }) else { return false }
+        return syncLock.workspaces[workspace.name] == nil
+    }
+
+    private func holdUnsyncedWorkspaces() {
+        for ws in visibleWorkspaces where awaitsFirstSync(alias: ws.alias) {
+            let alias = ws.alias
+            guard sessionProblems[alias]?.isAwaitingSync != true,
+                  sessionProblems[alias]?.isHostKeyRejected != true else { continue }
+            sessionProblems[alias] = .awaitingSync(detail: "No sync has created \(ws.name) yet: packages.lock does not name it.")
+            if pollPauses[alias]?.reason == .loginRefused { pollPauses[alias] = nil }
+            offlineAliases.remove(alias)
+            markAnswered(alias)
         }
     }
 

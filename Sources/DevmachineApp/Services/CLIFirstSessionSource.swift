@@ -96,6 +96,8 @@ struct CLIFirstSessionSource: SessionListSource {
             return .failure(SessionListError(problem: .tmuxMissing, stderr: error.message))
         case "host-key-rejected":
             return .failure(SessionStoreError(failure: .hostKeyRejected, stderr: error.message))
+        case "login-refused":
+            return .failure(SessionStoreError(failure: .authDenied, stderr: error.message))
         default:
             return .failure(SessionStoreError(failure: .unreachable, stderr: error.message))
         }

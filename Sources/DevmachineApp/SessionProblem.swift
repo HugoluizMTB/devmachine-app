@@ -94,8 +94,8 @@ enum SessionProblem: Equatable {
         case let .awaitingSync(detail):
             return SessionProblemPresentation(
                 title: "\(workspace) isn't set up on its machine yet",
-                cause: "The machine refused the login. A new workspace gets its account at its first sync, "
-                    + "and the app connects again when the sync finishes.",
+                cause: "A new workspace gets its account at its first sync. Until then the app doesn't try "
+                    + "to log in, and it connects when the sync finishes.",
                 commands: [Self.syncCommand], details: detail)
         case let .unreachable(detail):
             return SessionProblemPresentation(

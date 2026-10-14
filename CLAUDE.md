@@ -783,7 +783,8 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
 - Session polling is a sequential sweep, one ssh at a time: parallel auths against a
   locked agent got this Mac banned by fail2ban. Keep it that way. A failure pauses
   only what it is about (`PollPause`, `AppModel.pollPauses`), so one broken workspace
-  never stalls the others: a refused login pauses that workspace for 5 min (fail2ban
+  never stalls the others: a refused login pauses that workspace for 5 min, doubled
+  for each refusal in a row up to 30 min (fail2ban
   counts failed logins per source IP on each machine; another account's working login
   adds nothing); a second workspace refused on the same machine inside that pause
   pauses the whole machine for 5 min, so a locked agent costs at most two refused
@@ -797,6 +798,13 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   (`PollPauseSidebarCard`, one per machine when the machine is paused) and it clears on
   the next answer; a corner toast says it once, when the pause starts, not again while
   it only goes on.
+- **A workspace no sync has created is never asked.** `packages.lock` names every
+  workspace a sync applied; one it does not name has no account yet, and every login
+  to it is a failed one (`AppModel.awaitsFirstSync`). It shows "isn't set up on its
+  machine yet" and is asked again when the lock names it, or on Try again. A lock
+  that names no workspace (an older CLI) and a workspace that has answered before
+  hold nothing back. The CLI reports a refused login as `login-refused`, which is
+  `SSHFailure.authDenied` here, never `unreachable`.
 
 - Machine stats are the one app-wide poll, because Home shows them: `StatsStore`
   reads every non-self machine every 90s, staggered, one run per machine, backing
