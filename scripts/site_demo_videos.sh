@@ -31,7 +31,7 @@ else
     DEVMACHINE_DEMO_SNAPSHOTS="$FRAMES" .build/debug/DevmachineApp
 fi
 
-SCALE="scale=${WIDTH}:${HEIGHT}:flags=lanczos,fps=24,format=yuv420p"
+SCALE="scale=${WIDTH}:${HEIGHT}:flags=lanczos,fps=30,format=yuv420p"
 for scene in $SCENES; do
   list="$FRAMES/$scene/frames.ffconcat"
   [ -f "$list" ] || { echo "no frames for $scene in $FRAMES" >&2; exit 1; }

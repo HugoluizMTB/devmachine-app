@@ -180,6 +180,7 @@ struct WorkspacesWidgetView: View {
                     hitSize: DMHitSize.header
                 ) { model.openSessionGrid(alias) }
                 .help("Session grid")
+                .demoClickTarget("grid:\(alias)")
 
                 if filesButton {
                     DMIconButton(systemImage: "folder", size: 11, hitSize: DMHitSize.header) {
@@ -269,6 +270,7 @@ struct WorkspacesWidgetView: View {
             indicators: model.indicators(for: s)
         )
             .contentShape(Rectangle())
+            .demoClickTarget("local:\(s.handle)")
             .onTapGesture { model.clickLocalSession(item) }
             .help(live ? s.path : "\(s.path) — not started")
             .sidebarDraggable(.session(s.handle, in: Workspace.local.alias), dragging: $dragging, model: model)
@@ -313,6 +315,7 @@ struct WorkspacesWidgetView: View {
             indicators: s.indicators
         )
         .contentShape(Rectangle())
+        .demoClickTarget("session:\(alias)/\(s.name)")
         .onTapGesture {
             let mods = NSEvent.modifierFlags
             if mods.contains(.command) {

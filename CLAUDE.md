@@ -1496,6 +1496,12 @@ once may fail there.
   `DemoContextOverride` (the context panel moving along) and
   `SessionShareStore.seedDemo`. The Share sheets are drawn into the frame
   where macOS shows them, since a sheet is a window of its own.
+- A bitmap capture has no pointer, so the walk draws the system arrow onto
+  its frames (`DemoPointer`): it eases to the control a state comes from,
+  shows a shrinking ring for the click, and stays there. Controls mark
+  themselves with `.demoClickTarget(id)`, which records their frame only
+  while a demo walk captures (`DemoClickTargets`). A right-click's menu is
+  not drawn: an `NSMenu` is a window the capture never sees.
 - `cacheDisplay` does not catch `NSProgressIndicator`'s animation, so a
   spinner is one still frame; Home's board is written again for the walk's
   window, since the one written at launch was laid out for a smaller one.

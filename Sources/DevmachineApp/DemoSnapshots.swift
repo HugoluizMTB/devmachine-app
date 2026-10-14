@@ -466,9 +466,11 @@ enum DemoSnapshots {
 
         let screens = walk()
         #if DEBUG
-        if screens.contains(where: { DemoSiteWalk.handles($0.id) }) { DemoSiteWalk.writeTimings(into: directory) }
+        if screens.contains(where: { DemoSiteWalk.handles($0.id) }) {
+            await DemoSiteWalk.run(window: window, environment: environment, directory: directory)
+        }
         #endif
-        for screen in screens {
+        for screen in screens where !screen.id.hasPrefix("site-") {
             await prepare(screen, environment: environment, mainWindow: window)
             try? await Task.sleep(nanoseconds: screen.settleNanoseconds)
             // A pane resized after its transcript was drawn (the grid, the
@@ -519,15 +521,6 @@ enum DemoSnapshots {
             case "file-transfer-saved", "file-transfer-failed":
                 view = fileTransferNotice(failed: screen.id == "file-transfer-failed")
             #if DEBUG
-            case _ where DemoSiteWalk.sheet(for: screen.id) != nil:
-                window.displayIfNeeded()
-                let sheet = standaloneView(
-                    DemoSiteWalk.sheet(for: screen.id), fittingSize: NSSize(width: 480, height: 400))
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                captureWithSheet(
-                    window.contentView ?? NSView(), sheet: sheet,
-                    to: directory.appendingPathComponent(screen.fileName))
-                continue
             case "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
                 view = await updateToastView(screen.id, model: environment.model)
             case "cli-update-available", "cli-update-running", "cli-update-updated", "cli-update-failed",
@@ -587,12 +580,6 @@ enum DemoSnapshots {
         PreviewStore.shared.closeAll()
         settingsIssueRemedy = nil
         settingsNoMachine = false
-        #if DEBUG
-        if DemoSiteWalk.handles(screen.id) {
-            await DemoSiteWalk.prepare(screen.id, environment: environment)
-            return
-        }
-        #endif
         model.goHome()
         try? await Task.sleep(nanoseconds: 150_000_000)
         #if DEBUG
@@ -977,7 +964,7 @@ enum DemoSnapshots {
         return hosting
     }
 
-    private static func standaloneView<V: View>(
+    static func standaloneView<V: View>(
         _ view: V, fittingSize: NSSize, autosize: Bool = true, fixedHeight: CGFloat? = nil
     ) -> NSView {
         let hosting = NSHostingView(rootView: view.environment(\.dmMetrics, .current))
@@ -1014,7 +1001,7 @@ enum DemoSnapshots {
         write(SnapshotChrome.framed(flattenTransparency(rep), scale: scale, kind: kind), to: url)
     }
 
-    private static func bitmap(of view: NSView) -> NSBitmapImageRep? {
+    static func bitmap(of view: NSView) -> NSBitmapImageRep? {
         guard view.bounds.width > 0, view.bounds.height > 0,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
         else { return nil }
@@ -1029,28 +1016,34 @@ enum DemoSnapshots {
         try? data.write(to: url)
     }
 
+    static func writeFramed(_ rep: NSBitmapImageRep, scale: CGFloat, to url: URL) {
+        write(SnapshotChrome.framed(rep, scale: scale, kind: .window), to: url)
+    }
+
     /// A sheet lives in a window of its own, which a capture of the main
     /// window leaves out; it is drawn back in where macOS puts it, centred
-    /// under the top edge.
-    private static func captureWithSheet(_ view: NSView, sheet: NSView, to url: URL) {
-        guard let windowRep = bitmap(of: view), let sheetRep = bitmap(of: sheet) else { return }
-        let scale = CGFloat(windowRep.pixelsWide) / view.bounds.width
-        let base = flattenTransparency(windowRep)
+    /// under the top edge. `origin` is the sheet's top-left corner in the
+    /// window's points.
+    static func drawSheet(
+        _ sheetRep: NSBitmapImageRep, over base: NSBitmapImageRep, scale: CGFloat
+    ) -> (image: NSBitmapImageRep, origin: CGPoint) {
         let size = NSSize(width: base.pixelsWide, height: base.pixelsHigh)
+        let sheetSize = NSSize(width: sheetRep.pixelsWide, height: sheetRep.pixelsHigh)
+        let top = 28 * scale
+        let origin = CGPoint(x: (size.width - sheetSize.width) / 2 / scale, y: top / scale)
         guard let combined = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: base.pixelsWide, pixelsHigh: base.pixelsHigh,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
             let context = NSGraphicsContext(bitmapImageRep: combined)
-        else { return }
+        else { return (base, origin) }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
         let backdrop = NSImage(size: size)
         backdrop.addRepresentation(base)
         backdrop.draw(in: NSRect(origin: .zero, size: size))
-        let sheetSize = NSSize(width: sheetRep.pixelsWide, height: sheetRep.pixelsHigh)
         let sheetRect = NSRect(
-            x: (size.width - sheetSize.width) / 2, y: size.height - sheetSize.height - 28 * scale,
+            x: (size.width - sheetSize.width) / 2, y: size.height - sheetSize.height - top,
             width: sheetSize.width, height: sheetSize.height)
         let radius = SnapshotChrome.cornerRadius * scale
         let outline = NSBezierPath(roundedRect: sheetRect, xRadius: radius, yRadius: radius)
@@ -1073,7 +1066,7 @@ enum DemoSnapshots {
         outline.lineWidth = scale
         outline.stroke()
         NSGraphicsContext.restoreGraphicsState()
-        write(SnapshotChrome.framed(combined, scale: scale, kind: .window), to: url)
+        return (combined, origin)
     }
 
     /// SwiftTerm draws each terminal row as its own layer, only once that row
@@ -1085,7 +1078,7 @@ enum DemoSnapshots {
     /// color turns that gap into the plain dark it reads as on screen,
     /// instead of the bitmap's transparent default (white once saved as an
     /// opaque PNG and viewed).
-    private static func flattenTransparency(_ rep: NSBitmapImageRep) -> NSBitmapImageRep {
+    static func flattenTransparency(_ rep: NSBitmapImageRep) -> NSBitmapImageRep {
         let background = NSColor(srgbRed: 0x0E / 255, green: 0x12 / 255, blue: 0x17 / 255, alpha: 1)
         let size = NSSize(width: rep.pixelsWide, height: rep.pixelsHigh)
         guard let flattened = NSBitmapImageRep(

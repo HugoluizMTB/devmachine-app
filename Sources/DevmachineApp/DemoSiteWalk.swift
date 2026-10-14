@@ -8,64 +8,91 @@ import DevmachineCore
 /// `<scene>/NNN.png` with a `frames.ffconcat` beside them that says how long
 /// each frame stays on screen. `scripts/site_demo_videos.sh` turns each
 /// scene into a video. Every frame is the real window in a state the app can
-/// reach, drawn from demo data; nothing runs.
+/// reach, drawn from demo data; nothing runs. A bitmap capture has no
+/// pointer, so the walk draws one: it moves to the control a state comes
+/// from, clicks, and stays there.
 @MainActor
 enum DemoSiteWalk {
+    struct Click: Equatable {
+        /// A `demoClickTarget` id; `sheet:` ids sit in the sheet drawn over
+        /// the window.
+        let target: String
+        var secondary = false
+    }
+
     struct Frame: Equatable {
         let step: Step
         /// Seconds the frame stays on screen in the video.
         let hold: Double
+        var click: Click?
     }
 
     enum Step: Equatable {
         case sidebar, busy, attention, sessionGrid
-        case cli(Int)
-        case context(Int)
-        case publishedApps, publishing, published, shareSheet, shareLink, chat, guestReply
-        case home, homeWide
+        case operatorBefore, cli(Int)
+        case contextBefore, context(Int)
+        case publishBefore, publishedApps, publishing, published
+        case sessionOpen, shareSheet, shareLink, shared, chat, guestReply
+        case homeBefore, home, homeWide
     }
 
     struct Scene: Equatable {
         let id: String
         let frames: [Frame]
 
-        var seconds: Double { frames.reduce(0) { $0 + $1.hold } }
+        var seconds: Double {
+            frames.reduce(0) { $0 + $1.hold + ($1.click == nil ? 0 : DemoPointer.clickSeconds) }
+        }
     }
 
     static let windowSize = NSSize(width: 1600, height: 1000)
 
+    private static let acmeClaude = "session:acme-devmachine/claude — payments refactor"
+
     static let scenes: [Scene] = [
         Scene(id: "sessions", frames: [
-            Frame(step: .sidebar, hold: 1.6),
-            Frame(step: .busy, hold: 1.8),
-            Frame(step: .attention, hold: 2.0),
-            Frame(step: .sessionGrid, hold: 3.2),
+            Frame(step: .sidebar, hold: 1.4),
+            Frame(step: .busy, hold: 1.6),
+            Frame(step: .attention, hold: 1.8),
+            Frame(step: .sessionGrid, hold: 2.8, click: Click(target: "grid:acme-devmachine")),
         ]),
-        Scene(id: "cli", frames: cliTranscripts.indices.map { index in
-            Frame(step: .cli(index), hold: index == cliTranscripts.count - 1 ? 3.2 : 0.9)
-        }),
-        Scene(id: "context", frames: contextStates.indices.map { index in
-            Frame(step: .context(index), hold: index == contextStates.count - 1 ? 2.6 : 1.3)
-        }),
+        Scene(id: "cli", frames: [Frame(step: .operatorBefore, hold: 0.8)]
+            + cliTranscripts.indices.map { index in
+                Frame(
+                    step: .cli(index), hold: index == cliTranscripts.count - 1 ? 2.8 : 0.7,
+                    click: index == 0 ? Click(target: "local:\(Workspace.operatorSession)") : nil)
+            }),
+        Scene(id: "context", frames: [Frame(step: .contextBefore, hold: 0.9)]
+            + contextStates.indices.map { index in
+                Frame(
+                    step: .context(index), hold: index == contextStates.count - 1 ? 2.4 : 1.2,
+                    click: index == 0 ? Click(target: "session:globex-devmachine/claude") : nil)
+            }),
         Scene(id: "publish", frames: [
-            Frame(step: .publishedApps, hold: 1.2),
-            Frame(step: .publishing, hold: 1.0),
-            Frame(step: .published, hold: 1.3),
-            Frame(step: .shareSheet, hold: 1.3),
-            Frame(step: .shareLink, hold: 1.5),
-            Frame(step: .chat, hold: 1.0),
-            Frame(step: .guestReply, hold: 2.4),
+            Frame(step: .publishBefore, hold: 0.6),
+            Frame(step: .publishedApps, hold: 0.7, click: Click(target: "footer:published-apps")),
+            Frame(step: .publishing, hold: 0.6),
+            Frame(step: .published, hold: 0.7),
+            Frame(step: .sessionOpen, hold: 0.5, click: Click(target: acmeClaude)),
+            Frame(step: .shareSheet, hold: 0.7, click: Click(target: acmeClaude, secondary: true)),
+            Frame(step: .shareLink, hold: 0.9, click: Click(target: "sheet:share")),
+            Frame(step: .shared, hold: 0.4, click: Click(target: "sheet:done")),
+            Frame(step: .chat, hold: 0.6, click: Click(target: "tab:Chat")),
+            Frame(step: .guestReply, hold: 1.3),
         ]),
         Scene(id: "home", frames: [
-            Frame(step: .home, hold: 3.6),
-            Frame(step: .homeWide, hold: 3.6),
+            Frame(step: .homeBefore, hold: 0.7),
+            Frame(step: .home, hold: 2.4, click: Click(target: acmeClaude)),
+            Frame(step: .homeWide, hold: 2.8, click: Click(target: "footer:close-sidebar")),
         ]),
     ]
 
+    /// One entry per state, so `DEVMACHINE_DEMO_WALK=site` is a walk like
+    /// the others; `run` draws the pointer frames between them.
     static let screens: [DemoSnapshots.Screen] = scenes.flatMap { scene in
         scene.frames.indices.map { index in
             DemoSnapshots.Screen(
-                id: screenID(scene: scene.id, index: index),
+                id: "site-\(scene.id)-\(String(format: "%03d", index + 1))",
                 fileName: "\(scene.id)/\(frameName(index))",
                 settleNanoseconds: 350_000_000)
         }
@@ -73,44 +100,23 @@ enum DemoSiteWalk {
 
     static func handles(_ id: String) -> Bool { id.hasPrefix("site-") }
 
-    static func screenID(scene: String, index: Int) -> String {
-        "site-\(scene)-\(String(format: "%03d", index + 1))"
-    }
-
     static func frameName(_ index: Int) -> String {
         String(format: "%03d.png", index + 1)
     }
 
-    static func frame(for id: String) -> Frame? {
-        for scene in scenes {
-            for index in scene.frames.indices where screenID(scene: scene.id, index: index) == id {
-                return scene.frames[index]
-            }
-        }
-        return nil
-    }
-
     /// ffmpeg's concat list: each frame with its time on screen. The last
     /// frame is named once more, so it starts no earlier than its hold ends;
-    /// the video script cuts the scene at `seconds`.
-    static func ffconcat(_ scene: Scene) -> String {
+    /// the video script cuts the scene at the sum of the holds.
+    static func ffconcat(_ holds: [Double]) -> String {
         var lines = ["ffconcat version 1.0"]
-        for (index, frame) in scene.frames.enumerated() {
+        for (index, hold) in holds.enumerated() {
             lines.append("file '\(frameName(index))'")
-            lines.append("duration \(String(format: "%.2f", frame.hold))")
+            lines.append("duration \(String(format: "%.3f", hold))")
         }
-        if !scene.frames.isEmpty {
-            lines.append("file '\(frameName(scene.frames.count - 1))'")
+        if !holds.isEmpty {
+            lines.append("file '\(frameName(holds.count - 1))'")
         }
         return lines.joined(separator: "\n") + "\n"
-    }
-
-    static func writeTimings(into directory: URL) {
-        for scene in scenes {
-            let folder = directory.appendingPathComponent(scene.id, isDirectory: true)
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try? Data(ffconcat(scene).utf8).write(to: folder.appendingPathComponent("frames.ffconcat"))
-        }
     }
 
     static func reset(_ model: AppModel) {
@@ -126,45 +132,113 @@ enum DemoSiteWalk {
     /// first title wraps.
     static let chatPanelWidth: CGFloat = 340
 
+    // MARK: - Running
+
+    static func run(window: NSWindow, environment: DemoSnapshots.Environment, directory: URL) async {
+        for scene in scenes {
+            let folder = directory.appendingPathComponent(scene.id, isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            var holds: [Double] = []
+            var pointer = CGPoint(x: windowSize.width * 0.62, y: windowSize.height * 0.56)
+            var base: NSBitmapImageRep?
+            var sheetOrigin = CGPoint.zero
+            var scale: CGFloat = 2
+
+            func emit(_ rep: NSBitmapImageRep, hold: Double) {
+                DemoSnapshots.writeFramed(rep, scale: scale, to: folder.appendingPathComponent(frameName(holds.count)))
+                holds.append(hold)
+            }
+
+            for frame in scene.frames {
+                if let click = frame.click, point(for: click.target, sheet: sheetOrigin) == nil {
+                    FileHandle.standardError.write(Data("site walk: no click target \(click.target)\n".utf8))
+                }
+                if let click = frame.click, let before = base, let target = point(for: click.target, sheet: sheetOrigin) {
+                    for position in DemoPointer.path(from: pointer, to: target) {
+                        emit(DemoPointer.draw(on: before, at: position, ring: nil, scale: scale),
+                             hold: DemoPointer.moveFrameSeconds)
+                    }
+                    for ring in DemoPointer.rings {
+                        emit(DemoPointer.draw(on: before, at: target, ring: ring, scale: scale),
+                             hold: DemoPointer.clickFrameSeconds)
+                    }
+                    pointer = target
+                }
+                await prepare(frame.step, environment: environment)
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                TerminalRegistry.shared.replayDemoTranscripts()
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                window.displayIfNeeded()
+                guard let content = window.contentView, let shot = DemoSnapshots.bitmap(of: content) else { continue }
+                scale = CGFloat(shot.pixelsWide) / content.bounds.width
+                var state = DemoSnapshots.flattenTransparency(shot)
+                if let sheet = sheet(for: frame.step) {
+                    let hosting = DemoSnapshots.standaloneView(sheet, fittingSize: NSSize(width: 480, height: 400))
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    if let sheetShot = DemoSnapshots.bitmap(of: hosting) {
+                        let drawn = DemoSnapshots.drawSheet(sheetShot, over: state, scale: scale)
+                        state = drawn.image
+                        sheetOrigin = drawn.origin
+                    }
+                    hosting.window?.orderOut(nil)
+                }
+                base = state
+                emit(DemoPointer.draw(on: state, at: pointer, ring: nil, scale: scale), hold: frame.hold)
+            }
+            try? Data(ffconcat(holds).utf8).write(to: folder.appendingPathComponent("frames.ffconcat"))
+        }
+    }
+
+    /// The centre of a control, in the main window's points from the top
+    /// left; a control in the sheet is moved by where the sheet was drawn.
+    private static func point(for target: String, sheet origin: CGPoint) -> CGPoint? {
+        guard let frame = DemoClickTargets.frames[target] else { return nil }
+        let offset = target.hasPrefix("sheet:") ? origin : .zero
+        return CGPoint(x: frame.midX + offset.x, y: frame.midY + offset.y)
+    }
+
     // MARK: - Steps
 
-    static func prepare(_ id: String, environment: DemoSnapshots.Environment) async {
-        guard let frame = frame(for: id) else { return }
+    static func prepare(_ step: Step, environment: DemoSnapshots.Environment) async {
         let model = environment.model
-        switch frame.step {
+        switch step {
         case .sidebar:
             reset(model)
             model.sessionsByAlias = sessions(busy: false, attention: false)
             model.contextCollapsed = true
-            model.clickSession(SessionRef(alias: "globex-devmachine", name: "claude"))
+            model.clickSession(contextSession)
         case .busy:
             model.sessionsByAlias = sessions(busy: true, attention: false)
         case .attention:
             model.sessionsByAlias = sessions(busy: true, attention: true)
         case .sessionGrid:
-            model.goHome()
             model.openSessionGrid(acme)
+        case .operatorBefore:
+            reset(model)
+            model.sessionsByAlias = sessions(busy: true, attention: true)
+            model.contextCollapsed = true
+            model.goHome()
+            model.clickSession(contextSession)
         case let .cli(index):
-            if index == 0 {
-                model.goHome()
-                model.contextCollapsed = true
-                model.selection = DemoSnapshots.operatorSelection
-            }
+            if index == 0 { model.selection = DemoSnapshots.operatorSelection }
             DemoData.transcriptOverride = [operatorKind: cliTranscripts[index]]
+        case .contextBefore:
+            reset(model)
+            model.sessionsByAlias = sessions(busy: true, attention: true)
+            model.contextTab = .context
+            model.goHome()
         case let .context(index):
-            if index == 0 {
-                DemoData.transcriptOverride = [:]
-                model.goHome()
-                model.contextCollapsed = false
-                model.contextTab = .context
-                model.clickSession(contextSession)
-            }
             DemoContextOverride.shared.value = contextStates[index]
             DemoData.transcriptOverride = [contextKind: contextTranscripts[index]]
+            if index == 0 { model.clickSession(contextSession) }
             model.context.retry()
+        case .publishBefore:
+            reset(model)
+            model.sessionsByAlias = sessions(busy: true, attention: true)
+            model.contextTab = .context
+            model.contextWidth = chatPanelWidth
+            model.goHome()
         case .publishedApps:
-            DemoContextOverride.shared.value = nil
-            DemoData.transcriptOverride = [:]
             DemoSnapshots.subdomainsInitialTab = .sites
             model.showPage(.subdomains)
             try? await Task.sleep(nanoseconds: 400_000_000)
@@ -173,26 +247,28 @@ enum DemoSiteWalk {
             showSites(environment.caddyStore, extra: .pending)
         case .published:
             showSites(environment.caddyStore, extra: .published)
-        case .shareSheet:
-            model.goHome()
-            model.contextWidth = chatPanelWidth
-            model.contextCollapsed = false
-            model.contextTab = .context
+        case .sessionOpen:
             model.clickSession(shareSession)
-        case .shareLink:
+        case .shareSheet:
             break
-        case .chat:
+        case .shareLink:
             SessionShareStore.shared.seedDemo([shareRecord])
+        case .shared:
             SessionChatStore.shared.receive(ownerMessage, share: shareRecord.id)
+        case .chat:
             model.contextTab = .chat
         case .guestReply:
             SessionChatStore.shared.receive(guestMessage, share: shareRecord.id)
-        case .home:
-            SessionShareStore.shared.seedDemo([])
+        case .homeBefore:
+            reset(model)
+            model.sessionsByAlias = sessions(busy: true, attention: true)
+            model.contextTab = .context
             model.goHome()
-            model.sidebarCollapsed = false
             try? await Task.sleep(nanoseconds: 300_000_000)
             relayHome(model)
+            model.clickSession(shareSession)
+        case .home:
+            model.clickSession(shareSession)
         case .homeWide:
             model.sidebarCollapsed = true
         }
@@ -208,9 +284,9 @@ enum DemoSiteWalk {
         controller.reload()
     }
 
-    /// A sheet drawn over the window for this frame, as macOS shows it.
-    static func sheet(for id: String) -> AnyView? {
-        switch frame(for: id)?.step {
+    /// A sheet drawn over the window for this state, as macOS shows it.
+    static func sheet(for step: Step) -> AnyView? {
+        switch step {
         case .shareSheet:
             return AnyView(ShareSessionSheet(
                 request: SessionShareRequest(alias: acme, workspace: "acme", session: shareSession.name),
@@ -222,7 +298,6 @@ enum DemoSiteWalk {
             return nil
         }
     }
-
     // MARK: - Sessions
 
     private static let acme = "acme-devmachine"

@@ -32,6 +32,7 @@ struct SidebarView: View {
             if model.hasCaddyMachine {
                 footerButton("globe") { model.showPage(.subdomains) }
                     .help("Published apps")
+                    .demoClickTarget("footer:published-apps")
             }
             footerButton("gearshape") { model.showPage(.setup) }
                 .help("Settings (⌘,)")
@@ -39,6 +40,7 @@ struct SidebarView: View {
                 withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = true }
             }
             .help("Close sidebar (⌘B)")
+            .demoClickTarget("footer:close-sidebar")
         }
         .padding(.horizontal, m.space.lg)
         .padding(.vertical, m.space.md)

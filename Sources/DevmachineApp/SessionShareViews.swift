@@ -112,6 +112,7 @@ struct ShareSessionSheet: View {
                 DMButton("Cancel", variant: .outline, action: onCancel)
                 DMButton("Share", systemImage: "person.2", isLoading: isSharing) { onShare(name, mode, duration) }
                     .keyboardShortcut(.defaultAction)
+                    .demoClickTarget("sheet:share")
             }
         }
         .padding(m.pt(20))
@@ -213,6 +214,7 @@ struct ShareOutcomeSheet: View {
             DMButton("Stop sharing", variant: .dangerOutline) { onStop(record) }
             Spacer()
             DMButton("Done", action: onClose).keyboardShortcut(.defaultAction)
+                .demoClickTarget("sheet:done")
         }
     }
 }

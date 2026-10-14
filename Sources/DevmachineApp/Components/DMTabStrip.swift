@@ -45,6 +45,7 @@ struct DMTabStrip<Tab: Hashable>: View {
                 ) {
                     selection = tab
                 }
+                .demoClickTarget("tab:\(title(tab))")
             }
         }
     }
