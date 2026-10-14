@@ -352,6 +352,7 @@ struct SubdomainsView: View {
                     .foregroundStyle(Color.dmRowText)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .demoClickTarget("site:\(row.site.host)")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .help(row.site.note ?? row.site.host)

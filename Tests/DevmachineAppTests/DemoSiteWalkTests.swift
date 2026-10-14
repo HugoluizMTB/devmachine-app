@@ -14,7 +14,7 @@ final class DemoSiteWalkTests: XCTestCase {
     func testTheSiteWalkIsSixScenesOfNumberedFramesEachInItsOwnFolder() {
         let screens = DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "site"])
         XCTAssertEqual(
-            DemoSiteWalk.scenes.map(\.id), ["operator", "sessions", "cli", "context", "publish", "home"])
+            DemoSiteWalk.scenes.map(\.id), ["operator", "sessions", "cli", "context", "publish", "share", "home"])
         XCTAssertEqual(screens.count, DemoSiteWalk.scenes.reduce(0) { $0 + $1.frames.count })
         XCTAssertEqual(screens.first?.fileName, "operator/001.png")
         XCTAssertEqual(Set(screens.map(\.id)).count, screens.count)
@@ -22,16 +22,42 @@ final class DemoSiteWalkTests: XCTestCase {
         XCTAssertFalse(DemoSnapshots.screens.contains { DemoSiteWalk.handles($0.id) })
     }
 
-    func testEverySceneLastsSixToTwelveSecondsWithItsPointerMoves() {
+    func testEverySceneLastsEightToTwentyOneSecondsWithItsPointerMoves() {
         for scene in DemoSiteWalk.scenes {
-            XCTAssertTrue((6...12).contains(scene.seconds), "\(scene.id) lasts \(scene.seconds)s")
+            XCTAssertTrue((8...21).contains(scene.seconds), "\(scene.id) lasts \(scene.seconds)s")
         }
     }
 
+    func testEveryLabelStaysTwoSecondsAndEverySceneEndsOnAPause() {
+        for scene in DemoSiteWalk.scenes {
+            var shown: [String: Double] = [:]
+            for frame in scene.frames {
+                guard let text = frame.label?.text else { continue }
+                shown[text, default: 0] += frame.hold + (frame.pointer?.seconds ?? 0)
+            }
+            for (text, seconds) in shown {
+                XCTAssertGreaterThanOrEqual(seconds, 2, "\(scene.id): \(text)")
+            }
+            XCTAssertGreaterThanOrEqual(scene.frames.last?.hold ?? 0, 1.5, scene.id)
+        }
+    }
+
+    func testTypingRunsAtAReadingPaceAndLinesComeOneByOne() {
+        let typed = Double(DemoSiteWalk.typingChunk) / DemoSiteWalk.typingSeconds
+        XCTAssertTrue((12...15).contains(typed))
+        let played = DemoSiteWalk.play(
+            [.type(prompt: "$ ", text: "devmachine sync", label: nil), .print(["a", "", "b"], label: nil)], start: [])
+        XCTAssertEqual(played.map(\.transcript), [
+            "$ devma", "$ devmachine", "$ devmachine sync",
+            "$ devmachine sync\na", "$ devmachine sync\na\n\nb",
+        ])
+        XCTAssertEqual(played.map(\.hold), [0.34, 0.34, 1.0, 0.3, DemoSiteWalk.lastSeconds])
+    }
+
     func testEverySceneOpensOnItsSubjectWithoutAClick() {
-        XCTAssertEqual(DemoSiteWalk.scenes.map { $0.frames.first?.pointer }, Array(repeating: nil, count: 6))
+        XCTAssertEqual(DemoSiteWalk.scenes.map { $0.frames.first?.pointer }, Array(repeating: nil, count: 7))
         XCTAssertEqual(DemoSiteWalk.scenes.map { $0.frames.first?.step }, [
-            .operatorChat(0), .sidebar, .cli(0), .context(0), .publishedApps, .homeStart,
+            .operatorChat(0), .sidebar, .cli(0), .context(0), .publishedApps, .shareStart, .homeStart,
         ])
     }
 
@@ -57,8 +83,8 @@ final class DemoSiteWalkTests: XCTestCase {
         XCTAssertEqual(seconds(.click(spot)) - seconds(nil), DemoPointer.clickSeconds, accuracy: 0.001)
         XCTAssertEqual(seconds(.hover(spot)) - seconds(nil), DemoPointer.moveSeconds, accuracy: 0.001)
         XCTAssertEqual(seconds(.follow(spot)), seconds(nil), accuracy: 0.001)
-        XCTAssertTrue((0.2...0.4).contains(DemoPointer.moveSeconds))
-        XCTAssertEqual(Double(DemoPointer.rings.count) * DemoPointer.clickFrameSeconds, 0.15, accuracy: 0.001)
+        XCTAssertEqual(DemoPointer.moveSeconds, 0.5, accuracy: 0.01)
+        XCTAssertEqual(Double(DemoPointer.rings.count) * DemoPointer.clickFrameSeconds, 0.25, accuracy: 0.01)
     }
 
     func testThePointerEasesFromWhereItWasToTheTarget() {
@@ -81,6 +107,8 @@ final class DemoSiteWalkTests: XCTestCase {
         XCTAssertEqual(targets, [
             "grid:acme-devmachine", "context:todo", "context:sub-agents", "context:pull-requests", "tab:Git",
             "session:acme-devmachine/claude — payments refactor", "sheet:share", "sheet:done", "tab:Chat",
+            "site:shop.acme.example.com", "sheet:share-name", "sheet:share-for", "sheet:share-mode",
+            "sheet:share-link", "sheet:share-password",
             "widget:\(DemoSiteWalk.codexUsage)", "widget:\(DemoSiteWalk.claudeUsage)", "home:add",
             "sheet:gallery:\(DemoSiteWalk.summaryType)",
         ])
@@ -90,7 +118,7 @@ final class DemoSiteWalkTests: XCTestCase {
         for scene in DemoSiteWalk.scenes {
             let labels = scene.frames.compactMap(\.label?.text)
             XCTAssertLessThanOrEqual(Set(labels).count, 4, scene.id)
-            XCTAssertTrue(labels.allSatisfy { $0.count <= 40 }, scene.id)
+            XCTAssertTrue(labels.allSatisfy { $0.count <= 45 }, scene.id)
         }
     }
 
@@ -104,7 +132,7 @@ final class DemoSiteWalkTests: XCTestCase {
     }
 
     func testTheCLISceneIsTypedIntoAPlainTerminalStepByStep() {
-        let frames = DemoSiteWalk.cliFrames
+        let frames = DemoSiteWalk.cliPlayed.map(\.transcript)
         XCTAssertEqual(frames.count, DemoSiteWalk.scenes[2].frames.count)
         for (earlier, later) in zip(frames, frames.dropFirst()) {
             XCTAssertTrue(later.hasPrefix(earlier))
@@ -117,16 +145,15 @@ final class DemoSiteWalkTests: XCTestCase {
     }
 
     func testTheOperatorSceneAnswersThreeRequestsWithTheCLIsOwnWords() {
-        let last = DemoSiteWalk.operatorTranscripts.last ?? ""
-        XCTAssertEqual(DemoSiteWalk.operatorTranscripts.count, DemoSiteWalk.operatorHolds.count)
-        XCTAssertEqual(DemoSiteWalk.operatorTranscripts.count, DemoSiteWalk.operatorLabels.count)
-        for request in ["Add a workspace for alice", "Publish port 3000 of acme", "Why is staging slow?"] {
+        let last = DemoSiteWalk.operatorPlayed.last?.transcript ?? ""
+        for request in DemoSiteWalk.requests {
             XCTAssertTrue(last.contains(request), request)
         }
         XCTAssertTrue(last.contains("alice is in the configuration, on main, with the packages claude-code."))
         XCTAssertTrue(last.contains("added docker to machine main"))
         XCTAssertTrue(last.contains("published: https://app.example.com -> acme:3000 on main."))
         XCTAssertTrue(last.contains("memory  3.6G used of 3.8G, 210.0M available"))
+        XCTAssertEqual(DemoSiteWalk.operatorPlayed.last?.label, DemoSiteWalk.answerLabel)
     }
 
     func testAWalkTranscriptReplacesTheSessionsOwnOnlyWhileSet() {
@@ -155,6 +182,14 @@ final class DemoSiteWalkTests: XCTestCase {
         XCTAssertEqual(try DemoContextSource().context(for: target, settings: .empty), walkState)
         DemoContextOverride.shared.value = nil
         XCTAssertEqual(try DemoContextSource().context(for: target, settings: .empty), DemoData.contextState)
+    }
+
+    func testEachShareDialogStaysOpenThreeSeconds() {
+        let frames = DemoSiteWalk.scenes.first { $0.id == "share" }?.frames ?? []
+        for step in [DemoSiteWalk.Step.shareSheet, .shareLink] {
+            let seconds = frames.filter { $0.step == step }.reduce(0) { $0 + $1.hold }
+            XCTAssertGreaterThanOrEqual(seconds, 3, "\(step)")
+        }
     }
 
     func testSheetsAndThePopoverAreDrawnOverTheWindow() {

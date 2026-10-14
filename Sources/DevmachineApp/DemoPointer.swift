@@ -5,9 +5,9 @@ import AppKit
 /// system arrow, moved along an eased path, and a soft circle at its tip
 /// that shrinks and fades on a click.
 enum DemoPointer {
-    static let moveFrames = 10
+    static let moveFrames = 15
     static let moveFrameSeconds = 0.033
-    static let clickFrameSeconds = 0.05
+    static let clickFrameSeconds = 0.083
 
     /// Ring radius and opacity in points, one per click frame.
     struct Ring: Equatable {

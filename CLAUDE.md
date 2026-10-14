@@ -1487,8 +1487,11 @@ once may fail there.
 ## Website videos
 - `scripts/site_demo_videos.sh <dir>` runs `DEVMACHINE_DEMO_WALK=site`
   (`DemoSiteWalk`) hidden, then writes `<scene>.webm`, `<scene>.mp4` and
-  `<scene>-poster.webp` for the six home-page loops (operator, sessions, cli,
-  context, publish, home). Each opens on its own subject, with no click first. The walk writes numbered frames per scene at 1600×1000 and a
+  `<scene>-poster.webp` for the seven home-page loops (operator, sessions, cli,
+  context, publish, share, home). Each opens on its own subject, with no click
+  first, at a reading pace: 0.5 s pointer moves, ~15 typed characters a second,
+  a second after each change and labels on screen for at least two seconds.
+  The walk writes numbered frames per scene at 1600×1000 and a
   `frames.ffconcat` with each frame's hold; `SITE_DEMO_FRAMES=<dir>` re-encodes
   frames already written.
 - Every frame is a real app state from demo data. The walk's only setters are

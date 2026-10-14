@@ -70,7 +70,7 @@ enum DemoSiteWalk {
         case cli(Int)
         case context(Int), contextGit
         case publishedApps, publishing, published
-        case sessionOpen, shareSheet, shareLink, shared, chat, guestReply
+        case shareStart, shareSheet, shareLink, shared, chat, guestReply, ownerReply
         case homeStart, homeDrag(Int), homeResize(Int), homeGallery, homeAdded
     }
 
@@ -87,63 +87,78 @@ enum DemoSiteWalk {
 
     private static let acmeClaude = "session:acme-devmachine/claude — payments refactor"
     private static let operatorLabelPoint = CGPoint(x: 1010, y: 96)
-    private static let operatorAnswerLabelPoint = CGPoint(x: 975, y: 546)
+    private static let operatorAnswerLabelPoint = CGPoint(x: 1010, y: 560)
     /// Where the pointer waits at the start of a scene: clear of the
     /// terminal's text and of the labels.
     private static let restingPointer = CGPoint(x: 1180, y: 770)
-    static let homeDragFrames = 5
-    static let homeResizeFrames = 4
+    static let homeDragFrames = 8
+    static let homeResizeFrames = 6
 
-    static let scenes: [Scene] = [operatorScene, sessionsScene, cliScene, contextScene, publishScene, homeScene]
+    static let scenes: [Scene] = [
+        operatorScene, sessionsScene, cliScene, contextScene, publishScene, shareScene, homeScene,
+    ]
 
-    private static let operatorScene = Scene(id: "operator", frames: operatorTranscripts.indices.map { index in
-        let point = index == operatorTranscripts.count - 1 ? operatorAnswerLabelPoint : operatorLabelPoint
-        let label: Label? = operatorLabels[index].map { Label(text: $0, at: point) }
-        return Frame(step: .operatorChat(index), hold: operatorHolds[index], label: label)
+    private static let operatorScene = Scene(id: "operator", frames: operatorPlayed.indices.map { index in
+        let played = operatorPlayed[index]
+        let point = played.label == answerLabel ? operatorAnswerLabelPoint : operatorLabelPoint
+        return Frame(step: .operatorChat(index), hold: played.hold, label: played.label.map { Label(text: $0, at: point) })
     })
 
     private static let sessionsScene = Scene(id: "sessions", frames: [
-        Frame(step: .sidebar, hold: 1.4),
-        Frame(step: .busy, hold: 1.6),
-        Frame(step: .attention, hold: 1.8),
-        Frame(step: .sessionGrid, hold: 2.8, pointer: .click(Spot(target: "grid:acme-devmachine"))),
+        Frame(step: .sidebar, hold: 2.4),
+        Frame(step: .busy, hold: 2.4),
+        Frame(step: .attention, hold: 2.8),
+        Frame(step: .sessionGrid, hold: 4.0, pointer: .click(Spot(target: "grid:acme-devmachine"))),
     ])
 
-    private static let cliScene = Scene(id: "cli", frames: cliFrames.indices.map { index in
-        let last = index == cliFrames.count - 1
-        let hold: Double = last ? 2.6 : (index < cliTyping.count ? 0.45 : 0.65)
-        let label: Label? = index < cliTyping.count + 2
-            ? Label(text: "Prefer a terminal? Type it yourself", at: operatorLabelPoint) : nil
-        return Frame(step: .cli(index), hold: hold, label: label)
+    private static let cliScene = Scene(id: "cli", frames: cliPlayed.indices.map { index in
+        let played = cliPlayed[index]
+        return Frame(
+            step: .cli(index), hold: played.hold, label: played.label.map { Label(text: $0, at: operatorLabelPoint) })
     })
 
     private static let contextScene = Scene(id: "context", frames: [
-        Frame(step: .context(0), hold: 1.0),
+        Frame(step: .context(0), hold: 1.6),
         Frame(
-            step: .context(1), hold: 1.3, pointer: .hover(Spot(target: "context:todo")),
+            step: .context(1), hold: 2.3, pointer: .hover(Spot(target: "context:todo")),
             label: Label(text: "The agent's to-do, live", near: "context:todo")),
         Frame(
-            step: .context(2), hold: 0.9, pointer: .hover(Spot(target: "context:sub-agents")),
+            step: .context(2), hold: 1.6, pointer: .hover(Spot(target: "context:sub-agents")),
             label: Label(text: "Sub-agents it started", near: "context:sub-agents")),
-        Frame(step: .context(3), hold: 0.9, label: Label(text: "Sub-agents it started", near: "context:sub-agents")),
+        Frame(step: .context(3), hold: 1.6, label: Label(text: "Sub-agents it started", near: "context:sub-agents")),
         Frame(
-            step: .context(4), hold: 1.4, pointer: .hover(Spot(target: "context:pull-requests")),
+            step: .context(4), hold: 2.4, pointer: .hover(Spot(target: "context:pull-requests")),
             label: Label(text: "Its pull requests and CI", near: "context:pull-requests")),
         Frame(
-            step: .contextGit, hold: 1.8, pointer: .click(Spot(target: "tab:Git")),
+            step: .contextGit, hold: 3.2, pointer: .click(Spot(target: "tab:Git")),
             label: Label(text: "Branch and changes", endingAt: CGPoint(x: 1280, y: 86))),
     ])
 
+    private static let publishLabel = Label(text: "Publish a port as an https app", at: CGPoint(x: 300, y: 340))
+
     private static let publishScene = Scene(id: "publish", frames: [
-        Frame(step: .publishedApps, hold: 1.0),
-        Frame(step: .publishing, hold: 0.6),
-        Frame(step: .published, hold: 0.7),
-        Frame(step: .sessionOpen, hold: 0.5, pointer: .click(Spot(target: acmeClaude))),
-        Frame(step: .shareSheet, hold: 0.7, pointer: .click(Spot(target: acmeClaude), secondary: true)),
-        Frame(step: .shareLink, hold: 0.9, pointer: .click(Spot(target: "sheet:share"))),
-        Frame(step: .shared, hold: 0.4, pointer: .click(Spot(target: "sheet:done"))),
-        Frame(step: .chat, hold: 0.6, pointer: .click(Spot(target: "tab:Chat"))),
-        Frame(step: .guestReply, hold: 1.3),
+        Frame(step: .publishedApps, hold: 2.4),
+        Frame(step: .publishing, hold: 2.6, label: publishLabel),
+        Frame(step: .published, hold: 3.2, pointer: .hover(Spot(target: "site:shop.acme.example.com")), label: publishLabel),
+    ])
+
+    private static let shareLabel = Label(text: "Share a session with a link and a password", at: CGPoint(x: 572, y: 420))
+    private static let browserLabel = Label(text: "They open it in a browser — no install", at: CGPoint(x: 545, y: 420))
+    private static let chatLabel = Label(text: "You see what they type, and chat beside it", endingAt: CGPoint(x: 1140, y: 200))
+
+    private static let shareScene = Scene(id: "share", frames: [
+        Frame(step: .shareStart, hold: 1.6),
+        Frame(step: .shareSheet, hold: 1.0, pointer: .click(Spot(target: acmeClaude), secondary: true), label: shareLabel),
+        Frame(step: .shareSheet, hold: 0.8, pointer: .hover(Spot(target: "sheet:share-name")), label: shareLabel),
+        Frame(step: .shareSheet, hold: 0.8, pointer: .hover(Spot(target: "sheet:share-for")), label: shareLabel),
+        Frame(step: .shareSheet, hold: 1.0, pointer: .hover(Spot(target: "sheet:share-mode")), label: shareLabel),
+        Frame(step: .shareLink, hold: 1.2, pointer: .click(Spot(target: "sheet:share")), label: browserLabel),
+        Frame(step: .shareLink, hold: 1.0, pointer: .hover(Spot(target: "sheet:share-link")), label: browserLabel),
+        Frame(step: .shareLink, hold: 1.2, pointer: .hover(Spot(target: "sheet:share-password")), label: browserLabel),
+        Frame(step: .shared, hold: 1.0, pointer: .click(Spot(target: "sheet:done"))),
+        Frame(step: .chat, hold: 1.0, pointer: .click(Spot(target: "tab:Chat")), label: chatLabel),
+        Frame(step: .guestReply, hold: 1.6, label: chatLabel),
+        Frame(step: .ownerReply, hold: 2.6, label: chatLabel),
     ])
 
     private static func carried(
@@ -152,7 +167,7 @@ enum DemoSiteWalk {
         (0..<count).map { index in
             let spot = Spot(target: target, place: place)
             let pointer: Pointer = index == 0 ? .click(spot) : .follow(spot)
-            let hold: Double = index == count - 1 ? 0.7 : 0.06
+            let hold: Double = index == count - 1 ? 1.6 : 0.08
             let caption = Label(text: label, near: target, byCorner: place == .bottomTrailing)
             return Frame(step: step(index), hold: hold, pointer: pointer, label: caption)
         }
@@ -167,11 +182,11 @@ enum DemoSiteWalk {
             label: "Resize")
         let add: [Frame] = [
             Frame(
-                step: .homeGallery, hold: 1.0, pointer: .click(Spot(target: "home:add")),
+                step: .homeGallery, hold: 2.2, pointer: .click(Spot(target: "home:add")),
                 label: Label(text: "Add any widget", near: "sheet:gallery")),
-            Frame(step: .homeAdded, hold: 1.8, pointer: .click(Spot(target: "sheet:gallery:\(summaryType)"))),
+            Frame(step: .homeAdded, hold: 2.8, pointer: .click(Spot(target: "sheet:gallery:\(summaryType)"))),
         ]
-        return Scene(id: "home", frames: [Frame(step: .homeStart, hold: 1.2)] + drag + resize + add)
+        return Scene(id: "home", frames: [Frame(step: .homeStart, hold: 1.8)] + drag + resize + add)
     }()
 
     /// One entry per state, so `DEVMACHINE_DEMO_WALK=site` is a walk like
@@ -347,7 +362,7 @@ enum DemoSiteWalk {
                 model.goHome()
                 model.selection = DemoSnapshots.operatorSelection
             }
-            DemoData.transcriptOverride = [operatorKind: operatorTranscripts[index]]
+            DemoData.transcriptOverride = [operatorKind: operatorPlayed[index].transcript]
         case .sidebar:
             reset(model)
             model.sessionsByAlias = sessions(busy: false, attention: false)
@@ -369,7 +384,7 @@ enum DemoSiteWalk {
                 model.goHome()
                 model.selection = .localSession(name: terminalSession.handle, path: terminalSession.path)
             }
-            DemoData.transcriptOverride = [terminalKind: cliFrames[index]]
+            DemoData.transcriptOverride = [terminalKind: cliPlayed[index].transcript]
         case let .context(index):
             DemoContextOverride.shared.value = contextStates[index]
             DemoData.transcriptOverride = [contextKind: contextTranscripts[index]]
@@ -402,18 +417,25 @@ enum DemoSiteWalk {
             showSites(environment.caddyStore, extra: .pending)
         case .published:
             showSites(environment.caddyStore, extra: .published)
-        case .sessionOpen:
+        case .shareStart:
+            reset(model)
+            model.sessionsByAlias = sessions(busy: true, attention: true)
+            model.contextTab = .context
+            model.contextWidth = chatPanelWidth
+            model.goHome()
             model.clickSession(shareSession)
         case .shareSheet:
             break
         case .shareLink:
             SessionShareStore.shared.seedDemo([shareRecord])
         case .shared:
-            SessionChatStore.shared.receive(ownerMessage, share: shareRecord.id)
+            break
         case .chat:
             model.contextTab = .chat
         case .guestReply:
             SessionChatStore.shared.receive(guestMessage, share: shareRecord.id)
+        case .ownerReply:
+            SessionChatStore.shared.receive(ownerMessage, share: shareRecord.id)
         case .homeStart:
             reset(model)
             model.sessionsByAlias = sessions(busy: true, attention: true)
@@ -544,7 +566,7 @@ enum DemoSiteWalk {
         }
     }
 
-    // MARK: - CLI
+    // MARK: - Terminals
 
     static let operatorKind = TerminalKind.local(
         session: Workspace.operatorSession, path: DemoData.operatorPath)
@@ -563,68 +585,102 @@ enum DemoSiteWalk {
 
     private static func command(_ text: String) -> String { "\(cyan)$\(plain) \(bold)\(text)\(plain)" }
 
-    /// Each step adds what the CLI prints next. The wording is the CLI's
-    /// own: `machines add`, `packages add` and `sync`, with Ansible's output
-    /// in between.
-    static let cliSteps: [[String]] = [
-        [command("devmachine machines add --name main --address 203.0.113.10 --key ~/.ssh/id_ed25519")],
-        [
+    // MARK: - Typed scripts
+
+    /// One beat of a terminal scene: a line typed at a reading pace, or
+    /// lines printed one after another. The label shows for the whole beat.
+    enum Beat {
+        case type(prompt: String, text: String, label: String?)
+        case print([String], label: String?)
+    }
+
+    struct Played: Equatable {
+        let transcript: String
+        let hold: Double
+        let label: String?
+    }
+
+    static let typingChunk = 5
+    static let typingSeconds = 0.34
+    static let lineSeconds = 0.3
+    static let settleSeconds = 1.0
+    static let lastSeconds = 2.6
+
+    /// Every frame of a typed script: a few characters at a time (about 15
+    /// a second), each printed line 0.3 s after the one before, a second's
+    /// pause after each beat, and a longer one on the last frame.
+    static func play(_ beats: [Beat], start: [String]) -> [Played] {
+        var lines = start
+        var played: [Played] = []
+        func show(_ shown: [String], _ hold: Double, _ label: String?) {
+            played.append(Played(transcript: shown.joined(separator: "\n"), hold: hold, label: label))
+        }
+        for beat in beats {
+            switch beat {
+            case let .type(prompt, text, label):
+                var typed = 0
+                while typed < text.count {
+                    typed = min(text.count, typed + typingChunk)
+                    let done = typed == text.count
+                    show(lines + [prompt + String(text.prefix(typed))], done ? settleSeconds : typingSeconds, label)
+                }
+                lines.append(prompt + text)
+            case let .print(printed, label):
+                let shownLines = printed.filter { !$0.isEmpty }
+                var count = 0
+                for line in printed {
+                    lines.append(line)
+                    guard !line.isEmpty else { continue }
+                    count += 1
+                    show(lines, count == shownLines.count ? settleSeconds : lineSeconds, label)
+                }
+            }
+        }
+        if let last = played.popLast() {
+            played.append(Played(transcript: last.transcript, hold: lastSeconds, label: last.label))
+        }
+        return played
+    }
+
+    // MARK: - CLI
+
+    private static let shell = "\(cyan)$\(plain) "
+    private static let typeYourself = "Prefer a terminal? Type it yourself"
+
+    /// `machines add`, `packages add` and `sync` typed by hand, with the
+    /// CLI's own words and Ansible's output in between.
+    static let cliBeats: [Beat] = [
+        .type(prompt: shell, text: "devmachine machines add --name main --address 203.0.113.10", label: typeYourself),
+        .print([
             "",
             "main at 203.0.113.10 presented ssh-ed25519 host key SHA256:Zm9yZXhhbXBsZW9ubHk.",
             "the key ~/.ssh/id_ed25519 already logs in as root@203.0.113.10, so no password is needed.",
-        ],
-        [
             "turning password login off...",
             "password login is off; the key is the only way in.",
             "installing Ansible...",
-        ],
-        [
             "",
             "added main to /Users/alice/.config/devmachine/config.yml",
             "",
-            "Next: `devmachine doctor --machine main`, then `devmachine sync --machine main`.",
-            "",
-        ],
-        [command("devmachine packages add claude-code --workspace acme"), "added claude-code to workspace acme", ""],
-        [
-            command("devmachine sync --machine main"),
-            "",
-            "PLAY [main] ********************************************************",
-            "",
-            "TASK [Gathering Facts] *********************************************",
-            "\(green)ok: [main]\(plain)",
-        ],
-        [
+        ], label: typeYourself),
+        .type(prompt: shell, text: "devmachine packages add claude-code --workspace acme", label: nil),
+        .print(["added claude-code to workspace acme", ""], label: nil),
+        .type(prompt: shell, text: "devmachine sync --machine main", label: nil),
+        .print([
             "",
             "TASK [workspace : Create the account] ******************************",
             "\(yellow)changed: [main]\(plain)",
             "",
             "TASK [claude-code : Install Claude Code] ***************************",
             "\(yellow)changed: [main]\(plain)",
-        ],
-        [
             "",
             "PLAY RECAP *********************************************************",
             "main     : \(green)ok=86\(plain)  \(yellow)changed=12\(plain)  unreachable=0  failed=0",
             "",
             "main: ok=86 changed=12 failed=0",
-            "",
-            "Reach a workspace:",
-            "  devmachine ssh acme (or `devmachine mosh acme`) reaches it from here",
-            "  ssh acme-devmachine reaches it from any terminal or editor (VS Code Remote-SSH, Zed, the macOS app)",
-            "",
-            "\(cyan)$\(plain) ",
-        ],
+        ], label: nil),
     ]
 
-    static let cliTranscripts: [String] = cliSteps.indices.map { index in
-        cliSteps[...index].flatMap { $0 }.joined(separator: "\n")
-    }
-
-    /// The prompt, then the first command half typed.
-    static let cliTyping = ["\(cyan)$\(plain) ", "\(cyan)$\(plain) \(bold)devmachine machines add --name main"]
-
-    static let cliFrames = cliTyping + cliTranscripts
+    static let cliPlayed = play(cliBeats, start: [])
 
     // MARK: - Operator
 
@@ -637,73 +693,56 @@ enum DemoSiteWalk {
         lines.enumerated().map { index, line in (index == 0 ? "\(cyan)⏺\(plain) " : "  ") + line }
     }
 
-    private static let requests = [
-        "Add a workspace for alice on main with claude-code and docker",
-        "Publish port 3000 of acme as app.example.com",
+    static let requests = [
+        "Add a workspace for alice on main with docker",
+        "Publish acme's port 3000 as app.example.com",
         "Why is staging slow?",
     ]
 
-    /// Each step adds what the Operator prints next: the request typed in
-    /// halves, the `devmachine` commands it runs with the CLI's own output,
-    /// and its answer.
-    private static let operatorSteps: [[String]] = [
-        ["\(bold)\(cyan)● Claude Code\(plain) — ~/.config/devmachine", "", you],
-        [you + String(requests[0].prefix(26))],
-        [you + requests[0], ""],
-        [ran("devmachine workspaces new alice --machine main --packages claude-code --yes")]
-            + output([
-                "alice is in the configuration, on main, with the packages claude-code.",
-                "The machine is untouched: `devmachine sync` is what creates the account.",
-            ])
-            + [ran("devmachine packages add docker --machine main")] + output(["added docker to machine main"]),
-        [ran("devmachine sync --machine main")] + output(["main: ok=91 changed=14 failed=0"]),
-        [""] + said(["alice is ready on main, with Claude Code, and main runs Docker.", "Open it with devmachine ssh alice."])
-            + ["", you],
-        [you + requests[1], ""],
-        [ran("devmachine expose add acme 3000 --host app.example.com --publish")]
-            + output([
-                "published: https://app.example.com -> acme:3000 on main. Caddy gets the certificate on the first",
-                "request, which can take a few seconds.",
+    private static let askLabel = "Ask in plain words"
+    private static let runsLabel = "The Operator runs devmachine for you"
+    static let answerLabel = "and tells you what it found"
+
+    /// Three requests, each typed, then the `devmachine` commands the
+    /// Operator runs with the CLI's own output, then its answer.
+    static let operatorBeats: [Beat] = [
+        .type(prompt: you, text: requests[0], label: askLabel),
+        .print(
+            [""] + [ran("devmachine workspaces new alice --machine main --yes")]
+                + output([
+                    "alice is in the configuration, on main, with the packages claude-code.",
+                    "The machine is untouched: `devmachine sync` is what creates the account.",
+                ])
+                + [ran("devmachine packages add docker --machine main")] + output(["added docker to machine main"])
+                + [ran("devmachine sync --machine main")] + output(["main: ok=91 changed=14 failed=0"]),
+            label: runsLabel),
+        .print([""] + said(["alice is ready on main, with Docker. Open it with devmachine ssh alice."]) + [""], label: nil),
+        .type(prompt: you, text: requests[1], label: nil),
+        .print(
+            [""] + [ran("devmachine expose add acme 3000 --host app.example.com --publish")]
+                + output(["published: https://app.example.com -> acme:3000 on main."])
+                + [""] + said(["https://app.example.com now serves acme's port 3000."]) + [""],
+            label: nil),
+        .type(prompt: you, text: requests[2], label: nil),
+        .print(
+            [""] + [ran("devmachine stats --machine staging")]
+                + output([
+                    "machine staging (203.0.113.30)",
+                    "cpus    2, load 3.84 3.51 2.97",
+                    "memory  3.6G used of 3.8G, 210.0M available",
+                    "swap    1.9G used of 2.0G",
+                ]),
+            label: nil),
+        .print(
+            [""] + said([
+                "staging is short of memory and swap is almost full, so it pages to disk.",
+                "More memory, or one app less, fixes it.",
             ]),
-        [""] + said(["https://app.example.com now serves acme's port 3000."]) + ["", you],
-        [you + requests[2], ""],
-        [ran("devmachine stats --machine staging")]
-            + output([
-                "machine staging (203.0.113.30)",
-                "cpus    2, load 3.84 3.51 2.97",
-                "memory  3.6G used of 3.8G, 210.0M available",
-                "swap    1.9G used of 2.0G",
-                "disk    41.2G used of 78.0G, 36.8G free",
-            ]),
-        [""] + said([
-            "staging is short of memory: 3.6G of 3.8G is used and swap is almost full,",
-            "so it pages to disk. Load 3.84 on 2 CPUs. More memory, or one app less, fixes it.",
-        ]),
+            label: answerLabel),
     ]
 
-    /// A request typed in halves replaces its own line; anything else adds
-    /// lines under what is there.
-    static let operatorTranscripts: [String] = {
-        var lines: [String] = []
-        var shown: [String] = []
-        for step in operatorSteps {
-            if let first = step.first, first.hasPrefix(you), lines.last?.hasPrefix(you) == true {
-                lines.removeLast()
-            }
-            lines += step
-            shown.append(lines.joined(separator: "\n"))
-        }
-        return shown
-    }()
-
-    static let operatorHolds: [Double] = [0.7, 0.25, 0.7, 1.3, 0.9, 1.1, 0.7, 1.0, 1.0, 0.6, 1.1, 2.4]
-
-    static let operatorLabels: [String?] = [
-        "Ask in plain words", "Ask in plain words", "Ask in plain words",
-        "The Operator runs devmachine for you", "The Operator runs devmachine for you",
-        nil, nil, nil, nil, nil, nil,
-        "and tells you what it found",
-    ]
+    static let operatorPlayed = play(
+        operatorBeats, start: ["\(bold)\(cyan)● Claude Code\(plain) — ~/.config/devmachine", ""])
 
     // MARK: - Context
 
@@ -827,12 +866,12 @@ enum DemoSiteWalk {
         name: shareSession.name, mode: .read, url: "https://share-acme.example.com/s/wvx3januvgyj/",
         createdAt: Date(), expiresAt: Date().addingTimeInterval(3_600))
 
-    private static let ownerMessage = SessionChatMessage(
-        id: "site-1", ts: Date(), from: "alice", role: "owner",
-        text: "Watch the retry test: it should pass now.")
-
     private static let guestMessage = SessionChatMessage(
-        id: "site-2", ts: Date().addingTimeInterval(20), from: "bob", role: "guest",
-        text: "Green here too. Ship it!")
+        id: "site-1", ts: Date(), from: "bob", role: "guest",
+        text: "Joined. Is the retry test the one that fails?")
+
+    private static let ownerMessage = SessionChatMessage(
+        id: "site-2", ts: Date().addingTimeInterval(20), from: "alice", role: "owner",
+        text: "Yes. Watch: I'm running it now.")
 }
 #endif

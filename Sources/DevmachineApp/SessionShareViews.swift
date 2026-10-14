@@ -93,14 +93,17 @@ struct ShareSessionSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             TextField("Name", text: $name)
+                .demoClickTarget("sheet:share-name")
             Picker("For", selection: $duration) {
                 ForEach(SessionShareDuration.allCases, id: \.self) { Text($0.title).tag($0) }
             }
+            .demoClickTarget("sheet:share-for")
             Picker("They", selection: $mode) {
                 Text("Watch").tag(SessionShareMode.read)
                 Text("Can type").tag(SessionShareMode.write)
             }
             .pickerStyle(.segmented)
+            .demoClickTarget("sheet:share-mode")
             if mode == .write {
                 Text("They can type into this session. In a shell, or by approving a tool in a coding agent, they run commands as \(request.workspace)'s account.")
                     .font(.dm(11))
@@ -196,6 +199,7 @@ struct ShareOutcomeSheet: View {
                 DMErrorStateView(state: unpublished)
             } else {
                 DMCommandBlock(url, wraps: true)
+                    .demoClickTarget("sheet:share-link")
                 if !SessionShareInfo.isLoopback(url) {
                     Text("The first visit to a newly published address can take a few seconds while its certificate is issued.")
                         .font(.dm(11))
@@ -206,6 +210,7 @@ struct ShareOutcomeSheet: View {
         if let password {
             DMSectionLabel(text: "Password")
             DMCommandBlock(password)
+                .demoClickTarget("sheet:share-password")
             Text("Send it apart from the link. It is not shown again.")
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
