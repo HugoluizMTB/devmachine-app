@@ -2,9 +2,9 @@
 
 A native macOS app (Swift 6, SwiftUI + AppKit) that operates your dev machines
 (Debian, Ubuntu, Arch Linux or macOS) over ssh: tmux sessions per context user
-as floating terminals, stack grids per workspace, a context panel fed by the
-host, Caddy subdomains, host stats, PRs, and coding-harness usage in the menu
-bar.
+as floating terminals, a session grid per workspace, a context panel fed by the
+host, published apps (Caddy subdomains), host stats, PRs, and coding agent usage
+in the menu bar.
 
 The host itself is provisioned by the [devmachine CLI](https://github.com/adevmachine/cli).
 The app only needs an ssh alias to it and the CLI's configuration folder on this
@@ -30,14 +30,14 @@ Builds a release bundle and installs `/Applications/Devmachine.app`. The first
 launch shows a Setup card: configuration folder, host ssh alias, public IP, base
 domain, wallpaper. Change them later with `⌘,`.
 
-Settings can enable multiple coding harnesses installed on this Mac: Claude
+Settings → Coding agents can enable multiple coding agents installed on this Mac: Claude
 Code, OpenAI Codex, Pi, Antigravity CLI, opencode, Kimi Code and Cline. Each
 local or remote workspace chooses one default launch program, while remote
 choices remain declarative: the app does not install, inspect, or repair tools
 on the host. A session running any of them gets its badge and the Context
 panel. A session running Herdr gets its icon too.
 
-Enabled harnesses that report usage (Claude Code, Codex) receive usage cards on Home and
+Enabled coding agents that report usage (Claude Code, Codex) receive usage cards on Home and
 in the menu bar. With Claude Code and OpenAI Codex enabled, Home stacks both
 cards and the menu-bar Usage tab shows them side by side. Codex account limits
 and activity come from `codex app-server` account reads; they do not start a
@@ -50,7 +50,7 @@ session to move it inside its own workspace; a session never moves to another
 workspace, and dropping it on one does nothing. The order is kept for your
 macOS user and survives a relaunch. A new workspace or session goes to the
 end. Hiding a workspace in Settings → Workspaces forgets its place, so it
-comes back at the end. ⌘⇧↑/↓, the command palette and workspace stacks follow
+comes back at the end. ⌘⇧↑/↓, the command palette and session grids follow
 the same order.
 
 ## Color picker
@@ -63,7 +63,7 @@ color under it goes to the clipboard as sRGB hex (`#1A334D`). Esc cancels.
 
 A remote pane uses mosh when it gets through and ssh when it does not.
 Settings → Appearance → Terminal → Remote terminals: Automatic (default), Always ssh, or
-Always mosh. A pane shows which one it runs: `mosh` or `ssh` in the stack
+Always mosh. A pane shows which one it runs: `mosh` or `ssh` in the session grid
 header and the context panel.
 
 - The app carries `mosh-client` in `Contents/Helpers`, built from source by

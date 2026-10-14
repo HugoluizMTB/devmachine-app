@@ -40,7 +40,7 @@ When the owner asks for a feature or "a page", he wants something that loads
   over the (still-mounted, hidden) terminals — so switching to a page never tears
   down a live ssh/tmux terminal.
 - Selecting a session or the ops shell clears `activePage` (back to the terminal).
-- Sidebar / menubar entries for pages (Stats, Subdomains, …) SET `activePage`;
+- Sidebar / menu bar entries for pages (Stats, Published apps, …) SET `activePage`;
   they do NOT `openWindow`.
 - **Settings is a page too** (`AppPage.setup`, `SetupPage` in `PageHost`), with
   the sidebar beside it, never a window or a full-window card: ⌘,, the
@@ -110,7 +110,7 @@ app-scoped `MenubarController.shared`:
 - **Approval.** A title widget waiting for approval draws "!" in its slot;
   a denied one draws nothing. Both are listed, as their `SourceWidgetCard`,
   in an "Approvals" tab that comes first and is selected when the popover
-  opens. An answer given on any surface (Home, a sidebar, the popover)
+  opens. An answer given in any area (Home, the sidebar, the Context tab, the popover)
   reaches the title at once: see "A widget written in the board runs only
   after Allow" for how every area shares the approvals file.
 - **Edit mode** (pencil in the footer) lists both boards with up, down and
@@ -118,8 +118,9 @@ app-scoped `MenubarController.shared`:
   that surface. A full menu bar disables "Add widget" and says why ("The
   menu bar holds 3 widgets", `StackGallery.fullReason`), and a placed
   widget never makes a fourth slot.
-- **Settings → Appearance** resets "menubar" and "menubar panel" under
-  their own "Menu bar" heading, after "Sidebars"
+- **Settings → Appearance** resets the menu bar and the menu bar popover
+  ("Reset menu bar", "Reset menu bar popover") under their own "Menu bar"
+  heading, after "Sidebar and Context tab"
   (`StackBoardController.reset()`, `.bak` kept).
 - Test hook: `DEVMACHINE_WIDGETS_E2E=<binary>` runs `MenubarBoardLiveTests`
   against a temp config: the CLI validates the app's default boards,
@@ -298,7 +299,7 @@ Rules:
 ## Terminals (SwiftTerm)
 - `TerminalRegistry` owns ONE live `LocalProcessTerminalView` (mosh or ssh → `tmux new-session -A`)
   per session for the app's lifetime. `TerminalPaneView` only attaches/detaches it;
-  single pane and stack-grid cells re-parent the same view. Never mount the same
+  single pane and session grid cells re-parent the same view. Never mount the same
   session in two places: two tmux clients at different sizes make `window-size latest`
   flap and garble the screen. Detached views are LRU-capped (6); a dismantled pane
   never terminates the process (only delete/rename/quit do).
@@ -324,7 +325,7 @@ Rules:
   and that difference is what read as a border. The strips take their colour
   from `nativeBackgroundColor`, so they follow whatever the program sets.
 - **A pane that returns unchanged gets no size change, so nothing redraws it.**
-  Switching sessions, closing a page, coming back from the stack: the program was
+  Switching sessions, closing a page, coming back from the session grid: the program was
   never told anything happened. The app asks explicitly — `tmux refresh-client` for
   a remote session, the window-changed signal to the foreground process group for a
   local one (`TerminalRegistry.requestRepaint`). Do not fake a resize instead: an
@@ -634,7 +635,12 @@ Rules:
   `\.collapsedSidebarButtonFrame` (nil while the sidebar shows); HomeView
   measures itself in the same space. It once covered the first card's name.
 
-## Coding harnesses
+## Coding agents (`harness` in code)
+
+The UI and prose say **coding agent** (Settings → Coding agents, "Show
+coding agent icon…", the widget field "Coding agent"). Code and JSON keep
+`harness` (`CodingHarness`, `HarnessID`, `harnesses`).
+
 - **Detection never depends on the toggle.** Every harness in
   `HarnessRegistry.builtIn` is detected, badged, gets its icon, upload folder
   and Context panel, enabled or not and whether or not its CLI is on this Mac:
@@ -642,7 +648,7 @@ Rules:
   and session defaults (and its usage card), and never needs its CLI here.
 - **Identifying a harness and activating it are different.** Identification
   (icons, Context, process matching) covers every harness in the registry
-  and never looks at packages. Activation is the Settings → Harnesses switch,
+  and never looks at packages. Activation is the Settings → Coding agents switch,
   shown only for a harness whose `HarnessDescriptor.packageName` (the
   workspace package that installs it: claude-code, codex, pi, antigravity,
   opencode, kimi-code, cline) is in the pinned release's
@@ -652,19 +658,19 @@ Rules:
   Coding agents group offers only the packages of harnesses turned on
   (`CodingAgentPackages.choose`), hides the others and what needs them
   (claude-plugins needs claude-code), and with none on says so and links to
-  Settings → Harnesses. The first run's skills picker is unrelated: it offers what
+  Settings → Coding agents. The first run's skills picker is unrelated: it offers what
   `skills add --agent` accepts (`SkillAgent`). Views never name a package.
 - **A harness on without its CLI on this Mac starts on remote workspaces
   only** (`LaunchPlace`): it is offered in the remote fallback, the
   per-workspace defaults and a remote workspace's new-session menu and ⌘K
-  commands, never for This Mac. A This Mac default naming one starts a plain
+  commands, never for Local. A Local default naming one starts a plain
   shell (`HarnessSettingsFacade.localSessionProgram`), the way a harness
   turned off does, and its Settings row says "Not on this Mac — remote
   workspaces only". Whether a CLI is here comes from `CLIAvailability`:
   looked up (a missing one costs a login shell) off the main thread at launch
   and when Settings opens, then cached; only a read before the first lookup
   ends pays for it itself.
-- This Mac has one Terminal-or-harness default. Remote workspaces inherit one
+- Local has one Terminal-or-coding-agent default (Settings → Coding agents →\n  Session defaults → Local). Remote workspaces inherit one
   remote fallback and may override it individually.
 - Remote choices are declarative. Never probe or modify a VPS to validate a
   harness; its shell reports a missing command when the session starts.
@@ -683,12 +689,12 @@ Rules:
 - Codex usage reads `account/rateLimits/read` and `account/usage/read` through
   `codex app-server`. It never calls `thread/start` or `turn/start`, so the
   refresh does not start a model turn or consume inference tokens.
-- Sidebar harness icons (Settings → Harnesses, off by default) are files in
+- Sidebar coding agent icons (Settings → Coding agents → Sidebar, off by default) are files in
   `Resources/HarnessIcons/`, loaded by name (`HarnessIconLibrary`): a new
   harness gets its icon by adding a file. `<HarnessID>.svg` is always the
   monochrome drawing in `currentColor` (it takes the row's tint, and every
   built-in harness must have one); `<HarnessID>-color.svg` is the optional
-  brand-color version. Settings → Harnesses → Icon style
+  brand-color version. Settings → Coding agents → Icon style
   (`AppSettings.harnessIconStyle`, `.color` by default) picks it: Original
   colors uses `-color` when it exists, else the monochrome file; Monochrome
   never reads `-color`. A `-color` name is never a harness id. No monochrome
@@ -743,7 +749,7 @@ Rules:
   (`HarnessSettingsFacade.installedHarnesses`, turned on or not: the point is
   finding out what you have) and "Terminal only". The pick is saved as
   `operatorProgram` and starts the session; the next chooser shows it
-  selected (`last`). Settings → Harnesses → Session defaults → Operator
+  selected (`last`). Settings → Coding agents → Session defaults → Operator
   session changes that selection. A saved harness whose CLI is gone is
   offered as "Terminal only".
 - **Only the first pick** (`operatorProgram == nil`) asks the harness what
@@ -762,7 +768,7 @@ Rules:
   never killed: turning it on again shows the same session.
 - Demo walk `DEVMACHINE_DEMO_WALK=operator`: `200` the chooser over the demo
   Mac's CLIs, `201`/`202` General with the switch on and off (the sidebar
-  without the row), `203` the Operator's program in Settings → Harnesses, `204` the chooser
+  without the row), `203` the Operator's program in Settings → Coding agents, `204` the chooser
   again with Codex as the last pick.
   `18-operator` selects the Operator directly: through the click it would
   show the chooser.
@@ -858,7 +864,7 @@ Rules:
   `HarnessID` to its `--agent` name): claude, codex, pi and opencode on any
   CLI, antigravity, kimi and cline on 0.7.28+ (an older CLI refuses the
   whole command on an unknown agent). A new harness is offered once it is
-  in `SkillAgent.cliAgents`. Preselected: Settings → Harnesses plus the
+  in `SkillAgent.cliAgents`. Preselected: Settings → Coding agents plus the
   harness folders this Mac has (`AddMachineModel.harnessesInUse`). A failed skills step is a warning
   with Retry (`MachinePlanStep.blocksSetup`), never a blocker for "Start
   using Devmachine".
@@ -1201,7 +1207,7 @@ Rules:
   (`StackDragMath`, `StackDropTarget`) and the order is written once, on
   release. Never reorder or remove the view holding a live drag.
 - **Context keys, every one set, empty when unknown.** Sidebar: `selected`
-  (the selected workspace, `SidebarContext`). Context sidebar: `machine,
+  (the selected workspace, `SidebarContext`). Context tab (board\n  `context-sidebar`): `machine,
   session, workspace, path, repo, branch, harness` (`SessionContextFacts`,
   built by `ContextBridge` from the selection, `ContextState`, readiness and
   the self machine). `session` is the tmux session or the local session's
@@ -1562,11 +1568,11 @@ once may fail there.
   it** (`expose add --via`). The add sheet's "Published by" lists the
   non-self machines with caddy (`CaddyStore.publishPlaces`); the
   workspace's own machine wins when it has caddy, then the machine the
-  Subdomains page shows, then the first. `via` is passed only when it
+  Published apps page shows, then the first. `via` is passed only when it
   differs from the workspace's machine, so nothing changes for a machine
   that serves its own sites. Nothing known about where things live means
   no `--via`, as before.
-- The Subdomains page of a machine with caddy also offers the workspaces
+- The Published apps page of a machine with caddy also offers the workspaces
   of machines without it. After a publish, the serving machine is the one
   read again, not the workspace's.
 - An older CLI answers `unknown flag: --via`; the card says to run
@@ -1576,7 +1582,7 @@ once may fail there.
 
 ## DNS provider setup
 - **A server with caddy and no DNS provider that answers gets a card on
-  the Subdomains page** (`DNSProviderSetupCard`, `DNSSetupStore`, state in
+  the Published apps page** (`DNSProviderSetupCard`, `DNSSetupStore`, state in
   Core `DNSProviderSetup.evaluate`). Without one, `expose add` saves the
   site and only prints the record to make by hand; the card says so.
   Only `dns providers` answering with a zone ends it: a finished sync that
@@ -1966,7 +1972,7 @@ once may fail there.
   switched off), new, a taken name, review, running, failed, done, edit,
   edit review, forget, a refused forget, destroy, the list again after an
   edit was left (`142-workspaces-reopened`), a new workspace with no
-  harness on, and Settings → Harnesses (every harness with a package has a
+  harness on, and Settings → Coding agents (every harness with a package has a
   switch). It turns on Claude, Codex and Pi, and Edit shows glab's login,
   which cannot be shared.
 
