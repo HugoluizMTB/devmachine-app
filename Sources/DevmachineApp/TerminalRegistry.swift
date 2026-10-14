@@ -889,7 +889,6 @@ extension TerminalRegistry {
                 term: RemoteCommands.remoteTerm, customSocket: customSocket))
         RemoteTransportStore.shared.usingSSH(
             kind, machine: launch.machine, reason: reason, detail: detail, fresh: fresh)
-        settleWarm(kind, running: true, via: .sshLaunched)
     }
 
     /// Answers the exit of a remote pane's process when the app caused it
@@ -942,7 +941,6 @@ extension TerminalRegistry {
 /// What released a warm terminal, named in the log line.
 enum WarmSettleCause: String {
     case moshReady = "mosh-ready"
-    case sshLaunched = "ssh-launched"
     case bytes
     case timeout
     case refused

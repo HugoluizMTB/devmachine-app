@@ -41,8 +41,8 @@ final class TerminalWarmHostTests: XCTestCase {
             TerminalRegistry.warmSettledLine(kind, running: false, after: 15, via: .timeout),
             "warm failed pane=\(kind) after=15000ms via=timeout")
         XCTAssertEqual(
-            [WarmSettleCause.sshLaunched, .bytes, .refused, .exit, .closed].map(\.rawValue),
-            ["ssh-launched", "bytes", "refused", "exit", "closed"])
+            [WarmSettleCause.bytes, .refused, .exit, .closed].map(\.rawValue),
+            ["bytes", "refused", "exit", "closed"])
     }
 
     func testProcessOutputReachesTheOutputHandlerButNeverDataReceived() {
