@@ -287,6 +287,22 @@ final class WorkspaceFlowTests: XCTestCase {
         ])
     }
 
+    func testEditStartsFromTheAutoConnectChoiceAndTheSwitchAloneRunsNoCommand() {
+        var flow = WorkspaceFlow.edit(acme, autoConnect: true)
+        XCTAssertTrue(flow.autoConnect)
+        XCTAssertFalse(flow.autoConnectChanged)
+        XCTAssertFalse(flow.canAdvance)
+        flow.autoConnect = false
+        XCTAssertTrue(flow.autoConnectChanged)
+        XCTAssertTrue(flow.canAdvance)
+        XCTAssertEqual(flow.plan, [], "the switch lives on this Mac, never in the CLI")
+        flow.setSetting("zsh.theme", "agnoster")
+        XCTAssertEqual(flow.plan.map(\.arguments), [
+            ["workspaces", "edit", "acme", "--set", "zsh.theme=agnoster", "--yes"],
+            ["sync", "--machine", "main", "--yes"],
+        ])
+    }
+
     func testEditNeverChangesPackagesWhichLiveInSettingsPackages() {
         var flow = WorkspaceFlow.edit(acme)
         flow.togglePackage("pi")

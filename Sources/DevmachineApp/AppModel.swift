@@ -1390,6 +1390,28 @@ final class AppModel: ObservableObject {
         loadWorkspaces()
     }
 
+    private func alias(forWorkspace name: String) -> String {
+        workspaces.first { $0.name == name }?.alias
+            ?? (settings ?? .empty).hostAlias(forWorkspace: name)
+    }
+
+    func autoConnects(workspace name: String) -> Bool {
+        let alias = alias(forWorkspace: name)
+        return (settings?.autoConnectWorkspaces ?? []).contains { $0.lowercased() == alias.lowercased() }
+    }
+
+    /// Turning it off closes nothing: the terminals already open age out
+    /// like any other kept terminal.
+    func setAutoConnect(workspace name: String, on: Bool, in store: SettingsStore = .shared) {
+        let alias = alias(forWorkspace: name)
+        guard var current = store.settings else { return }
+        let next = WorkspaceVisibility.setting(alias, active: !on, in: current.autoConnectWorkspaces)
+        guard next != current.autoConnectWorkspaces else { return }
+        current.autoConnectWorkspaces = next
+        store.settings = current
+        settings?.autoConnectWorkspaces = next
+    }
+
     /// The wizard opened from Settings → Machines goes back there, so Settings
     /// and the wizard read as one place; from anywhere else it just closes.
     private var addMachineOpenedFromSettings = false

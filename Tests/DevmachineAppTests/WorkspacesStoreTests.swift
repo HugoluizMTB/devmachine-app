@@ -69,7 +69,8 @@ final class WorkspacesStoreTests: XCTestCase {
         cli: FakeCLI, reads: WorkspaceReadTally = WorkspaceReadTally(), changed: WorkspaceChangeTally = WorkspaceChangeTally(),
         lock: PackagesLock? = PackagesLock(machines: [:], workspaces: ["acme": [.init(name: "dev"), .init(name: "zsh")]]),
         harnessesOn: [HarnessID] = [.pi],
-        defaults: [String]? = nil, sharing: [String: String] = [:]
+        defaults: [String]? = nil, sharing: [String: String] = [:],
+        autoConnect: AutoConnectTally = AutoConnectTally()
     ) -> WorkspacesStore {
         let workspaces = [acme, gamma]
         return WorkspacesStore(
@@ -86,7 +87,12 @@ final class WorkspacesStoreTests: XCTestCase {
                 CodingAgentPackages.choose(
                     harnesses: [(.claude, "claude-code"), (.pi, "pi")], enabled: harnessesOn, available: available)
             },
-            onChanged: { changed.value += 1 })
+            onChanged: { changed.value += 1 },
+            autoConnect: { autoConnect.on.contains($0) },
+            setAutoConnect: { name, on in
+                autoConnect.saves.append("\(name)=\(on)")
+                if on { autoConnect.on.insert(name) } else { autoConnect.on.remove(name) }
+            })
     }
 
     func testTheListGroupsByMachineAndSaysWhatTheLastSyncApplied() async {
@@ -301,6 +307,60 @@ final class WorkspacesStoreTests: XCTestCase {
         ])
     }
 
+    func testTheAutoConnectSwitchShowsTheSavedChoice() async {
+        let tally = AutoConnectTally()
+        tally.on = ["acme"]
+        let store = makeStore(cli: FakeCLI(), autoConnect: tally)
+        await store.load()
+        store.startEdit("acme")
+        XCTAssertEqual(store.flow?.autoConnect, true)
+        store.close()
+        store.startEdit("gamma")
+        XCTAssertEqual(store.flow?.autoConnect, false)
+    }
+
+    func testSavingOnlyTheAutoConnectSwitchRunsNoCommandAndUpdatesSettings() async {
+        let cli = FakeCLI()
+        let changed = WorkspaceChangeTally()
+        let tally = AutoConnectTally()
+        let store = makeStore(cli: cli, changed: changed, autoConnect: tally)
+        await store.load()
+        store.startEdit("acme")
+        store.flow?.autoConnect = true
+        await store.run()
+
+        XCTAssertEqual(cli.commands, [])
+        XCTAssertEqual(tally.saves, ["acme=true"])
+        XCTAssertEqual(changed.value, 0, "nothing in the CLI's configuration changed")
+        XCTAssertNil(store.flow, "back to the list")
+    }
+
+    func testTheSwitchIsSavedWithTheCommandsWhenBothChanged() async {
+        let cli = FakeCLI()
+        let tally = AutoConnectTally()
+        let store = makeStore(cli: cli, autoConnect: tally)
+        await store.load()
+        store.startEdit("acme")
+        store.flow?.autoConnect = true
+        store.flow?.settings[0].value = "agnoster"
+        store.next()
+        await store.run()
+
+        XCTAssertEqual(cli.commands.count, 2)
+        XCTAssertEqual(tally.saves, ["acme=true"])
+    }
+
+    func testAnEditThatLeavesTheSwitchAloneNeverWritesIt() async {
+        let tally = AutoConnectTally()
+        let store = makeStore(cli: FakeCLI(), autoConnect: tally)
+        await store.load()
+        store.startEdit("acme")
+        store.flow?.settings[0].value = "agnoster"
+        store.next()
+        await store.run()
+        XCTAssertEqual(tally.saves, [])
+    }
+
     func testForgetAndDestroyRunTheirOneCommand() async {
         let cli = FakeCLI()
         let store = makeStore(cli: cli)
@@ -379,4 +439,10 @@ private actor WorkspaceReadTally {
 @MainActor
 private final class WorkspaceChangeTally {
     var value = 0
+}
+
+@MainActor
+private final class AutoConnectTally {
+    var on: Set<String> = []
+    var saves: [String] = []
 }

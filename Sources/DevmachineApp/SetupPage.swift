@@ -161,6 +161,7 @@ struct SetupPage: View {
             showsAttention: showsAttention,
             harnessIconStyle: harnessIconStyle,
             hiddenWorkspaces: hiddenWorkspaces,
+            autoConnectWorkspaces: settingsStore.settings?.autoConnectWorkspaces ?? [],
             enabledHarnesses: enabledHarnesses,
             localSessionProgram: localSessionProgram,
             remoteSessionProgram: remoteSessionProgram,

@@ -75,6 +75,8 @@ final class WorkspacesStore: ObservableObject {
     private let loadMachines: Bool
     private let codingAgents: @MainActor (Set<String>?) -> CodingAgentPackages
     private let onChanged: @MainActor () -> Void
+    private let autoConnect: @MainActor (_ workspace: String) -> Bool
+    private let setAutoConnect: @MainActor (_ workspace: String, _ on: Bool) -> Void
 
     init(
         machines: MachinesStore = .shared,
@@ -87,7 +89,13 @@ final class WorkspacesStore: ObservableObject {
             HarnessSettingsFacade().codingAgentPackages(
                 for: SettingsStore.shared.settings ?? .empty, available: available)
         },
-        onChanged: @escaping @MainActor () -> Void = { WorkspacesStore.reloadEverything() }
+        onChanged: @escaping @MainActor () -> Void = { WorkspacesStore.reloadEverything() },
+        autoConnect: @escaping @MainActor (_ workspace: String) -> Bool = {
+            AppModel.shared?.autoConnects(workspace: $0) ?? false
+        },
+        setAutoConnect: @escaping @MainActor (_ workspace: String, _ on: Bool) -> Void = {
+            AppModel.shared?.setAutoConnect(workspace: $0, on: $1)
+        }
     ) {
         self.machines = machines
         self.runner = runner
@@ -95,6 +103,8 @@ final class WorkspacesStore: ObservableObject {
         self.loadMachines = loadMachines
         self.codingAgents = codingAgents
         self.onChanged = onChanged
+        self.autoConnect = autoConnect
+        self.setAutoConnect = setAutoConnect
     }
 
     var workspaces: [WorkspaceSummary] { snapshot?.workspaces ?? [] }
@@ -205,7 +215,7 @@ final class WorkspacesStore: ObservableObject {
 
     func startEdit(_ name: String) {
         guard let workspace = workspace(name) else { return }
-        start(.edit(workspace))
+        start(.edit(workspace, autoConnect: autoConnect(name)))
     }
 
     func startForget(_ name: String) {
@@ -249,12 +259,19 @@ final class WorkspacesStore: ObservableObject {
     /// Runs the flow's commands; the page asks first.
     func run() async {
         guard var current = flow, !isRunning else { return }
+        if case .edit = current.action, current.stage != .run, current.plan.isEmpty {
+            guard current.canAdvance else { return }
+            saveAutoConnect(current)
+            close()
+            return
+        }
         if current.stage != .run {
             guard current.canAdvance else { return }
             current.next()
             if current.stage != .run { current.next() }
             flow = current
         }
+        saveAutoConnect(current)
         BugReportEnvironment.typedWorkspaces = [current.name]
         BugReportEnvironment.typedMachines = [current.machine]
         await runner.run(
@@ -264,6 +281,11 @@ final class WorkspacesStore: ObservableObject {
             onChanged()
             await load()
         }
+    }
+
+    private func saveAutoConnect(_ flow: WorkspaceFlow) {
+        guard case .edit = flow.action, flow.autoConnectChanged else { return }
+        setAutoConnect(flow.name, flow.autoConnect)
     }
 
     /// The steps already done are skipped.

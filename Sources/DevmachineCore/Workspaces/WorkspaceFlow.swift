@@ -78,6 +78,10 @@ public struct WorkspaceFlow: Equatable, Sendable {
     public var sharing: [String: String] = [:]
     /// New and Edit end with `sync`, unless the person turns it off.
     public var sync = true
+    /// Edit: "Auto-connect on startup", an app setting on this Mac that no
+    /// CLI command carries.
+    public var autoConnect = false
+    public private(set) var savedAutoConnect = false
     /// Destroy: the name typed again.
     public var typedName = ""
     public var keepDNS = false
@@ -98,8 +102,10 @@ public struct WorkspaceFlow: Equatable, Sendable {
         return flow
     }
 
-    public static func edit(_ workspace: WorkspaceSummary) -> WorkspaceFlow {
+    public static func edit(_ workspace: WorkspaceSummary, autoConnect: Bool = false) -> WorkspaceFlow {
         var flow = WorkspaceFlow(action: .edit(workspace.name), machines: [], existing: [], current: workspace)
+        flow.autoConnect = autoConnect
+        flow.savedAutoConnect = autoConnect
         flow.packages = workspace.packages
         flow.sharing = workspace.credentials
         flow.settings = workspace.settings.keys.sorted().map {
@@ -145,12 +151,14 @@ public struct WorkspaceFlow: Equatable, Sendable {
         case .form:
             switch action {
             case .new: return nameProblem == nil && machines.contains { $0.name == draft.machine }
-            case .edit: return settingProblems.isEmpty && !changes.isEmpty
+            case .edit: return settingProblems.isEmpty && (!changes.isEmpty || autoConnectChanged)
             case .forget: return true
             case let .destroy(name): return typedName == name
             }
         }
     }
+
+    public var autoConnectChanged: Bool { autoConnect != savedAutoConnect }
 
     public var hasReview: Bool {
         switch action {
@@ -182,6 +190,7 @@ public struct WorkspaceFlow: Equatable, Sendable {
         case .new:
             return WorkspacePlan.newSteps(name: draft.trimmedName, machine: draft.machine, packages: draft.packages, sync: sync)
         case let .edit(name):
+            guard !changes.isEmpty else { return [] }
             return WorkspacePlan.editSteps(name: name, machine: machine, changes: changes, sync: sync)
         case let .forget(name):
             return WorkspacePlan.forgetSteps(name: name)

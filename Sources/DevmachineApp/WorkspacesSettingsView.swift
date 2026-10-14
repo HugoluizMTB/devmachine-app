@@ -347,6 +347,9 @@ private struct WorkspaceFlowView: View {
                     variant: flow.isForget ? .dangerOutline : .primary
                 ) { confirming = true }
                 .keyboardShortcut(.defaultAction)
+            case (.form, .edit) where flow.plan.isEmpty && flow.canAdvance:
+                DMButton("Save", systemImage: "checkmark") { Task { await store.run() } }
+                    .keyboardShortcut(.defaultAction)
             case (.form, .destroy):
                 DMButton(WorkspacesContent.runTitle(flow), systemImage: "trash", variant: .danger) {
                     Task { await store.run() }
@@ -459,6 +462,7 @@ private struct WorkspaceEditForm: View {
                 WorkspaceLoginSharing(flow: $flow, logins: logins)
             }
             WorkspaceSyncToggle(sync: $flow.sync, machine: flow.machine)
+            WorkspaceAutoConnectToggle(autoConnect: $flow.autoConnect)
             AddMachineNote(text: logins == nil
                 ? "The machine, the account and shared logins are not changed here: "
                     + "use devmachine workspaces edit --user or --share in a terminal."
@@ -753,6 +757,33 @@ private struct WorkspaceSyncToggle: View {
     }
 }
 
+/// An app setting on this Mac, saved with the Edit but never sent to the CLI.
+private struct WorkspaceAutoConnectToggle: View {
+    @Environment(\.dmMetrics) private var m
+    @Binding var autoConnect: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            AddMachineFieldLabel(text: WorkspacesContent.autoConnectSection)
+            Toggle(isOn: $autoConnect) {
+                VStack(alignment: .leading, spacing: m.space.xxs) {
+                    Text(verbatim: WorkspacesContent.autoConnectTitle)
+                        .font(.dm(12, weight: .medium))
+                        .foregroundStyle(Color.dmRowText)
+                    ForEach(WorkspacesContent.autoConnectNotes, id: \.self) { note in
+                        Text(verbatim: note)
+                            .font(.dm(11))
+                            .foregroundStyle(Color.dmMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
+    }
+}
+
 private struct WorkspaceReview: View {
     @Environment(\.dmMetrics) private var m
     let flow: WorkspaceFlow
@@ -960,6 +991,13 @@ enum WorkspacesContent {
     }
 
     static let packagesLink = "Packages for this workspace →"
+
+    static let autoConnectSection = "This Mac"
+    static let autoConnectTitle = "Auto-connect on startup"
+    static let autoConnectNotes = [
+        "Connects to this workspace's sessions when the app starts, so they open instantly.",
+        "Counts toward the terminals kept open (Settings → Appearance → Terminal).",
+    ]
 
     /// The header's trail: the list's name, then the flow's.
     static func breadcrumb(_ flow: WorkspaceFlow?) -> [String] {
