@@ -36,7 +36,7 @@ final class TerminalRegistry: NSObject {
     /// an attempt that is no longer this one is dropped.
     private var remoteLaunches: [TerminalKind: RemoteLaunch] = [:]
     private var warmHosts: [TerminalKind: NSWindow] = [:]
-    private var warmSettled: [TerminalKind: (Bool) -> Void] = [:]
+    private var warmSettled: [TerminalKind: PendingWarm] = [:]
     nonisolated static let resolveSupport = ResolveSupport()
 
     private struct RemoteLaunch {
@@ -271,7 +271,11 @@ final class TerminalRegistry: NSObject {
         term.frame = NSRect(origin: .zero, size: size)
         terminals[kind] = term
         warmHosts[kind] = host
-        warmSettled[kind] = settled
+        warmSettled[kind] = PendingWarm(settled: settled, since: Date())
+        let view = ObjectIdentifier(term)
+        term.setProcessOutputHandler {
+            Task { @MainActor in TerminalRegistry.shared.processDidSpeak(kind, view: view) }
+        }
         reattached.insert(kind)
         detachedAt[kind] = Date()
         PaneLog.log("warm pane=\(kind) frame=\(Int(size.width))x\(Int(size.height))")
@@ -299,17 +303,32 @@ final class TerminalRegistry: NSObject {
         host.close()
     }
 
-    private func settleWarm(_ kind: TerminalKind, running: Bool) {
-        guard let settled = warmSettled.removeValue(forKey: kind) else { return }
-        PaneLog.log("warm \(running ? "running" : "failed") pane=\(kind)")
-        settled(running)
+    private func settleWarm(_ kind: TerminalKind, running: Bool, via cause: WarmSettleCause) {
+        guard let pending = warmSettled.removeValue(forKey: kind) else { return }
+        terminals[kind]?.setProcessOutputHandler(nil)
+        PaneLog.log(Self.warmSettledLine(
+            kind, running: running, after: Date().timeIntervalSince(pending.since), via: cause))
+        pending.settled(running)
     }
 
-    /// The first bytes from the program: for mosh its login is already done,
-    /// for ssh the login just passed.
-    func processDidSpeak(_ view: LegacyKeyboardTerminalView) {
-        guard !warmSettled.isEmpty, let kind = view.kind, terminals[kind] === view else { return }
-        settleWarm(kind, running: true)
+    static func warmSettledLine(
+        _ kind: TerminalKind, running: Bool, after: TimeInterval, via cause: WarmSettleCause
+    ) -> String {
+        "warm \(running ? "running" : "failed") pane=\(kind) after=\(Int((after * 1000).rounded()))ms "
+            + "via=\(cause.rawValue)"
+    }
+
+    /// The first bytes from the program. SwiftTerm hands a process's output
+    /// to the view's own parser, never to `dataReceived(slice:)`, so the
+    /// output handler is the only place they can be seen.
+    func processDidSpeak(_ kind: TerminalKind, view: ObjectIdentifier) {
+        guard let term = terminals[kind], ObjectIdentifier(term) == view else { return }
+        settleWarm(kind, running: true, via: .bytes)
+    }
+
+    /// The auto-connect queue gave up waiting; a later answer changes nothing.
+    func warmTimedOut(_ kind: TerminalKind) {
+        settleWarm(kind, running: false, via: .timeout)
     }
 
     private static let lastPaneSizeKey = "lastTerminalPaneSize"
@@ -611,7 +630,7 @@ final class TerminalRegistry: NSObject {
         remoteLaunches[kind] = nil
         RemoteTransportStore.shared.forget(kind)
         if pendingFocusKind == kind { pendingFocusKind = nil }
-        settleWarm(kind, running: false)
+        settleWarm(kind, running: false, via: .closed)
         guard let term = terminals.removeValue(forKey: kind) else { return }
         term.terminate()
         term.removeFromSuperview()
@@ -779,6 +798,7 @@ extension TerminalRegistry {
                     base: RemoteCommands.terminalEnvironment(
                         term: RemoteCommands.remoteTerm, customSocket: customSocket)))
             RemoteTransportStore.shared.usingMosh(kind, machine: machine)
+            settleWarm(kind, running: true, via: .moshReady)
             if watchdog {
                 DispatchQueue.main.asyncAfter(deadline: .now() + MoshClientProbe.timeout) { [weak self] in
                     self?.checkMosh(kind, id: id, ip: ip, port: session.port)
@@ -795,7 +815,7 @@ extension TerminalRegistry {
                 term.feed(text: "\u{1b}[2mLogin refused for \(alias). Paused checking it so the machine "
                     + "doesn't block this Mac's IP.\u{1b}[0m\r\n")
                 dead.insert(kind)
-                settleWarm(kind, running: false)
+                settleWarm(kind, running: false, via: .refused)
                 return
             }
             launch.strayServerPID = stray
@@ -869,6 +889,7 @@ extension TerminalRegistry {
                 term: RemoteCommands.remoteTerm, customSocket: customSocket))
         RemoteTransportStore.shared.usingSSH(
             kind, machine: launch.machine, reason: reason, detail: detail, fresh: fresh)
+        settleWarm(kind, running: true, via: .sshLaunched)
     }
 
     /// Answers the exit of a remote pane's process when the app caused it
@@ -918,6 +939,22 @@ extension TerminalRegistry {
     }
 }
 
+/// What released a warm terminal, named in the log line.
+enum WarmSettleCause: String {
+    case moshReady = "mosh-ready"
+    case sshLaunched = "ssh-launched"
+    case bytes
+    case timeout
+    case refused
+    case exit
+    case closed
+}
+
+struct PendingWarm {
+    let settled: (Bool) -> Void
+    let since: Date
+}
+
 extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
     /// The size the program itself is told. The pane's frame in points is not
     /// that number, and the difference is what a half-drawn screen is made of.
@@ -938,7 +975,7 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
         guard let kind = terminals.first(where: { $0.value === source })?.key else { return }
         PaneLog.log("process ended pane=\(kind) exit=\(exitCode.map(String.init) ?? "-")")
         if handleRemoteExit(kind, source: source, exitCode: exitCode) { return }
-        settleWarm(kind, running: false)
+        settleWarm(kind, running: false, via: .exit)
         dead.insert(kind)
         detachedAt[kind] = nil
         if case let .local(session, _) = kind {
@@ -1011,11 +1048,6 @@ final class LegacyKeyboardTerminalView: SelectingTerminalView {
         let size = super.getWindowSize()
         PaneLog.log("window size cols=\(size.ws_col) rows=\(size.ws_row)")
         return size
-    }
-
-    override func dataReceived(slice: ArraySlice<UInt8>) {
-        super.dataReceived(slice: slice)
-        TerminalRegistry.shared.processDidSpeak(self)
     }
 
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {

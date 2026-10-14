@@ -88,93 +88,123 @@ final class AutoConnectWarmerTests: XCTestCase {
         var started: [String] = []
         var completions: [String: (Bool) -> Void] = [:]
         var timers: [(delay: TimeInterval, fire: () -> Void)] = []
+        var timedOut: [String] = []
         var unwanted: Set<String> = []
         var room = 100
 
-        func warmer() -> AutoConnectWarmer<String> {
+        func warmer(maxConcurrent: Int = AutoConnect.maxConcurrent) -> AutoConnectWarmer<String> {
             AutoConnectWarmer<String>(
                 timeout: 15,
+                maxConcurrent: maxConcurrent,
                 start: { [unowned self] target, done in
                     self.started.append(target)
                     self.completions[target] = done
                 },
-                isWanted: { [unowned self] in !self.unwanted.contains($0) },
+                isWanted: { [unowned self] target in
+                    !self.unwanted.contains(target) && !self.unwanted.contains(String(target.prefix(1)))
+                },
                 hasRoom: { [unowned self] in self.started.count < self.room },
-                schedule: { [unowned self] delay, fire in self.timers.append((delay, fire)) })
+                schedule: { [unowned self] delay, fire in self.timers.append((delay, fire)) },
+                onTimeout: { [unowned self] in self.timedOut.append($0) })
         }
     }
 
-    func testOnlyOneStartsAtATimeAndTheNextFollowsASuccess() {
+    func testThreeConnectAtOnceByDefault() {
+        XCTAssertEqual(AutoConnect.maxConcurrent, 3)
         let harness = Harness()
         let warmer = harness.warmer()
-        warmer.enqueue(["a", "b", "c"])
-        XCTAssertEqual(harness.started, ["a"])
-        XCTAssertEqual(warmer.inFlight, "a")
-        XCTAssertEqual(warmer.queued, ["b", "c"])
-        harness.completions["a"]?(true)
-        XCTAssertEqual(harness.started, ["a", "b"])
+        warmer.enqueue(["a1", "a2", "a3", "a4", "a5"])
+        XCTAssertEqual(harness.started, ["a1", "a2", "a3"])
+        XCTAssertEqual(warmer.inFlight, ["a1", "a2", "a3"])
+        XCTAssertEqual(warmer.queued, ["a4", "a5"])
     }
 
-    func testAFailureAdvancesToo() {
+    func testTheFourthStartsWhenAnyOfTheFirstThreeSettles() {
         let harness = Harness()
         let warmer = harness.warmer()
-        warmer.enqueue(["a", "b"])
-        harness.completions["a"]?(false)
+        warmer.enqueue(["a1", "a2", "a3", "a4", "a5"])
+        harness.completions["a2"]?(true)
+        XCTAssertEqual(harness.started, ["a1", "a2", "a3", "a4"])
+        XCTAssertEqual(warmer.inFlight, ["a1", "a3", "a4"])
+        harness.completions["a3"]?(false)
+        XCTAssertEqual(harness.started, ["a1", "a2", "a3", "a4", "a5"])
+    }
+
+    func testOneAtATimeWhenAskedFor() {
+        let harness = Harness()
+        let warmer = harness.warmer(maxConcurrent: 1)
+        warmer.enqueue(["a", "b", "c"])
+        XCTAssertEqual(harness.started, ["a"])
+        harness.completions["a"]?(true)
         XCTAssertEqual(harness.started, ["a", "b"])
     }
 
     func testATimeoutOfFifteenSecondsAdvancesAndALateAnswerIsIgnored() {
         let harness = Harness()
-        let warmer = harness.warmer()
+        let warmer = harness.warmer(maxConcurrent: 1)
         warmer.enqueue(["a", "b", "c"])
         XCTAssertEqual(harness.timers.map(\.delay), [15])
         harness.timers[0].fire()
+        XCTAssertEqual(harness.timedOut, ["a"])
         XCTAssertEqual(harness.started, ["a", "b"])
         harness.completions["a"]?(true)
         XCTAssertEqual(harness.started, ["a", "b"], "a late answer from a must not start c")
-        XCTAssertEqual(warmer.inFlight, "b")
+        XCTAssertEqual(warmer.inFlight, ["b"])
+    }
+
+    func testATimeoutFreesOnlyItsOwnSlot() {
+        let harness = Harness()
+        let warmer = harness.warmer()
+        warmer.enqueue(["a1", "a2", "a3", "a4"])
+        XCTAssertEqual(harness.timers.count, 3)
+        harness.timers[1].fire()
+        XCTAssertEqual(harness.timedOut, ["a2"])
+        XCTAssertEqual(warmer.inFlight, ["a1", "a3", "a4"])
     }
 
     func testAnOldTimerDoesNotCutTheNextConnectShort() {
         let harness = Harness()
-        let warmer = harness.warmer()
+        let warmer = harness.warmer(maxConcurrent: 1)
         warmer.enqueue(["a", "b", "c"])
         harness.completions["a"]?(true)
         harness.timers[0].fire()
+        XCTAssertEqual(harness.timedOut, [])
         XCTAssertEqual(harness.started, ["a", "b"])
-        XCTAssertEqual(warmer.inFlight, "b")
+        XCTAssertEqual(warmer.inFlight, ["b"])
     }
 
     func testEnqueueWhileBusyWaitsAndNeverRepeats() {
         let harness = Harness()
-        let warmer = harness.warmer()
+        let warmer = harness.warmer(maxConcurrent: 1)
         warmer.enqueue(["a"])
         warmer.enqueue(["a", "b", "b"])
         XCTAssertEqual(harness.started, ["a"])
         XCTAssertEqual(warmer.queued, ["b"])
     }
 
-    func testASessionNoLongerWantedIsDroppedWhenItsTurnComes() {
+    func testAPausedWorkspaceDropsItsQueuedSessionsWhileOthersContinue() {
         let harness = Harness()
         let warmer = harness.warmer()
-        warmer.enqueue(["a", "b", "c"])
-        harness.unwanted = ["b"]
-        harness.completions["a"]?(true)
-        XCTAssertEqual(harness.started, ["a", "c"])
+        warmer.enqueue(["a1", "a2", "a3", "a4", "b1", "a5", "b2"])
+        harness.unwanted = ["a"]
+        harness.completions["a1"]?(false)
+        XCTAssertEqual(harness.started, ["a1", "a2", "a3", "b1"])
+        harness.completions["a2"]?(false)
+        XCTAssertEqual(harness.started, ["a1", "a2", "a3", "b1", "b2"])
+        XCTAssertEqual(warmer.queued, [])
     }
 
     func testNoRoomLeftEmptiesTheQueue() {
         let harness = Harness()
-        harness.room = 1
+        harness.room = 2
         let warmer = harness.warmer()
-        warmer.enqueue(["a", "b", "c"])
-        harness.completions["a"]?(true)
-        XCTAssertEqual(harness.started, ["a"])
-        XCTAssertNil(warmer.inFlight)
+        warmer.enqueue(["a", "b", "c", "d"])
+        XCTAssertEqual(harness.started, ["a", "b"])
+        XCTAssertEqual(warmer.inFlight, ["a", "b"])
         XCTAssertEqual(warmer.queued, [])
     }
 
-    func testAnAnswerGivenAtOnceStillStartsOneAfterTheOther() {
+    func testAnAnswerGivenAtOnceStillStartsInOrder() {
         var started: [String] = []
         let warmer = AutoConnectWarmer<String>(
             timeout: 15,
@@ -183,8 +213,8 @@ final class AutoConnectWarmerTests: XCTestCase {
                 done(true)
             },
             isWanted: { _ in true }, hasRoom: { true }, schedule: { _, _ in })
-        warmer.enqueue(["a", "b", "c"])
-        XCTAssertEqual(started, ["a", "b", "c"])
-        XCTAssertNil(warmer.inFlight)
+        warmer.enqueue(["a", "b", "c", "d"])
+        XCTAssertEqual(started, ["a", "b", "c", "d"])
+        XCTAssertEqual(warmer.inFlight, [])
     }
 }

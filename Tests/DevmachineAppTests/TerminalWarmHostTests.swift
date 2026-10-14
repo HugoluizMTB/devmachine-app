@@ -31,4 +31,36 @@ final class TerminalWarmHostTests: XCTestCase {
         XCTAssertEqual(Int(grid.ws_col), 120, accuracy: 2)
         XCTAssertEqual(Int(grid.ws_row), 36, accuracy: 1)
     }
+
+    func testTheSettleLineSaysWhatReleasedTheWarmTerminalAndHowLongItTook() {
+        let kind = TerminalKind.remote(alias: "acme-devmachine", session: "dash")
+        XCTAssertEqual(
+            TerminalRegistry.warmSettledLine(kind, running: true, after: 2.0004, via: .moshReady),
+            "warm running pane=\(kind) after=2000ms via=mosh-ready")
+        XCTAssertEqual(
+            TerminalRegistry.warmSettledLine(kind, running: false, after: 15, via: .timeout),
+            "warm failed pane=\(kind) after=15000ms via=timeout")
+        XCTAssertEqual(
+            [WarmSettleCause.sshLaunched, .bytes, .refused, .exit, .closed].map(\.rawValue),
+            ["ssh-launched", "bytes", "refused", "exit", "closed"])
+    }
+
+    func testProcessOutputReachesTheOutputHandlerButNeverDataReceived() {
+        final class Spy: LocalProcessTerminalView {
+            var dataReceivedCalls = 0
+            override func dataReceived(slice: ArraySlice<UInt8>) {
+                dataReceivedCalls += 1
+                super.dataReceived(slice: slice)
+            }
+        }
+        let term = Spy(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        let spoke = expectation(description: "output handler called")
+        spoke.assertForOverFulfill = false
+        term.setProcessOutputHandler { spoke.fulfill() }
+
+        term.startProcess(executable: "/bin/echo", args: ["hello"])
+
+        wait(for: [spoke], timeout: 5)
+        XCTAssertEqual(term.dataReceivedCalls, 0)
+    }
 }

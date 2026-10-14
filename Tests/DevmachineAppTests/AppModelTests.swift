@@ -1738,7 +1738,7 @@ final class AppModelTests: XCTestCase {
         return (model, recorder)
     }
 
-    func testASuccessfulListConnectsTheSessionsOfAnAutoConnectWorkspaceOneAtATime() async throws {
+    func testASuccessfulListConnectsTheSessionsOfAutoConnectWorkspacesTogether() async throws {
         let source = SweepRecordingSource(asksAllAtOnce: true)
         let (model, recorder) = autoConnectModel(source, autoConnect: [acme.alias, beta.alias])
 
@@ -1746,9 +1746,7 @@ final class AppModelTests: XCTestCase {
 
         let acmeDash = AutoConnectTarget(alias: acme.alias, session: "dash")
         let betaDash = AutoConnectTarget(alias: beta.alias, session: "dash")
-        XCTAssertEqual(recorder.started, [acmeDash], "one connect in flight")
-        recorder.done[acmeDash]?(true)
-        XCTAssertEqual(recorder.started, [acmeDash, betaDash])
+        XCTAssertEqual(recorder.started, [acmeDash, betaDash], "both fit in the connects allowed at once")
     }
 
     func testAutoConnectIsOffByDefaultAndNeverReachesAHiddenWorkspace() async throws {
@@ -1763,15 +1761,18 @@ final class AppModelTests: XCTestCase {
     }
 
     func testARefusedLoginPausesTheWorkspaceAndItsQueuedSessionsAreDropped() async throws {
+        let names = ["dash", "api", "web", "jobs"]
         let (model, recorder) = autoConnectModel(
-            SweepRecordingSource(asksAllAtOnce: true), autoConnect: [acme.alias, beta.alias])
+            SweepRecordingSource(asksAllAtOnce: true, sessionNames: names), autoConnect: [acme.alias, beta.alias])
         try await sweep(model)
-        let acmeDash = AutoConnectTarget(alias: acme.alias, session: "dash")
+        let acmeTargets = names.map { AutoConnectTarget(alias: acme.alias, session: $0) }
+        let betaDash = AutoConnectTarget(alias: beta.alias, session: "dash")
+        XCTAssertEqual(recorder.started, Array(acmeTargets.prefix(3)))
 
-        model.noteSSHFailure(alias: beta.alias, .authDenied)
-        recorder.done[acmeDash]?(false)
+        model.noteSSHFailure(alias: acme.alias, .authDenied)
+        recorder.done[acmeTargets[0]]?(false)
 
-        XCTAssertEqual(recorder.started, [acmeDash])
+        XCTAssertEqual(recorder.started, Array(acmeTargets.prefix(3)) + [betaDash])
     }
 
     func testAutoConnectNeverGoesOverTheTerminalsKeptOpen() async throws {
@@ -1965,8 +1966,11 @@ private final class SweepRecordingSource: SessionListSource, @unchecked Sendable
     private var storedSingle: [String] = []
     private var storedBatch: [[String]] = []
 
-    init(asksAllAtOnce: Bool) {
+    let sessionNames: [String]
+
+    init(asksAllAtOnce: Bool, sessionNames: [String] = ["dash"]) {
         self.asksAllAtOnce = asksAllAtOnce
+        self.sessionNames = sessionNames
     }
 
     func fail(_ alias: String, with error: any Error) {
@@ -1981,7 +1985,7 @@ private final class SweepRecordingSource: SessionListSource, @unchecked Sendable
         let failure = failures[workspace.alias]
         lock.unlock()
         if let failure { throw failure }
-        return [TmuxSession(name: "dash", windows: 1, harnesses: [])]
+        return sessionNames.map { TmuxSession(name: $0, windows: 1, harnesses: []) }
     }
 
     func sessions(
@@ -1996,7 +2000,7 @@ private final class SweepRecordingSource: SessionListSource, @unchecked Sendable
             if let failure = failures[workspace.alias] {
                 results[workspace.alias] = .failure(failure)
             } else {
-                results[workspace.alias] = .success([TmuxSession(name: "dash", windows: 1, harnesses: [])])
+                results[workspace.alias] = .success(sessionNames.map { TmuxSession(name: $0, windows: 1, harnesses: []) })
             }
         }
         return results

@@ -1415,6 +1415,10 @@ final class AppModel: ObservableObject {
         TerminalRegistry.shared.warm(.remote(alias: target.alias, session: target.session), settled: done)
     }
 
+    var autoConnectTimedOut: (AutoConnectTarget) -> Void = { target in
+        TerminalRegistry.shared.warmTimedOut(.remote(alias: target.alias, session: target.session))
+    }
+
     var autoConnectTerminals: () -> (open: Set<AutoConnectTarget>, room: Int) = {
         TerminalRegistry.shared.autoConnectState()
     }
@@ -1424,7 +1428,6 @@ final class AppModel: ObservableObject {
     private var autoConnectWarmer: AutoConnectWarmer<AutoConnectTarget> {
         if let warmer = autoConnectWarmerStorage { return warmer }
         let warmer = AutoConnectWarmer<AutoConnectTarget>(
-            timeout: 15,
             start: { [unowned self] target, done in self.autoConnectStart(target, done) },
             isWanted: { [unowned self] in self.autoConnectQueue().isWanted($0) },
             hasRoom: { [unowned self] in self.autoConnectTerminals().room > 0 },
@@ -1433,7 +1436,8 @@ final class AppModel: ObservableObject {
                     try? await Task.sleep(for: .seconds(delay))
                     fire()
                 }
-            })
+            },
+            onTimeout: { [unowned self] in self.autoConnectTimedOut($0) })
         autoConnectWarmerStorage = warmer
         return warmer
     }

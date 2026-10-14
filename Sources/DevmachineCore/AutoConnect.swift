@@ -53,45 +53,56 @@ public struct AutoConnectQueue: Sendable {
     }
 }
 
-// Many logins at once are what a machine's ban counts, so one connects at a time.
+public enum AutoConnect {
+    public static let maxConcurrent = 3
+    public static let timeout: TimeInterval = 15
+}
+
+// Many logins at once are what a machine's ban counts, so only a few connect at a time.
 @MainActor
 public final class AutoConnectWarmer<Target: Hashable> {
     public typealias Start = (_ target: Target, _ done: @escaping (_ running: Bool) -> Void) -> Void
 
     public private(set) var queued: [Target] = []
-    public private(set) var inFlight: Target?
+    public private(set) var inFlight: [Target] = []
 
     private let timeout: TimeInterval
+    private let maxConcurrent: Int
     private let start: Start
     private let isWanted: (Target) -> Bool
     private let hasRoom: () -> Bool
     private let schedule: (TimeInterval, @escaping () -> Void) -> Void
+    private let onTimeout: (Target) -> Void
+    private var attempts: [Target: Int] = [:]
     private var attempt = 0
 
     public init(
-        timeout: TimeInterval = 15,
+        timeout: TimeInterval = AutoConnect.timeout,
+        maxConcurrent: Int = AutoConnect.maxConcurrent,
         start: @escaping Start,
         isWanted: @escaping (Target) -> Bool,
         hasRoom: @escaping () -> Bool,
-        schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void
+        schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void,
+        onTimeout: @escaping (Target) -> Void = { _ in }
     ) {
         self.timeout = timeout
+        self.maxConcurrent = max(1, maxConcurrent)
         self.start = start
         self.isWanted = isWanted
         self.hasRoom = hasRoom
         self.schedule = schedule
+        self.onTimeout = onTimeout
     }
 
     public func enqueue(_ targets: [Target]) {
-        for target in targets where target != inFlight && !queued.contains(target) {
+        for target in targets where !inFlight.contains(target) && !queued.contains(target) {
             queued.append(target)
         }
         advance()
     }
 
     private func advance() {
-        guard inFlight == nil else { return }
-        while !queued.isEmpty {
+        while inFlight.count < maxConcurrent, !queued.isEmpty {
             let next = queued.removeFirst()
             guard isWanted(next) else { continue }
             guard hasRoom() else {
@@ -100,16 +111,23 @@ public final class AutoConnectWarmer<Target: Hashable> {
             }
             attempt += 1
             let current = attempt
-            inFlight = next
-            schedule(timeout) { [weak self] in self?.finish(current) }
-            start(next) { [weak self] _ in self?.finish(current) }
-            return
+            attempts[next] = current
+            inFlight.append(next)
+            schedule(timeout) { [weak self] in self?.timedOut(next, current) }
+            start(next) { [weak self] _ in self?.finish(next, current) }
         }
     }
 
-    private func finish(_ current: Int) {
-        guard current == attempt, inFlight != nil else { return }
-        inFlight = nil
+    private func timedOut(_ target: Target, _ current: Int) {
+        guard attempts[target] == current else { return }
+        onTimeout(target)
+        finish(target, current)
+    }
+
+    private func finish(_ target: Target, _ current: Int) {
+        guard attempts[target] == current else { return }
+        attempts[target] = nil
+        inFlight.removeAll { $0 == target }
         advance()
     }
 }
