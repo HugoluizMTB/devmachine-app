@@ -144,7 +144,7 @@ struct PackagesSettingsView: View {
         HStack(alignment: .top, spacing: m.space.lg) {
             PackagesHeader(
                 targets: snapshot.targets, page: $page, filter: $filter,
-                categories: PackageFilter.categories(in: snapshot.entries))
+                categories: PackageFilter.categories(in: snapshot.entries), systemLines: snapshot.systemLines)
             DMButton("New package", systemImage: "plus", variant: .outline, size: .small) { choosingHarness = true }
                 .popover(isPresented: $choosingHarness, arrowEdge: .bottom) {
                     newPackagePicker(configDirectory: snapshot.configDirectory)
@@ -438,12 +438,15 @@ struct PackagesHeader: View {
     @Binding var page: PackagesPageState
     @Binding var filter: PackageFilter
     let categories: [String]
+    /// "Ubuntu 24.04 · x86_64" per machine, shown beside its name.
+    var systemLines: [String: String] = [:]
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.space.md) {
             HStack(spacing: m.space.lg) {
-                DMDropdown(label: "Machine", options: Self.options(targets, scope: "machine", all: "All machines"),
+                DMDropdown(label: "Machine",
+                           options: Self.options(targets, scope: "machine", all: "All machines", systems: systemLines),
                            selection: $page.machine)
                 DMDropdown(label: "Workspace", options: Self.options(targets, scope: "workspace", all: "All workspaces"),
                            selection: $page.workspace)
@@ -469,9 +472,14 @@ struct PackagesHeader: View {
         }
     }
 
-    static func options(_ targets: [PackageTarget], scope: String, all: String) -> [DMDropdown<String?>.Option] {
+    static func options(
+        _ targets: [PackageTarget], scope: String, all: String, systems: [String: String] = [:]
+    ) -> [DMDropdown<String?>.Option] {
         [.init(value: nil, title: all)]
-            + targets.filter { $0.scope == scope }.map { .init(value: $0.name, title: $0.title) }
+            + targets.filter { $0.scope == scope }.map { target in
+                let system = target.scope == "machine" ? systems[target.name] : nil
+                return .init(value: target.name, title: system.map { "\(target.title) · \($0)" } ?? target.title)
+            }
     }
 
     private func toggle(_ category: String) {

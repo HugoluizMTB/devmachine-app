@@ -37,6 +37,7 @@ struct MachineSettingsRow: View {
                     .foregroundStyle(.white.opacity(0.55))
                     .textSelection(.enabled)
             }
+            systemLine
             locationLine
             line("Workspaces", machine.workspaces)
             sitesLine
@@ -125,6 +126,19 @@ struct MachineSettingsRow: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help(machine.workspaces.isEmpty ? "More" : "More. Remove needs its workspaces moved or removed first.")
+    }
+
+    @ViewBuilder
+    private var systemLine: some View {
+        if let system = machine.systemLine {
+            HStack(alignment: .firstTextBaseline, spacing: m.space.sm) {
+                label("System")
+                Text(verbatim: system)
+                    .font(.dm(11.5))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .textSelection(.enabled)
+            }
+        }
     }
 
     private var locationLine: some View {

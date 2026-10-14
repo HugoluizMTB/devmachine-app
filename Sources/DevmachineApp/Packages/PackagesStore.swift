@@ -11,6 +11,8 @@ struct PackagesSnapshot: Equatable, Sendable {
     var configDirectory: String?
     /// Each machine's `linux` or `macos`, for the machines the CLI has read.
     var platforms: [String: String] = [:]
+    /// "Ubuntu 24.04 · x86_64" per machine whose system is known.
+    var systemLines: [String: String] = [:]
 
     func statuses(for target: PackageTarget) -> [String: PackageStatus] {
         PackageStatusCheck.evaluate(entries: entries, target: target, lock: lock)
@@ -56,9 +58,13 @@ enum PackagesReader {
         let platforms = Dictionary(
             show.machines.compactMap { machine in machine.platform.map { (machine.name, $0) } },
             uniquingKeysWith: { first, _ in first })
+        let observed = cli.observed(of: show.machines)
+        let systemLines = show.machines.reduce(into: [String: String]()) { result, machine in
+            result[machine.name] = MachineObserved.systemLine(observed[machine.name], isSelf: machine.isSelf)
+        }
         return PackagesSnapshot(
             entries: entries, targets: targets, lock: lock, cliVersion: version, configDirectory: directory,
-            platforms: platforms)
+            platforms: platforms, systemLines: systemLines)
     }
 
     static let liveRead: @Sendable () async throws -> PackagesSnapshot = {

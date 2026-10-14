@@ -117,7 +117,8 @@ enum DemoPackages {
             targets: [target, .machine("staging", isSelf: false), .workspace("acme", machine: "main"),
                       .workspace("beta", machine: "main")],
             lock: lock, cliVersion: SemanticVersion("0.7.28"), configDirectory: "~/.config/devmachine",
-            platforms: ["main": "linux", "staging": "linux"])
+            platforms: ["main": "linux", "staging": "linux"],
+            systemLines: ["main": "Ubuntu 24.04 · x86_64", "staging": "Arch Linux · aarch64"])
     }
 
     /// A remote Mac beside the Linux machines: with `studio` picked, a
@@ -132,6 +133,7 @@ enum DemoPackages {
         snapshot.entries.sort { $0.name < $1.name }
         snapshot.targets.insert(.machine("studio", isSelf: false), at: 2)
         snapshot.platforms["studio"] = "macos"
+        snapshot.systemLines["studio"] = "macOS 15.7 · arm64"
         return snapshot
     }
 
