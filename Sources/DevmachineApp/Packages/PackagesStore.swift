@@ -11,13 +11,30 @@ struct PackagesSnapshot: Equatable, Sendable {
     var configDirectory: String?
     /// Each machine's `linux` or `macos`, for the machines the CLI has read.
     var platforms: [String: String] = [:]
+    /// "Ubuntu 24.04 · x86_64" per machine whose system is known.
+    var systemLines: [String: String] = [:]
 
     func statuses(for target: PackageTarget) -> [String: PackageStatus] {
         PackageStatusCheck.evaluate(entries: entries, target: target, lock: lock)
     }
 
+    /// This Mac is `macos` even when the CLI does not say so; any other
+    /// machine it never read is unknown.
     func platform(of target: PackageTarget) -> String? {
-        platforms[target.syncMachine]
+        if let reported = platforms[target.syncMachine] { return reported }
+        return targets.contains(.machine(target.syncMachine, isSelf: true)) ? "macos" : nil
+    }
+
+    /// Whether `entry` runs on the picked machine and workspace. Only the
+    /// picked ones of its own kind count; none picked means it fits.
+    func systemFit(
+        _ entry: PackageEntry, on focus: [PackageTarget], statuses: [PackageTarget: [String: PackageStatus]]
+    ) -> PackageSystemFit {
+        PackageAvailability.systemFit(
+            platforms: entry.platforms,
+            on: focus.filter { $0.scope == entry.scope }.map { target in
+                (system: platform(of: target), installed: (statuses[target]?[entry.name] ?? .available).isInstalled)
+            })
     }
 }
 
@@ -41,9 +58,13 @@ enum PackagesReader {
         let platforms = Dictionary(
             show.machines.compactMap { machine in machine.platform.map { (machine.name, $0) } },
             uniquingKeysWith: { first, _ in first })
+        let observed = cli.observed(of: show.machines)
+        let systemLines = show.machines.reduce(into: [String: String]()) { result, machine in
+            result[machine.name] = MachineObserved.systemLine(observed[machine.name], isSelf: machine.isSelf)
+        }
         return PackagesSnapshot(
             entries: entries, targets: targets, lock: lock, cliVersion: version, configDirectory: directory,
-            platforms: platforms)
+            platforms: platforms, systemLines: systemLines)
     }
 
     static let liveRead: @Sendable () async throws -> PackagesSnapshot = {

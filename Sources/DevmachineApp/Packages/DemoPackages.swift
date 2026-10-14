@@ -16,13 +16,13 @@ enum DemoPackages {
 
     static let screenIDs: Set<String> = [
         "packages-all", "packages-selected", "packages-confirm", "packages-pending", "packages-running",
-        "packages-succeeded", "packages-failed",
+        "packages-succeeded", "packages-failed", "packages-mac",
     ]
 
     static func handles(_ id: String) -> Bool { screenIDs.contains(id) }
 
     static func prepare(_ id: String, model: AppModel, store: PackagesStore = .shared) {
-        store.seedDemo(snapshot(after: moment(for: id)))
+        store.seedDemo(id == "packages-mac" ? macSnapshot() : snapshot(after: moment(for: id)))
         DemoSnapshots.packagesInitialPage = page(for: id)
         model.jobs.seedDemo(phase(for: id).map { [job($0)] } ?? [])
         DemoSnapshots.setupInitialSection = .packages
@@ -37,6 +37,7 @@ enum DemoPackages {
     static func page(for id: String) -> PackagesPageState {
         guard id != "packages-all" else { return PackagesPageState() }
         var page = PackagesPageState()
+        if id == "packages-mac" { page.machine = "studio" }
         if id == "packages-selected" || id == "packages-confirm" {
             page.toggleExpanded("postgres")
             page.rowDestinations = [target]
@@ -115,7 +116,25 @@ enum DemoPackages {
             entries: entries,
             targets: [target, .machine("staging", isSelf: false), .workspace("acme", machine: "main"),
                       .workspace("beta", machine: "main")],
-            lock: lock, cliVersion: SemanticVersion("0.7.28"), configDirectory: "~/.config/devmachine")
+            lock: lock, cliVersion: SemanticVersion("0.7.28"), configDirectory: "~/.config/devmachine",
+            platforms: ["main": "linux", "staging": "linux"],
+            systemLines: ["main": "Ubuntu 24.04 · x86_64", "staging": "Arch Linux · aarch64"])
+    }
+
+    /// A remote Mac beside the Linux machines: with `studio` picked, a
+    /// Linux-only package says so and cannot be ticked, and a Mac one can.
+    static func macSnapshot() -> PackagesSnapshot {
+        var snapshot = snapshot(after: .none)
+        snapshot.entries.removeAll { $0.name == "git" }
+        snapshot.entries += [
+            entry("git", category: "base", summary: "Git from the system's package manager.", platforms: []),
+            entry("mac-ports", category: "base", summary: "MacPorts, and Ansible from it.", platforms: ["macos"]),
+        ]
+        snapshot.entries.sort { $0.name < $1.name }
+        snapshot.targets.insert(.machine("studio", isSelf: false), at: 2)
+        snapshot.platforms["studio"] = "macos"
+        snapshot.systemLines["studio"] = "macOS 15.7 · arm64"
+        return snapshot
     }
 
     static func job(_ phase: MachineJobPhase) -> MachineJob {
@@ -159,11 +178,11 @@ enum DemoPackages {
 
     private static func entry(
         _ name: String, scope: String = "machine", source: String = "catalog", category: String, summary: String,
-        needs: [String] = [], credentials: [String] = [], on installedOn: [String] = []
+        needs: [String] = [], credentials: [String] = [], platforms: [String]? = nil, on installedOn: [String] = []
     ) -> PackageEntry {
         PackageEntry(
             name: name, scope: scope, source: source, summary: summary, category: category,
-            platforms: scope == "machine" ? ["linux"] : [], needs: needs, credentialNames: credentials,
+            platforms: platforms ?? (scope == "machine" ? ["linux"] : []), needs: needs, credentialNames: credentials,
             installedOn: installedOn)
     }
 }

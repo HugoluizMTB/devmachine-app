@@ -316,6 +316,7 @@ enum DemoSnapshots {
         Screen(id: "packages-running", fileName: "104-packages-running.png", settleNanoseconds: 500_000_000),
         Screen(id: "packages-succeeded", fileName: "105-packages-succeeded.png", settleNanoseconds: 500_000_000),
         Screen(id: "packages-failed", fileName: "106-packages-failed.png", settleNanoseconds: 500_000_000),
+        Screen(id: "packages-mac", fileName: "107-packages-mac.png", settleNanoseconds: 500_000_000),
     ]
 
     /// The file viewer walk (`DEVMACHINE_DEMO_WALK=file-viewer`): a Swift file

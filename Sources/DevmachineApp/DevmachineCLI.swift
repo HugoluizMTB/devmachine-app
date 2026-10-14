@@ -607,6 +607,24 @@ struct DevmachineCLI: Sendable {
         return try JSONDecoder().decode([CLIConfigMachine].self, from: Data(result.stdout.utf8))
     }
 
+    /// `machines show`: what `setup`, `sync` or `doctor` last read from the
+    /// machine. It does not connect. Nil for a machine never read.
+    func observed(machine: String) throws -> MachineObserved? {
+        let result = try runner.runCapturing(
+            executable: executable, args: MachineObserved.arguments(machine: machine), environment: environment())
+        try requireSuccess(result)
+        return MachineObserved.parse(result.stdout)
+    }
+
+    /// What the CLI read from each machine it reports a `platform` for: one
+    /// with none was never read, or the CLI is too old to have `machines
+    /// show`, so it is not asked. A read that fails leaves the machine out.
+    func observed(of machines: [CLIConfigMachine]) -> [String: MachineObserved] {
+        machines.filter { $0.platform != nil }.reduce(into: [:]) { result, machine in
+            if let observed = try? observed(machine: machine.name) { result[machine.name] = observed }
+        }
+    }
+
     /// `machines rm`: takes the machine out of the configuration and leaves
     /// the server running. The CLI refuses while a workspace lives on it.
     func removeMachine(_ name: String) throws {

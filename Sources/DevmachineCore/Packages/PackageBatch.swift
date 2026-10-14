@@ -69,8 +69,10 @@ public struct PackageBatch: Equatable, Sendable {
     private static func skipReason(
         entry: PackageEntry, status: PackageStatus, target: PackageTarget, platform: String?, action: PackageAction
     ) -> String? {
-        if let block = PackageAvailability.block(entry: entry, status: status, target: target, platform: platform) {
-            return block.message
+        switch PackageAvailability.block(entry: entry, status: status, target: target, platform: platform) {
+        case .otherSystem where action == .remove && status.isInstalled: break
+        case let block?: return block.message
+        case nil: break
         }
         switch (action, status) {
         case (.install, .applied), (.install, .pendingInstall): return "Already there."
@@ -80,10 +82,14 @@ public struct PackageBatch: Equatable, Sendable {
         }
     }
 
-    /// The targets a package can go on at all, before what each one has.
-    public static func fits(_ entry: PackageEntry, on target: PackageTarget, platform: String? = nil) -> Bool {
+    /// The targets a package can go on at all, before what each one has. A
+    /// machine of another system takes it only to remove one already there.
+    public static func fits(
+        _ entry: PackageEntry, on target: PackageTarget, platform: String? = nil, status: PackageStatus = .available
+    ) -> Bool {
         switch PackageAvailability.block(entry: entry, status: .available, target: target, platform: platform) {
-        case .noRecipe, .wrongScope, .macOnly, .serverOnly, .account: return false
+        case .noRecipe, .wrongScope, .account: return false
+        case .otherSystem: return status.isInstalled
         default: return true
         }
     }
