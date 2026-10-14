@@ -91,7 +91,7 @@ struct PaletteDispatcher {
         case .newQuickSession: model.requestQuickSession()
         case let .publishPort(workspace): model.requestPublish(workspace: workspace)
         case let .openFiles(alias): system.openFilesWindow(alias: alias)
-        case let .workspaceHome(alias): model.stackWorkspace(alias)
+        case let .openSessionGrid(alias): model.openSessionGrid(alias)
         case let .revealInFinder(path): system.reveal(path: path)
         case let .stats(machine):
             stats.select(machine)

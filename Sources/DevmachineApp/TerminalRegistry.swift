@@ -4,7 +4,7 @@ import SwiftTerm
 import DevmachineCore
 
 /// One live terminal (and one mosh/tmux client) per session for the whole app.
-/// SwiftUI containers come and go — single pane, stack grid — and re-attach
+/// SwiftUI containers come and go — single pane, session grid — and re-attach
 /// the same view, so switching layouts never reconnects.
 @MainActor
 final class TerminalRegistry: NSObject {

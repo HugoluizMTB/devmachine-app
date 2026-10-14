@@ -594,12 +594,12 @@ enum DemoSnapshots {
         #endif
         switch screen.id {
         case "sessions":
-            model.stackWorkspace(acmeAlias)
+            model.openSessionGrid(acmeAlias)
         case "sidebar-harness-icons":
             environment.settingsStore.settings?.showsHarnessIcons = true
             environment.settingsStore.settings?.harnessIconStyle = Self.iconStyle(
                 from: ProcessInfo.processInfo.environment)
-            model.stackWorkspace(acmeAlias)
+            model.openSessionGrid(acmeAlias)
         case "session-claude":
             // A different workspace/session than the "sessions" grid, not
             // just a different screen: `TerminalRegistry` caches one pane per

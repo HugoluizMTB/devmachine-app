@@ -1,7 +1,7 @@
 import SwiftUI
 import DevmachineCore
 
-struct StackGridView: View {
+struct SessionGridView: View {
     let refs: [SessionRef]
     @EnvironmentObject var model: AppModel
 
@@ -14,7 +14,7 @@ struct StackGridView: View {
         GeometryReader { geo in
             let innerWidth = max(0, geo.size.width - pad * 2)
             let innerHeight = max(0, geo.size.height - pad * 2)
-            let rects = StackGrid.layout(refs.map { model.stackCellSize($0) })
+            let rects = SessionGrid.layout(refs.map { model.sessionGridCellSize($0) })
 
             ZStack {
                 WallpaperBackground(style: .ambient)
@@ -40,7 +40,7 @@ struct StackGridView: View {
     }
 
     private var layoutKey: String {
-        refs.map { "\($0.alias)/\($0.name):\(model.stackCellSize($0).rawValue)" }.joined(separator: ",")
+        refs.map { "\($0.alias)/\($0.name):\(model.sessionGridCellSize($0).rawValue)" }.joined(separator: ",")
     }
 
     /// The title is a row of its own, not a badge floating over the terminal.
@@ -80,20 +80,20 @@ struct StackGridView: View {
 
         return HStack(spacing: 2) {
             DMIconButton(systemImage: "chevron.left", tint: nil, hitSize: DMHitSize.strip) {
-                model.moveStackCell(ref, by: -1)
+                model.moveSessionGridCell(ref, by: -1)
             }
             .disabled(isFirst)
 
             DMIconButton(
-                systemImage: sizeIcon(model.stackCellSize(ref)), tint: nil,
+                systemImage: sizeIcon(model.sessionGridCellSize(ref)), tint: nil,
                 hitSize: DMHitSize.strip
             ) {
-                model.cycleStackCellSize(ref)
+                model.cycleSessionGridCellSize(ref)
             }
             .help("Size: auto/half/full — click to cycle")
 
             DMIconButton(systemImage: "chevron.right", tint: nil, hitSize: DMHitSize.strip) {
-                model.moveStackCell(ref, by: 1)
+                model.moveSessionGridCell(ref, by: 1)
             }
             .disabled(isLast)
         }
@@ -104,7 +104,7 @@ struct StackGridView: View {
         .dmGlass(in: Capsule(), stroke: .clear)
     }
 
-    private func sizeIcon(_ size: StackCellSize) -> String {
+    private func sizeIcon(_ size: SessionGridCellSize) -> String {
         switch size {
         case .auto: return "square.grid.2x2"
         case .half: return "rectangle.lefthalf.filled"

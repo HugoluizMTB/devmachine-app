@@ -106,7 +106,7 @@ final class EndSessionTests: XCTestCase {
         let dash = SessionRef(alias: acme.alias, name: "dash")
         let api = SessionRef(alias: acme.alias, name: "api")
         model.clickSession(dash)
-        model.activePage = .stack([dash, api])
+        model.activePage = .sessionGrid([dash, api])
 
         XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeWindow)
         XCTAssertNil(model.pendingEndSession)

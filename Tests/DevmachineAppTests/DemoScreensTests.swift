@@ -147,7 +147,7 @@ final class DemoScreensTests: XCTestCase {
         XCTAssertTrue(transcript.hasPrefix("\u{1B}[H\u{1B}[2J\u{1B}[3J"))
     }
 
-    func testEveryTranscriptFitsAStackedGridCell() {
+    func testEveryTranscriptFitsASessionGridCell() {
         let kinds: [TerminalKind] = DemoData.sessionsByAlias.flatMap { alias, sessions in
             sessions.map { TerminalKind.remote(alias: alias, session: $0.name) }
         } + DemoData.localSessions.map { .local(session: $0.name, path: $0.path) }

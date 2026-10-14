@@ -1,9 +1,9 @@
 import Foundation
 
-public enum StackCellSize: String, Codable, Sendable, CaseIterable {
+public enum SessionGridCellSize: String, Codable, Sendable, CaseIterable {
     case auto, half, full
 
-    public var next: StackCellSize {
+    public var next: SessionGridCellSize {
         switch self {
         case .auto: return .half
         case .half: return .full
@@ -12,7 +12,7 @@ public enum StackCellSize: String, Codable, Sendable, CaseIterable {
     }
 }
 
-public struct StackCellRect: Equatable, Sendable {
+public struct SessionGridCellRect: Equatable, Sendable {
     public let index: Int
     public let x: Double
     public let y: Double
@@ -20,14 +20,14 @@ public struct StackCellRect: Equatable, Sendable {
     public let height: Double
 }
 
-public enum StackGrid {
+public enum SessionGrid {
     public static func dims(_ n: Int) -> (cols: Int, rows: Int) {
         let cols = max(1, Int(ceil(Double(n).squareRoot())))
         let rows = max(1, Int(ceil(Double(n) / Double(cols))))
         return (cols, rows)
     }
 
-    public static func layout(_ sizes: [StackCellSize]) -> [StackCellRect] {
+    public static func layout(_ sizes: [SessionGridCellSize]) -> [SessionGridCellRect] {
         guard !sizes.isEmpty else { return [] }
         let epsilon = 1e-6
         let cols = dims(sizes.count).cols
@@ -36,13 +36,13 @@ public enum StackGrid {
         let rowCount = rows.count
         let rowHeight = 1.0 / Double(rowCount)
 
-        var rects: [StackCellRect] = []
+        var rects: [SessionGridCellRect] = []
         for (rowIndex, row) in rows.enumerated() {
             let widths = stretchedWidths(for: row, epsilon: epsilon)
             let y = Double(rowIndex) * rowHeight
             var x = 0.0
             for (item, width) in zip(row, widths) {
-                rects.append(StackCellRect(index: item.index, x: x, y: y, width: width, height: rowHeight))
+                rects.append(SessionGridCellRect(index: item.index, x: x, y: y, width: width, height: rowHeight))
                 x += width
             }
         }
@@ -51,11 +51,11 @@ public enum StackGrid {
 
     private struct Item {
         let index: Int
-        let size: StackCellSize
+        let size: SessionGridCellSize
         let width: Double
     }
 
-    private static func desiredWidth(_ size: StackCellSize, cols: Int) -> Double {
+    private static func desiredWidth(_ size: SessionGridCellSize, cols: Int) -> Double {
         switch size {
         case .auto: return 1.0 / Double(cols)
         case .half: return 0.5
@@ -63,7 +63,7 @@ public enum StackGrid {
         }
     }
 
-    private static func packRows(_ sizes: [StackCellSize], cols: Int, epsilon: Double) -> [[Item]] {
+    private static func packRows(_ sizes: [SessionGridCellSize], cols: Int, epsilon: Double) -> [[Item]] {
         var rows: [[Item]] = []
         var currentRow: [Item] = []
         var currentWidth = 0.0

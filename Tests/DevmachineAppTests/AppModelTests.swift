@@ -172,7 +172,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.context.isPolling)
         model.contextCollapsed = false
         XCTAssertTrue(model.context.isPolling)
-        model.activePage = .stack([])
+        model.activePage = .sessionGrid([])
         XCTAssertFalse(model.context.isPolling)
         model.activePage = nil
         XCTAssertTrue(model.context.isPolling)
@@ -451,13 +451,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.showNewSessionChooser)
     }
 
-    func testQuickNewSessionFromAStackUsesTheFocusedPane() async throws {
+    func testQuickNewSessionFromASessionGridUsesTheFocusedPane() async throws {
         let runner = HarnessProcessRunner(remoteListing: "/srv/focused\n")
         let model = AppModel(
             store: SessionStore(runner: runner), sessionSuffix: { "f1" })
         let first = SessionRef(alias: "acme-devmachine", name: "first")
         let focused = SessionRef(alias: "acme-devmachine", name: "focused")
-        model.stackSessions([first, focused])
+        model.showSessionGrid([first, focused])
 
         model.requestQuickSession(focusedRef: focused)
 
@@ -703,9 +703,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(pending, .remote(alias: "acme-devmachine", session: "dash"))
     }
 
-    func testStackingAsksForFocusOnTheFirstCell() {
+    func testShowingASessionGridAsksForFocusOnTheFirstCell() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
-        model.stackSessions([
+        model.showSessionGrid([
             SessionRef(alias: "acme-devmachine", name: "dash"),
             SessionRef(alias: "acme-devmachine", name: "api")
         ])
@@ -1219,12 +1219,12 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testStackingTheLocalWorkspaceUsesItsOwnSessions() {
+    func testTheLocalWorkspaceSessionGridUsesItsOwnSessions() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.addLocalSession(path: "/Users/alice/dev/acme")
-        model.stackWorkspace(Workspace.local.alias)
+        model.openSessionGrid(Workspace.local.alias)
 
-        guard case let .stack(refs) = model.activePage else {
+        guard case let .sessionGrid(refs) = model.activePage else {
             return XCTFail("the local workspace did not open as a stack")
         }
         XCTAssertEqual(refs.map(\.name), ["Operator", "acme"])
@@ -1290,24 +1290,24 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testALocalSessionThatEndsLosesItsRowAndItsStackCell() {
+    func testALocalSessionThatEndsLosesItsRowAndItsSessionGridCell() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.addLocalSession(path: "/Users/alice/dev/acme")
-        model.stackWorkspace(Workspace.local.alias)
+        model.openSessionGrid(Workspace.local.alias)
 
         model.sessionEnded(.local(session: "acme", path: "/Users/alice/dev/acme"))
 
         XCTAssertEqual(model.localSessions.map(\.handle), ["Operator"])
-        guard case let .stack(refs) = model.activePage else {
+        guard case let .sessionGrid(refs) = model.activePage else {
             return XCTFail("the stack closed entirely")
         }
         XCTAssertEqual(refs.map(\.name), ["Operator"])
     }
 
     @MainActor
-    func testTheLastSessionOfAStackClosesThePage() {
+    func testTheLastSessionOfASessionGridClosesThePage() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
-        model.stackSessions([SessionRef(alias: "acme-devmachine", name: "dash")])
+        model.showSessionGrid([SessionRef(alias: "acme-devmachine", name: "dash")])
 
         model.sessionEnded(.remote(alias: "acme-devmachine", session: "dash"))
 
@@ -1407,7 +1407,7 @@ final class AppModelTests: XCTestCase {
     func testMaximizingALocalCellOpensItAsALocalSession() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.addLocalSession(path: "/Users/alice/dev/acme")
-        model.stackWorkspace(Workspace.local.alias)
+        model.openSessionGrid(Workspace.local.alias)
 
         model.toggleMaximize()
 
@@ -1420,7 +1420,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testMaximizingARemoteCellKeepsItRemote() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
-        model.stackSessions([SessionRef(alias: "acme-devmachine", name: "dash")])
+        model.showSessionGrid([SessionRef(alias: "acme-devmachine", name: "dash")])
 
         model.toggleMaximize()
 
@@ -1441,14 +1441,14 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testMaximizingALocalSessionOpensTheLocalStack() {
+    func testMaximizingALocalSessionOpensTheLocalSessionGrid() {
         let model = AppModel(store: SessionStore(runner: BlockingRunner(output: "")))
         model.addLocalSession(path: "/Users/alice/dev/acme")
         model.selection = .localSession(name: "acme", path: "/Users/alice/dev/acme")
 
         model.toggleMaximize()
 
-        guard case let .stack(refs) = model.activePage else {
+        guard case let .sessionGrid(refs) = model.activePage else {
             return XCTFail("the local workspace did not open as a stack")
         }
         XCTAssertEqual(refs.map(\.alias), [Workspace.local.alias, Workspace.local.alias])

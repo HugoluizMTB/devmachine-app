@@ -336,7 +336,7 @@ private struct PageHost: View {
         // `DemoSnapshots.subdomainsInitialTab` only ever differs from `.sites`
         // while the website's screenshot walk owns the window.
         case .subdomains: SubdomainsView(initialTab: DemoSnapshots.subdomainsInitialTab)
-        case .stack(let refs): StackGridView(refs: refs).ignoresSafeArea(edges: .top)
+        case .sessionGrid(let refs): SessionGridView(refs: refs).ignoresSafeArea(edges: .top)
         case .addMachine: AddMachinePage()
         case let .operatorChooser(harnesses, last): OperatorChooserPage(harnesses: harnesses, last: last)
         }
@@ -352,9 +352,9 @@ private struct MainPane: View {
 
             // Only the selected terminal is mounted: the registry owns the process,
             // so an unmounted one keeps running and re-attaches on the next select.
-            // A stacked session is mounted by the grid instead — mounting it here as
+            // A session in the session grid is mounted by the grid instead — mounting it here as
             // well would pull the shared view out of its grid cell.
-            if let selected = model.selection, !isStacked(selected) {
+            if let selected = model.selection, !isInSessionGrid(selected) {
                 terminal(for: selected)
             }
             if MainPaneVisibility.showsHome(
@@ -365,9 +365,9 @@ private struct MainPane: View {
         }
     }
 
-    private func isStacked(_ item: SidebarItem) -> Bool {
+    private func isInSessionGrid(_ item: SidebarItem) -> Bool {
         guard case let .session(alias, name) = item else { return false }
-        return model.isStacked(SessionRef(alias: alias, name: name))
+        return model.isInSessionGrid(SessionRef(alias: alias, name: name))
     }
 
     @ViewBuilder

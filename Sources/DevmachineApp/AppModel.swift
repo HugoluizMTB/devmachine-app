@@ -574,8 +574,8 @@ final class AppModel: ObservableObject {
     /// least one configured machine has Caddy. Starts `true` so the icon does
     /// not flash away before the first check answers.
     @Published private(set) var hasCaddyMachine = true
-    @Published var stackCellSizes: [String: StackCellSize] = AppModel.loadStackCellSizes() {
-        didSet { AppModel.saveStackCellSizes(stackCellSizes) }
+    @Published var sessionGridCellSizes: [String: SessionGridCellSize] = AppModel.loadSessionGridCellSizes() {
+        didSet { AppModel.saveSessionGridCellSizes(sessionGridCellSizes) }
     }
     @Published var pendingNewSessionAlias: String? = nil
     @Published var showNewSessionChooser = false
@@ -779,7 +779,7 @@ final class AppModel: ObservableObject {
     }
 
     /// A session that ended (`exit`) leaves no pane behind: the row goes, the
-    /// stack closes over the gap, and the selection moves off it.
+    /// session grid closes over the gap, and the selection moves off it.
     func sessionEnded(_ kind: TerminalKind) {
         switch kind {
         case let .local(handle, path):
@@ -800,9 +800,9 @@ final class AppModel: ObservableObject {
     }
 
     private func drop(_ ref: SessionRef, item: SidebarItem) {
-        if case let .stack(refs) = activePage, refs.contains(ref) {
+        if case let .sessionGrid(refs) = activePage, refs.contains(ref) {
             let left = refs.filter { $0 != ref }
-            activePage = left.isEmpty ? nil : .stack(left)
+            activePage = left.isEmpty ? nil : .sessionGrid(left)
         }
         selectedSessions.remove(ref)
         if selectionAnchor == ref { selectionAnchor = nil }
@@ -878,8 +878,8 @@ final class AppModel: ObservableObject {
         let renaming = renamesInFlight.keys.filter { $0.alias == alias }.map(\.name)
         updateSidebarOrder { $0.keepSessions(names.union(renaming), in: alias) }
         var refs: [SessionRef] = []
-        if case let .stack(stacked) = activePage {
-            refs += stacked.filter { $0.alias == alias && !names.contains($0.name) }
+        if case let .sessionGrid(inGrid) = activePage {
+            refs += inGrid.filter { $0.alias == alias && !names.contains($0.name) }
         }
         if case let .session(selectedAlias, name) = selection,
            selectedAlias == alias, !names.contains(name) {
@@ -964,7 +964,7 @@ final class AppModel: ObservableObject {
         let item: SidebarItem?
         if activePage == nil {
             item = selection
-        } else if case let .stack(refs) = activePage,
+        } else if case let .sessionGrid(refs) = activePage,
                   let ref = focusedRef.flatMap({ refs.contains($0) ? $0 : nil }) ?? refs.first {
             item = sidebarItem(for: ref)
         } else {
@@ -1046,17 +1046,17 @@ final class AppModel: ObservableObject {
         activePage = page
     }
 
-    func stackSessions(_ refs: [SessionRef]) {
+    func showSessionGrid(_ refs: [SessionRef]) {
         guard let first = refs.first else { return }
-        activePage = .stack(refs)
+        activePage = .sessionGrid(refs)
         TerminalRegistry.shared.requestFocus(.remote(alias: first.alias, session: first.name))
     }
 
-    func stackWorkspace(_ alias: String) {
+    func openSessionGrid(_ alias: String) {
         let refs = alias == Workspace.local.alias
             ? localSessions.map { SessionRef(alias: alias, name: $0.handle) }
             : sessions(in: alias).map { SessionRef(alias: alias, name: $0.name) }
-        stackSessions(refs)
+        showSessionGrid(refs)
     }
 
     /// Which terminal a reference stands for. The local workspace is the one
@@ -1076,33 +1076,33 @@ final class AppModel: ObservableObject {
         return localSessions.first { $0.handle == ref.name }?.name ?? ref.name
     }
 
-    func isStacked(_ ref: SessionRef) -> Bool {
-        if case let .stack(refs) = activePage { return refs.contains(ref) }
+    func isInSessionGrid(_ ref: SessionRef) -> Bool {
+        if case let .sessionGrid(refs) = activePage { return refs.contains(ref) }
         return false
     }
 
-    func isWorkspaceStacked(_ alias: String) -> Bool {
-        guard case let .stack(refs) = activePage, !refs.isEmpty else { return false }
+    func isWorkspaceInSessionGrid(_ alias: String) -> Bool {
+        guard case let .sessionGrid(refs) = activePage, !refs.isEmpty else { return false }
         return refs.allSatisfy { $0.alias == alias }
     }
 
-    func stackCellSize(_ ref: SessionRef) -> StackCellSize {
-        stackCellSizes[Self.stackCellKey(ref)] ?? .auto
+    func sessionGridCellSize(_ ref: SessionRef) -> SessionGridCellSize {
+        sessionGridCellSizes[Self.sessionGridCellKey(ref)] ?? .auto
     }
 
-    func cycleStackCellSize(_ ref: SessionRef) {
-        let key = Self.stackCellKey(ref)
-        stackCellSizes[key] = stackCellSize(ref).next
+    func cycleSessionGridCellSize(_ ref: SessionRef) {
+        let key = Self.sessionGridCellKey(ref)
+        sessionGridCellSizes[key] = sessionGridCellSize(ref).next
     }
 
-    func moveStackCell(_ ref: SessionRef, by delta: Int) {
-        guard case let .stack(refs) = activePage,
+    func moveSessionGridCell(_ ref: SessionRef, by delta: Int) {
+        guard case let .sessionGrid(refs) = activePage,
               let index = refs.firstIndex(of: ref) else { return }
         let target = index + delta
         guard refs.indices.contains(target) else { return }
         var newRefs = refs
         newRefs.swapAt(index, target)
-        activePage = .stack(newRefs)
+        activePage = .sessionGrid(newRefs)
     }
 
     // ⌘⇧↩ — like maximizing/restoring a pane: grid cell → that session alone;
@@ -1113,7 +1113,7 @@ final class AppModel: ObservableObject {
             paneVisible: activePage == nil && !PreviewStore.shared.tabs.isEmpty) {
             return
         }
-        if case let .stack(refs) = activePage {
+        if case let .sessionGrid(refs) = activePage {
             guard let ref = FocusedTerminal.ref().flatMap({ refs.contains($0) ? $0 : nil })
                 ?? refs.first else { return }
             // A local reference is not a remote one: opening it as `.session`
@@ -1129,9 +1129,9 @@ final class AppModel: ObservableObject {
             }
             selection = item
         } else if case let .session(alias, _) = selection {
-            stackWorkspace(alias)
+            openSessionGrid(alias)
         } else if case .localSession = selection {
-            stackWorkspace(Workspace.local.alias)
+            openSessionGrid(Workspace.local.alias)
         }
     }
 
@@ -1146,17 +1146,17 @@ final class AppModel: ObservableObject {
         return .localSession(name: ref.name, path: path)
     }
 
-    private static func stackCellKey(_ ref: SessionRef) -> String {
+    private static func sessionGridCellKey(_ ref: SessionRef) -> String {
         "\(ref.alias)/\(ref.name)"
     }
 
-    private static func loadStackCellSizes() -> [String: StackCellSize] {
+    private static func loadSessionGridCellSizes() -> [String: SessionGridCellSize] {
         guard let data = UserDefaults.standard.data(forKey: "stackCellSizes"),
               let raw = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
-        return raw.compactMapValues { StackCellSize(rawValue: $0) }
+        return raw.compactMapValues { SessionGridCellSize(rawValue: $0) }
     }
 
-    private static func saveStackCellSizes(_ sizes: [String: StackCellSize]) {
+    private static func saveSessionGridCellSizes(_ sizes: [String: SessionGridCellSize]) {
         let raw = sizes.mapValues(\.rawValue)
         guard let data = try? JSONEncoder().encode(raw) else { return }
         UserDefaults.standard.set(data, forKey: "stackCellSizes")
@@ -1241,9 +1241,9 @@ final class AppModel: ObservableObject {
             return .home
         case let .session(item):
             return sessionNavigationItems.contains(item) ? destination : nil
-        case let .page(.stack(refs)):
+        case let .page(.sessionGrid(refs)):
             let available = refs.filter { sessionNavigationItems.contains(sidebarItem(for: $0)) }
-            return available.isEmpty ? nil : .page(.stack(available))
+            return available.isEmpty ? nil : .page(.sessionGrid(available))
         case .page:
             return destination
         }
@@ -1505,12 +1505,12 @@ final class AppModel: ObservableObject {
     }
 
     /// The terminal a command such as "Send file" acts on: the selected
-    /// session, or the focused cell of a stack.
+    /// session, or the focused cell of a session grid.
     var currentTerminalKind: TerminalKind? {
         switch activePage {
         case nil:
             return selection?.terminalKind
-        case let .stack(refs):
+        case let .sessionGrid(refs):
             let ref = FocusedTerminal.ref().flatMap { refs.contains($0) ? $0 : nil } ?? refs.first
             return ref.map { sidebarItem(for: $0).terminalKind }
         default:

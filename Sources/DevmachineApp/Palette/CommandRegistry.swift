@@ -151,7 +151,7 @@ enum CommandRegistry {
                     systemImage: "arrow.up.left.and.arrow.down.right", shortcut: "⇧⌘↩",
                     keywords: ["grid", "stack", "zoom"], action: .maximizePane),
                 isAvailable: { context in
-                    if case .stack = context.activePage { return true }
+                    if case .sessionGrid = context.activePage { return true }
                     return context.currentTerminal != nil
                 }),
             Entry(command: PaletteCommand(
@@ -231,7 +231,7 @@ enum CommandRegistry {
         commands.append(PaletteCommand(
             id: "\(prefix).home", title: "Open workspace home", subtitle: workspace.name,
             category: .workspace, systemImage: "rectangle.grid.2x2",
-            keywords: keywords + ["grid", "stack", "all sessions"], action: .workspaceHome(alias: alias)))
+            keywords: keywords + ["grid", "stack", "all sessions"], action: .openSessionGrid(alias: alias)))
         if workspace.isLocal {
             commands += context.localSessions.map { session in
                 PaletteCommand(

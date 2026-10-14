@@ -61,7 +61,7 @@ enum DemoData {
     // MARK: Terminal transcripts
 
     // Lines are kept short (well under 45 columns) and few (at most 24): a
-    // stacked grid cell is narrow and short, and a terminal wraps mid-word and
+    // session grid cell is narrow and short, and a terminal wraps mid-word and
     // scrolls its first lines away — a transcript that reads fine alone
     // breaks once four panes share a window.
     private static let claudeTranscript = """

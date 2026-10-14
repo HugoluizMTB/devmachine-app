@@ -1,9 +1,9 @@
 import SwiftUI
 
 enum FloatingCardLayout {
-    /// Space between a card and the pane edge (single session and stack grid).
+    /// Space between a card and the pane edge (single session and session grid).
     static let margin: CGFloat = 8
-    /// Space between two cards in a stack grid.
+    /// Space between two cards in a session grid.
     static let gap: CGFloat = 8
 }
 

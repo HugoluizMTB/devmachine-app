@@ -1,7 +1,7 @@
 import XCTest
 @testable import DevmachineCore
 
-final class StackGridTests: XCTestCase {
+final class SessionGridTests: XCTestCase {
     func testDimsForKnownCounts() {
         let cases: [(Int, Int, Int)] = [
             (1, 1, 1),
@@ -13,27 +13,27 @@ final class StackGridTests: XCTestCase {
             (9, 3, 3)
         ]
         for (n, cols, rows) in cases {
-            let dims = StackGrid.dims(n)
+            let dims = SessionGrid.dims(n)
             XCTAssertEqual(dims.cols, cols, "cols for n=\(n)")
             XCTAssertEqual(dims.rows, rows, "rows for n=\(n)")
         }
     }
 
     func testNextCyclesAutoHalfFull() {
-        XCTAssertEqual(StackCellSize.auto.next, .half)
-        XCTAssertEqual(StackCellSize.half.next, .full)
-        XCTAssertEqual(StackCellSize.full.next, .auto)
+        XCTAssertEqual(SessionGridCellSize.auto.next, .half)
+        XCTAssertEqual(SessionGridCellSize.half.next, .full)
+        XCTAssertEqual(SessionGridCellSize.full.next, .auto)
     }
 
     func testLayoutTwoAutosSplitRowEvenly() {
-        let rects = StackGrid.layout([.auto, .auto])
+        let rects = SessionGrid.layout([.auto, .auto])
         XCTAssertEqual(rects.count, 2)
         assertRect(rects[0], index: 0, x: 0, y: 0, w: 0.5, h: 1.0)
         assertRect(rects[1], index: 1, x: 0.5, y: 0, w: 0.5, h: 1.0)
     }
 
     func testLayoutThreeAutosLoneCellFillsLastRow() {
-        let rects = StackGrid.layout([.auto, .auto, .auto])
+        let rects = SessionGrid.layout([.auto, .auto, .auto])
         XCTAssertEqual(rects.count, 3)
         assertRect(rects[0], index: 0, x: 0, y: 0, w: 0.5, h: 0.5)
         assertRect(rects[1], index: 1, x: 0.5, y: 0, w: 0.5, h: 0.5)
@@ -41,7 +41,7 @@ final class StackGridTests: XCTestCase {
     }
 
     func testLayoutFourAutosMakesTwoByTwo() {
-        let rects = StackGrid.layout([.auto, .auto, .auto, .auto])
+        let rects = SessionGrid.layout([.auto, .auto, .auto, .auto])
         XCTAssertEqual(rects.count, 4)
         assertRect(rects[0], index: 0, x: 0, y: 0, w: 0.5, h: 0.5)
         assertRect(rects[1], index: 1, x: 0.5, y: 0, w: 0.5, h: 0.5)
@@ -50,7 +50,7 @@ final class StackGridTests: XCTestCase {
     }
 
     func testLayoutFiveAutosThreeColsSecondRowStretches() {
-        let rects = StackGrid.layout(Array(repeating: .auto, count: 5))
+        let rects = SessionGrid.layout(Array(repeating: .auto, count: 5))
         XCTAssertEqual(rects.count, 5)
         let third = 1.0 / 3.0
         assertRect(rects[0], index: 0, x: 0, y: 0, w: third, h: 0.5)
@@ -61,7 +61,7 @@ final class StackGridTests: XCTestCase {
     }
 
     func testLayoutFullTakesOwnRow() {
-        let rects = StackGrid.layout([.full, .auto, .auto])
+        let rects = SessionGrid.layout([.full, .auto, .auto])
         XCTAssertEqual(rects.count, 3)
         assertRect(rects[0], index: 0, x: 0, y: 0, w: 1.0, h: 0.5)
         assertRect(rects[1], index: 1, x: 0, y: 0.5, w: 0.5, h: 0.5)
@@ -69,7 +69,7 @@ final class StackGridTests: XCTestCase {
     }
 
     func testLayoutLoneHalfStaysHalfWidth() {
-        let rects = StackGrid.layout([.half, .half, .half])
+        let rects = SessionGrid.layout([.half, .half, .half])
         XCTAssertEqual(rects.count, 3)
         assertRect(rects[0], index: 0, x: 0, y: 0, w: 0.5, h: 0.5)
         assertRect(rects[1], index: 1, x: 0.5, y: 0, w: 0.5, h: 0.5)
@@ -77,7 +77,7 @@ final class StackGridTests: XCTestCase {
     }
 
     private func assertRect(
-        _ rect: StackCellRect,
+        _ rect: SessionGridCellRect,
         index: Int,
         x: Double,
         y: Double,

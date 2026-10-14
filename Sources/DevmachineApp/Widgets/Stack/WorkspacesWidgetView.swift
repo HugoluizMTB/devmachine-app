@@ -174,11 +174,11 @@ struct WorkspacesWidgetView: View {
             },
             trailing: {
                 DMIconButton(
-                    systemImage: model.isWorkspaceStacked(alias) ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2",
+                    systemImage: model.isWorkspaceInSessionGrid(alias) ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2",
                     size: 11,
-                    tint: model.isWorkspaceStacked(alias) ? Color.accentColor : Color.dmMuted,
+                    tint: model.isWorkspaceInSessionGrid(alias) ? Color.accentColor : Color.dmMuted,
                     hitSize: DMHitSize.header
-                ) { model.stackWorkspace(alias) }
+                ) { model.openSessionGrid(alias) }
                 .help("Workspace home")
 
                 if filesButton {
@@ -194,7 +194,7 @@ struct WorkspacesWidgetView: View {
             }
         )
         .contextMenu {
-            Button("Open workspace home") { model.stackWorkspace(alias) }
+            Button("Open workspace home") { model.openSessionGrid(alias) }
             Button("Files…") { openFiles(alias: alias) }
             if alias != Workspace.local.alias, model.hasCaddyMachine {
                 Button("Publish a port…") {
@@ -299,8 +299,8 @@ struct WorkspacesWidgetView: View {
 
     private func sessionRow(alias: String, session s: TmuxSession) -> some View {
         let ref = SessionRef(alias: alias, name: s.name)
-        // A page (stats/subdomains/stack) covers the terminal, so the old
-        // selection is not "where you are" — only stacked sessions are.
+        // A page (stats/subdomains/session grid) covers the terminal, so the old
+        // selection is not "where you are" — only sessions in the session grid are.
         let isOpen = model.activePage == nil && model.selection == .session(alias: alias, name: s.name)
         let isMultiSelected = model.selectedSessions.contains(ref)
         let shared = shares.liveShare(alias: alias, session: s.name)
@@ -308,7 +308,7 @@ struct WorkspacesWidgetView: View {
             title: s.name,
             badges: model.badges(for: s),
             windows: s.windows,
-            selected: isOpen || isMultiSelected || model.isStacked(ref),
+            selected: isOpen || isMultiSelected || model.isInSessionGrid(ref),
             shared: shared,
             indicators: s.indicators
         )
@@ -327,7 +327,7 @@ struct WorkspacesWidgetView: View {
         .contextMenu {
             if model.selectedSessions.count > 1 && model.selectedSessions.contains(ref) {
                 Button("Stack to Home") {
-                    model.stackSessions(Array(model.selectedSessions))
+                    model.showSessionGrid(Array(model.selectedSessions))
                 }
                 Button("Delete \(model.selectedSessions.count) sessions", role: .destructive) {
                     model.pendingBulkDelete = Array(model.selectedSessions)
