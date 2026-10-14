@@ -1717,6 +1717,88 @@ final class AppModelTests: XCTestCase {
         try await waitUntil { !model.isSweeping }
     }
 
+    private final class WarmRecorder {
+        var started: [AutoConnectTarget] = []
+        var done: [AutoConnectTarget: (Bool) -> Void] = [:]
+    }
+
+    private func autoConnectModel(
+        _ source: SweepRecordingSource, autoConnect: [String], hidden: [String] = [], room: Int = 24
+    ) -> (AppModel, WarmRecorder) {
+        let model = sweepModel(source)
+        model.settings = AppSettings(
+            opsRepoPath: "/tmp", hostAlias: "devmachine", publicIP: "203.0.113.10", baseDomain: "example.com",
+            hiddenWorkspaces: hidden, autoConnectWorkspaces: autoConnect)
+        let recorder = WarmRecorder()
+        model.autoConnectStart = { target, done in
+            recorder.started.append(target)
+            recorder.done[target] = done
+        }
+        model.autoConnectTerminals = { (open: Set(recorder.started), room: room - recorder.started.count) }
+        return (model, recorder)
+    }
+
+    func testASuccessfulListConnectsTheSessionsOfAnAutoConnectWorkspaceOneAtATime() async throws {
+        let source = SweepRecordingSource(asksAllAtOnce: true)
+        let (model, recorder) = autoConnectModel(source, autoConnect: [acme.alias, beta.alias])
+
+        try await sweep(model)
+
+        let acmeDash = AutoConnectTarget(alias: acme.alias, session: "dash")
+        let betaDash = AutoConnectTarget(alias: beta.alias, session: "dash")
+        XCTAssertEqual(recorder.started, [acmeDash], "one connect in flight")
+        recorder.done[acmeDash]?(true)
+        XCTAssertEqual(recorder.started, [acmeDash, betaDash])
+    }
+
+    func testAutoConnectIsOffByDefaultAndNeverReachesAHiddenWorkspace() async throws {
+        let (off, offRecorder) = autoConnectModel(SweepRecordingSource(asksAllAtOnce: true), autoConnect: [])
+        try await sweep(off)
+        XCTAssertEqual(offRecorder.started, [])
+
+        let (hidden, hiddenRecorder) = autoConnectModel(
+            SweepRecordingSource(asksAllAtOnce: true), autoConnect: [beta.alias], hidden: [beta.alias])
+        try await sweep(hidden)
+        XCTAssertEqual(hiddenRecorder.started, [])
+    }
+
+    func testARefusedLoginPausesTheWorkspaceAndItsQueuedSessionsAreDropped() async throws {
+        let (model, recorder) = autoConnectModel(
+            SweepRecordingSource(asksAllAtOnce: true), autoConnect: [acme.alias, beta.alias])
+        try await sweep(model)
+        let acmeDash = AutoConnectTarget(alias: acme.alias, session: "dash")
+
+        model.noteSSHFailure(alias: beta.alias, .authDenied)
+        recorder.done[acmeDash]?(false)
+
+        XCTAssertEqual(recorder.started, [acmeDash])
+    }
+
+    func testAutoConnectNeverGoesOverTheTerminalsKeptOpen() async throws {
+        let (model, recorder) = autoConnectModel(
+            SweepRecordingSource(asksAllAtOnce: true), autoConnect: [acme.alias, beta.alias], room: 1)
+        try await sweep(model)
+        recorder.done[AutoConnectTarget(alias: acme.alias, session: "dash")]?(true)
+        XCTAssertEqual(recorder.started.count, 1)
+    }
+
+    func testTurningAutoConnectOnConnectsTheSessionsAlreadyListed() async throws {
+        let (model, recorder) = autoConnectModel(SweepRecordingSource(asksAllAtOnce: true), autoConnect: [])
+        try await sweep(model)
+        let defaults = UserDefaults(suiteName: "\(#function)-\(UUID().uuidString)")!
+        let store = SettingsStore(defaults: defaults)
+        store.settings = model.settings
+
+        model.setAutoConnect(workspace: "acme", on: true, in: store)
+
+        XCTAssertEqual(store.settings?.autoConnectWorkspaces, [acme.alias])
+        XCTAssertTrue(model.autoConnects(workspace: "acme"))
+        XCTAssertEqual(recorder.started, [AutoConnectTarget(alias: acme.alias, session: "dash")])
+
+        model.setAutoConnect(workspace: "acme", on: false, in: store)
+        XCTAssertEqual(store.settings?.autoConnectWorkspaces, [])
+    }
+
     func testSweepAsksAllWorkspacesInOneCall() async throws {
         let source = SweepRecordingSource(asksAllAtOnce: true)
         let model = sweepModel(source)

@@ -112,8 +112,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// appears on its own, which is what you want from a machine that gains
     /// contexts over time.
     public var hiddenWorkspaces: [String]
-    /// Workspaces, by ssh alias, whose sessions connect in the background at
-    /// startup, so opening one is instant. Off for every workspace by default.
     public var autoConnectWorkspaces: [String]
     /// Workspace name → its ssh `Host` alias, as `devmachine aliases` reports
     /// it. Refreshed from the CLI on every launch and workspace load; a

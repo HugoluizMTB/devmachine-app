@@ -757,7 +757,6 @@ private struct WorkspaceSyncToggle: View {
     }
 }
 
-/// An app setting on this Mac, saved with the Edit but never sent to the CLI.
 private struct WorkspaceAutoConnectToggle: View {
     @Environment(\.dmMetrics) private var m
     @Binding var autoConnect: Bool

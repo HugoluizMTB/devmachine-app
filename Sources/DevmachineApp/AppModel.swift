@@ -1400,8 +1400,6 @@ final class AppModel: ObservableObject {
         return (settings?.autoConnectWorkspaces ?? []).contains { $0.lowercased() == alias.lowercased() }
     }
 
-    /// Turning it off closes nothing: the terminals already open age out
-    /// like any other kept terminal.
     func setAutoConnect(workspace name: String, on: Bool, in store: SettingsStore = .shared) {
         let alias = alias(forWorkspace: name)
         guard var current = store.settings else { return }
@@ -1410,6 +1408,52 @@ final class AppModel: ObservableObject {
         current.autoConnectWorkspaces = next
         store.settings = current
         settings?.autoConnectWorkspaces = next
+        if on { autoConnect(aliases: [alias]) }
+    }
+
+    var autoConnectStart: AutoConnectWarmer<AutoConnectTarget>.Start = { target, done in
+        TerminalRegistry.shared.warm(.remote(alias: target.alias, session: target.session), settled: done)
+    }
+
+    var autoConnectTerminals: () -> (open: Set<AutoConnectTarget>, room: Int) = {
+        TerminalRegistry.shared.autoConnectState()
+    }
+
+    private var autoConnectWarmerStorage: AutoConnectWarmer<AutoConnectTarget>?
+
+    private var autoConnectWarmer: AutoConnectWarmer<AutoConnectTarget> {
+        if let warmer = autoConnectWarmerStorage { return warmer }
+        let warmer = AutoConnectWarmer<AutoConnectTarget>(
+            timeout: 15,
+            start: { [unowned self] target, done in self.autoConnectStart(target, done) },
+            isWanted: { [unowned self] in self.autoConnectQueue().isWanted($0) },
+            hasRoom: { [unowned self] in self.autoConnectTerminals().room > 0 },
+            schedule: { delay, fire in
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(delay))
+                    fire()
+                }
+            })
+        autoConnectWarmerStorage = warmer
+        return warmer
+    }
+
+    private func autoConnectQueue() -> AutoConnectQueue {
+        let blocked = workspaces.map(\.alias).filter { alias in
+            isPollingPaused(alias: alias) || sessionProblems[alias]?.isHostKeyRejected == true
+                || sessionProblems[alias]?.isAwaitingSync == true
+        }
+        return AutoConnectQueue(
+            autoConnect: settings?.autoConnectWorkspaces ?? [], hidden: settings?.hiddenWorkspaces ?? [],
+            blocked: Set(blocked), open: autoConnectTerminals().open)
+    }
+
+    private func autoConnect(aliases: [String]) {
+        guard !DemoMode.isActive, !(settings?.autoConnectWorkspaces ?? []).isEmpty else { return }
+        let targets = autoConnectQueue().targets(
+            sessions: aliases.map { ($0, sessions(in: $0).map(\.name)) },
+            queued: autoConnectWarmer.queued, room: autoConnectTerminals().room)
+        autoConnectWarmer.enqueue(targets)
     }
 
     /// The wizard opened from Settings → Machines goes back there, so Settings
@@ -2160,6 +2204,7 @@ final class AppModel: ObservableObject {
             if sessionProblems[alias] != nil { sessionProblems[alias] = nil }
             if let machine = machine(forAlias: alias) { clearMachinePauses(onMachine: machine) }
             syncContext()
+            autoConnect(aliases: [alias])
         case .failure(let error):
             let failure = (error as? SessionStoreError)?.failure
             // A refused login on a workspace that never logged in is its

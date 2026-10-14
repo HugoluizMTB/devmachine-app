@@ -35,6 +35,8 @@ final class TerminalRegistry: NSObject {
     /// The connection being set up for each remote pane. A late answer from
     /// an attempt that is no longer this one is dropped.
     private var remoteLaunches: [TerminalKind: RemoteLaunch] = [:]
+    private var warmHosts: [TerminalKind: NSWindow] = [:]
+    private var warmSettled: [TerminalKind: (Bool) -> Void] = [:]
     nonisolated static let resolveSupport = ResolveSupport()
 
     private struct RemoteLaunch {
@@ -215,9 +217,17 @@ final class TerminalRegistry: NSObject {
     func terminal(for kind: TerminalKind) -> LocalProcessTerminalView {
         detachedAt[kind] = nil
         if let live = terminals[kind] {
+            releaseWarmHost(kind)
             reviveIfDead(kind, view: live)
             return live
         }
+        let term = makeTerminal(kind)
+        awaitingSize.insert(kind)
+        terminals[kind] = term
+        return term
+    }
+
+    private func makeTerminal(_ kind: TerminalKind) -> LegacyKeyboardTerminalView {
         let term = LegacyKeyboardTerminalView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         term.processDelegate = self
         term.optionAsMetaKey = false
@@ -232,9 +242,97 @@ final class TerminalRegistry: NSObject {
         // is left to match.
         term.linkReporting = .implicit
         term.setAccessibilityHelp(Self.dropHint(for: kind))
-        awaitingSize.insert(kind)
-        terminals[kind] = term
         return term
+    }
+
+    func autoConnectState() -> (open: Set<AutoConnectTarget>, room: Int) {
+        let open = Set(terminals.keys.compactMap { kind -> AutoConnectTarget? in
+            guard case let .remote(alias, session) = kind else { return nil }
+            return AutoConnectTarget(alias: alias, session: session)
+        })
+        return (open, Self.detachedLimit - terminals.count)
+    }
+
+    func warm(_ kind: TerminalKind, settled: @escaping (Bool) -> Void) {
+        guard !DemoMode.isActive, terminals[kind] == nil, case .remote = kind else {
+            settled(false)
+            return
+        }
+        let term = makeTerminal(kind)
+        let host = Self.offScreenWindow()
+        guard let content = host.contentView else {
+            settled(false)
+            return
+        }
+        content.addSubview(term)
+        TerminalPaneView.applyAppearance(to: term, container: content, translucent: false)
+        let size = Self.lastPaneSize() ?? Self.defaultPaneSize(of: term)
+        host.setContentSize(size)
+        term.frame = NSRect(origin: .zero, size: size)
+        terminals[kind] = term
+        warmHosts[kind] = host
+        warmSettled[kind] = settled
+        reattached.insert(kind)
+        detachedAt[kind] = Date()
+        PaneLog.log("warm pane=\(kind) frame=\(Int(size.width))x\(Int(size.height))")
+        start(kind, in: term)
+    }
+
+    // The terminal must start at its real size: a program draws for the size
+    // it is told at startup, so a warm terminal needs a window of that size.
+    static func offScreenWindow() -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: -20_000, y: -20_000, width: 800, height: 600),
+            styleMask: [.borderless], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        window.alphaValue = 0
+        window.ignoresMouseEvents = true
+        window.isExcludedFromWindowsMenu = true
+        window.hasShadow = false
+        window.collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary]
+        return window
+    }
+
+    private func releaseWarmHost(_ kind: TerminalKind) {
+        guard let host = warmHosts.removeValue(forKey: kind) else { return }
+        terminals[kind]?.removeFromSuperview()
+        host.close()
+    }
+
+    private func settleWarm(_ kind: TerminalKind, running: Bool) {
+        guard let settled = warmSettled.removeValue(forKey: kind) else { return }
+        PaneLog.log("warm \(running ? "running" : "failed") pane=\(kind)")
+        settled(running)
+    }
+
+    /// The first bytes from the program: for mosh its login is already done,
+    /// for ssh the login just passed.
+    func processDidSpeak(_ view: LegacyKeyboardTerminalView) {
+        guard !warmSettled.isEmpty, let kind = view.kind, terminals[kind] === view else { return }
+        settleWarm(kind, running: true)
+    }
+
+    private static let lastPaneSizeKey = "lastTerminalPaneSize"
+
+    private static func lastPaneSize() -> NSSize? {
+        guard let text = UserDefaults.standard.string(forKey: lastPaneSizeKey) else { return nil }
+        let size = NSSizeFromString(text)
+        return size.width > 0 && size.height > 0 ? size : nil
+    }
+
+    private static func rememberPaneSize(of term: LocalProcessTerminalView) {
+        let grid = term.getWindowSize()
+        guard TerminalSizeGuard.isUsable(cols: Int(grid.ws_col), rows: Int(grid.ws_row)) else { return }
+        UserDefaults.standard.set(NSStringFromSize(term.frame.size), forKey: lastPaneSizeKey)
+    }
+
+    static func defaultPaneSize(of term: LocalProcessTerminalView) -> NSSize {
+        let grid = term.getWindowSize()
+        let optimal = term.getOptimalFrameSize()
+        guard grid.ws_col > 0, grid.ws_row > 0 else { return NSSize(width: 1000, height: 640) }
+        return NSSize(
+            width: optimal.width / CGFloat(grid.ws_col) * 120,
+            height: optimal.height / CGFloat(grid.ws_row) * 36)
     }
 
     /// No SwiftUI pane shows this terminal any more. It keeps running, and the
@@ -285,6 +383,7 @@ final class TerminalRegistry: NSObject {
     /// is when a process may begin: it then learns the real number of rows and
     /// columns from its first breath.
     func viewDidSize(_ kind: TerminalKind) {
+        if let term = terminals[kind], warmHosts[kind] == nil { Self.rememberPaneSize(of: term) }
         if awaitingSize.remove(kind) != nil, let term = terminals[kind] {
             start(kind, in: term)
             return
@@ -373,7 +472,7 @@ final class TerminalRegistry: NSObject {
         guard !DemoMode.isActive, !checkingCopyMode else { return }
         let context = copyModeContext ?? .live
         var panes: [(alias: String, session: String)] = []
-        for (kind, view) in terminals where view.window != nil && !dead.contains(kind) {
+        for (kind, view) in terminals where view.window != nil && warmHosts[kind] == nil && !dead.contains(kind) {
             guard case let .remote(alias, session) = kind else { continue }
             panes.append((alias, session))
         }
@@ -512,9 +611,11 @@ final class TerminalRegistry: NSObject {
         remoteLaunches[kind] = nil
         RemoteTransportStore.shared.forget(kind)
         if pendingFocusKind == kind { pendingFocusKind = nil }
+        settleWarm(kind, running: false)
         guard let term = terminals.removeValue(forKey: kind) else { return }
         term.terminate()
         term.removeFromSuperview()
+        warmHosts.removeValue(forKey: kind)?.close()
     }
 
     func close(alias: String, session: String) {
@@ -545,7 +646,9 @@ final class TerminalRegistry: NSObject {
         }
     }
 
+    /// The app is quitting: no background connection may start another.
     func closeAll() {
+        warmSettled.removeAll()
         for kind in Array(terminals.keys) { close(kind) }
     }
 
@@ -692,6 +795,7 @@ extension TerminalRegistry {
                 term.feed(text: "\u{1b}[2mLogin refused for \(alias). Paused checking it so the machine "
                     + "doesn't block this Mac's IP.\u{1b}[0m\r\n")
                 dead.insert(kind)
+                settleWarm(kind, running: false)
                 return
             }
             launch.strayServerPID = stray
@@ -834,6 +938,7 @@ extension TerminalRegistry: @preconcurrency LocalProcessTerminalViewDelegate {
         guard let kind = terminals.first(where: { $0.value === source })?.key else { return }
         PaneLog.log("process ended pane=\(kind) exit=\(exitCode.map(String.init) ?? "-")")
         if handleRemoteExit(kind, source: source, exitCode: exitCode) { return }
+        settleWarm(kind, running: false)
         dead.insert(kind)
         detachedAt[kind] = nil
         if case let .local(session, _) = kind {
@@ -906,6 +1011,11 @@ final class LegacyKeyboardTerminalView: SelectingTerminalView {
         let size = super.getWindowSize()
         PaneLog.log("window size cols=\(size.ws_col) rows=\(size.ws_row)")
         return size
+    }
+
+    override func dataReceived(slice: ArraySlice<UInt8>) {
+        super.dataReceived(slice: slice)
+        TerminalRegistry.shared.processDidSpeak(self)
     }
 
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {

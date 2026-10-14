@@ -1,6 +1,5 @@
 import Foundation
 
-/// One session of a workspace to connect in the background.
 public struct AutoConnectTarget: Hashable, Sendable {
     public let alias: String
     public let session: String
@@ -11,15 +10,10 @@ public struct AutoConnectTarget: Hashable, Sendable {
     }
 }
 
-/// Which sessions "Auto-connect on startup" reaches: those of the chosen
-/// workspaces that have no terminal yet, never a hidden workspace or one held
-/// back from automatic logins (paused, host key refused, waiting for sync).
 public struct AutoConnectQueue: Sendable {
     public var autoConnect: [String]
     public var hidden: [String]
-    /// Workspaces, by ssh alias, that no automatic login may reach now.
     public var blocked: Set<String>
-    /// Sessions that already have a terminal, connected or connecting.
     public var open: Set<AutoConnectTarget>
 
     public init(autoConnect: [String], hidden: [String], blocked: Set<String>, open: Set<AutoConnectTarget>) {
@@ -40,9 +34,6 @@ public struct AutoConnectQueue: Sendable {
         aliases.contains { $0.lowercased() == alias.lowercased() }
     }
 
-    /// The sessions to add behind `queued`, in the order given, so that the
-    /// queue never holds more than `room` sessions: the terminals that can
-    /// still be kept open without closing one.
     public func targets(
         sessions: [(alias: String, sessions: [String])], queued: [AutoConnectTarget], room: Int
     ) -> [AutoConnectTarget] {
@@ -62,9 +53,7 @@ public struct AutoConnectQueue: Sendable {
     }
 }
 
-/// Starts queued connections one at a time: the next waits until the one
-/// before it is running, failed, or took longer than `timeout`. Many logins
-/// at once are what a machine's ban counts.
+// Many logins at once are what a machine's ban counts, so one connects at a time.
 @MainActor
 public final class AutoConnectWarmer<Target: Hashable> {
     public typealias Start = (_ target: Target, _ done: @escaping (_ running: Bool) -> Void) -> Void

@@ -78,8 +78,6 @@ public struct WorkspaceFlow: Equatable, Sendable {
     public var sharing: [String: String] = [:]
     /// New and Edit end with `sync`, unless the person turns it off.
     public var sync = true
-    /// Edit: "Auto-connect on startup", an app setting on this Mac that no
-    /// CLI command carries.
     public var autoConnect = false
     public private(set) var savedAutoConnect = false
     /// Destroy: the name typed again.
