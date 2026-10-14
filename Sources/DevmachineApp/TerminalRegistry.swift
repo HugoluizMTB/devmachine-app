@@ -329,6 +329,9 @@ final class TerminalRegistry: NSObject {
     /// The auto-connect queue gave up waiting; a later answer changes nothing.
     func warmTimedOut(_ kind: TerminalKind) {
         settleWarm(kind, running: false, via: .timeout)
+        // A connect that never answered would be reused, still "Connecting…",
+        // when the session is opened; closing it makes that open start fresh.
+        if warmHosts[kind] != nil { close(kind) }
     }
 
     private static let lastPaneSizeKey = "lastTerminalPaneSize"
