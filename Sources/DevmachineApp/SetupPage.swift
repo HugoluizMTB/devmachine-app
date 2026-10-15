@@ -1103,7 +1103,7 @@ struct SetupPage: View {
 
     private func slider(
         title: String, value: Binding<Double>, range: ClosedRange<Double>,
-        step: Double = 0.01, reading: String
+        step: Double = 0.01, reading: String, onRelease: @escaping () -> Void = {}
     ) -> some View {
         VStack(alignment: .leading, spacing: m.space.xxs) {
             HStack {
@@ -1115,7 +1115,9 @@ struct SetupPage: View {
                     .font(.dm(11))
                     .foregroundStyle(.white.opacity(0.55))
             }
-            Slider(value: value, in: range, step: step)
+            Slider(value: value, in: range, step: step) { editing in
+                if !editing { onRelease() }
+            }
         }
     }
 
@@ -1123,15 +1125,13 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: m.pt(14)) {
             slider(
                 title: "App font size",
-                value: Binding(
-                    get: { form.uiFontScale },
-                    set: { [form, settingsStore] scale in
-                        form.uiFontScale = scale
-                        settingsStore.preview(uiFontScale: scale)
-                    }),
+                value: $form.uiFontScale,
                 range: Appearance.uiFontScaleRange,
                 step: 0.05,
-                reading: "\(Int((form.uiFontScale * 100).rounded()))%"
+                reading: "\(Int((form.uiFontScale * 100).rounded()))%",
+                // Resizing rebuilds the window, slider included; doing it mid-drag
+                // re-reads the held mouse at the new size and keeps growing.
+                onRelease: { [form, settingsStore] in settingsStore.preview(uiFontScale: form.uiFontScale) }
             )
             Text(verbatim: "Background")
                 .font(.dm(11, weight: .semibold))
