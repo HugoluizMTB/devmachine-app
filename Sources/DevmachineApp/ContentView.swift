@@ -325,13 +325,15 @@ struct ContentView: View {
 }
 
 private struct PageHost: View {
+    @EnvironmentObject var settingsStore: SettingsStore
     let page: AppPage
 
     var body: some View {
         switch page {
         // `DemoSnapshots.setupInitialSection` only ever differs from
         // `.general` while the website's screenshot walk owns the window.
-        case .setup: SetupPage(initialSection: DemoSnapshots.setupInitialSection)
+        case .setup:
+            SetupPage(form: settingsStore.settingsPageDraft(initialSection: DemoSnapshots.setupInitialSection))
         case .stats: StatsView()
         // `DemoSnapshots.subdomainsInitialTab` only ever differs from `.sites`
         // while the website's screenshot walk owns the window.

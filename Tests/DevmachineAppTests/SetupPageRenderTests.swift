@@ -24,7 +24,7 @@ final class SetupPageRenderTests: XCTestCase {
             Workspace(name: "acme", alias: "acme-devmachine"),
             Workspace(name: "globex", alias: "globex-devmachine"),
         ]
-        let view = SetupPage()
+        let view = SetupPage(form: SettingsPageDraft())
             .environmentObject(model)
             .environmentObject(SettingsStore.shared)
             .environment(

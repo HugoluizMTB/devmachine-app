@@ -94,40 +94,8 @@ struct SetupPage: View {
     @EnvironmentObject var savedCommands: RecentCommandStore
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @ObservedObject private var machinesStore = MachinesStore.shared
+    @ObservedObject private var form: SettingsPageDraft
 
-    @State private var opsRepoPath = ""
-    @State private var hostAlias = ""
-    @State private var publicIP = ""
-    @State private var baseDomain = ""
-    @State private var sshAgentSocket = ""
-    @State private var wallpaper = WallpaperChoice.bundled
-    @State private var themeID: String?
-    /// The last photo and gradient picked, so going to the map and back
-    /// returns to them instead of a default.
-    @State private var lastPhoto: WallpaperChoice?
-    @State private var lastGradient: WallpaperChoice?
-    @State private var terminalOpacity = Appearance.defaultTerminalOpacity
-    @State private var terminalFontSize = Appearance.defaultTerminalFontSize
-    @State private var uiFontScale = Appearance.defaultUIFontScale
-    @State private var keptTerminals = Appearance.defaultKeptTerminals
-    @State private var debugLogging = false
-    @State private var remoteTerminalMode = RemoteTerminalMode.automatic
-    @State private var copyOnSelect = true
-    @State private var showsHarnessIcons = false
-    @State private var showsBusySpinner = true
-    @State private var showsBranch = true
-    @State private var showsSessionAge = true
-    @State private var showsAttention = true
-    @State private var harnessIconStyle = HarnessIconStyle.color
-    @State private var linkOpening = LinkOpening.defaultBrowser
-    @State private var hiddenWorkspaces: [String] = []
-    @State private var enabledHarnesses = AppSettings.empty.enabledHarnesses
-    @State private var localSessionProgram = SessionLaunchChoice.terminal
-    @State private var remoteSessionProgram = SessionLaunchChoice.terminal
-    @State private var workspaceSessionPrograms: [String: SessionLaunchChoice] = [:]
-    @State private var operatorProgram: SessionLaunchChoice?
-    @State private var operatorSessionEnabled = true
-    @State private var harnessErrors: [HarnessID: String] = [:]
     @State private var confirmsHomeReset = false
     @State private var homeResetError: String?
     @State private var confirmsStackReset: String?
@@ -135,40 +103,37 @@ struct SetupPage: View {
     /// Bumped once the CLIs on this Mac were looked up again, to redraw
     /// what depends on them.
     @State private var cliAvailabilityRead = 0
-    /// Connection fields opened for typing. A field with a value shows it
-    /// read-only until "Edit": what the CLI reports is rarely changed.
-    @State private var editing: Set<SettingsIssue.Field> = []
 
     private var draft: AppSettings {
         AppSettings(
-            opsRepoPath: opsRepoPath.trimmingCharacters(in: .whitespaces),
-            hostAlias: hostAlias.trimmingCharacters(in: .whitespaces),
-            publicIP: publicIP.trimmingCharacters(in: .whitespaces),
-            baseDomain: baseDomain.trimmingCharacters(in: .whitespaces),
-            sshAgentSocket: sshAgentSocket.trimmingCharacters(in: .whitespaces),
-            wallpaper: wallpaper,
-            terminalOpacity: terminalOpacity,
-            terminalFontSize: terminalFontSize,
-            uiFontScale: uiFontScale,
-            keptTerminals: keptTerminals,
-            debugLogging: debugLogging,
-            remoteTerminalMode: remoteTerminalMode,
-            copyOnSelect: copyOnSelect,
-            showsHarnessIcons: showsHarnessIcons,
-            showsBusySpinner: showsBusySpinner,
-            showsBranch: showsBranch,
-            showsSessionAge: showsSessionAge,
-            showsAttention: showsAttention,
-            harnessIconStyle: harnessIconStyle,
-            hiddenWorkspaces: hiddenWorkspaces,
+            opsRepoPath: form.opsRepoPath.trimmingCharacters(in: .whitespaces),
+            hostAlias: form.hostAlias.trimmingCharacters(in: .whitespaces),
+            publicIP: form.publicIP.trimmingCharacters(in: .whitespaces),
+            baseDomain: form.baseDomain.trimmingCharacters(in: .whitespaces),
+            sshAgentSocket: form.sshAgentSocket.trimmingCharacters(in: .whitespaces),
+            wallpaper: form.wallpaper,
+            terminalOpacity: form.terminalOpacity,
+            terminalFontSize: form.terminalFontSize,
+            uiFontScale: form.uiFontScale,
+            keptTerminals: form.keptTerminals,
+            debugLogging: form.debugLogging,
+            remoteTerminalMode: form.remoteTerminalMode,
+            copyOnSelect: form.copyOnSelect,
+            showsHarnessIcons: form.showsHarnessIcons,
+            showsBusySpinner: form.showsBusySpinner,
+            showsBranch: form.showsBranch,
+            showsSessionAge: form.showsSessionAge,
+            showsAttention: form.showsAttention,
+            harnessIconStyle: form.harnessIconStyle,
+            hiddenWorkspaces: form.hiddenWorkspaces,
             autoConnectWorkspaces: settingsStore.settings?.autoConnectWorkspaces ?? [],
-            enabledHarnesses: enabledHarnesses,
-            localSessionProgram: localSessionProgram,
-            remoteSessionProgram: remoteSessionProgram,
-            workspaceSessionPrograms: workspaceSessionPrograms,
-            linkOpening: linkOpening,
-            operatorProgram: operatorProgram,
-            operatorSessionEnabled: operatorSessionEnabled
+            enabledHarnesses: form.enabledHarnesses,
+            localSessionProgram: form.localSessionProgram,
+            remoteSessionProgram: form.remoteSessionProgram,
+            workspaceSessionPrograms: form.workspaceSessionPrograms,
+            linkOpening: form.linkOpening,
+            operatorProgram: form.operatorProgram,
+            operatorSessionEnabled: form.operatorSessionEnabled
         )
     }
 
@@ -206,14 +171,10 @@ struct SetupPage: View {
 
     private var isFirstRun: Bool { !settingsStore.isConfigured }
 
-    @State private var section: SettingsSection
-    /// Set by "Packages on this machine" in Settings → Machines.
-    @State private var packagesPage: PackagesPageState?
-
-    /// `initialSection` only ever differs from `.general` for the
-    /// website's demo screenshots, which need to open straight onto Health.
-    init(initialSection: SettingsSection = .general) {
-        _section = State(initialValue: initialSection)
+    /// `form` comes from `SettingsStore.settingsPageDraft(initialSection:)`,
+    /// which outlives the window rebuild a font size preview makes.
+    init(form: SettingsPageDraft) {
+        self.form = form
     }
 
     /// A central page like any other, with the sidebar beside it: Settings →
@@ -223,7 +184,10 @@ struct SetupPage: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.dmContentBg)
             .onAppear {
-                load()
+                if !form.isLoaded {
+                    load()
+                    form.isLoaded = true
+                }
                 openRequestedSection()
             }
             .task {
@@ -237,19 +201,19 @@ struct SetupPage: View {
                 cliAvailabilityRead += 1
             }
             .onChange(of: model.requestedSettingsSection) { _, _ in openRequestedSection() }
-            .onChange(of: section) { _, next in if next != .packages { packagesPage = nil } }
+            .onChange(of: form.section) { _, next in if next != .packages { form.packagesPage = nil } }
     }
 
     private func openRequestedSection() {
         if let page = PackagesPageState.requested(
             machine: model.requestedPackagesMachine, workspace: model.requestedPackagesWorkspace
         ) {
-            packagesPage = page
+            form.packagesPage = page
             model.requestedPackagesMachine = nil
             model.requestedPackagesWorkspace = nil
         }
         guard let requested = model.requestedSettingsSection else { return }
-        section = requested
+        form.section = requested
         model.requestedSettingsSection = nil
     }
 
@@ -259,7 +223,7 @@ struct SetupPage: View {
                 .background(Color.dmBand)
             VStack(spacing: 0) {
                 sectionBody
-                if Self.showsFooter(for: section) { footer }
+                if Self.showsFooter(for: form.section) { footer }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
@@ -292,7 +256,7 @@ struct SetupPage: View {
     }
 
     private func railRow(_ item: SettingsSection) -> some View {
-        let selected = section == item
+        let selected = form.section == item
         let broken = item.showsValidation && !issues.isEmpty
         return HStack(spacing: m.space.md) {
             Image(systemName: item.systemImage)
@@ -317,7 +281,7 @@ struct SetupPage: View {
                 selectedColor: .white.opacity(0.14)))
         .padding(.horizontal, m.space.md)
         .contentShape(Rectangle())
-        .onTapGesture { section = item }
+        .onTapGesture { form.section = item }
     }
 
     /// Packages scrolls its own rows so its Apply bar stays in view, and
@@ -325,22 +289,22 @@ struct SetupPage: View {
     /// section scrolls whole.
     @ViewBuilder
     private var sectionBody: some View {
-        if section == .packages {
+        if form.section == .packages {
             VStack(alignment: .leading, spacing: m.pt(18)) {
                 sectionTitle
-                PackagesSettingsView(page: packagesPage ?? DemoSnapshots.packagesInitialPage)
+                PackagesSettingsView(page: form.packagesPage ?? DemoSnapshots.packagesInitialPage)
             }
             .padding(m.space.xxl)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        } else if section == .workspaces {
-            WorkspacesSettingsView(hiddenWorkspaces: hiddenWorkspaces, setActive: setWorkspaceActive)
+        } else if form.section == .workspaces {
+            WorkspacesSettingsView(hiddenWorkspaces: form.hiddenWorkspaces, setActive: setWorkspaceActive)
                 .padding(m.space.xxl)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: m.pt(18)) {
                     sectionTitle
-                    switch section {
+                    switch form.section {
                     case .general: generalBlock
                     case .machines: MachinesSettingsView()
                     case .workspaces: EmptyView()
@@ -362,10 +326,10 @@ struct SetupPage: View {
 
     private var sectionTitle: some View {
         VStack(alignment: .leading, spacing: m.space.xs) {
-            Text(section.title)
+            Text(form.section.title)
                 .font(.dm(15, weight: .semibold))
                 .foregroundStyle(.white)
-            Text(section.subtitle)
+            Text(form.section.subtitle)
                 .font(.dm(11))
                 .foregroundStyle(.white.opacity(0.5))
                 .fixedSize(horizontal: false, vertical: true)
@@ -533,22 +497,22 @@ struct SetupPage: View {
                 field: .opsRepoPath
             ) {
                 valueRow(
-                    opsRepoPath.isEmpty ? nil : Self.displayPath(opsRepoPath),
+                    form.opsRepoPath.isEmpty ? nil : Self.displayPath(form.opsRepoPath),
                     empty: "Not set up yet",
-                    button: opsRepoPath.isEmpty ? "Choose…" : "Change…",
+                    button: form.opsRepoPath.isEmpty ? "Choose…" : "Change…",
                     action: chooseFolder)
             }
 
             editableField(
                 title: "Base domain",
                 hint: Self.domainHint(hasCaddyMachine: model.hasCaddyMachine),
-                field: .baseDomain, text: $baseDomain, placeholder: "example.com")
+                field: .baseDomain, text: $form.baseDomain, placeholder: "example.com")
 
             VStack(alignment: .leading, spacing: m.pt(5)) {
                 Text(verbatim: "SSH agent socket")
                     .font(.dm(11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.7))
-                TextField("Leave empty to detect it automatically", text: $sshAgentSocket)
+                TextField("Leave empty to detect it automatically", text: $form.sshAgentSocket)
                     .dmField()
                 note(Self.sshAgentHint)
             }
@@ -585,12 +549,12 @@ struct SetupPage: View {
     ) -> some View {
         self.field(title: title, hint: hint, field: field) {
             let value = text.wrappedValue
-            if editing.contains(field) || (value.isEmpty && emptyValue == nil) {
+            if form.editing.contains(field) || (value.isEmpty && emptyValue == nil) {
                 TextField(placeholder, text: text)
                     .dmField()
             } else {
                 valueRow(value.isEmpty ? emptyValue : value, empty: placeholder, button: "Edit") {
-                    editing.insert(field)
+                    form.editing.insert(field)
                 }
             }
         }
@@ -662,8 +626,8 @@ struct SetupPage: View {
     /// in the configuration later is on without anyone opening Settings. The
     /// switch saves at once; the draft follows so a later Save keeps it.
     private func setWorkspaceActive(_ alias: String, _ active: Bool) {
-        hiddenWorkspaces = WorkspaceVisibility.setting(alias, active: active, in: hiddenWorkspaces)
-        model.setHiddenWorkspaces(hiddenWorkspaces)
+        form.hiddenWorkspaces = WorkspaceVisibility.setting(alias, active: active, in: form.hiddenWorkspaces)
+        model.setHiddenWorkspaces(form.hiddenWorkspaces)
     }
 
     private func harnessLabel(_ descriptor: HarnessDescriptor, detail: String) -> some View {
@@ -709,7 +673,7 @@ struct SetupPage: View {
                                     + "so it cannot be turned on.")
                         }
 
-                        if let message = harnessErrors[descriptor.id] {
+                        if let message = form.harnessErrors[descriptor.id] {
                             Text(verbatim: message)
                                 .font(.dm(10))
                                 .foregroundStyle(.orange)
@@ -731,25 +695,25 @@ struct SetupPage: View {
                     detail: "New local sessions",
                     savedFor: Workspace.local.alias,
                     place: .thisMac,
-                    selection: $localSessionProgram
+                    selection: $form.localSessionProgram
                 )
-                if operatorSessionEnabled {
+                if form.operatorSessionEnabled {
                     launchChoicePicker(
                         title: "Operator session",
-                        detail: operatorProgram == nil
+                        detail: form.operatorProgram == nil
                             ? "Not chosen yet: its first open asks" : "Your configuration folder",
                         savedFor: Workspace.operatorSession,
                         options: operatorLaunchOptions,
                         selection: Binding(
-                            get: { operatorProgram ?? .terminal },
-                            set: { operatorProgram = $0 })
+                            get: { form.operatorProgram ?? .terminal },
+                            set: { form.operatorProgram = $0 })
                     )
                 }
                 launchChoicePicker(
                     title: "Remote fallback",
                     detail: "New workspaces inherit this choice",
                     savedFor: RecentCommandStore.remoteFallback,
-                    selection: $remoteSessionProgram
+                    selection: $form.remoteSessionProgram
                 )
 
                 if model.visibleWorkspaces.isEmpty {
@@ -760,12 +724,12 @@ struct SetupPage: View {
                             title: workspace.name,
                             detail: workspace.alias,
                             savedFor: workspace.alias,
-                            showsCommandField: workspaceSessionPrograms[workspace.alias] != nil,
+                            showsCommandField: form.workspaceSessionPrograms[workspace.alias] != nil,
                             selection: workspaceChoiceBinding(workspace.alias)
                         )
-                        if workspaceSessionPrograms[workspace.alias] != nil {
+                        if form.workspaceSessionPrograms[workspace.alias] != nil {
                             DMButton("Use remote fallback", variant: .link, size: .small) {
-                                workspaceSessionPrograms.removeValue(forKey: workspace.alias)
+                                form.workspaceSessionPrograms.removeValue(forKey: workspace.alias)
                             }
                         }
                     }
@@ -895,15 +859,15 @@ struct SetupPage: View {
 
     private func harnessEnabledBinding(_ id: HarnessID) -> Binding<Bool> {
         Binding(
-            get: { enabledHarnesses.contains(id) },
+            get: { form.enabledHarnesses.contains(id) },
             set: { setHarness(id, enabled: $0) }
         )
     }
 
     private func workspaceChoiceBinding(_ alias: String) -> Binding<SessionLaunchChoice> {
         Binding(
-            get: { workspaceSessionPrograms[alias] ?? remoteSessionProgram },
-            set: { workspaceSessionPrograms[alias] = $0 }
+            get: { form.workspaceSessionPrograms[alias] ?? form.remoteSessionProgram },
+            set: { form.workspaceSessionPrograms[alias] = $0 }
         )
     }
 
@@ -912,18 +876,18 @@ struct SetupPage: View {
         let result = candidate.setHarness(id, enabled: enabled, using: harnessSettingsFacade)
         switch result {
         case .success:
-            harnessErrors[id] = nil
+            form.harnessErrors[id] = nil
             applyHarnessSettings(candidate.value)
         case let .failure(error):
-            harnessErrors[id] = harnessActivationMessage(error)
+            form.harnessErrors[id] = harnessActivationMessage(error)
         }
     }
 
     private func applyHarnessSettings(_ settings: AppSettings) {
-        enabledHarnesses = settings.enabledHarnesses
-        localSessionProgram = settings.localSessionProgram
-        remoteSessionProgram = settings.remoteSessionProgram
-        workspaceSessionPrograms = settings.workspaceSessionPrograms
+        form.enabledHarnesses = settings.enabledHarnesses
+        form.localSessionProgram = settings.localSessionProgram
+        form.remoteSessionProgram = settings.remoteSessionProgram
+        form.workspaceSessionPrograms = settings.workspaceSessionPrograms
     }
 
     private func harnessActivationMessage(_ error: HarnessActivationError) -> String {
@@ -937,27 +901,27 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: m.pt(14)) {
             slider(
                 title: "Terminal transparency",
-                value: $terminalOpacity,
+                value: $form.terminalOpacity,
                 range: Appearance.terminalOpacityRange,
                 // Shown the way you read it: more transparency, less opacity.
-                reading: "\(Int(((1 - terminalOpacity) * 100).rounded()))%"
+                reading: "\(Int(((1 - form.terminalOpacity) * 100).rounded()))%"
             )
             slider(
                 title: "Terminal font size",
-                value: $terminalFontSize,
+                value: $form.terminalFontSize,
                 range: Appearance.terminalFontSizeRange,
                 step: 1,
-                reading: "\(Int(terminalFontSize.rounded())) pt"
+                reading: "\(Int(form.terminalFontSize.rounded())) pt"
             )
             slider(
                 title: "Sessions kept connected",
                 value: Binding(
-                    get: { Double(keptTerminals) },
-                    set: { keptTerminals = Appearance.clampKeptTerminals(Int($0.rounded())) }
+                    get: { Double(form.keptTerminals) },
+                    set: { form.keptTerminals = Appearance.clampKeptTerminals(Int($0.rounded())) }
                 ),
                 range: Appearance.keptTerminalsSliderRange,
                 step: 1,
-                reading: "\(keptTerminals)"
+                reading: "\(form.keptTerminals)"
             )
             note("A session you are not looking at stays connected, so switching "
                 + "back to it is instant. Each one costs a client process and its "
@@ -973,7 +937,7 @@ struct SetupPage: View {
     private var harnessIconToggle: some View {
         VStack(alignment: .leading, spacing: m.space.sm) {
             settingsHeading("Sidebar")
-            Toggle(isOn: $showsHarnessIcons) {
+            Toggle(isOn: $form.showsHarnessIcons) {
                 Text(verbatim: "Show coding agent icon in sidebar sessions")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
@@ -985,8 +949,8 @@ struct SetupPage: View {
             HStack(spacing: m.space.lg) {
                 Text(verbatim: "Icon style")
                     .font(.dm(12))
-                    .foregroundStyle(.white.opacity(showsHarnessIcons ? 0.85 : 0.4))
-                Picker("", selection: $harnessIconStyle) {
+                    .foregroundStyle(.white.opacity(form.showsHarnessIcons ? 0.85 : 0.4))
+                Picker("", selection: $form.harnessIconStyle) {
                     ForEach(HarnessIconStyle.allCases, id: \.self) { style in
                         Text(verbatim: style.title).tag(style)
                     }
@@ -996,29 +960,29 @@ struct SetupPage: View {
                 .controlSize(.small)
                 .fixedSize()
             }
-            .disabled(!showsHarnessIcons)
-            Toggle(isOn: $showsBusySpinner) {
+            .disabled(!form.showsHarnessIcons)
+            Toggle(isOn: $form.showsBusySpinner) {
                 Text(verbatim: "Show a spinner while the agent works")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-            Toggle(isOn: $showsBranch) {
+            Toggle(isOn: $form.showsBranch) {
                 Text(verbatim: "Show branch or folder")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-            Toggle(isOn: $showsSessionAge) {
+            Toggle(isOn: $form.showsSessionAge) {
                 Text(verbatim: "Show how long the session has run")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-            Toggle(isOn: $showsAttention) {
+            Toggle(isOn: $form.showsAttention) {
                 Text(verbatim: "Show a dot when the agent asks for attention")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
@@ -1036,7 +1000,7 @@ struct SetupPage: View {
 
     private var operatorSessionToggle: some View {
         VStack(alignment: .leading, spacing: m.space.sm) {
-            Toggle(isOn: $operatorSessionEnabled) {
+            Toggle(isOn: $form.operatorSessionEnabled) {
                 Text(verbatim: "Enable Operator session")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
@@ -1049,7 +1013,7 @@ struct SetupPage: View {
 
     private var copyOnSelectToggle: some View {
         VStack(alignment: .leading, spacing: m.space.sm) {
-            Toggle(isOn: $copyOnSelect) {
+            Toggle(isOn: $form.copyOnSelect) {
                 Text(verbatim: "Copy on select")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
@@ -1069,7 +1033,7 @@ struct SetupPage: View {
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
                 Spacer(minLength: m.space.md)
-                Picker("", selection: $remoteTerminalMode) {
+                Picker("", selection: $form.remoteTerminalMode) {
                     ForEach(RemoteTerminalMode.allCases, id: \.self) { mode in
                         Text(verbatim: mode.title).tag(mode)
                     }
@@ -1094,7 +1058,7 @@ struct SetupPage: View {
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
                 Spacer(minLength: m.space.md)
-                Picker("", selection: $linkOpening) {
+                Picker("", selection: $form.linkOpening) {
                     ForEach(LinkOpening.allCases, id: \.self) { choice in
                         Text(verbatim: choice.title).tag(choice)
                     }
@@ -1115,7 +1079,7 @@ struct SetupPage: View {
 
     private var debugLoggingBlock: some View {
         VStack(alignment: .leading, spacing: m.pt(10)) {
-            Toggle(isOn: $debugLogging) {
+            Toggle(isOn: $form.debugLogging) {
                 Text(verbatim: "Debug logging")
                     .font(.dm(12))
                     .foregroundStyle(.white.opacity(0.85))
@@ -1159,10 +1123,15 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: m.pt(14)) {
             slider(
                 title: "App font size",
-                value: $uiFontScale,
+                value: Binding(
+                    get: { form.uiFontScale },
+                    set: { [form, settingsStore] scale in
+                        form.uiFontScale = scale
+                        settingsStore.preview(uiFontScale: scale)
+                    }),
                 range: Appearance.uiFontScaleRange,
                 step: 0.05,
-                reading: "\(Int((uiFontScale * 100).rounded()))%"
+                reading: "\(Int((form.uiFontScale * 100).rounded()))%"
             )
             Text(verbatim: "Background")
                 .font(.dm(11, weight: .semibold))
@@ -1171,7 +1140,7 @@ struct SetupPage: View {
                 ForEach(WallpaperKind.allCases, id: \.self) { kindCard($0) }
             }
 
-            switch WallpaperKind(wallpaper) {
+            switch WallpaperKind(form.wallpaper) {
             case .photo:
                 subheading("Photo")
                 photoOptions
@@ -1226,7 +1195,7 @@ struct SetupPage: View {
 
     private func kindCard(_ kind: WallpaperKind) -> some View {
         DMPictureChoice(
-            title: Self.title(of: kind), detail: Self.detail(of: kind), selected: WallpaperKind(wallpaper) == kind,
+            title: Self.title(of: kind), detail: Self.detail(of: kind), selected: WallpaperKind(form.wallpaper) == kind,
             pictureHeight: 120,
             action: { pick(kind) }
         ) {
@@ -1238,9 +1207,9 @@ struct SetupPage: View {
     private func kindPicture(_ kind: WallpaperKind) -> some View {
         switch kind {
         case .photo:
-            WallpaperBackground(choice: kind.choice(current: wallpaper, lastPhoto: lastPhoto, lastGradient: lastGradient))
+            WallpaperBackground(choice: kind.choice(current: form.wallpaper, lastPhoto: form.lastPhoto, lastGradient: form.lastGradient))
         case .gradient:
-            WallpaperBackground(choice: kind.choice(current: wallpaper, lastPhoto: lastPhoto, lastGradient: lastGradient))
+            WallpaperBackground(choice: kind.choice(current: form.wallpaper, lastPhoto: form.lastPhoto, lastGradient: form.lastGradient))
         case .networkMapLarge:
             HomeSketch(map: .large)
         case .networkMapCompact:
@@ -1249,16 +1218,16 @@ struct SetupPage: View {
     }
 
     private func pick(_ kind: WallpaperKind) {
-        let choice = kind.choice(current: wallpaper, lastPhoto: lastPhoto, lastGradient: lastGradient)
+        let choice = kind.choice(current: form.wallpaper, lastPhoto: form.lastPhoto, lastGradient: form.lastGradient)
         setWallpaper(choice)
-        if kind == .photo { themeID = Self.openThemeID(for: choice, in: wallpapers.library) }
+        if kind == .photo { form.themeID = Self.openThemeID(for: choice, in: wallpapers.library) }
     }
 
     private func setWallpaper(_ choice: WallpaperChoice) {
-        wallpaper = choice
+        form.wallpaper = choice
         switch WallpaperKind(choice) {
-        case .photo: lastPhoto = choice
-        case .gradient: lastGradient = choice
+        case .photo: form.lastPhoto = choice
+        case .gradient: form.lastGradient = choice
         case .networkMapLarge, .networkMapCompact: break
         }
     }
@@ -1267,10 +1236,10 @@ struct SetupPage: View {
         VStack(alignment: .leading, spacing: m.pt(14)) {
             FlowLayout(spacing: 6, rowSpacing: 6) {
                 ForEach(wallpapers.themes) { theme in
-                    DMChip(title: theme.title, selected: themeID == theme.id) { themeID = theme.id }
+                    DMChip(title: theme.title, selected: form.themeID == theme.id) { form.themeID = theme.id }
                 }
             }
-            if let themeID, let theme = wallpapers.library.theme(id: themeID) {
+            if let themeID = form.themeID, let theme = wallpapers.library.theme(id: themeID) {
                 pictureGrid { ForEach(theme.photos) { photoCell($0) } }
             }
         }
@@ -1281,7 +1250,7 @@ struct SetupPage: View {
     }
 
     private func photoCell(_ photo: WallpaperPhoto) -> some View {
-        DMPictureChoice(selected: wallpaper == Self.choice(for: photo), action: { select(photo) }) {
+        DMPictureChoice(selected: form.wallpaper == Self.choice(for: photo), action: { select(photo) }) {
             ZStack {
                 Color.white.opacity(0.06)
                 if let image = wallpapers.thumbnails[photo.id] {
@@ -1303,7 +1272,7 @@ struct SetupPage: View {
 
     private func gradientCell(_ gradient: WallpaperGradient) -> some View {
         DMPictureChoice(
-            title: gradient.title, selected: wallpaper == .gradient(name: gradient.name),
+            title: gradient.title, selected: form.wallpaper == .gradient(name: gradient.name),
             action: { setWallpaper(.gradient(name: gradient.name)) }
         ) {
             gradientSwatch(gradient)
@@ -1318,7 +1287,7 @@ struct SetupPage: View {
             } else {
                 Text(photo.credit)
             }
-        } else if case .networkMap = wallpaper {
+        } else if case .networkMap = form.wallpaper {
             Text(verbatim: "Drawn from your machines and their sites; it changes when they do.")
         } else {
             Text(verbatim: "Built-in gradient")
@@ -1326,7 +1295,7 @@ struct SetupPage: View {
     }
 
     private var creditPhoto: WallpaperPhoto? {
-        switch wallpaper {
+        switch form.wallpaper {
         case .gradient, .networkMap:
             return nil
         case .bundled:
@@ -1364,40 +1333,40 @@ struct SetupPage: View {
 
     private func load() {
         setWallpaper(settingsStore.settings?.wallpaper ?? .bundled)
-        themeID = Self.openThemeID(for: wallpaper, in: wallpapers.library)
+        form.themeID = Self.openThemeID(for: form.wallpaper, in: wallpapers.library)
 
         if let current = settingsStore.settings {
-            opsRepoPath = current.opsRepoPath
-            hostAlias = current.hostAlias
-            publicIP = current.publicIP
-            baseDomain = current.baseDomain
-            sshAgentSocket = current.sshAgentSocket
-            terminalOpacity = current.terminalOpacity
-            terminalFontSize = current.terminalFontSize
-            uiFontScale = current.uiFontScale
-            keptTerminals = current.keptTerminals
-            debugLogging = current.debugLogging
-            remoteTerminalMode = current.remoteTerminalMode
-            copyOnSelect = current.copyOnSelect
-            showsHarnessIcons = current.showsHarnessIcons
-            showsBusySpinner = current.showsBusySpinner
-            showsBranch = current.showsBranch
-            showsSessionAge = current.showsSessionAge
-            showsAttention = current.showsAttention
-            harnessIconStyle = current.harnessIconStyle
-            linkOpening = current.linkOpening
-            hiddenWorkspaces = current.hiddenWorkspaces
-            operatorProgram = current.operatorProgram
-            operatorSessionEnabled = current.operatorSessionEnabled
+            form.opsRepoPath = current.opsRepoPath
+            form.hostAlias = current.hostAlias
+            form.publicIP = current.publicIP
+            form.baseDomain = current.baseDomain
+            form.sshAgentSocket = current.sshAgentSocket
+            form.terminalOpacity = current.terminalOpacity
+            form.terminalFontSize = current.terminalFontSize
+            form.uiFontScale = current.uiFontScale
+            form.keptTerminals = current.keptTerminals
+            form.debugLogging = current.debugLogging
+            form.remoteTerminalMode = current.remoteTerminalMode
+            form.copyOnSelect = current.copyOnSelect
+            form.showsHarnessIcons = current.showsHarnessIcons
+            form.showsBusySpinner = current.showsBusySpinner
+            form.showsBranch = current.showsBranch
+            form.showsSessionAge = current.showsSessionAge
+            form.showsAttention = current.showsAttention
+            form.harnessIconStyle = current.harnessIconStyle
+            form.linkOpening = current.linkOpening
+            form.hiddenWorkspaces = current.hiddenWorkspaces
+            form.operatorProgram = current.operatorProgram
+            form.operatorSessionEnabled = current.operatorSessionEnabled
             applyHarnessSettings(current)
         } else {
             let configPath = NSHomeDirectory() + "/.ssh/config"
             let config = (try? String(contentsOfFile: configPath, encoding: .utf8)) ?? ""
             let proposed = AppSettings.prefill(sshConfig: config, sshResolve: Self.resolveHostname)
-            opsRepoPath = proposed.opsRepoPath
-            hostAlias = proposed.hostAlias
-            publicIP = proposed.publicIP
-            baseDomain = proposed.baseDomain
+            form.opsRepoPath = proposed.opsRepoPath
+            form.hostAlias = proposed.hostAlias
+            form.publicIP = proposed.publicIP
+            form.baseDomain = proposed.baseDomain
             applyHarnessSettings(proposed)
         }
 
@@ -1410,9 +1379,9 @@ struct SetupPage: View {
     /// carries a value, typed or previously saved, is left alone.
     private func fillFromDetected() {
         let detected = model.detected
-        if opsRepoPath.isEmpty, let path = detected.opsRepoPath { opsRepoPath = path }
-        if publicIP.isEmpty, let ip = detected.publicIP { publicIP = ip }
-        if baseDomain.isEmpty, let domain = detected.baseDomain { baseDomain = domain }
+        if form.opsRepoPath.isEmpty, let path = detected.opsRepoPath { form.opsRepoPath = path }
+        if form.publicIP.isEmpty, let ip = detected.publicIP { form.publicIP = ip }
+        if form.baseDomain.isEmpty, let domain = detected.baseDomain { form.baseDomain = domain }
     }
 
     /// Whether a Connection field's current value is exactly what the CLI
@@ -1420,9 +1389,9 @@ struct SetupPage: View {
     /// re-type it, with an option to type something else instead.
     private func isDetected(_ field: SettingsIssue.Field) -> Bool {
         switch field {
-        case .opsRepoPath: return !opsRepoPath.isEmpty && opsRepoPath == model.detected.opsRepoPath
-        case .publicIP: return !publicIP.isEmpty && publicIP == model.detected.publicIP
-        case .baseDomain: return !baseDomain.isEmpty && baseDomain == model.detected.baseDomain
+        case .opsRepoPath: return !form.opsRepoPath.isEmpty && form.opsRepoPath == model.detected.opsRepoPath
+        case .publicIP: return !form.publicIP.isEmpty && form.publicIP == model.detected.publicIP
+        case .baseDomain: return !form.baseDomain.isEmpty && form.baseDomain == model.detected.baseDomain
         case .hostAlias: return false
         }
     }
@@ -1443,9 +1412,9 @@ struct SetupPage: View {
         // The CLI's folder is hidden (`~/.config/…`): never make the person
         // find a dot-folder in a panel that hides them.
         panel.showsHiddenFiles = true
-        panel.directoryURL = URL(fileURLWithPath: opsRepoPath.isEmpty ? NSHomeDirectory() : opsRepoPath)
+        panel.directoryURL = URL(fileURLWithPath: form.opsRepoPath.isEmpty ? NSHomeDirectory() : form.opsRepoPath)
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        opsRepoPath = url.path
+        form.opsRepoPath = url.path
     }
 
     private func save() {

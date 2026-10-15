@@ -64,7 +64,7 @@ struct DevmachineApp: App {
     }
 
     private var metrics: DMMetrics {
-        DMMetrics(scale: settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
+        DMMetrics(scale: settingsStore.effectiveUIFontScale)
     }
 
     var body: some Scene {
@@ -88,8 +88,8 @@ struct DevmachineApp: App {
                 .environment(\.widgetOptionSources, .live(stats: statsStore, model: model, usage: usageStore, facade: harnessSettingsFacade))
                 .environment(\.dmMetrics, metrics)
                 .environment(\.dmOpenCLIUpdate, { [model] in model.openSettings(.about) })
-                .id(settingsStore.settings?.uiFontScale ?? Appearance.defaultUIFontScale)
-                .onAppear { DMFont.scale = settingsStore.settings?.uiFontScale ?? 1 }
+                .id(settingsStore.effectiveUIFontScale)
+                .onAppear { DMFont.scale = settingsStore.effectiveUIFontScale }
                 .onAppear {
                     let chat = SessionChatStore.shared
                     SessionShareStore.shared.onChange = { chat.track($0) }
@@ -128,8 +128,11 @@ struct DevmachineApp: App {
                         settingsStore: settingsStore, wallpaperStore: wallpaperStore,
                         harnessSettingsFacade: harnessSettingsFacade, statsStore: statsStore))
                 }
-                .onChange(of: settingsStore.settings?.uiFontScale) { _, scale in
-                    DMFont.scale = scale ?? 1
+                .onChange(of: settingsStore.effectiveUIFontScale) { _, scale in
+                    DMFont.scale = scale
+                }
+                .onChange(of: model.activePage) { old, new in
+                    if old == .setup, new != .setup { settingsStore.leaveSettingsPage() }
                 }
                 .onChange(of: settingsStore.settings?.enabledHarnesses) { _, _ in
                     let settings = settingsStore.settings ?? .empty

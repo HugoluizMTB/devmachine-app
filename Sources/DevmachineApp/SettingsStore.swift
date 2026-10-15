@@ -76,6 +76,20 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// The size the Appearance slider shows before Save. The whole app draws
+    /// at it, and Save, Cancel or leaving Settings ends it.
+    @Published private(set) var previewUIFontScale: Double? {
+        didSet { syncTextSize() }
+    }
+
+    var effectiveUIFontScale: Double {
+        previewUIFontScale ?? settings?.uiFontScale ?? Appearance.defaultUIFontScale
+    }
+
+    /// Not published: the page observes it itself, and the whole app does not
+    /// redraw on every key typed in Settings.
+    private var pageDraft: SettingsPageDraft?
+
     private let defaults: UserDefaults
     private let persists: Bool
     private let drivesTextSize: Bool
@@ -106,7 +120,27 @@ final class SettingsStore: ObservableObject {
     /// and a view nothing re-renders kept the old size until hovered.
     private func syncTextSize() {
         guard drivesTextSize else { return }
-        DMFont.scale = settings?.uiFontScale ?? Appearance.defaultUIFontScale
+        DMFont.scale = effectiveUIFontScale
+    }
+
+    /// Each preview rebuilds the window, so it moves only in the slider's steps.
+    func preview(uiFontScale: Double) {
+        let stepsPerUnit = 20.0
+        let snapped = Appearance.clampUIFontScale((uiFontScale * stepsPerUnit).rounded() / stepsPerUnit)
+        guard snapped != previewUIFontScale else { return }
+        previewUIFontScale = snapped
+    }
+
+    func settingsPageDraft(initialSection: SettingsSection) -> SettingsPageDraft {
+        if let pageDraft { return pageDraft }
+        let fresh = SettingsPageDraft(section: initialSection)
+        pageDraft = fresh
+        return fresh
+    }
+
+    func leaveSettingsPage() {
+        pageDraft = nil
+        previewUIFontScale = nil
     }
 
     var isConfigured: Bool { settings != nil }
@@ -117,6 +151,7 @@ final class SettingsStore: ObservableObject {
 
     func commit(_ draft: SettingsDraft) {
         settings = draft.committedValue
+        previewUIFontScale = nil
     }
 
     private func save() {
