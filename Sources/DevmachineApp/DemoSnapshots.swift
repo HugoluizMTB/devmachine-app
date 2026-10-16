@@ -67,6 +67,7 @@ enum DemoSnapshots {
              "worktree-remove", "worktrees-merged", "worktree-foreign",
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
              "file-viewer", "files-tab", "files-window", "packages-confirm", "map-location-editor", "scheduled-setup-sheet",
+             "scheduled-setup-failed-sheet",
              "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
              "cli-update-toast-manual", "cli-update-toast-pinned", "packages-update-toast",
              "packages-update-toast-running", "packages-update-toast-done", "packages-update-toast-failed":
@@ -331,6 +332,10 @@ enum DemoSnapshots {
         Screen(id: "scheduled-running", fileName: "140-scheduled-running.png", settleNanoseconds: 700_000_000),
         Screen(id: "scheduled-setup", fileName: "141-scheduled-setup.png", settleNanoseconds: 700_000_000),
         Screen(id: "scheduled-setup-sheet", fileName: "142-scheduled-setup-sheet.png", settleNanoseconds: 400_000_000),
+        Screen(id: "scheduled-setup-failed-sheet", fileName: "143-scheduled-setup-failed-sheet.png", settleNanoseconds: 400_000_000),
+        Screen(id: "scheduled-setup-incomplete", fileName: "144-scheduled-setup-incomplete.png", settleNanoseconds: 700_000_000),
+        Screen(id: "scheduled-finish-setup", fileName: "145-scheduled-finish-setup.png", settleNanoseconds: 700_000_000),
+        Screen(id: "scheduled-finish-failed", fileName: "146-scheduled-finish-failed.png", settleNanoseconds: 700_000_000),
     ]
 
     static let scrollBarScreens: [Screen] = [
@@ -580,6 +585,14 @@ enum DemoSnapshots {
                         .environmentObject(environment.model),
                     fittingSize: NSSize(width: 600, height: 680))
                 try? await Task.sleep(nanoseconds: 300_000_000)
+            case "scheduled-setup-failed-sheet":
+                view = standaloneView(
+                    ScheduledTaskSheet(
+                        request: .new, draft: DemoScheduled.gammaDraft, failedSetup: DemoScheduled.setupFailure
+                    ) { _ in }
+                        .environmentObject(environment.model),
+                    fittingSize: NSSize(width: 600, height: 680))
+                try? await Task.sleep(nanoseconds: 300_000_000)
             case "map-location-editor":
                 view = DemoMachinesMap.locationEditorView()
             case "ready-old-cli", "ready-outdated":
@@ -607,6 +620,7 @@ enum DemoSnapshots {
         DemoPackages.reset()
         DemoMachinesMap.reset()
         ScheduledStore.shared.seedDemoSetup(nil)
+        ScheduledStore.shared.seedDemoSetupError(nil, workspace: "gamma")
         if screens.contains(where: { DemoSiteWalk.handles($0.id) }) { DemoSiteWalk.reset(environment.model) }
         #endif
         environment.model.goHome()
@@ -711,6 +725,20 @@ enum DemoSnapshots {
         case "scheduled-setup", "scheduled-setup-sheet":
             DemoScheduled.seed(ScheduledStore.shared)
             ScheduledStore.shared.seedDemoSetup(DemoScheduled.setupProgress)
+            model.contextCollapsed = true
+            model.showPage(.scheduled)
+        case "scheduled-setup-failed-sheet", "scheduled-setup-incomplete":
+            DemoScheduled.seed(ScheduledStore.shared, gammaIncomplete: true)
+            model.contextCollapsed = true
+            model.showPage(.scheduled)
+        case "scheduled-finish-setup":
+            DemoScheduled.seed(ScheduledStore.shared, gammaIncomplete: true)
+            ScheduledStore.shared.seedDemoSetup(DemoScheduled.finishProgress)
+            model.contextCollapsed = true
+            model.showPage(.scheduled)
+        case "scheduled-finish-failed":
+            DemoScheduled.seed(ScheduledStore.shared, gammaIncomplete: true)
+            ScheduledStore.shared.seedDemoSetupError(DemoScheduled.setupFailure, workspace: "gamma")
             model.contextCollapsed = true
             model.showPage(.scheduled)
         case "settings-connection", "settings-needs-setup", "settings-cli-missing", "settings-no-machine":

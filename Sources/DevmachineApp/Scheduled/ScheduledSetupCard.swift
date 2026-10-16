@@ -8,6 +8,7 @@ struct ScheduledSetupCard: View {
     let progress: ScheduledSetupProgress
 
     static let note = "This can take a few minutes. It only happens the first time on this workspace."
+    static let finishingNote = "This can take a few minutes."
 
     static func steps(_ progress: ScheduledSetupProgress) -> [DMJobStep] {
         progress.steps.enumerated().map { index, step in
@@ -23,9 +24,11 @@ struct ScheduledSetupCard: View {
 
     var body: some View {
         DMJobCard(
-            title: "Setting up scheduled on \(progress.workspace)", status: .running, steps: Self.steps(progress)
+            title: progress.finishing
+                ? "Finishing scheduled's setup on \(progress.workspace)" : "Setting up scheduled on \(progress.workspace)",
+            status: .running, steps: Self.steps(progress)
         ) {
-            Text(verbatim: Self.note)
+            Text(verbatim: progress.finishing ? Self.finishingNote : Self.note)
                 .font(.dm(10.5))
                 .foregroundStyle(Color.dmMuted)
                 .fixedSize(horizontal: false, vertical: true)

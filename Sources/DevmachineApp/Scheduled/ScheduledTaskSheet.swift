@@ -16,11 +16,18 @@ struct ScheduledTaskSheet: View {
     @State private var isSaving = false
     @State private var saveError: String?
     @State private var confirmSetup = false
+    @State private var failedSetup = false
 
-    /// `draft` starts a new task already filled in, as the demo walk shows it.
-    init(request: ScheduledSheetRequest, draft: ScheduledDraft? = nil, onSaved: @escaping (String) -> Void) {
+    /// `draft` starts a new task already filled in, and `failedSetup` with
+    /// the error a setup ended in, as the demo walk shows them.
+    init(
+        request: ScheduledSheetRequest, draft: ScheduledDraft? = nil, failedSetup: String? = nil,
+        onSaved: @escaping (String) -> Void
+    ) {
         self.request = request
         self.onSaved = onSaved
+        _saveError = State(initialValue: failedSetup)
+        _failedSetup = State(initialValue: failedSetup != nil)
         switch request {
         case .new:
             let first = ScheduledStore.shared.workspaces.first { $0.installed && $0.error == nil }
@@ -67,7 +74,7 @@ struct ScheduledTaskSheet: View {
                             DMDropdown(
                                 label: "",
                                 options: store.workspaces.map {
-                                    .init(value: $0.name, title: $0.installed ? $0.name : "\($0.name) · not set up")
+                                    .init(value: $0.name, title: Self.workspaceTitle($0))
                                 },
                                 selection: $draft.workspace)
                             .disabled(editingID != nil)
@@ -88,6 +95,7 @@ struct ScheduledTaskSheet: View {
                 .padding(.bottom, m.space.md)
             }
             .showsProgressCards()
+            if let saveError { failure(saveError) }
             footer
         }
         .frame(width: m.pt(600), height: m.pt(680))
@@ -99,13 +107,17 @@ struct ScheduledTaskSheet: View {
             draft.model = ""
         }
         .confirmationDialog(
-            "Scheduled isn't set up on \(draft.workspace) yet",
+            setupIncomplete
+                ? "Scheduled's setup on \(draft.workspace) didn't finish"
+                : "Scheduled isn't set up on \(draft.workspace) yet",
             isPresented: $confirmSetup, titleVisibility: .visible
         ) {
-            Button("Set up and create") { save() }
+            Button(setupIncomplete ? "Finish setup and create" : "Set up and create") { save() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(verbatim: "This adds the scheduled package to \(draft.workspace) and syncs \(workspace?.machine ?? "its machine"). It can take a few minutes, and only happens the first time on this workspace.")
+            Text(verbatim: setupIncomplete
+                ? "This syncs \(machine) again to install what the last try left out. It can take a few minutes."
+                : "This adds the scheduled package to \(draft.workspace) and syncs \(machine). It can take a few minutes, and only happens the first time on this workspace.")
         }
     }
 
@@ -307,15 +319,43 @@ struct ScheduledTaskSheet: View {
             set: { draft.date = f.string(from: $0) })
     }
 
+    static func workspaceTitle(_ w: ScheduledWorkspace) -> String {
+        if w.installed { return w.name }
+        return w.error?.kind == "setup-incomplete" ? "\(w.name) · setup not finished" : "\(w.name) · not set up"
+    }
+
+    private var setupIncomplete: Bool { workspace?.error?.kind == "setup-incomplete" }
+    private var machine: String { workspace?.machine ?? "its machine" }
+
+    /// What the CLI said, with the form kept as it was so Try again sends
+    /// the same task.
+    private func failure(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: m.space.xs) {
+            Text(verbatim: failedSetup ? "Scheduled couldn't be set up on \(draft.workspace)" : "The task wasn't saved")
+                .font(.dm(12, weight: .semibold))
+                .foregroundStyle(Color.dmRowText)
+            Text(verbatim: message)
+                .font(.dm(11, design: .monospaced))
+                .foregroundStyle(Color.dmRowText)
+                .lineLimit(6)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: m.space.sm) {
+                DMButton("Try again", systemImage: "arrow.clockwise", variant: .outline, size: .small) { save() }
+                    .disabled(problem != nil || isSaving)
+                DMCopyButton(text: message)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(m.space.md)
+        .background(Color.red.opacity(0.12))
+        .padding(.horizontal, m.pt(18))
+        .padding(.top, m.space.sm)
+    }
+
     private var footer: some View {
         HStack(spacing: m.space.md) {
-            if let saveError {
-                Text(verbatim: saveError)
-                    .font(.dm(11))
-                    .foregroundStyle(Color.red)
-                    .lineLimit(3)
-                    .textSelection(.enabled)
-            } else if let problem {
+            if let problem, saveError == nil {
                 Text(verbatim: problem).font(.dm(11)).foregroundStyle(Color.dmMuted)
             }
             Spacer()
@@ -331,7 +371,8 @@ struct ScheduledTaskSheet: View {
     private func save() {
         isSaving = true
         saveError = nil
-        let machine = needsSetup ? (workspace?.machine ?? "its machine") : nil
+        failedSetup = needsSetup
+        let machine = needsSetup ? self.machine : nil
         Task {
             defer { isSaving = false }
             do {

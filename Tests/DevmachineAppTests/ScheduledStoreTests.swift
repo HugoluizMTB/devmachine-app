@@ -10,6 +10,10 @@ private final class ScheduledFakeRunner: CommandRunner, @unchecked Sendable {
     var runReplies: [String] = []
     var saveStderr = ""
     var saveStdout = ""
+    var saveExitCode: Int32 = 0
+    var syncStderr = ""
+    var syncExitCode: Int32 = 0
+    private(set) var syncArgs: [String] = []
     private(set) var listCalls = 0
     private var runsCalls = 0
 
@@ -32,7 +36,11 @@ private final class ScheduledFakeRunner: CommandRunner, @unchecked Sendable {
             runsCalls += 1
             return (reply, "", 0)
         }
-        if args.contains("add") { return (saveStdout, saveStderr, 0) }
+        if args.contains("add") { return (saveStdout, saveStderr, saveExitCode) }
+        if args.contains("sync") {
+            syncArgs = args
+            return ("", syncStderr, syncExitCode)
+        }
         return ("", "", 0)
     }
 }
@@ -143,5 +151,67 @@ final class ScheduledStoreTests: XCTestCase {
         _ = try await store.save(draft, editing: nil, allowDangerous: false, settingUpOn: nil)
 
         XCTAssertFalse(shown)
+    }
+
+    private static let failedSetupStderr = """
+    added scheduled to workspace alice
+    PLAY [main] ****
+    TASK [scheduled : Unpack the release] ****
+    fatal: [main]: FAILED! => {"msg": "Failed to find handler"}
+    error: setting up scheduled on main failed: 1 task(s) failed on main, first "scheduled : Unpack the release": Failed to find handler
+    """
+
+    func testAFailedSetupThrowsTheCLIsErrorAndReadsTheListAgain() async throws {
+        let runner = ScheduledFakeRunner()
+        runner.list = #"{"workspaces":[{"name":"alice","machine":"main","installed":false,"tasks":[]}]}"#
+        runner.saveStderr = Self.failedSetupStderr
+        runner.saveExitCode = 1
+        let store = makeStore(runner)
+        var draft = ScheduledDraft(workspace: "alice", timezone: "UTC")
+        draft.name = "Nightly"
+        draft.folder = "~/app"
+        draft.command = "make"
+
+        do {
+            _ = try await store.save(draft, editing: nil, allowDangerous: false, settingUpOn: "main")
+            XCTFail("a failed setup was reported as saved")
+        } catch {
+            XCTAssertEqual(
+                error.localizedDescription,
+                #"setting up scheduled on main failed: 1 task(s) failed on main, first "scheduled : Unpack the release": Failed to find handler"#)
+        }
+        XCTAssertNil(store.setup)
+        await waitUntil { runner.listCalls >= 1 }
+    }
+
+    func testFinishingASetupSyncsTheMachineForScheduledOnly() async {
+        let runner = ScheduledFakeRunner()
+        runner.list = #"{"workspaces":[{"name":"alice","machine":"main","installed":false,"tasks":[],"error":{"kind":"setup-incomplete","message":"m"}}]}"#
+        let store = makeStore(runner)
+        store.refresh()
+        await waitUntil { store.workspaces.count == 1 }
+        let calls = runner.listCalls
+
+        store.finishSetup(store.workspaces[0])
+
+        await waitUntil { runner.listCalls > calls }
+        XCTAssertEqual(runner.syncArgs, ["--format", "json", "sync", "--machine", "main", "--tags", "scheduled", "--yes"])
+        XCTAssertNil(store.setupErrors["alice"])
+        XCTAssertNil(store.setup)
+    }
+
+    func testAFailedFinishKeepsTheCLIsErrorOnTheWorkspace() async {
+        let runner = ScheduledFakeRunner()
+        runner.list = #"{"workspaces":[{"name":"alice","machine":"main","installed":false,"tasks":[],"error":{"kind":"setup-incomplete","message":"m"}}]}"#
+        runner.syncStderr = "PLAY [main] ****\nerror: 1 task(s) failed on main, first \"scheduled : Unpack the release\": nope\n"
+        runner.syncExitCode = 1
+        let store = makeStore(runner)
+        store.refresh()
+        await waitUntil { store.workspaces.count == 1 }
+
+        store.finishSetup(store.workspaces[0])
+
+        await waitUntil { store.setupErrors["alice"] != nil }
+        XCTAssertEqual(store.setupErrors["alice"], #"1 task(s) failed on main, first "scheduled : Unpack the release": nope"#)
     }
 }

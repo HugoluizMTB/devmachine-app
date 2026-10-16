@@ -13,13 +13,15 @@ enum DemoScheduled {
     static let standupID = "acme/t_57a2d1"
     static let standupRun = "20261016T160500Z-3b7e"
 
-    static func seed(_ store: ScheduledStore, now: Date = Date(), standupRunning: Bool = false) {
+    static func seed(
+        _ store: ScheduledStore, now: Date = Date(), standupRunning: Bool = false, gammaIncomplete: Bool = false
+    ) {
         var runs = [briefingID: (try? ScheduledJSON.decodeRuns(Data(runsJSON(now: now).utf8))) ?? []]
         if standupRunning {
             runs[standupID] = (try? ScheduledJSON.decodeRuns(Data(standupRunsJSON(now: now).utf8))) ?? []
         }
         store.seedDemo(
-            workspaces: (try? ScheduledJSON.decodeList(Data(listJSON(now: now).utf8))) ?? [],
+            workspaces: (try? ScheduledJSON.decodeList(Data(listJSON(now: now, gammaIncomplete: gammaIncomplete).utf8))) ?? [],
             harnesses: harnesses,
             runs: runs,
             logs: [briefingRun: briefingOutput])
@@ -50,6 +52,18 @@ enum DemoScheduled {
         TASK [scheduled : Create the scheduled folder] ****
         TASK [scheduled : Install the devmachine binary] ****
         TASK [scheduled : Write the timer unit] ****
+        """.split(separator: "\n").forEach { progress.read(String($0)) }
+        return progress
+    }
+
+    /// gamma's Finish setup, partway through the sync.
+    static var finishProgress: ScheduledSetupProgress {
+        var progress = ScheduledSetupProgress(workspace: "gamma", machine: "studio", finishing: true)
+        """
+        PLAY [studio] ****
+        TASK [Gathering Facts] ****
+        TASK [scheduled : Download the release and check it against its checksums] ****
+        TASK [scheduled : Unpack the release] ****
         """.split(separator: "\n").forEach { progress.read(String($0)) }
         return progress
     }
@@ -100,7 +114,7 @@ enum DemoScheduled {
         """
     }
 
-    static func listJSON(now: Date) -> String {
+    static func listJSON(now: Date, gammaIncomplete: Bool = false) -> String {
         let hour = 3_600.0
         let day = 86_400.0
         let briefing = task(
@@ -132,9 +146,26 @@ enum DemoScheduled {
         return """
         {"workspaces":[
           {"name":"acme","machine":"main","installed":true,"tasks":[\(briefing),\(standup),\(deps),\(notes)]},
-          {"name":"beta","machine":"main","installed":true,"tasks":[\(backup)]}
+          {"name":"beta","machine":"main","installed":true,"tasks":[\(backup)]}\(gammaIncomplete ? ",\n" + gammaJSON : "")
         ]}
         """
+    }
+
+    /// gamma's first task, after its setup sync failed: the package stayed,
+    /// the binary never arrived.
+    static let gammaJSON = """
+      {"name":"gamma","machine":"studio","installed":false,"tasks":[],"error":{"kind":"setup-incomplete",\
+    "message":"scheduled's setup on gamma did not finish: the package is on the workspace, but its devmachine is not on studio. \
+    Run devmachine sync --machine studio --tags scheduled, or add a task with --yes"}}
+    """
+
+    /// What the CLI says when gamma's setup sync fails on a Mac.
+    static let setupFailure = #"setting up scheduled on studio failed: 1 task(s) failed on studio, first "scheduled : Unpack the release": Failed to find handler for "/tmp/ansible.x1/devmachine_0.15.0_darwin_arm64.tar.gz". Make sure the required command to extract the file is installed. Command "/usr/bin/tar" detected as tar type bsd. GNU tar required.: exit status 2. The scheduled package stays on gamma: once the cause is fixed, run devmachine sync --machine studio --tags scheduled, or add the task again"#
+
+    static var gammaDraft: ScheduledDraft {
+        var draft = weeklyDraft
+        draft.workspace = "gamma"
+        return draft
     }
 
     /// The 1st of a month at 09:00 in New York, `monthsAgo` before the

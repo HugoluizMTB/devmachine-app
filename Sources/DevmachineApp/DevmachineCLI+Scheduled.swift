@@ -25,6 +25,16 @@ extension DevmachineCLI {
         return try ScheduledJSON.decodeSaved(Data(result.stdout.utf8))
     }
 
+    /// Finishes a setup whose sync failed: the package is already on the
+    /// workspace, so only `sync --tags scheduled` runs again, as the CLI's
+    /// `setup-incomplete` error says. `--format json` keeps Ansible's lines
+    /// on stderr, where `onStderrLine` reads them.
+    func scheduledFinishSetup(machine: String, onStderrLine: (@Sendable (String) -> Void)? = nil) throws {
+        _ = try scheduled(
+            ["--format", "json", "sync", "--machine", machine, "--tags", "scheduled", "--yes"],
+            onStderrLine: onStderrLine)
+    }
+
     func scheduledPause(_ id: String, workspace: String) throws {
         _ = try scheduled(["--format", "json", "scheduled", "pause", id, "--workspace", workspace])
     }
@@ -63,12 +73,7 @@ extension DevmachineCLI {
         if result.exitCode != 0, result.stderr.contains("unknown command \"scheduled\"") {
             throw DevmachineCLIError.needsNewerCLI("scheduled")
         }
-        try requireSuccess((result.stdout, Self.withoutErrorPrefix(result.stderr), result.exitCode))
+        try requireSuccess((result.stdout, CLIStderr.reason(result.stderr), result.exitCode))
         return result
-    }
-
-    static func withoutErrorPrefix(_ text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.hasPrefix("error: ") ? String(trimmed.dropFirst("error: ".count)) : trimmed
     }
 }

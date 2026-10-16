@@ -118,8 +118,22 @@ struct ScheduledView: View {
     @ViewBuilder
     private var workspaceErrors: some View {
         ForEach(store.failedWorkspaces) { w in
-            DMBanner(message: "\(w.name): \(w.error?.message ?? "")", lineLimit: 2) { EmptyView() }
+            DMBanner(message: Self.bannerMessage(w, finishError: store.setupErrors[w.name]), lineLimit: 4) {
+                if w.setupIncomplete {
+                    DMButton("Finish setup", systemImage: "wrench.and.screwdriver", size: .small,
+                             isLoading: store.setup?.workspace == w.name) {
+                        store.finishSetup(w)
+                    }
+                    .disabled(store.setup != nil)
+                }
+            }
         }
+    }
+
+    static func bannerMessage(_ w: ScheduledWorkspace, finishError: String?) -> String {
+        if let finishError { return "\(w.name): Finish setup failed: \(finishError)" }
+        if w.setupIncomplete { return "\(w.name): scheduled's setup didn't finish, so its tasks can't run yet." }
+        return "\(w.name): \(w.error?.message ?? "")"
     }
 
     /// The rows by workspace, a workspace placed where its next task falls.

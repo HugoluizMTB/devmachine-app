@@ -35,7 +35,10 @@ public struct ScheduledSetupProgress: Equatable, Sendable {
 
     public let workspace: String
     public let machine: String
-    public private(set) var phase: Phase = .addingPackage
+    /// Only the sync runs again, for a setup that did not finish: the
+    /// package is already on the workspace, and no task is created.
+    public let finishing: Bool
+    public private(set) var phase: Phase
     /// The Ansible task running now, without its role's name.
     public private(set) var current: String?
     /// The last few tasks that finished, oldest first.
@@ -44,9 +47,11 @@ public struct ScheduledSetupProgress: Equatable, Sendable {
 
     public static let recentLimit = 3
 
-    public init(workspace: String, machine: String) {
+    public init(workspace: String, machine: String, finishing: Bool = false) {
         self.workspace = workspace
         self.machine = machine
+        self.finishing = finishing
+        phase = finishing ? .connecting : .addingPackage
     }
 
     private static let taskHeader = try! NSRegularExpression(pattern: #"^(?:TASK|RUNNING HANDLER) \[(.+)\] \*+$"#)
@@ -90,12 +95,14 @@ public struct ScheduledSetupProgress: Equatable, Sendable {
         func state(_ of: Phase) -> Step.State {
             of < phase ? .done : (of == phase ? .running : .waiting)
         }
-        return [
-            Step(title: "Add the scheduled package to \(workspace)", state: state(.addingPackage), detail: nil),
+        let sync = [
             Step(title: "Connect to \(machine)", state: state(.connecting), detail: nil),
             Step(title: "Install on \(machine)", state: state(.installing), detail: installDetail),
-            Step(title: "Create the task", state: state(.creatingTask), detail: nil),
         ]
+        if finishing { return sync }
+        return [Step(title: "Add the scheduled package to \(workspace)", state: state(.addingPackage), detail: nil)]
+            + sync
+            + [Step(title: "Create the task", state: state(.creatingTask), detail: nil)]
     }
 
     private var installDetail: String? {

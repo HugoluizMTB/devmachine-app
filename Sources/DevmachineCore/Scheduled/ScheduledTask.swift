@@ -160,6 +160,12 @@ public struct ScheduledWorkspace: Codable, Equatable, Sendable, Identifiable {
     public let error: ScheduledError?
 
     public var id: String { name }
+
+    /// The package is on the workspace but its binary is not, or not yet:
+    /// the sync that sets it up has to run (again).
+    public var setupIncomplete: Bool {
+        error?.kind == "setup-incomplete" || error?.kind == "not-installed"
+    }
 }
 
 /// A coding agent a prompt can run in, from `scheduled harnesses`: the
