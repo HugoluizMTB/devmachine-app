@@ -2064,6 +2064,16 @@ once may fail there.
   create"), then runs `scheduled add --yes`, which adds the package and syncs
   the machine before saving; it can take a minute or two. That setup is a
   global job card (`beginTask`, no count) while the Create button spins.
+- A failed setup: the CLI prints the whole Ansible run on stderr before its
+  `error:` line, so every scheduled call reports `CLIStderr.reason` (the last
+  `error:` line). Showing the start of stderr once made a failed setup look
+  like no error at all. The sheet keeps the form, shows the error with Try
+  again, and the list is read again.
+- A workspace whose list error is `setup-incomplete` (package in config, no
+  binary) gets "Finish setup" on its banner: `sync --machine <m> --tags
+  scheduled --yes`, shown with the same job card (`finishing: true`). A failed
+  finish stays on the banner (`setupErrors`). Demo walk `scheduled`, screens
+  143-146.
 - Edit sends every field (`ScheduledDraft.arguments`), so an empty model
   clears it. Run now starts the run and polls `scheduled runs` every 2 s until
   it ends (10 min at most). A `missed`/`skipped` run has no output; its

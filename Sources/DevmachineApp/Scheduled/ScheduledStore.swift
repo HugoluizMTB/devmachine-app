@@ -34,6 +34,8 @@ final class ScheduledStore: ObservableObject {
     @Published private(set) var newTaskRequests = 0
     /// A workspace's first task while the CLI sets the package up there.
     @Published private(set) var setup: ScheduledSetupProgress?
+    /// Why Finish setup failed, by workspace, until it is tried again.
+    @Published private(set) var setupErrors: [String: String] = [:]
 
     func requestNewTask() {
         newTaskRequests += 1
@@ -115,14 +117,37 @@ final class ScheduledStore: ObservableObject {
         }
         setup = ScheduledSetupProgress(workspace: draft.workspace, machine: machine)
         defer { setup = nil }
-        // The main queue keeps the lines in order and ahead of the reply.
-        let task = try await cli { cli in
-            try cli.scheduledSave(args) { line in
-                DispatchQueue.main.async { MainActor.assumeIsolated { [weak self] in self?.setup?.read(line) } }
+        // A failed setup leaves the package on the workspace; the list then
+        // says so, and the sheet's next try finishes it.
+        defer { refresh() }
+        let read = readSetupLine
+        return try await cli { cli in try cli.scheduledSave(args, onStderrLine: read) }
+    }
+
+    /// Runs the setup sync again for a workspace whose setup did not finish.
+    func finishSetup(_ workspace: ScheduledWorkspace) {
+        guard setup == nil else { return }
+        setupErrors[workspace.name] = nil
+        setup = ScheduledSetupProgress(workspace: workspace.name, machine: workspace.machine, finishing: true)
+        let read = readSetupLine
+        Task {
+            defer {
+                setup = nil
+                refresh()
+            }
+            do {
+                try await cli { try $0.scheduledFinishSetup(machine: workspace.machine, onStderrLine: read) }
+            } catch {
+                setupErrors[workspace.name] = error.localizedDescription
             }
         }
-        refresh()
-        return task
+    }
+
+    /// The main queue keeps the lines in order and ahead of the reply.
+    private var readSetupLine: @Sendable (String) -> Void {
+        { line in
+            DispatchQueue.main.async { MainActor.assumeIsolated { [weak self] in self?.setup?.read(line) } }
+        }
     }
 
     func runNow(_ row: ScheduledRow) {
@@ -228,6 +253,10 @@ final class ScheduledStore: ObservableObject {
 
     func seedDemoSetup(_ progress: ScheduledSetupProgress?) {
         setup = progress
+    }
+
+    func seedDemoSetupError(_ message: String?, workspace: String) {
+        setupErrors[workspace] = message
     }
     #endif
 
