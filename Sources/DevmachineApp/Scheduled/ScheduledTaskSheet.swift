@@ -321,10 +321,10 @@ struct ScheduledTaskSheet: View {
 
     static func workspaceTitle(_ w: ScheduledWorkspace) -> String {
         if w.installed { return w.name }
-        return w.error?.kind == "setup-incomplete" ? "\(w.name) · setup not finished" : "\(w.name) · not set up"
+        return w.setupIncomplete ? "\(w.name) · setup not finished" : "\(w.name) · not set up"
     }
 
-    private var setupIncomplete: Bool { workspace?.error?.kind == "setup-incomplete" }
+    private var setupIncomplete: Bool { workspace?.setupIncomplete == true }
     private var machine: String { workspace?.machine ?? "its machine" }
 
     /// What the CLI said, with the form kept as it was so Try again sends

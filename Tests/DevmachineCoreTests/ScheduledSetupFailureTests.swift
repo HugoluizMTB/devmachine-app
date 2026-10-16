@@ -37,7 +37,7 @@ final class ScheduledSetupFailureTests: XCTestCase {
 
     func testAnIncompleteSetupAsksToBeFinished() throws {
         XCTAssertTrue(try workspace(error: "setup-incomplete").setupIncomplete)
-        XCTAssertTrue(try workspace(error: "not-installed").setupIncomplete)
+        XCTAssertFalse(try workspace(error: "not-installed").setupIncomplete)
         XCTAssertFalse(try workspace(error: "unreachable").setupIncomplete)
         XCTAssertFalse(try workspace(error: nil).setupIncomplete)
     }
