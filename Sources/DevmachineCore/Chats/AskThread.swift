@@ -1,37 +1,34 @@
 import Foundation
 
-/// How Ask answers about a session: a fork of a Claude session, or a new
-/// Codex thread fed from the session's transcript.
+/// Whether Ask can answer about a session: the CLI reads the session's
+/// transcript on each question, for Claude and Codex sessions.
 public enum AskMode: Equatable, Sendable {
-    case fork
-    case transcript
+    case supported(HarnessID)
     case unsupported(HarnessID?)
 
     public init(harness: HarnessID?) {
-        switch harness {
-        case .claude?: self = .fork
-        case .codex?: self = .transcript
-        default: self = .unsupported(harness)
+        if let harness, ChatHarness.supported.contains(harness) {
+            self = .supported(harness)
+        } else {
+            self = .unsupported(harness)
         }
     }
 
     public var harness: HarnessID? {
         switch self {
-        case .fork: return .claude
-        case .transcript: return .codex
+        case let .supported(id): return id
         case let .unsupported(id): return id
         }
     }
 
     public var isSupported: Bool {
-        if case .unsupported = self { return false }
-        return true
+        if case .supported = self { return true }
+        return false
     }
 
     public var subtitle: String {
         switch self {
-        case .fork: return "about this session · Claude (fork)"
-        case .transcript: return "about this session · Codex (transcript search)"
+        case let .supported(id): return "about this session · \(ChatHarness.title(id))"
         case let .unsupported(id?): return "Ask is not available for \(ChatHarness.title(id)) yet"
         case .unsupported(nil): return "Ask needs a Claude or Codex session"
         }

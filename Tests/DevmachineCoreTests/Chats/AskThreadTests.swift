@@ -12,11 +12,11 @@ final class AskThreadTests: XCTestCase {
     }
 
     func testModeFollowsTheHarness() {
-        XCTAssertEqual(AskMode(harness: .claude), .fork)
-        XCTAssertEqual(AskMode(harness: .codex), .transcript)
+        XCTAssertEqual(AskMode(harness: .claude), .supported(.claude))
+        XCTAssertEqual(AskMode(harness: .codex), .supported(.codex))
         XCTAssertEqual(AskMode(harness: .pi), .unsupported(.pi))
-        XCTAssertEqual(AskMode(harness: .claude).subtitle, "about this session · Claude (fork)")
-        XCTAssertEqual(AskMode(harness: .codex).subtitle, "about this session · Codex (transcript search)")
+        XCTAssertEqual(AskMode(harness: .claude).subtitle, "about this session · Claude")
+        XCTAssertEqual(AskMode(harness: .codex).subtitle, "about this session · Codex")
         XCTAssertEqual(AskMode(harness: .pi).subtitle, "Ask is not available for Pi yet")
         XCTAssertFalse(AskMode(harness: nil).isSupported)
     }

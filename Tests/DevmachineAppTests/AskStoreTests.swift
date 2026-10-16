@@ -15,13 +15,13 @@ final class AskStoreTests: XCTestCase {
         ])
         let store = ChatStore(runner: runner)
         let asks = AskStore()
-        asks.ask("why?", key: key, mode: .fork, folder: nil, store: store)
+        asks.ask("why?", key: key, mode: .supported(.claude), folder: nil, store: store)
         await waitForChat { asks.threadID(for: self.key, in: store) == "a1" && !store.isAnswering("a1") }
         XCTAssertEqual(
             runner.arguments[0],
             ["chat", "ask", "--workspace", "acme", "--session", "claude — api", "--harness", "claude", "--", "why?"])
         XCTAssertTrue(store.visibleChats.isEmpty)
-        asks.ask("and?", key: key, mode: .fork, folder: nil, store: store)
+        asks.ask("and?", key: key, mode: .supported(.claude), folder: nil, store: store)
         await waitForChat { runner.arguments.count == 2 }
         XCTAssertEqual(runner.arguments[1].suffix(4), ["--chat", "a1", "--", "and?"])
     }
@@ -61,7 +61,7 @@ final class AskStoreTests: XCTestCase {
         let runner = FakeChatRunner(streams: [.init(lines: [])])
         let asks = AskStore()
         asks.ask(
-            "why?", key: AskSessionKey(place: .local, session: "api"), mode: .transcript,
+            "why?", key: AskSessionKey(place: .local, session: "api"), mode: .supported(.codex),
             folder: "/Users/alice/dev/api", store: ChatStore(runner: runner))
         await waitForChat { !runner.arguments.isEmpty }
         XCTAssertEqual(
@@ -88,5 +88,14 @@ final class AskStoreTests: XCTestCase {
         XCTAssertEqual(model.appMode, .chats)
         XCTAssertEqual(store.selectedID, "a1")
         XCTAssertNil(asks.threadID(for: key, in: store))
+    }
+
+    func testTheAnswerShowsAsComingRightAfterSend() {
+        let runner = FakeChatRunner(streams: [.init(lines: [], waitsForCancel: true)])
+        let store = ChatStore(runner: runner)
+        let sent = AskStore().ask("why?", key: key, mode: .supported(.claude), folder: nil, store: store)
+        XCTAssertNotNil(sent)
+        XCTAssertTrue(store.isAnswering(sent!))
+        store.stop(sent!)
     }
 }

@@ -103,7 +103,7 @@ enum DemoChats {
             ChatRecord(
                 id: "ask-claude", title: "why did it change ChargeService?", harness: .claude, workspace: "acme",
                 createdAt: now.addingTimeInterval(-300), updatedAt: now.addingTimeInterval(-240),
-                kind: ChatRecord.askKind, session: askClaudeSession, mode: "fork"),
+                kind: ChatRecord.askKind, session: askClaudeSession, mode: "transcript", excerpts: 4),
             ChatRecord(
                 id: "ask-codex", title: "why did it change Hero.tsx?", harness: .codex, workspace: "acme",
                 createdAt: now.addingTimeInterval(-300), updatedAt: now.addingTimeInterval(-240),
