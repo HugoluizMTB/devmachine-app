@@ -591,6 +591,9 @@ final class AppModel: ObservableObject {
     @Published var pendingShare: SessionShareRequest? = nil
     @Published var selectedSessions: Set<SessionRef> = []
     @Published var activeTasks: [BGTask] = []
+    /// Open sheets that draw the progress cards over themselves; while any
+    /// is open, the window's corner leaves those cards out.
+    @Published var sheetsShowingProgress = 0
     @Published var showCommandPalette = false
     /// The file finder, opened over any session.
     @Published var showFileSearch = false

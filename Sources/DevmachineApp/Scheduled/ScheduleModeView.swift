@@ -98,7 +98,7 @@ struct ScheduleSidebar: View {
     private func taskRow(_ row: ScheduledRow) -> some View {
         HStack(spacing: m.pt(8)) {
             Circle()
-                .fill(ScheduledStyle.color(row.task.lastRun?.status))
+                .fill(ScheduledStyle.color(store.lastRun(row)?.status))
                 .frame(width: m.pt(DMIconSize.dot) - 1, height: m.pt(DMIconSize.dot) - 1)
             Text(verbatim: row.task.name)
                 .font(.dm(13))

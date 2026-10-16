@@ -87,6 +87,7 @@ struct ScheduledTaskSheet: View {
                 .padding(.horizontal, m.pt(18))
                 .padding(.bottom, m.space.md)
             }
+            .showsProgressCards()
             footer
         }
         .frame(width: m.pt(600), height: m.pt(680))
@@ -104,7 +105,7 @@ struct ScheduledTaskSheet: View {
             Button("Set up and create") { save() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(verbatim: "This adds the scheduled package to \(draft.workspace) and syncs \(workspace?.machine ?? "its machine"). It takes a minute or two.")
+            Text(verbatim: "This adds the scheduled package to \(draft.workspace) and syncs \(workspace?.machine ?? "its machine"). It can take a few minutes, and only happens the first time on this workspace.")
         }
     }
 
@@ -330,18 +331,16 @@ struct ScheduledTaskSheet: View {
     private func save() {
         isSaving = true
         saveError = nil
-        let job = needsSetup
-            ? model.beginTask(label: "Setting up scheduled on \(draft.workspace)", total: 0, showsCount: false)
-            : nil
+        let machine = needsSetup ? (workspace?.machine ?? "its machine") : nil
         Task {
             defer { isSaving = false }
             do {
-                let task = try await store.save(draft, editing: editingID, allowDangerous: isDangerous && allowDangerous)
-                if let job { model.finishTask(job) }
+                let task = try await store.save(
+                    draft, editing: editingID, allowDangerous: isDangerous && allowDangerous, settingUpOn: machine)
+                if machine != nil { model.flashToast("Scheduled is set up on \(draft.workspace)") }
                 onSaved("\(draft.workspace)/\(task.id)")
                 dismiss()
             } catch {
-                if let job { model.dropTask(job) }
                 saveError = error.localizedDescription
             }
         }

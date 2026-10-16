@@ -154,7 +154,8 @@ struct ScheduledView: View {
                         .padding(.leading, m.space.xs)
                         ForEach(group.rows) { row in
                             ScheduledCard(
-                                row: row, isSelected: store.selectedID == row.id, isBusy: store.busy.contains(row.id),
+                                row: row, lastRun: store.lastRun(row), isSelected: store.selectedID == row.id,
+                                isBusy: store.busy.contains(row.id),
                                 menu: { rowMenu(row) })
                                 .demoClickTarget("scheduled:\(row.id)")
                                 .contentShape(Rectangle())
@@ -227,6 +228,7 @@ private struct ScheduledEmptyState: View {
 private struct ScheduledCard<Menu: View>: View {
     @Environment(\.dmMetrics) private var m
     let row: ScheduledRow
+    let lastRun: ScheduledRun?
     let isSelected: Bool
     let isBusy: Bool
     @ViewBuilder let menu: () -> Menu
@@ -268,7 +270,7 @@ private struct ScheduledCard<Menu: View>: View {
                 Text(verbatim: ScheduledStyle.next(task))
                     .font(.dm(12, weight: .medium))
                     .foregroundStyle(resting ? Color.dmMuted : Color.dmRowText)
-                lastRun
+                lastRunLine
             }
             if isBusy {
                 ProgressView().controlSize(.small)
@@ -297,13 +299,13 @@ private struct ScheduledCard<Menu: View>: View {
     }
 
     @ViewBuilder
-    private var lastRun: some View {
-        if let run = task.lastRun {
+    private var lastRunLine: some View {
+        if let run = lastRun {
             HStack(spacing: m.space.xs) {
                 Circle()
                     .fill(ScheduledStyle.color(run.status))
                     .frame(width: m.pt(DMIconSize.dot) - 1, height: m.pt(DMIconSize.dot) - 1)
-                Text(verbatim: "\(run.status.text.capitalized) \(ScheduledStyle.relative(run.startedAt))")
+                Text(verbatim: ScheduledStyle.lastRun(run))
             }
             .font(.dm(11))
             .foregroundStyle(Color.dmMuted)
@@ -322,6 +324,11 @@ enum ScheduledStyle {
         case .missed, .skipped: return .orange
         case .other, nil: return Color.dmMuted.opacity(0.5)
         }
+    }
+
+    static func lastRun(_ run: ScheduledRun, now: Date = Date()) -> String {
+        if run.status == .running { return "Running now" }
+        return "\(run.status.text.capitalized) \(relative(run.startedAt, now: now))"
     }
 
     static func next(_ task: ScheduledTask, now: Date = Date()) -> String {

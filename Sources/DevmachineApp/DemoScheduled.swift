@@ -10,14 +10,48 @@ enum DemoScheduled {
     static let briefingID = "acme/t_b41e0c"
     static let briefingRun = "20261001T120000Z-9a1f"
 
-    static func seed(_ store: ScheduledStore, now: Date = Date()) {
+    static let standupID = "acme/t_57a2d1"
+    static let standupRun = "20261016T160500Z-3b7e"
+
+    static func seed(_ store: ScheduledStore, now: Date = Date(), standupRunning: Bool = false) {
+        var runs = [briefingID: (try? ScheduledJSON.decodeRuns(Data(runsJSON(now: now).utf8))) ?? []]
+        if standupRunning {
+            runs[standupID] = (try? ScheduledJSON.decodeRuns(Data(standupRunsJSON(now: now).utf8))) ?? []
+        }
         store.seedDemo(
             workspaces: (try? ScheduledJSON.decodeList(Data(listJSON(now: now).utf8))) ?? [],
             harnesses: harnesses,
-            runs: [briefingID: (try? ScheduledJSON.decodeRuns(Data(runsJSON(now: now).utf8))) ?? []],
+            runs: runs,
             logs: [briefingRun: briefingOutput])
+        store.seedDemoSetup(nil)
         store.selectedID = nil
         store.openRunID = nil
+    }
+
+    /// Standup notes just after Run now: the list still holds yesterday's
+    /// run, and the run Run now started is the newest one read.
+    static func standupRunsJSON(now: Date) -> String {
+        """
+        {"runs":[{"id":"\(standupRun)","task_id":"t_57a2d1","status":"running","trigger":"manual",\
+        "started_at":"\(iso(now.addingTimeInterval(-20)))","duration_ms":0}]}
+        """
+    }
+
+    /// acme's first task halfway through its setup, fed the lines the CLI
+    /// prints for it.
+    static var setupProgress: ScheduledSetupProgress {
+        var progress = ScheduledSetupProgress(workspace: "acme", machine: "main")
+        """
+        added scheduled to workspace acme
+        workspace acme (user acme):
+          + scheduled
+        PLAY [main] ****
+        TASK [Gathering Facts] ****
+        TASK [scheduled : Create the scheduled folder] ****
+        TASK [scheduled : Install the devmachine binary] ****
+        TASK [scheduled : Write the timer unit] ****
+        """.split(separator: "\n").forEach { progress.read(String($0)) }
+        return progress
     }
 
     static let harnesses: [ScheduledHarness] = (try? ScheduledJSON.decodeHarnesses(Data("""

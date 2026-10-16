@@ -21,6 +21,7 @@ struct ContentView: View {
     @ObservedObject private var split = DocumentSplitState.shared
     @ObservedObject private var compat = WidgetCompatibilityStore.shared
     @ObservedObject private var chats = ChatStore.shared
+    @ObservedObject private var scheduled = ScheduledStore.shared
     @State private var windowButtons = CGRect.zero
     @State private var toggleFrame: CGRect?
     @State private var titlebarHeight: CGFloat = 0
@@ -128,14 +129,14 @@ struct ContentView: View {
                         onDismiss: { caddy.dismiss(job.id) })
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
-                ForEach(model.activeTasks) { task in
-                    DMToastCard(task: task)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                if model.sheetsShowingProgress == 0 {
+                    ProgressCards()
                 }
                 TransferNoticeOverlay()
             }
             .padding(m.pt(18))
             .animation(.easeInOut(duration: 0.2), value: model.activeTasks)
+            .animation(.easeInOut(duration: 0.2), value: scheduled.setup)
             .animation(.easeInOut(duration: 0.2), value: caddy.jobs)
             .animation(.easeInOut(duration: 0.2), value: updates.showsBanner)
             .animation(.easeInOut(duration: 0.2), value: updates.showsCLIBanner)

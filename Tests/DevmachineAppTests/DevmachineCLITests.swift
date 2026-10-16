@@ -912,11 +912,42 @@ final class DevmachineCLIScheduledTests: XCTestCase {
         XCTAssertEqual(id, "20261015T120000Z-ab12")
     }
 
+    func testSaveHandsOnWhatTheSetupPrints() throws {
+        let task = """
+        {"workspace":"alice","task":{"version":1,"id":"t_1","name":"N","paused":false,"done":false,"folder":"~",\
+        "schedule":{"every":"daily","at":"02:00","timezone":"UTC"},"action":{"kind":"command","command":"make"}}}
+        """
+        let runner = CLIRecordingRunner(result: (task, "added scheduled to workspace alice\nTASK [x] ***\n", 0))
+        let lines = LockedLines()
+
+        let saved = try DevmachineCLI(executable: "/x", runner: runner).scheduledSave(["scheduled", "add"]) { lines.append($0) }
+
+        XCTAssertEqual(saved.id, "t_1")
+        XCTAssertEqual(lines.all, ["added scheduled to workspace alice", "TASK [x] ***"])
+    }
+
     func testLogIsTheRawOutput() throws {
         let runner = CLIRecordingRunner(result: ("hi\n", "", 0))
         let log = try DevmachineCLI(executable: "/x", runner: runner).scheduledLog("t_000001", run: "20261015T120000Z-ab12", workspace: "alice")
         XCTAssertEqual(log, "hi\n")
         XCTAssertEqual(runner.calls.first?.args,
                        ["scheduled", "log", "t_000001", "20261015T120000Z-ab12", "--workspace", "alice"])
+    }
+}
+
+private final class LockedLines: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lines: [String] = []
+
+    func append(_ line: String) {
+        lock.lock()
+        lines.append(line)
+        lock.unlock()
+    }
+
+    var all: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return lines
     }
 }
