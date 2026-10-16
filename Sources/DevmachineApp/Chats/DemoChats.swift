@@ -54,7 +54,7 @@ enum DemoChats {
                 ChatMessage(role: .assistant, text: rebuildAnswer, tools: [
                     ChatTool(name: "Read", summary: "internal/sessions/build.go"),
                     ChatTool(name: "Grep", summary: "\"func Rebuild\" in 3 files"),
-                ]),
+                ], denied: [ChatTool(name: "Bash", summary: "go test ./internal/sessions/...")]),
                 ChatMessage(role: .user, text: "And what happens when a workspace is paused?"),
                 ChatMessage(
                     role: .assistant,

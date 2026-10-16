@@ -737,7 +737,9 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
 
 ## Chats
 - **The engine is `devmachine chat`; the app only draws.** One process per
-  message (`chat send`, `chat ask`), NDJSON `started/text/tool/done/error`
+  message (`chat send`, `chat ask`), NDJSON `started/text/tool/denied/done/error`
+  (`denied`: a tool claude refused because `-p` cannot approve it, drawn
+  "Blocked: <name> needs approval")
   (`ChatEventDecoder`, Core). stdout and stderr share one pipe, so a line that
   is not an event is kept only as the failure's details. `ChatProcess` reads
   the pipe to the end before it returns: `StreamingProcess` could hand the last

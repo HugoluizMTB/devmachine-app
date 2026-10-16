@@ -39,6 +39,8 @@ public struct ChatConversation: Equatable, Sendable {
             updateAnswer { $0.text += delta }
         case let .tool(tool):
             updateAnswer { $0.tools.append(tool) }
+        case let .denied(tool):
+            updateAnswer { $0.denied.append(tool) }
         case let .done(chat):
             record = chat
             isStreaming = false

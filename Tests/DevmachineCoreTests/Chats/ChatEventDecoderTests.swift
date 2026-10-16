@@ -117,4 +117,15 @@ final class ChatEventDecoderTests: XCTestCase {
             #"{"id":"c_1","kind":"ask","mode":"transcript","excerpts":3,"created_at":"2026-10-15T10:00:00Z"}"#.utf8))
         XCTAssertEqual(chat.excerpts, 3)
     }
+
+    func testADeniedToolIsDecodedAndKeptOnTheMessage() throws {
+        XCTAssertEqual(
+            ChatEventDecoder.decode(#"{"type":"denied","name":"Bash","summary":"go test ./..."}"#),
+            .denied(ChatTool(name: "Bash", summary: "go test ./...")))
+        let message = try JSONDecoder().decode(ChatMessage.self, from: Data(
+            #"{"role":"assistant","text":"x","tools":[],"denied":[{"name":"Edit","summary":"main.go"}]}"#.utf8))
+        XCTAssertEqual(message.denied, [ChatTool(name: "Edit", summary: "main.go")])
+        let older = try JSONDecoder().decode(ChatMessage.self, from: Data(#"{"role":"assistant","text":"x"}"#.utf8))
+        XCTAssertEqual(older.denied, [])
+    }
 }

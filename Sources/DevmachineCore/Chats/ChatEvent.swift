@@ -67,6 +67,9 @@ public enum ChatEvent: Equatable, Sendable {
     case started(ChatRecord)
     case text(String)
     case tool(ChatTool)
+    /// The harness refused a tool that needed approval a one-shot run
+    /// cannot give.
+    case denied(ChatTool)
     case done(ChatRecord)
     case error(ChatFailure)
 }
@@ -92,6 +95,7 @@ public enum ChatEventDecoder {
         case "started": return parsed.chat.map(ChatEvent.started)
         case "text": return parsed.delta.map(ChatEvent.text)
         case "tool": return .tool(ChatTool(name: parsed.name ?? "", summary: parsed.summary ?? ""))
+        case "denied": return .denied(ChatTool(name: parsed.name ?? "", summary: parsed.summary ?? ""))
         case "done": return parsed.chat.map(ChatEvent.done)
         case "error":
             return .error(ChatFailure(

@@ -121,14 +121,20 @@ public struct ChatMessage: Codable, Equatable, Sendable {
     public var role: Role
     public var text: String
     public var tools: [ChatTool]
+    /// Tools the harness refused because they needed an approval.
+    public var denied: [ChatTool]
     public var at: Date?
     /// How the turn that wrote this message ended, when it failed.
     public var error: ChatFailure?
 
-    public init(role: Role, text: String, tools: [ChatTool] = [], at: Date? = nil, error: ChatFailure? = nil) {
+    public init(
+        role: Role, text: String, tools: [ChatTool] = [], denied: [ChatTool] = [], at: Date? = nil,
+        error: ChatFailure? = nil
+    ) {
         self.role = role
         self.text = text
         self.tools = tools
+        self.denied = denied
         self.at = at
         self.error = error
     }
@@ -138,13 +144,14 @@ public struct ChatMessage: Codable, Equatable, Sendable {
         let message: String?
     }
 
-    enum CodingKeys: String, CodingKey { case role, text, tools, at, error }
+    enum CodingKeys: String, CodingKey { case role, text, tools, denied, at, error }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         role = Role(rawValue: try values.decodeIfPresent(String.self, forKey: .role) ?? "") ?? .assistant
         text = try values.decodeIfPresent(String.self, forKey: .text) ?? ""
         tools = try values.decodeIfPresent([ChatTool].self, forKey: .tools) ?? []
+        denied = (try? values.decodeIfPresent([ChatTool].self, forKey: .denied)) ?? []
         at = ChatDate.parse(try values.decodeIfPresent(String.self, forKey: .at))
         if let wire = try? values.decodeIfPresent(WireError.self, forKey: .error) {
             error = ChatFailure(kind: ChatFailureKind(wire: wire.kind ?? ""), message: wire.message ?? "")
@@ -158,6 +165,7 @@ public struct ChatMessage: Codable, Equatable, Sendable {
         try values.encode(role.rawValue, forKey: .role)
         try values.encode(text, forKey: .text)
         try values.encode(tools, forKey: .tools)
+        if !denied.isEmpty { try values.encode(denied, forKey: .denied) }
         try values.encodeIfPresent(at.map(ChatDate.format), forKey: .at)
     }
 }

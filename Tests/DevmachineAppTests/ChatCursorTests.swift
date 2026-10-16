@@ -1,4 +1,5 @@
 import XCTest
+import DevmachineCore
 @testable import DevmachineApp
 
 final class ChatCursorTests: XCTestCase {
@@ -14,5 +15,10 @@ final class ChatCursorTests: XCTestCase {
         let first = ChatCursor.isOn(at: start, period: 0.5)
         XCTAssertNotEqual(first, ChatCursor.isOn(at: start.addingTimeInterval(0.5), period: 0.5))
         XCTAssertEqual(first, ChatCursor.isOn(at: start.addingTimeInterval(1), period: 0.5))
+    }
+
+    func testABlockedToolSaysItNeedsApproval() {
+        XCTAssertEqual(ChatDeniedLine.text(ChatTool(name: "Bash", summary: "x")), "Blocked: Bash needs approval")
+        XCTAssertEqual(ChatDeniedLine.text(ChatTool(name: "", summary: "x")), "Blocked: a tool needs approval")
     }
 }

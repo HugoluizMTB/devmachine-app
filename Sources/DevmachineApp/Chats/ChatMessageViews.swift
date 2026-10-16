@@ -53,6 +53,29 @@ struct ChatToolLine: View {
     }
 }
 
+/// A tool the harness refused: chats run one message at a time, so
+/// nobody is there to approve it.
+struct ChatDeniedLine: View {
+    let tool: ChatTool
+    @Environment(\.dmMetrics) private var m
+
+    static func text(_ tool: ChatTool) -> String {
+        "Blocked: \(tool.name.isEmpty ? "a tool" : tool.name) needs approval"
+    }
+
+    var body: some View {
+        HStack(spacing: m.pt(7)) {
+            Image(systemName: "lock.fill").font(.dm(10))
+            Text(verbatim: Self.text(tool)).font(.dm(11.5, design: .monospaced)).lineLimit(1)
+        }
+        .foregroundStyle(Color.orange.opacity(0.85))
+        .padding(.horizontal, m.pt(9))
+        .padding(.vertical, m.pt(5))
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: m.pt(DMRadius.row)))
+        .help(tool.summary.isEmpty ? Self.text(tool) : "\(tool.name) \(tool.summary)")
+    }
+}
+
 /// An answer: its tool lines, then the text as markdown. While it streams
 /// a cursor follows the last word.
 struct ChatAnswerView: View {
@@ -65,10 +88,13 @@ struct ChatAnswerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: m.pt(12)) {
-            if !message.tools.isEmpty {
+            if !message.tools.isEmpty || !message.denied.isEmpty {
                 VStack(alignment: .leading, spacing: m.pt(8)) {
                     ForEach(Array(message.tools.enumerated()), id: \.offset) { _, tool in
                         ChatToolLine(tool: tool)
+                    }
+                    ForEach(Array(message.denied.enumerated()), id: \.offset) { _, tool in
+                        ChatDeniedLine(tool: tool)
                     }
                 }
             }

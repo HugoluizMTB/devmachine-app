@@ -24,6 +24,16 @@ final class ChatConversationTests: XCTestCase {
         XCTAssertNil(conversation.failure)
     }
 
+    func testADeniedToolJoinsTheAnswer() {
+        var conversation = ChatConversation()
+        conversation.begin(userText: "run the tests", at: start)
+        conversation.apply(.denied(ChatTool(name: "Bash", summary: "go test ./...")))
+        conversation.apply(.text("I could not run them."))
+        XCTAssertEqual(conversation.messages.map(\.role), [.user, .assistant])
+        XCTAssertEqual(conversation.messages[1].denied, [ChatTool(name: "Bash", summary: "go test ./...")])
+        XCTAssertTrue(conversation.isStreaming)
+    }
+
     func testASecondTurnStartsANewAnswer() {
         var conversation = ChatConversation()
         conversation.begin(userText: "one", at: start)
