@@ -133,9 +133,9 @@ struct ContentView: View {
             model.settings = $0
             if !DemoMode.isActive { chats.settings = $0?.chats ?? .default }
         }
-        .onReceive(model.$workspaces) { _ in
+        .onReceive(model.$workspaces) { workspaces in
             guard !DemoMode.isActive else { return }
-            let names = model.visibleWorkspaces.map(\.name)
+            let names = WorkspaceVisibility.visible(workspaces, hidden: model.settings?.hiddenWorkspaces ?? []).map(\.name)
             if chats.workspaces != names { chats.workspaces = names }
         }
         .onChange(of: model.appMode) { _, mode in
