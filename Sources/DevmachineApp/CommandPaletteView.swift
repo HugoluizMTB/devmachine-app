@@ -14,6 +14,7 @@ struct CommandPaletteView: View {
     @EnvironmentObject private var updates: UpdateController
     @Environment(\.harnessSettingsFacade) private var harnessSettingsFacade
     @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var chats = ChatStore.shared
     @State private var query = ""
     @State private var index = 0
     @FocusState private var focused: Bool
@@ -36,6 +37,10 @@ struct CommandPaletteView: View {
         context.currentWorkspaceAlias = model.currentWorkspaceAlias
         context.activePage = model.activePage
         context.cliUpdate = updates.cliNotice
+        context.chats = chats.visibleChats
+        context.chatSettings = chats.settings
+        context.chatConfig = chats.config
+        context.chatWorkspaces = chats.workspaces
         context.previewTargets = PreviewTargetsStore.shared.knownTargets().map {
             PalettePreviewGroup(place: $0.place, targets: $0.targets)
         }
@@ -46,7 +51,7 @@ struct CommandPaletteView: View {
         let context = context
         return PaletteRanker.sections(
             CommandRegistry.commands(in: context), query: query, mru: recents.mru,
-            currentWorkspace: context.currentWorkspace?.name)
+            currentWorkspace: context.currentWorkspace?.name, inChats: model.appMode == .chats)
     }
 
     private var dispatcher: PaletteDispatcher {
@@ -99,6 +104,7 @@ struct CommandPaletteView: View {
         .frame(width: m.card.palette)
         .dmGlass(radius: DMRadius.panel)
         .shadow(radius: m.pt(30), y: m.pt(12))
+        .task { await chats.refresh() }
         .onAppear {
             focused = true
             index = 0
@@ -140,7 +146,9 @@ struct CommandPaletteView: View {
 
     @ViewBuilder
     private func icon(_ command: PaletteCommand) -> some View {
-        if command.category == .session || command.action.opensSession {
+        if let harness = command.harness {
+            ChatHarnessGlyph(harness: harness, size: 13)
+        } else if command.category == .session || command.action.opensSession {
             HStack(spacing: m.pt(3)) {
                 if command.badges.isEmpty {
                     Image(systemName: "circle")

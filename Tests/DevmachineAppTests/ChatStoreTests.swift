@@ -91,8 +91,7 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertEqual(store.records.map(\.id), ["c1"])
         XCTAssertEqual(
             runner.arguments.first,
-            ["chat", "send", "--workspace", "main", "--harness", "claude", "--folder", "~/chats", "--",
-             "how does it rebuild?"])
+            ["chat", "send", "--workspace", "main", "--harness", "claude", "--", "how does it rebuild?"])
     }
 
     func testAFollowUpPassesTheChat() async {
@@ -165,10 +164,12 @@ final class ChatStoreTests: XCTestCase {
         let runner = FakeChatRunner(outputs: ["chat list": ChatCommandOutput(stdout: list, stderr: "", exitCode: 0)])
         let store = ChatStore(runner: runner)
         await store.refresh()
-        XCTAssertEqual(runner.arguments.first, ["chat", "list", "--all", "--json"])
+        XCTAssertEqual(runner.arguments.prefix(2), [["--format", "json", "config", "show"], ["chat", "list", "--all", "--json"]])
         XCTAssertEqual(store.records.map(\.id), ["c1", "a1"])
         XCTAssertEqual(store.visibleChats.map(\.id), ["c1"])
-        store.promote("a1")
+        let continued = await store.continueAsk("a1")
+        XCTAssertTrue(continued)
+        XCTAssertTrue(runner.arguments.contains(["chat", "continue", "a1", "--json"]))
         XCTAssertEqual(Set(store.visibleChats.map(\.id)), ["c1", "a1"])
     }
 
@@ -274,5 +275,40 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertFalse(store.isAnswering("c7"))
         XCTAssertNil(store.conversation("c7").failure)
         XCTAssertEqual(store.conversation("c7").messages.last?.text, "half")
+    }
+
+    func testTheConfigSaysWhereNewChatsRun() async {
+        let show = #"{"chat":{"default_workspace":"acme","folder":"~/notes","harness":"codex"}}"#
+        let runner = FakeChatRunner(
+            streams: [.init(lines: [])],
+            outputs: ["--format json": ChatCommandOutput(stdout: show, stderr: "", exitCode: 0)])
+        let store = ChatStore(runner: runner)
+        store.workspaces = ["main", "acme"]
+        await store.refresh()
+        XCTAssertEqual(store.defaultPlace, .workspace("acme"))
+        XCTAssertEqual(store.draftHarness, .codex)
+        store.sendFromPane("hi")
+        await waitForChat { runner.arguments.contains { $0.prefix(2) == ["chat", "send"] } }
+        XCTAssertEqual(
+            runner.arguments.first { $0.prefix(2) == ["chat", "send"] },
+            ["chat", "send", "--workspace", "acme", "--harness", "codex", "--", "hi"])
+    }
+
+    func testARefusedConfigChangeIsReported() async {
+        let runner = FakeChatRunner(outputs: ["config set": ChatCommandOutput(
+            stdout: "", stderr: "error: chat.default_workspace \"gone\" is not a workspace", exitCode: 1)])
+        let store = ChatStore(runner: runner)
+        let refusal = await store.saveConfig(ChatCLIConfig(defaultWorkspace: "gone"))
+        XCTAssertEqual(refusal, "error: chat.default_workspace \"gone\" is not a workspace")
+        XCTAssertTrue(runner.arguments.contains(["config", "set", "chat.default_workspace", "gone"]))
+    }
+
+    func testAFailedTurnReadBackShowsItsCard() async {
+        let shown = #"{"chat":\#(ChatFixtures.record("c1")),"messages":[{"role":"user","text":"hi","tools":[]},{"role":"assistant","text":"","tools":[],"error":{"kind":"harness-missing","message":"claude: command not found"}}]}"#
+        let runner = FakeChatRunner(outputs: ["chat show": ChatCommandOutput(stdout: shown, stderr: "", exitCode: 0)])
+        let store = ChatStore(runner: runner)
+        store.select("c1")
+        await waitForChat { store.conversation("c1").failure != nil }
+        XCTAssertEqual(store.conversation("c1").failure?.kind, .harnessMissing)
     }
 }

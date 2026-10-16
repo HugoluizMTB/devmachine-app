@@ -181,7 +181,7 @@ public enum DefaultStackBoard {
     public static let menubarSurfaces = [menubar, menubarPanel]
     public static let sidebarWidgets = ["workspaces"]
     public static let contextSidebarWidgets = [
-        "shortcuts", "publish-port", "monitors", "shells", "sub-agents", "todo", "pull-requests", "links",
+        "shortcuts", "publish-port", "monitors", "shells", "sub-agents", "todo", "pull-requests", "links", "ask",
     ]
     public static let menubarWidgets = ["brand", "open-pull-requests"]
     public static let menubarPanelWidgets = ["pull-requests-panel", "usage-panel"]

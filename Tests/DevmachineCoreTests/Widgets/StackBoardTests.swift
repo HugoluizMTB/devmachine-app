@@ -107,7 +107,7 @@ final class StackBoardTests: XCTestCase {
         let context = DefaultStackBoard.make(surface: "context-sidebar")
         XCTAssertEqual(context.surface, "context-sidebar")
         XCTAssertEqual(ids(context), [
-            "shortcuts", "publish-port", "monitors", "shells", "sub-agents", "todo", "pull-requests", "links",
+            "shortcuts", "publish-port", "monitors", "shells", "sub-agents", "todo", "pull-requests", "links", "ask",
         ])
         XCTAssertEqual(Set(context.entries.map(\.size)), [.auto])
         XCTAssertEqual(context.entries.map(\.type), context.entries.map { "devmachine-app/\($0.id)" })

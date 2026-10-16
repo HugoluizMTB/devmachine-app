@@ -136,7 +136,8 @@ struct SetupPage: View {
             workspaceSessionPrograms: form.workspaceSessionPrograms,
             linkOpening: form.linkOpening,
             operatorProgram: form.operatorProgram,
-            operatorSessionEnabled: form.operatorSessionEnabled
+            operatorSessionEnabled: form.operatorSessionEnabled,
+            chats: form.chats
         )
     }
 
@@ -313,7 +314,13 @@ struct SetupPage: View {
                     case .workspaces: EmptyView()
                     case .packages: EmptyView()
                     case .harnesses: harnessesBlock.task { await machinesStore.load() }
-                    case .chats: EmptyView()
+                    case .chats:
+                        ChatsSettingsView(
+                            chats: $form.chats, config: $form.chatConfig, workspaces: ChatStore.shared.workspaces)
+                            .task {
+                                await ChatStore.shared.loadConfig()
+                                form.chatConfig = ChatStore.shared.config
+                            }
                     case .shares: SharesSettingsView()
                     case .appearance: appearanceBlock
                     case .healthCheck: HealthCheckView()
@@ -1362,6 +1369,8 @@ struct SetupPage: View {
             form.hiddenWorkspaces = current.hiddenWorkspaces
             form.operatorProgram = current.operatorProgram
             form.operatorSessionEnabled = current.operatorSessionEnabled
+            form.chats = current.chats
+            form.chatConfig = ChatStore.shared.config
             applyHarnessSettings(current)
         } else {
             let configPath = NSHomeDirectory() + "/.ssh/config"
@@ -1428,6 +1437,12 @@ struct SetupPage: View {
         settingsStore.commit(settingsDraft)
         rememberCustomDefaults(value)
         model.settings = value
+        let chatConfig = form.chatConfig
+        if chatConfig != ChatStore.shared.config {
+            Task { [model] in
+                if let refusal = await ChatStore.shared.saveConfig(chatConfig) { model.flashToast(refusal) }
+            }
+        }
         model.activePage = nil
         // Before reloading: the panes of a workspace you just hid have to go
         // now, and the reload must not bring their poll back.

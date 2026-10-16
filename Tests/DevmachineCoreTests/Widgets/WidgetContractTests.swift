@@ -5,7 +5,7 @@ final class WidgetContractTests: XCTestCase {
     private func fixture() throws -> Data {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/widget-contract-1.7.json")
+            .appendingPathComponent("Fixtures/widget-contract-1.8.json")
         return try Data(contentsOf: url)
     }
 
@@ -13,7 +13,7 @@ final class WidgetContractTests: XCTestCase {
         let decoded = try JSONDecoder().decode(WidgetContract.self, from: fixture())
         XCTAssertEqual(decoded, WidgetContract.engine17)
         XCTAssertEqual(WidgetContract.current, WidgetContract.engine17)
-        XCTAssertEqual(WidgetContract.current.engine, "1.7")
+        XCTAssertEqual(WidgetContract.current.engine, "1.8")
     }
 
     func testHomeGrowsForTheViewsWithANaturalHeight() {

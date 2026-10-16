@@ -12,6 +12,9 @@ public enum ChatFailureKind: Equatable, Sendable {
     case transcriptNotFound
     case harnessUnsupported
     case needsNewerCLI
+    /// The CLI turned the request down before any harness ran: an unknown
+    /// workspace, flags that conflict.
+    case refused
     case other(String)
 
     public init(wire: String) {
@@ -47,12 +50,15 @@ public struct ChatFailure: Equatable, Sendable {
         if isOlderCLI(text) {
             return ChatFailure(kind: .needsNewerCLI, message: text)
         }
+        if text.lowercased().hasPrefix("error:") {
+            return ChatFailure(kind: .refused, message: text)
+        }
         let detail = text.isEmpty ? "devmachine chat stopped with exit status \(status) and said nothing." : text
         return ChatFailure(kind: .harnessFailed, message: detail)
     }
 
     public static func isOlderCLI(_ output: String) -> Bool {
-        output.contains("unknown command \"chat\"") || output.contains("unknown command \"ask\"")
+        ["chat", "ask", "continue"].contains { output.contains("unknown command \"\($0)\"") }
     }
 }
 

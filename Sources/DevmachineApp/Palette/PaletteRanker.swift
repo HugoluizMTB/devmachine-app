@@ -17,11 +17,20 @@ enum PaletteRanker {
     static let currentWorkspaceBonus = 30
 
     static func sections(
-        _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String? = nil
+        _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String? = nil,
+        inChats: Bool = false
     ) -> [PaletteSection] {
         query.trimmingCharacters(in: .whitespaces).isEmpty
             ? emptyQuerySections(commands, mru: mru)
-            : matchedSections(commands, query: query, mru: mru, currentWorkspace: currentWorkspace)
+            : matchedSections(
+                commands, query: query, mru: mru, currentWorkspace: currentWorkspace, inChats: inChats)
+    }
+
+    static let chatsBonus = 40
+
+    /// In Chats mode, what starts or opens a chat comes first.
+    static func isChatCommand(_ command: PaletteCommand) -> Bool {
+        command.category == .chats || command.id.hasPrefix("action.new-chat")
     }
 
     private static func emptyQuerySections(_ commands: [PaletteCommand], mru: CommandMRU) -> [PaletteSection] {
@@ -37,13 +46,14 @@ enum PaletteRanker {
     }
 
     private static func matchedSections(
-        _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String?
+        _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String?, inChats: Bool
     ) -> [PaletteSection] {
         let scored = commands.compactMap { command -> (PaletteCommand, Int)? in
             let fields = [command.title, command.subtitle, command.keywords.joined(separator: " ")]
             guard let score = FuzzyMatch.score(query, fields: fields) else { return nil }
             var total = score + mru.boost(for: command.id)
             if command.category == .session { total += sessionBonus }
+            if inChats, isChatCommand(command) { total += chatsBonus }
             if let currentWorkspace, !command.subtitle.isEmpty, command.subtitle == currentWorkspace {
                 total += currentWorkspaceBonus
             }

@@ -30,6 +30,9 @@ final class BoardCodecStackTests: XCTestCase {
           - id: links
             type: devmachine-app/links
             size: auto
+          - id: ask
+            type: devmachine-app/ask
+            size: auto
 
         """
 

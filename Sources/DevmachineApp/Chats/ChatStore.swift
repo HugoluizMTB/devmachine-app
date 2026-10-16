@@ -107,22 +107,20 @@ enum ChatPicker: Equatable {
 final class ChatStore: ObservableObject {
     static let shared: ChatStore = {
         let live = NSClassFromString("XCTestCase") == nil && !DemoMode.isActive
-        let store = ChatStore(
-            runner: live ? ProcessChatCommandRunner() : UnavailableChatRunner(),
-            defaults: live ? .standard : nil)
+        let store = ChatStore(runner: live ? ProcessChatCommandRunner() : UnavailableChatRunner())
         if DemoMode.isActive { DemoChats.seed(store) }
         return store
     }()
 
     static let pendingPrefix = "pending-"
     static let titleLength = 60
-    private static let promotedKey = "chats.promotedAskChats"
 
     @Published private(set) var records: [ChatRecord] = []
     @Published private(set) var conversations: [String: ChatConversation] = [:]
     @Published private(set) var listFailure: ChatFailure?
     @Published private(set) var hasLoaded = false
-    @Published private(set) var promotedAskIDs: Set<String>
+    /// Where new chats run, as the CLI's configuration says.
+    @Published private(set) var config = ChatCLIConfig()
     @Published var selectedID: String?
     @Published var draft = ChatDraft()
     @Published var openPicker: ChatPicker?
@@ -133,25 +131,22 @@ final class ChatStore: ObservableObject {
     @Published private(set) var awaitingLogin: String?
 
     private let runner: any ChatCommandRunning
-    private let defaults: UserDefaults?
     private let now: () -> Date
     private var tasks: [String: Task<Void, Never>] = [:]
     private var movedKeys: [String: String] = [:]
     private var isDemo = false
 
-    init(runner: any ChatCommandRunning, defaults: UserDefaults? = nil, now: @escaping () -> Date = Date.init) {
+    init(runner: any ChatCommandRunning, now: @escaping () -> Date = Date.init) {
         self.runner = runner
-        self.defaults = defaults
         self.now = now
-        promotedAskIDs = Set(defaults?.stringArray(forKey: Self.promotedKey) ?? [])
     }
 
     // MARK: - Reading
 
-    /// The chats Chats mode lists: ask threads stay out until "Continue in
-    /// Chats" brings one over.
+    /// The chats Chats mode lists: an ask stays out until "Continue in
+    /// Chats" makes it a chat.
     var visibleChats: [ChatRecord] {
-        ChatGrouping.sorted(records.filter { !$0.isAsk || promotedAskIDs.contains($0.id) })
+        ChatGrouping.sorted(records.filter { !$0.isAsk })
     }
 
     func record(_ id: String) -> ChatRecord? {
@@ -166,16 +161,21 @@ final class ChatStore: ObservableObject {
         conversations[id]?.isStreaming == true
     }
 
-    var defaultPlace: ChatPlace { settings.defaultPlace(workspaces: workspaces) }
+    var defaultPlace: ChatPlace { config.defaultPlace(workspaces: workspaces) }
+
+    var defaultHarness: HarnessID {
+        settings.harnesses.contains(config.harness) ? config.harness : settings.harnesses[0]
+    }
 
     var draftHarness: HarnessID {
-        draft.harness.flatMap { settings.harnesses.contains($0) ? $0 : nil } ?? settings.harnesses[0]
+        draft.harness.flatMap { settings.harnesses.contains($0) ? $0 : nil } ?? defaultHarness
     }
 
     var draftPlace: ChatPlace { draft.place ?? defaultPlace }
 
     func refresh() async {
         guard !isDemo else { return }
+        await loadConfig()
         do {
             let output = try await runner.run(ChatCommand.list())
             guard output.exitCode == 0 else {
@@ -198,6 +198,27 @@ final class ChatStore: ObservableObject {
         hasLoaded = true
     }
 
+    func loadConfig() async {
+        guard !isDemo, let output = try? await runner.run(ChatCommand.configShow()), output.exitCode == 0,
+              let loaded = ChatCLIConfig.fromConfigShow(Data(output.stdout.utf8)) else { return }
+        if loaded != config { config = loaded }
+    }
+
+    /// Writes Settings → Chats' "Where chats run" through `config set`.
+    /// Returns what the CLI said when it refused a change.
+    func saveConfig(_ wanted: ChatCLIConfig) async -> String? {
+        for arguments in wanted.changes(from: config) {
+            guard let output = try? await runner.run(arguments) else { return "The devmachine CLI could not run." }
+            if output.exitCode != 0 {
+                await loadConfig()
+                let message = (output.stderr.isEmpty ? output.stdout : output.stderr)
+                return message.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        await loadConfig()
+        return nil
+    }
+
     /// Reads a chat's messages from the CLI's local copy, unless an answer
     /// is streaming into it right now.
     func load(_ id: String) async {
@@ -210,6 +231,8 @@ final class ChatStore: ObservableObject {
             var conversation = conversations[id] ?? ChatConversation()
             conversation.record = shown.record
             conversation.messages = shown.messages
+            conversation.failure = shown.messages.last?.error.flatMap { $0.kind == .cancelled ? nil : $0 }
+            conversation.wasStopped = shown.messages.last?.error?.kind == .cancelled
             conversations[id] = conversation
         } catch {
             return
@@ -264,7 +287,7 @@ final class ChatStore: ObservableObject {
         let key = Self.pendingPrefix + UUID().uuidString
         let placeholder = ChatRecord(
             id: key, title: Self.title(of: body), harness: harness,
-            workspace: place.workspaceName ?? ChatRecord.localWorkspace, folder: settings.folder,
+            workspace: place.workspaceName ?? ChatRecord.localWorkspace, folder: config.folder,
             createdAt: now(), updatedAt: now())
         records.append(placeholder)
         conversations[key] = ChatConversation(record: placeholder)
@@ -272,8 +295,7 @@ final class ChatStore: ObservableObject {
         openPicker = nil
         launch(
             key: key, text: body,
-            arguments: ChatCommand.send(
-                chatID: nil, place: place, harness: harness, folder: settings.folder, message: body))
+            arguments: ChatCommand.send(chatID: nil, place: place, harness: harness, message: body))
         return key
     }
 
@@ -286,14 +308,16 @@ final class ChatStore: ObservableObject {
             key: id, text: body,
             arguments: ChatCommand.send(
                 chatID: id.hasPrefix(Self.pendingPrefix) ? nil : id, place: record.place, harness: record.harness,
-                folder: record.folder, message: body))
+                message: body))
         return id
     }
 
     /// One Ask turn: the first creates the session's ask chat, later ones
     /// pass it with `--chat`.
     @discardableResult
-    func ask(_ question: String, key askKey: AskSessionKey, harness: HarnessID, chatID: String?) -> String? {
+    func ask(
+        _ question: String, key askKey: AskSessionKey, harness: HarnessID, folder: String? = nil, chatID: String?
+    ) -> String? {
         let body = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return nil }
         let key = chatID ?? Self.pendingPrefix + UUID().uuidString
@@ -301,13 +325,15 @@ final class ChatStore: ObservableObject {
         if conversations[key] == nil {
             let placeholder = ChatRecord(
                 id: key, title: Self.title(of: body), harness: harness,
-                workspace: askKey.place.workspaceName ?? ChatRecord.localWorkspace,
+                workspace: askKey.place.workspaceName ?? ChatRecord.localWorkspace, folder: folder ?? "",
                 createdAt: now(), updatedAt: now(), kind: ChatRecord.askKind, session: askKey.session)
             conversations[key] = ChatConversation(record: record(key) ?? placeholder)
         }
         launch(
             key: key, text: body,
-            arguments: ChatCommand.ask(place: askKey.place, session: askKey.session, chatID: chatID, question: body))
+            arguments: ChatCommand.ask(
+                place: askKey.place, session: askKey.session, folder: folder, harness: harness, chatID: chatID,
+                question: body))
         return key
     }
 
@@ -323,10 +349,11 @@ final class ChatStore: ObservableObject {
         let chatID = id.hasPrefix(Self.pendingPrefix) ? nil : id
         let arguments: [String]
         if record.isAsk, let session = record.session {
-            arguments = ChatCommand.ask(place: record.place, session: session, chatID: chatID, question: text)
+            arguments = ChatCommand.ask(
+                place: record.place, session: session, folder: record.folder, harness: record.harness, chatID: chatID,
+                question: text)
         } else {
-            arguments = ChatCommand.send(
-                chatID: chatID, place: record.place, harness: record.harness, folder: record.folder, message: text)
+            arguments = ChatCommand.send(chatID: chatID, place: record.place, harness: record.harness, message: text)
         }
         launch(key: id, text: text, arguments: arguments)
     }
@@ -370,17 +397,22 @@ final class ChatStore: ObservableObject {
         records.removeAll { $0.id == id }
         conversations[id] = nil
         if selectedID == id { selectedID = nil }
-        if promotedAskIDs.remove(id) != nil { savePromoted() }
     }
 
-    /// "Continue in Chats": an ask thread joins the chat list.
-    func promote(_ id: String) {
-        guard !promotedAskIDs.contains(id) else { return }
-        promotedAskIDs.insert(id)
-        savePromoted()
-        if let record = conversations[id]?.record, !records.contains(where: { $0.id == id }) {
-            records.append(record)
+    /// "Continue in Chats": `chat continue` makes the ask a chat of its own,
+    /// listed with the others.
+    func continueAsk(_ id: String) async -> Bool {
+        guard let output = try? await runner.run(ChatCommand.continueAsk(id: id)), output.exitCode == 0 else {
+            return false
         }
+        var record = (try? JSONDecoder().decode(ChatRecord.self, from: Data(output.stdout.utf8)))
+            ?? self.record(id)
+        record?.kind = ChatRecord.chatKind
+        if let record {
+            upsert(record)
+            conversations[id]?.record = record
+        }
+        return true
     }
 
     // MARK: - Streaming
@@ -443,10 +475,6 @@ final class ChatStore: ObservableObject {
         if let task = tasks.removeValue(forKey: pending) { tasks[chat.id] = task }
         records.removeAll { $0.id == pending }
         if selectedID == pending { selectedID = chat.id }
-        if chat.isAsk, promotedAskIDs.remove(pending) != nil {
-            promotedAskIDs.insert(chat.id)
-            savePromoted()
-        }
     }
 
     /// A key the CLI renamed from pending to the chat's id.
@@ -460,10 +488,6 @@ final class ChatStore: ObservableObject {
         } else {
             records.append(chat)
         }
-    }
-
-    private func savePromoted() {
-        defaults?.set(promotedAskIDs.sorted(), forKey: Self.promotedKey)
     }
 
     static func title(of message: String) -> String {
@@ -482,8 +506,9 @@ final class ChatStore: ObservableObject {
 
     // MARK: - Demo
 
-    func seedDemo(records: [ChatRecord], conversations: [String: ChatConversation]) {
+    func seedDemo(records: [ChatRecord], conversations: [String: ChatConversation], config: ChatCLIConfig) {
         isDemo = true
+        self.config = config
         self.records = records
         self.conversations = conversations
         hasLoaded = true

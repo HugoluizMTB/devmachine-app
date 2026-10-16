@@ -21,25 +21,34 @@ public enum ChatPlace: Hashable, Sendable {
 /// The `devmachine chat` arguments the app runs. A message always comes
 /// after `--`, so text that starts with a dash is never read as a flag.
 public enum ChatCommand {
-    public static func send(
-        chatID: String?, place: ChatPlace, harness: HarnessID, folder: String, message: String
-    ) -> [String] {
+    /// A new chat names where and with what; its folder is the CLI's
+    /// `chat.folder`. A continued chat takes all three from its record.
+    public static func send(chatID: String?, place: ChatPlace, harness: HarnessID, message: String) -> [String] {
         var arguments = ["chat", "send"]
         if let chatID {
             arguments += ["--chat", chatID]
         } else {
             arguments += place.flags + ["--harness", harness.rawValue]
-            let folder = folder.trimmingCharacters(in: .whitespaces)
-            if !folder.isEmpty { arguments += ["--folder", folder] }
         }
         return arguments + ["--", message]
     }
 
-    public static func ask(place: ChatPlace, session: String, chatID: String?, question: String) -> [String] {
+    /// `folder` is the session's own folder, which a session on this Mac
+    /// outside tmux needs; `harness` is the app's guess at what runs there.
+    public static func ask(
+        place: ChatPlace, session: String, folder: String? = nil, harness: HarnessID? = nil, chatID: String?,
+        question: String
+    ) -> [String] {
         var arguments = ["chat", "ask"] + place.flags + ["--session", session]
+        if let folder, !folder.isEmpty { arguments += ["--folder", folder] }
+        if let harness { arguments += ["--harness", harness.rawValue] }
         if let chatID { arguments += ["--chat", chatID] }
         return arguments + ["--", question]
     }
+
+    public static func continueAsk(id: String) -> [String] { ["chat", "continue", id, "--json"] }
+
+    public static func configShow() -> [String] { ["--format", "json", "config", "show"] }
 
     public static func list() -> [String] { ["chat", "list", "--all", "--json"] }
 

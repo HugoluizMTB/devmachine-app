@@ -137,7 +137,7 @@ final class StackBoardControllerTests: XCTestCase {
         controller.remove("publish-port")
         controller.store?.flush()
         let board = try read("context-sidebar")
-        XCTAssertEqual(board.entries.map(\.id), ["todo", "shortcuts", "monitors", "shells", "sub-agents", "links", "pull-requests"])
+        XCTAssertEqual(board.entries.map(\.id), ["todo", "shortcuts", "monitors", "shells", "sub-agents", "links", "pull-requests", "ask"])
         XCTAssertEqual(board.entries.first { $0.id == "shells" }?.collapsed, true)
         XCTAssertEqual(board.entries.first { $0.id == "monitors" }?.size, .preset("large"))
     }

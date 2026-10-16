@@ -67,6 +67,13 @@ final class QuickChatHotkeyController {
         self.onPress = onPress
     }
 
+    /// While Settings records a new shortcut the old one must not fire.
+    func suspend() {
+        registrar.unregister()
+        registered = nil
+        failed = nil
+    }
+
     func apply(_ settings: ChatSettings) {
         let wanted = settings.hotkey.flatMap { $0.isValid ? $0 : nil }
         guard wanted != registered || (wanted != nil && failed == wanted) else { return }

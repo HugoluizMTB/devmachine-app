@@ -25,7 +25,6 @@ final class ChatSettingsTests: XCTestCase {
         let old = Data(#"{"opsRepoPath":"/Users/alice/.config/devmachine","hostAlias":"","publicIP":"","baseDomain":""}"#.utf8)
         let settings = try JSONDecoder().decode(AppSettings.self, from: old)
         XCTAssertEqual(settings.chats, .default)
-        XCTAssertEqual(settings.chats.folder, "~/chats")
         XCTAssertEqual(settings.chats.hotkey, .defaultValue)
         XCTAssertTrue(settings.chats.showsInMenuBar)
         XCTAssertEqual(settings.chats.harnesses, [.claude, .codex])
@@ -34,14 +33,14 @@ final class ChatSettingsTests: XCTestCase {
     func testAClearedShortcutStaysCleared() throws {
         var settings = AppSettings.empty
         settings.chats.hotkey = nil
-        settings.chats.defaultWorkspace = "acme"
+        settings.chats.showsInMenuBar = false
         let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
         XCTAssertNil(decoded.chats.hotkey)
-        XCTAssertEqual(decoded.chats.defaultWorkspace, "acme")
+        XCTAssertFalse(decoded.chats.showsInMenuBar)
     }
 
     func testTheDefaultPlace() {
-        var chats = ChatSettings()
+        var chats = ChatCLIConfig()
         XCTAssertEqual(chats.defaultPlace(workspaces: ["main", "acme"]), .workspace("main"))
         XCTAssertEqual(chats.defaultPlace(workspaces: []), .local)
         chats.defaultWorkspace = "acme"
@@ -56,5 +55,24 @@ final class ChatSettingsTests: XCTestCase {
         XCTAssertEqual(ChatSettings(enabledHarnesses: [.codex]).harnesses, [.codex])
         XCTAssertEqual(ChatSettings(enabledHarnesses: []).harnesses, [.claude])
         XCTAssertEqual(ChatSettings(enabledHarnesses: [.codex, .pi, .claude]).harnesses, [.claude, .codex])
+    }
+
+    func testTheCLIConfigComesFromConfigShow() {
+        let show = Data(#"{"machines":[],"chat":{"default_workspace":"acme","folder":"~/notes","harness":"codex"}}"#.utf8)
+        XCTAssertEqual(
+            ChatCLIConfig.fromConfigShow(show),
+            ChatCLIConfig(defaultWorkspace: "acme", folder: "~/notes", harness: .codex))
+        XCTAssertNil(ChatCLIConfig.fromConfigShow(Data(#"{"machines":[]}"#.utf8)))
+    }
+
+    func testSavingRunsConfigSetAndUnset() {
+        let old = ChatCLIConfig(defaultWorkspace: "main", folder: "~/chats", harness: .claude)
+        XCTAssertEqual(old.changes(from: old), [])
+        let wanted = ChatCLIConfig(defaultWorkspace: "local", folder: " ", harness: .codex)
+        XCTAssertEqual(wanted.changes(from: old), [
+            ["config", "set", "chat.default_workspace", "local"],
+            ["config", "unset", "chat.folder"],
+            ["config", "set", "chat.harness", "codex"],
+        ])
     }
 }

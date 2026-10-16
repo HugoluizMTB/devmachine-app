@@ -22,6 +22,8 @@ struct StackAppWidgetView: View {
             PublishPortWidgetView()
         case .monitors, .shells, .subAgents, .todo, .pullRequests, .links:
             ContextSectionWidgetView(kind: kind, store: model.context, preceding: preceding)
+        case .ask:
+            AskWidgetView(context: model.context)
         default:
             WidgetPlaceholderView(
                 icon: "puzzlepiece.extension", title: "Needs a newer app",

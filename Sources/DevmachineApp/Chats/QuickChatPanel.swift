@@ -134,6 +134,15 @@ final class QuickChatPanelController: NSObject, NSWindowDelegate {
 
     var isShown: Bool { panel?.isVisible == true }
 
+    func suspendHotkey(_ suspended: Bool) {
+        guard let hotkeys else { return }
+        if suspended {
+            hotkeys.suspend()
+        } else {
+            hotkeys.apply(SettingsStore.shared.settings?.chats ?? .default)
+        }
+    }
+
     func toggle() {
         if isShown, panel?.isKeyWindow == true { hide() } else { show() }
     }

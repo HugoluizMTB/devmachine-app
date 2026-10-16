@@ -19,11 +19,13 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
     public var session: String?
     public var sourceSessionID: String?
     public var mode: String?
+    /// For a transcript ask: how many transcript excerpts the answer read.
+    public var excerpts: Int?
 
     public init(
         id: String, title: String, harness: HarnessID, workspace: String, folder: String = "",
         harnessSessionID: String = "", createdAt: Date, updatedAt: Date, kind: String = ChatRecord.chatKind,
-        session: String? = nil, sourceSessionID: String? = nil, mode: String? = nil
+        session: String? = nil, sourceSessionID: String? = nil, mode: String? = nil, excerpts: Int? = nil
     ) {
         self.id = id
         self.title = title
@@ -37,6 +39,7 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
         self.session = session
         self.sourceSessionID = sourceSessionID
         self.mode = mode
+        self.excerpts = excerpts
     }
 
     public var isLocal: Bool { workspace == Self.localWorkspace }
@@ -44,7 +47,7 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
     public var place: ChatPlace { isLocal ? .local : .workspace(workspace) }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, harness, workspace, folder, kind, session, mode
+        case id, title, harness, workspace, folder, kind, session, mode, excerpts
         case harnessSessionID = "harness_session_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -66,6 +69,7 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
         session = try values.decodeIfPresent(String.self, forKey: .session)
         sourceSessionID = try values.decodeIfPresent(String.self, forKey: .sourceSessionID)
         mode = try values.decodeIfPresent(String.self, forKey: .mode)
+        excerpts = try? values.decodeIfPresent(Int.self, forKey: .excerpts)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -82,6 +86,7 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
         try values.encodeIfPresent(session, forKey: .session)
         try values.encodeIfPresent(sourceSessionID, forKey: .sourceSessionID)
         try values.encodeIfPresent(mode, forKey: .mode)
+        try values.encodeIfPresent(excerpts, forKey: .excerpts)
     }
 }
 
@@ -117,15 +122,23 @@ public struct ChatMessage: Codable, Equatable, Sendable {
     public var text: String
     public var tools: [ChatTool]
     public var at: Date?
+    /// How the turn that wrote this message ended, when it failed.
+    public var error: ChatFailure?
 
-    public init(role: Role, text: String, tools: [ChatTool] = [], at: Date? = nil) {
+    public init(role: Role, text: String, tools: [ChatTool] = [], at: Date? = nil, error: ChatFailure? = nil) {
         self.role = role
         self.text = text
         self.tools = tools
         self.at = at
+        self.error = error
     }
 
-    enum CodingKeys: String, CodingKey { case role, text, tools, at }
+    private struct WireError: Codable {
+        let kind: String?
+        let message: String?
+    }
+
+    enum CodingKeys: String, CodingKey { case role, text, tools, at, error }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -133,6 +146,11 @@ public struct ChatMessage: Codable, Equatable, Sendable {
         text = try values.decodeIfPresent(String.self, forKey: .text) ?? ""
         tools = try values.decodeIfPresent([ChatTool].self, forKey: .tools) ?? []
         at = ChatDate.parse(try values.decodeIfPresent(String.self, forKey: .at))
+        if let wire = try? values.decodeIfPresent(WireError.self, forKey: .error) {
+            error = ChatFailure(kind: ChatFailureKind(wire: wire.kind ?? ""), message: wire.message ?? "")
+        } else {
+            error = nil
+        }
     }
 
     public func encode(to encoder: Encoder) throws {

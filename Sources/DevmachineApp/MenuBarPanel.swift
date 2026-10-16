@@ -68,6 +68,7 @@ struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
     @State private var tab: MenubarTabID?
     @State private var editing = false
+    @ObservedObject private var chats = ChatStore.shared
     private let initialTab: MenuBarTab
     private let height: CGFloat?
 
@@ -98,6 +99,9 @@ struct MenuBarPanel: View {
     var body: some View {
         let tabs = makeTabs()
         VStack(spacing: 0) {
+            if chats.settings.showsInMenuBar, !editing {
+                MenubarChatsSection(store: chats)
+            }
             banners
             if editing {
                 MenubarEditView(slots: menubar.slots, panel: menubar.panel)

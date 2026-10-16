@@ -329,7 +329,7 @@ extension WidgetContract {
     private static let timeout = FieldSpec(type: "duration", defaultValue: .string("30s"), max: .string("10m"))
 
     public static let engine17 = WidgetContract(
-        engine: "1.7",
+        engine: "1.8",
         layouts: ["canvas", "stack", "slot", "tabs"],
         unit: 80,
         snap: 8,
@@ -393,6 +393,9 @@ extension WidgetContract {
             "app/shortcuts": Provider(
                 args: [:], minEvery: "5s", returns: ["shortcuts": "list"], context: ["session": "required"]),
             "app/publish-port": Provider(args: [:], minEvery: "5s", returns: ["available": "bool"]),
+            "app/session-ask": Provider(
+                args: [:], minEvery: "5s", returns: ["chat": "object?", "messages": "list"],
+                context: ["session": "required"]),
             "app/brand": Provider(args: [:], minEvery: "5s", returns: ["mark": "string"]),
             "app/open-pull-requests": Provider(args: [:], minEvery: "5s", returns: ["count": "number"]),
             "app/pull-requests-panel": Provider(
@@ -418,6 +421,7 @@ extension WidgetContract {
             "app.todo": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
             "app.pull-requests": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
             "app.links": ViewSpec(accepts: ["app/session-context"], layouts: ["stack"], grows: true),
+            "app.ask": ViewSpec(accepts: ["app/session-ask"], layouts: ["stack"], grows: true),
             "app.brand": ViewSpec(accepts: ["app/brand"], layouts: ["slot"]),
             "app.pull-requests-panel": ViewSpec(accepts: ["app/pull-requests-panel"], layouts: ["tabs", "canvas", "stack"]),
             "app.usage-panel": ViewSpec(accepts: ["app/usage-panel"], layouts: ["tabs"]),

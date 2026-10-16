@@ -74,6 +74,12 @@ public struct ChatFailurePresentation: Equatable, Sendable {
             actions = [.updateCLI, .tryAgain]
             tone = .warning
             symbol = "arrow.down.circle"
+        case .refused:
+            title = "The chat could not start"
+            body = Self.firstLine(failure.message)
+            actions = [.chooseAnotherWorkspace, .tryAgain]
+            tone = .error
+            symbol = "exclamationmark.triangle"
         case .sessionNotFound:
             title = "The session is gone"
             body = "Ask could not find this session \(onWhere). It may have ended."
@@ -105,5 +111,12 @@ public struct ChatFailurePresentation: Equatable, Sendable {
             tone = .error
             symbol = "exclamationmark.triangle"
         }
+    }
+
+    static func firstLine(_ message: String) -> String {
+        var line = message.split(separator: "\n").first.map(String.init) ?? message
+        if line.lowercased().hasPrefix("error:") { line = String(line.dropFirst(6)) }
+        line = line.trimmingCharacters(in: .whitespaces)
+        return line.prefix(1).uppercased() + line.dropFirst()
     }
 }

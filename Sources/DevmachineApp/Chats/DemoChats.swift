@@ -11,14 +11,16 @@ enum DemoChats {
 
     static func seed(_ store: ChatStore, now: Date = Date(), calendar: Calendar = .current) {
         store.workspaces = workspaces
-        store.settings = ChatSettings(defaultWorkspace: "main")
+        store.settings = ChatSettings()
         let records = chats(now: now, calendar: calendar)
         var conversations: [String: ChatConversation] = [:]
         for record in records {
             conversations[record.id] = ChatConversation(record: record, messages: messages(for: record.id))
         }
         conversations[selectedID]?.isStreaming = true
-        store.seedDemo(records: records + askRecords(now: now), conversations: conversations)
+        store.seedDemo(
+            records: records + askRecords(now: now), conversations: conversations,
+            config: ChatCLIConfig(defaultWorkspace: "main"))
     }
 
     private static func chats(now: Date, calendar: Calendar) -> [ChatRecord] {
@@ -107,7 +109,7 @@ enum DemoChats {
             ChatRecord(
                 id: "ask-codex", title: "why did it change Hero.tsx?", harness: .codex, workspace: "acme",
                 createdAt: now.addingTimeInterval(-300), updatedAt: now.addingTimeInterval(-240),
-                kind: ChatRecord.askKind, session: askCodexSession, mode: "transcript"),
+                kind: ChatRecord.askKind, session: askCodexSession, mode: "transcript", excerpts: 3),
         ]
     }
 
@@ -127,8 +129,7 @@ enum DemoChats {
                 role: .assistant,
                 text: "The hero video loaded on first paint and slowed the page. It added `preload=\"none\"` and "
                     + "`loading=\"lazy\"`, so the video loads only when it scrolls into view.\n\n"
-                    + "[src/components/Hero.tsx:12](https://example.com)\n\n"
-                    + "Based on 3 excerpts from the transcript"),
+                    + "[src/components/Hero.tsx:12](https://example.com)"),
         ]))
     }
 
@@ -160,6 +161,7 @@ enum DemoChats {
     static func prepare(_ id: String, model: AppModel, store: ChatStore = .shared) async {
         DemoContextOverride.shared.value = nil
         seed(store)
+        store.openPicker = nil
         switch id {
         case "chat-main":
             model.showChats(select: selectedID, store: store)
@@ -233,9 +235,70 @@ enum DemoChats {
 }
 
 extension DemoChats {
+    static let quickQuestion = "how do I list tmux sessions on another socket?"
+
     static func standaloneView(_ id: String, environment: DemoSnapshots.Environment) -> NSView {
-        DemoSnapshots.standaloneView(
-            DemoSnapshots.prPanel(environment, height: 470).frame(width: 776),
-            fittingSize: NSSize(width: 776, height: 900))
+        let store = ChatStore.shared
+        if id == "menubar-chats" {
+            return DemoSnapshots.standaloneView(
+                DemoSnapshots.prPanel(environment, height: 820).frame(width: 776),
+                fittingSize: NSSize(width: 776, height: 820), fixedHeight: 820)
+        }
+        let model = QuickChatModel(store: store)
+        switch id {
+        case "quick-panel-answer":
+            let record = ChatRecord(
+                id: "quick", title: quickQuestion, harness: .claude, workspace: "main", createdAt: Date(),
+                updatedAt: Date())
+            store.seedDemoConversation("quick", ChatConversation(
+                record: record,
+                messages: [
+                    ChatMessage(role: .user, text: quickQuestion),
+                    ChatMessage(role: .assistant, text: quickAnswer),
+                ],
+                isStreaming: true))
+            model.seedDemo(chatKey: "quick", question: quickQuestion)
+        case "quick-panel-continue":
+            model.seedDemo(chatKey: nil, question: nil, showsChooser: true)
+        default:
+            break
+        }
+        let height: CGFloat = switch id {
+        case "quick-panel-answer": 560
+        case "quick-panel-continue": 440
+        default: 300
+        }
+        return DemoSnapshots.standaloneView(
+            QuickChatBackdrop(height: height) { QuickChatCard(model: model) },
+            fittingSize: NSSize(width: 900, height: height), autosize: false)
+    }
+
+    private static let quickAnswer = """
+        Pass the socket with `-L` (a name) or `-S` (a path) before the command:
+
+        ```sh
+        tmux -L work list-sessions
+        tmux -S /tmp/tmux-1000/shared ls
+        ```
+
+        Every server has its own socket, so `ls` alone only shows the default one. To see which sockets exist, list
+        """
+}
+
+/// A desktop-like wash behind the quick panel, for the demo frames only.
+struct QuickChatBackdrop<Content: View>: View {
+    var height: CGFloat
+    @ViewBuilder var content: () -> Content
+    @Environment(\.dmMetrics) private var m
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            LinearGradient(
+                colors: [Color(hex: 0x2A3442), Color(hex: 0x3B2F3F), Color(hex: 0x1B2230)],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
+            content().padding(.top, m.pt(70))
+        }
+        .frame(width: m.pt(900), height: m.pt(height))
+        .environment(\.colorScheme, .dark)
     }
 }

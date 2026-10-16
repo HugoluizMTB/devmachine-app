@@ -2521,6 +2521,34 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// The selected session's harnesses, Claude and Codex first.
+    var selectedSessionHarnessIDs: [HarnessID] {
+        selectedSessionHarnesses.sorted { lhs, rhs in
+            let order = ChatHarness.supported
+            return (order.firstIndex(of: lhs) ?? order.count, lhs.rawValue)
+                < (order.firstIndex(of: rhs) ?? order.count, rhs.rawValue)
+        }
+    }
+
+    /// The selected session as Ask names it: where it runs and its name.
+    var askSessionKey: AskSessionKey? {
+        switch selection {
+        case let .session(alias, name):
+            guard let workspace = workspaces.first(where: { $0.alias == alias })?.name else { return nil }
+            return AskSessionKey(place: .workspace(workspace), session: name)
+        case let .localSession(name, _):
+            return AskSessionKey(place: .local, session: name)
+        case nil:
+            return nil
+        }
+    }
+
+    /// A session on this Mac outside tmux is found by its folder.
+    var askSessionFolder: String? {
+        guard case .local(_, let path)? = selectedSessionTarget else { return nil }
+        return path
+    }
+
     private var selectedSessionHarnesses: Set<HarnessID> {
         switch selection {
         case let .session(alias, name):

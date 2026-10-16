@@ -97,4 +97,24 @@ final class ChatEventDecoderTests: XCTestCase {
             ChatMessage.self, from: Data(#"{"role":"assistant","text":"x","tools":["Read a.go"]}"#.utf8))
         XCTAssertEqual(message.tools.first?.line, "Read a.go")
     }
+
+    func testAFailedTurnInTheLocalCopy() throws {
+        let message = try JSONDecoder().decode(ChatMessage.self, from: Data(
+            #"{"role":"assistant","text":"","tools":[],"error":{"kind":"harness-logged-out","message":"Not logged in"}}"#.utf8))
+        XCTAssertEqual(message.error, ChatFailure(kind: .harnessLoggedOut, message: "Not logged in"))
+    }
+
+    func testAUsageErrorIsARefusal() {
+        let failure = ChatFailure.fromExit(status: 1, output: "error: no workspace named \"nope\", and none is configured")
+        XCTAssertEqual(failure.kind, .refused)
+        XCTAssertEqual(
+            ChatFailurePresentation(failure: failure, harness: .claude, place: .workspace("nope")).body,
+            "No workspace named \"nope\", and none is configured")
+    }
+
+    func testExcerpts() throws {
+        let chat = try JSONDecoder().decode(ChatRecord.self, from: Data(
+            #"{"id":"c_1","kind":"ask","mode":"transcript","excerpts":3,"created_at":"2026-10-15T10:00:00Z"}"#.utf8))
+        XCTAssertEqual(chat.excerpts, 3)
+    }
 }
