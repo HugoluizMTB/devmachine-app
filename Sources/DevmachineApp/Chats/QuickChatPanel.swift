@@ -138,7 +138,17 @@ final class QuickChatWindow: NSPanel {
 @MainActor
 final class QuickChatPanelController: NSObject, NSWindowDelegate {
     static let shared = QuickChatPanelController()
-    static let width: CGFloat = 760
+    static let cardWidth: CGFloat = 680
+    static let margin: CGFloat = 24
+    private static let screenGap: CGFloat = 32
+
+    /// The card and its shadow margin grow with the app's font size, so the
+    /// window has to grow with them or the card is cut at both sides.
+    static func width(_ metrics: DMMetrics, fitting screenWidth: CGFloat) -> CGFloat {
+        min(metrics.pt(cardWidth) + 2 * metrics.pt(margin), screenWidth - screenGap)
+    }
+
+    private var metrics = DMMetrics(scale: 1)
 
     let model = QuickChatModel(store: .shared)
     private var panel: QuickChatWindow?
@@ -181,6 +191,7 @@ final class QuickChatPanelController: NSObject, NSWindowDelegate {
         model.prepareForShow()
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        applyFontSize(to: panel)
         Task { await ChatStore.shared.refresh() }
         position(panel, height: panel.frame.height)
         panel.makeKeyAndOrderFront(nil)
@@ -236,7 +247,7 @@ final class QuickChatPanelController: NSObject, NSWindowDelegate {
 
     private func makePanel() -> QuickChatWindow {
         let panel = QuickChatWindow(
-            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 120),
+            contentRect: NSRect(x: 0, y: 0, width: Self.cardWidth, height: 120),
             styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView], backing: .buffered, defer: false)
         panel.level = .floating
         panel.isFloatingPanel = true
@@ -247,10 +258,25 @@ final class QuickChatPanelController: NSObject, NSWindowDelegate {
         panel.isOpaque = false
         panel.hasShadow = false
         panel.delegate = self
-        let root = QuickChatPanelView(model: model) { [weak self] height in self?.resize(to: height) }
-        let metrics = DMMetrics(scale: SettingsStore.shared.effectiveUIFontScale)
-        panel.contentView = NSHostingView(rootView: root.environment(\.dmMetrics, metrics))
+        installContent(in: panel)
         return panel
+    }
+
+    /// The font size can change in Settings after the panel was made.
+    private func applyFontSize(to panel: QuickChatWindow) {
+        let current = DMMetrics(scale: SettingsStore.shared.effectiveUIFontScale)
+        guard current != metrics else { return }
+        installContent(in: panel)
+    }
+
+    private func installContent(in panel: QuickChatWindow) {
+        metrics = DMMetrics(scale: SettingsStore.shared.effectiveUIFontScale)
+        let root = QuickChatPanelView(model: model) { [weak self] height in self?.resize(to: height) }
+        panel.contentView = NSHostingView(rootView: root.environment(\.dmMetrics, metrics))
+    }
+
+    private func width(for screen: NSScreen?) -> CGFloat {
+        Self.width(metrics, fitting: screen?.visibleFrame.width ?? .greatestFiniteMagnitude)
     }
 
     /// The panel sits in the upper third of the screen with the pointer and
@@ -260,14 +286,16 @@ final class QuickChatPanelController: NSObject, NSWindowDelegate {
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         guard let visible = screen?.visibleFrame else { return }
         let top = visible.maxY - visible.height * 0.22
+        let width = width(for: screen)
         panel.setFrame(
-            NSRect(x: visible.midX - Self.width / 2, y: top - height, width: Self.width, height: height), display: true)
+            NSRect(x: visible.midX - width / 2, y: top - height, width: width, height: height), display: true)
     }
 
     private func resize(to height: CGFloat) {
         guard let panel, abs(panel.frame.height - height) > 0.5 else { return }
         let top = panel.frame.maxY
-        panel.setFrame(NSRect(x: panel.frame.minX, y: top - height, width: Self.width, height: height), display: true)
+        panel.setFrame(
+            NSRect(x: panel.frame.minX, y: top - height, width: panel.frame.width, height: height), display: true)
     }
 
     private func openInApp(_ id: String?) {
@@ -301,10 +329,10 @@ struct QuickChatPanelView: View {
 
     var body: some View {
         QuickChatCard(model: model, focused: $focused)
-            .padding(m.pt(24))
+            .padding(m.pt(QuickChatPanelController.margin))
             .padding(.bottom, model.showsChooser || store.openPicker != nil ? m.pt(190) : 0)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(width: QuickChatPanelController.width, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .top)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resize($0) }
             .onAppear { focused = true }
             .onChange(of: model.focusRequests) { _, _ in focused = true }
@@ -338,7 +366,7 @@ struct QuickChatCard: View {
             }
             chipsRow
         }
-        .frame(width: m.pt(680))
+        .frame(maxWidth: m.pt(QuickChatPanelController.cardWidth))
         .background(Color(hex: 0x1A2027).opacity(0.97), in: RoundedRectangle(cornerRadius: m.pt(DMRadius.bubble)))
         .overlay(RoundedRectangle(cornerRadius: m.pt(DMRadius.bubble)).stroke(Color.white.opacity(0.14), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.55), radius: m.pt(30), y: m.pt(14))
