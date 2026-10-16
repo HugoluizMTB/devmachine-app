@@ -1,0 +1,25 @@
+name: Branch test
+
+on:
+  push:
+    branches:
+      - da-ci-release-fix
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: swift --version
+      - uses: actions/cache@v4
+        with:
+          path: vendor/mosh
+          key: mosh-client-${{ runner.os }}-${{ hashFiles('scripts/fetch_mosh.sh') }}
+      - name: Build and test
+        run: |
+          swift build
+          swift test
