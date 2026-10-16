@@ -55,6 +55,21 @@ xcrun notarytool submit "$SUBMIT_PATH" \
   --issuer "$APPLE_API_ISSUER_ID" \
   --wait
 
-xcrun stapler staple "$TARGET"
-xcrun stapler validate "$TARGET"
+# Both reach Apple's ticket service, which drops the connection from CI
+# runners now and then (NSURLError -1005); a later try goes through.
+with_retries() {
+  local attempt status
+  for attempt in 1 2 3 4 5; do
+    "$@" && return 0
+    status=$?
+    if [ "$attempt" -lt 5 ]; then
+      echo "notarize.sh: '$*' failed ($status), trying again in $((attempt * 60))s" >&2
+      sleep $((attempt * 60))
+    fi
+  done
+  return "$status"
+}
+
+with_retries xcrun stapler staple "$TARGET"
+with_retries xcrun stapler validate "$TARGET"
 echo "Notarized and stapled: $TARGET"

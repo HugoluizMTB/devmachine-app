@@ -157,7 +157,11 @@ downloaded them (usually `~/Downloads`). They have no reason to stay on disk.
      - Builds the app and code-signs it (`scripts/package_app.sh`): first the
        embedded `zmx` binary, then `DevmachineApp.app` itself, with hardened
        runtime (`--options runtime --timestamp`) and its entitlements file.
-     - Notarizes and staples the `.app` (`scripts/notarize.sh`).
+     - Notarizes and staples the `.app` (`scripts/notarize.sh`). Stapling
+       and its check ask Apple's ticket service, which sometimes drops the
+       connection from a CI runner (`NSURLErrorDomain Code=-1005`, then
+       `Error 68`); the script tries each up to five times, about ten
+       minutes in all, before failing with the last error.
      - Builds the `.dmg` with `hdiutil`.
      - Signs the `.dmg` (hardened runtime, no entitlements — a disk image
        does not need them).
