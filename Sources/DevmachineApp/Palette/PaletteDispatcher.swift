@@ -66,6 +66,7 @@ struct PaletteDispatcher {
     let recents: PaletteRecentsStore
     let system: any PaletteSystem
     var previews: any PalettePreviewOpening = PreviewStore.shared
+    var chats: ChatStore = .shared
 
     func perform(_ command: PaletteCommand) {
         model.showCommandPalette = false
@@ -126,6 +127,12 @@ struct PaletteDispatcher {
         case let .preview(request): previews.open(request, inverted: false)
         case .openPreviewField: model.requestPreviewField()
         case .pickColor: system.pickScreenColor(onCopy: model.announceCopiedColor)
+        case let .newChat(place, harness):
+            chats.startNewChat(place: place, harness: harness)
+            model.showChats(store: chats)
+        case let .openChat(id): model.showChats(select: id, store: chats)
+        case .showChats: model.showChats(store: chats)
+        case .showCode: model.appMode = .code
         case .quit: system.quit()
         }
     }

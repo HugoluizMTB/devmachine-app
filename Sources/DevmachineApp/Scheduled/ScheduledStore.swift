@@ -29,6 +29,13 @@ final class ScheduledStore: ObservableObject {
     /// kept here so the page shows them again when it comes back.
     @Published var selectedID: String?
     @Published var openRunID: String?
+    /// Bumped by "New task" outside the page (the sidebar row, ⌘N); the page
+    /// opens its sheet when it changes.
+    @Published private(set) var newTaskRequests = 0
+
+    func requestNewTask() {
+        newTaskRequests += 1
+    }
 
     private let makeCLI: @Sendable () throws -> DevmachineCLI
     private var polling: Set<String> = []

@@ -258,7 +258,7 @@ final class BoardStoreTests: XCTestCase {
         timer.fire()
         let written = try BoardCodec.decodeStack(
             String(contentsOf: BoardFiles.url(configDirectory: config.path, surface: "context-sidebar"), encoding: .utf8))
-        XCTAssertEqual(written.entries.suffix(2).map(\.id), ["links", "pull-requests"])
+        XCTAssertEqual(written.entries.suffix(3).map(\.id), ["links", "pull-requests", "ask"])
 
         store.update { $0.remove("todo") }
         try Data("format: 1\nsurface: context-sidebar\nwidgets: []\n".utf8)

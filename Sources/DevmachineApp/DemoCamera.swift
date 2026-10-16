@@ -16,11 +16,17 @@ enum DemoCamera {
     static let window = CGRect(x: 0, y: 0, width: 1600, height: 1000)
 
     /// A rect of the window's shape around a control, kept inside the window.
-    static func rect(around control: CGRect) -> CGRect {
-        let size = CGSize(width: window.width / zoom, height: window.height / zoom)
-        let x = min(max(0, control.midX - size.width / 2), window.width - size.width)
-        let y = min(max(0, control.midY - size.height / 2), window.height - size.height)
-        return CGRect(origin: CGPoint(x: x, y: y), size: size)
+    static func rect(around control: CGRect, left: CGFloat? = nil) -> CGRect {
+        DemoSnapshots.zoomRect(around: control, in: window.size, zoom: zoom, left: left)
+    }
+
+    /// The camera rect for a frame's `zoom` target, from the frames the walk
+    /// recorded.
+    @MainActor
+    static func rect(for target: String) -> CGRect? {
+        let frames = DemoClickTargets.frames
+        guard let control = frames[target] else { return nil }
+        return rect(around: control, left: DemoSnapshots.zoomLeftEdge(for: target, frames: frames))
     }
 
     /// The rects in between, eased, ending on the target; nil is the whole

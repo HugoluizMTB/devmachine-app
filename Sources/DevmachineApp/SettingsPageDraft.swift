@@ -46,6 +46,8 @@ final class SettingsPageDraft: ObservableObject {
     @Published var workspaceSessionPrograms: [String: SessionLaunchChoice] = [:]
     @Published var operatorProgram: SessionLaunchChoice?
     @Published var operatorSessionEnabled = true
+    @Published var chats = ChatSettings.default
+    @Published var chatConfig = ChatCLIConfig()
     @Published var harnessErrors: [HarnessID: String] = [:]
     /// Connection fields opened for typing. A field with a value shows it
     /// read-only until "Edit": what the CLI reports is rarely changed.

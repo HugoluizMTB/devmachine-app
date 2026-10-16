@@ -735,6 +735,119 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   and 127 is how a host without tmux is told apart. Without a process table
   the pane's own command still counts.
 
+## Window toolbar
+- The main window keeps a unified toolbar (`.windowToolbarStyle(.unified(showsTitle: false))`)
+  only for its height: macOS then places the window buttons with more room.
+  Never move them by hand. The bar is see-through (`titlebarAppearsTransparent`,
+  set by `WindowButtonsReader`), so each mode's own surface runs up under it
+  and Home's wallpaper reaches the top edge.
+- The sidebar toggle (`SidebarToggleButton`, ⌘B) is drawn over the band, on
+  the window buttons' line, read from where macOS put them
+  (`WindowButtonsReader`): at the sidebar's right edge while it is open, right
+  after the buttons while it is closed (`SidebarTogglePlacement`). A toolbar
+  item cannot follow the sidebar's edge.
+- The sidebars run under the band. Their title row keeps the same space under
+  the window buttons as the New row keeps before the list
+  (`SidebarHeaderSpacing.blockGap`; change that one constant and both move). The `.clipped()` sidebar takes
+  `SidebarUnderTitlebar` outside the clip, or the header is cut off. A
+  terminal starts below the band only while the sidebar is closed; Home always
+  runs under it.
+- Demo frames capture the window's frame view (`SnapshotChrome.capturedView`);
+  the window buttons come out grey (the window is never key) and are painted
+  again where the window put them (`SnapshotChrome.measure`).
+
+## Scroll bars
+- The app always uses the thin overlay scroll bar that shows only while
+  scrolling, in every window: `ScrollBarStyle.apply()` runs first in the app's
+  `init`, before any window exists, and puts `AppleShowScrollBars =
+  WhenScrolling` in the argument domain. That domain ranks above the system's,
+  so it wins at launch and after every System Settings change or mouse
+  plug-in (AppKit re-reads the same key). No view sets a scroller style.
+- `DEVMACHINE_DEMO_SCROLL_BARS=Always` registers "Always" below it, standing
+  in for that System Settings choice; `DEVMACHINE_DEMO_WALK=scroll-bars`
+  renders views that scroll (Code, the Files tab, the Files window, the file
+  viewer, Settings, Chats) to check that none draws a track.
+
+## Right panel
+- The context panel (Context, Preview, Files, Git) runs under the
+  see-through title bar like the sidebars (`SidebarUnderTitlebar`); its tab
+  row is centred on the window buttons' line (`\.titleLine`, from
+  `SidebarHeaderSpacing.line(buttons:)`), the same line as the sidebar
+  toggle. The collapsed strip's icon sits on that line too.
+
+## Chats
+- **The engine is `devmachine chat`; the app only draws.** One process per
+  message (`chat send`, `chat ask`), NDJSON `started/text/tool/denied/done/error`
+  (`denied`: a tool claude refused because `-p` cannot approve it, drawn
+  "Blocked: <name> needs approval")
+  (`ChatEventDecoder`, Core). stdout and stderr share one pipe, so a line that
+  is not an event is kept only as the failure's details. `ChatProcess` reads
+  the pipe to the end before it returns: `StreamingProcess` could hand the last
+  line over after the exit, and the turn then read as failed. Each turn carries
+  a token (`ChatStore.turns`): the previous turn's process may report its end
+  after the next turn started, and only the current turn may end it.
+- **Warm sessions.** A message goes through a long-lived `chat session`
+  (`chat ask --serve` for Ask) when it can: `{"type":"send"}` lines in,
+  `ready`, the same turn events, and `closed` out (`ChatSessionLine`, Core).
+  `ChatSessionPool` keeps one warm session for the next new chat (started
+  when the quick panel or the new chat page shows, replaced when its harness,
+  workspace or MCP changes), one per open chat (the CLI ends it after 10 min
+  idle) and one per visible Ask section. A turn ends on `done`/`error`, not on
+  the exit; Stop writes `cancel`; quit closes every stdin. A session that dies
+  mid-turn fails the turn and the next message opens another. A CLI that
+  refuses the command or a flag before `ready` is older: the turn goes out
+  again with `chat send` and sessions stay off until relaunch. Tests and demo
+  never start one (`ChatCommandRunning.openSession` throws by default).
+- **Status.** `{"type":"status","stage","message"}` lines (connecting,
+  reading the transcript, starting, loading MCP, waiting) set
+  `ChatConversation.status`, drawn muted beside the cursor in the pane, the
+  quick panel and Ask; the first `text`/`tool`/`denied`, `done`, `error`, a
+  stop or the exit clear it. A send into a warm session that is still starting
+  shows that session's latest start-up status; into a ready one, "<Harness> is
+  thinking…" until the CLI's `waiting` (not for Ask, which reads the
+  transcript first and says so). An older CLI sends none and nothing is
+  made up. VoiceOver hears each status once, as a low-priority announcement.
+- **MCP.** Chats start without MCP servers, hooks and plugins (`chat.mcp`
+  off); the chip (`ChatMCPChip`) is kept per chat as the record's `mcp`, and
+  `--mcp`/`--mcp=false` goes out only when it differs (`ChatMCP.flag`).
+- A new chat is listed at once under `pending-<uuid>` and moves to the CLI's id
+  on `started` (`ChatStore.current`). A process that ends with no `done` or
+  `error` is a failure (`ChatConversation.processEnded`); `unknown command
+  "chat"` is an older CLI (`needsNewerCLI`, the card offers Update the CLI);
+  a usage error (`error: …` and no NDJSON) is `refused`.
+- **Where chats run belongs to the CLI** (`chat.default_workspace`,
+  `chat.folder`, `chat.harness` via `config set|unset`, read from
+  `--format json config show`), so a chat from a terminal lands where one from
+  the app does. The app keeps only the shortcut, the menu bar rows and the
+  harness switches (`AppSettings.chats`). Read only is fixed and never a setting.
+- **Code, Chats or Schedule** (`AppModel.appMode`, ⌘1, ⌘2, ⌘3): the sidebar's
+  title is the switch ("CODE WORKSPACES ▾" / "CHAT WORKSPACES ▾" /
+  "SCHEDULE ▾"; native menus in real use, `ChatMenuCard` only in demo frames,
+  `SidebarModeHeader`), with refresh and close at the right of that row and
+  "New session" / "New chat" under it. Chats replaces the main row; picking a
+  session, a page or Settings goes back to Code. In Chats, a dot by the title
+  says a session in Code waits for the person. Pickers are drawn in the view
+  (`ChatMenuCard`), not `NSMenu`, so a demo frame shows them; they lock after
+  the first message (a chat keeps its harness and workspace).
+- **Quick panel**: `QuickChatPanelController`, a non-activating `NSPanel`
+  opened by a Carbon `RegisterEventHotKey` (no Accessibility permission),
+  default ⌃⌥Space. Tests hand `QuickChatHotkeyController` a fake registrar;
+  nothing registers a real hotkey under XCTest or in demo mode. Recording a
+  new shortcut in Settings suspends the old one.
+- **Ask** (`app.ask`, provider `app/session-ask`, engine 1.8, after Links in
+  the default Context tab): `AskStore` keeps one thread per session
+  (`AskSessionKey`); a session on this Mac passes its folder. "Clear" (shown once a
+  thread has messages) runs `chat delete` on that thread and starts a new one,
+  so it does not come back after a restart; a refused delete keeps the thread
+  and says why under it. Clear waits while an answer is coming. Ask chats left
+  in the CLI's store from before Clear deleted (only the newest shows) are
+  never deleted on their own: after a restart the next one shows, and Clear
+  removes it too.
+- Demo walk `DEVMACHINE_DEMO_WALK=chats` (`DemoChats`): the 14 screens of the
+  approved mockups drawn from the real views over invented chats.
+  `DEVMACHINE_CHAT_E2E=<devmachine binary>` runs `ChatCLILiveTests`: a real
+  chat with the local claude in a temp configuration.
+
 ## Operator session
 - **The Operator is the local session in the CLI's configuration folder**
   (`Workspace.operatorSession`, path `AppSettings.opsRepoPath`). Every way
@@ -1497,8 +1610,8 @@ once may fail there.
 ## Website videos
 - `scripts/site_demo_videos.sh <dir>` runs `DEVMACHINE_DEMO_WALK=site`
   (`DemoSiteWalk`) hidden, then writes `<scene>.webm`, `<scene>.mp4` and
-  `<scene>-poster.webp` for the seven home-page loops (operator, sessions, cli,
-  context, publish, share, home). Each opens on its own subject, with no click
+  `<scene>-poster.webp` for the home-page loops (operator, sessions, cli,
+  context, publish, scheduled, share, home, quickchat, chats, ask). Each opens on its own subject, with no click
   first, at a reading pace: 0.5 s pointer moves, ~15 typed characters a second,
   a second after each change and labels on screen for at least two seconds.
   The walk writes numbered frames per scene at 1600×1000 and a
@@ -1523,6 +1636,13 @@ once may fail there.
   so the zoomed text stays sharp. `SITE_DEMO_SCENES="context"` renders one
   scene. The context scene's Links rows come from the app's own extraction
   (`contextExtractRefs` + `contextMapLinks`) over the demo transcript.
+- `quickchat` draws the quick panel alone over a gradient desktop
+  (`desktopView(for:)`), since the real panel is a window of its own. A
+  default-walk screen with `zoom` (`27-ask.png`) is cropped the same way,
+  then scaled back to the window's 2x size; a screen may set its own
+  `windowSize`. A zoom on Ask (`zoomsReachingThePane`) widens to the session
+  pane's left edge, and that session gets a transcript that fills the pane,
+  so the terminal beside Ask shows output instead of empty rows.
 - `cacheDisplay` does not catch `NSProgressIndicator`'s animation, so a
   spinner is one still frame; Home's board is written again for the walk's
   window, since the one written at launch was laid out for a smaller one.
@@ -1925,8 +2045,11 @@ once may fail there.
   the sync pending, running, done, failed); nothing runs.
 
 ## Scheduled page
-- `AppPage.scheduled`, from the clock in the sidebar footer, the menu bar
-  footer and the palette ("Scheduled"). It reads `scheduled list` (every
+- Schedule is a mode (⌘3, the sidebar title, the menu bar footer's clock and
+  ⌘K "Schedule"): `showPage(.scheduled)` switches to it. The sidebar lists the
+  tasks by workspace (`ScheduleSidebar`) with "New task" on top, which asks
+  the page for its sheet (`ScheduledStore.requestNewTask`); the page
+  (`ScheduledView`) is unchanged beside it. It reads `scheduled list` (every
   workspace at once; one that is not set up is `installed: false` and is not
   asked) and `scheduled harnesses`.
 - The agent, permission-mode and model pickers come from `scheduled

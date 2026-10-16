@@ -8,7 +8,7 @@ enum StackHeaderStyle: Equatable {
 
     static func of(viewKind: String) -> StackHeaderStyle {
         switch StackAppViewKind(viewKind: viewKind) {
-        case .shortcuts?, .monitors?, .shells?, .subAgents?, .todo?, .pullRequests?, .links?: return .own
+        case .shortcuts?, .monitors?, .shells?, .subAgents?, .todo?, .pullRequests?, .links?, .ask?: return .own
         case .workspaces?, .publishPort?: return .bare
         case nil: return .standard
         }
@@ -18,7 +18,7 @@ enum StackHeaderStyle: Equatable {
 /// The app's own sidebar views. The raw value is the widget's name; the
 /// catalog calls the view `app.<name>`.
 enum StackAppViewKind: String, CaseIterable {
-    case workspaces, shortcuts, monitors, shells, todo, links
+    case workspaces, shortcuts, monitors, shells, todo, links, ask
     case publishPort = "publish-port"
     case subAgents = "sub-agents"
     case pullRequests = "pull-requests"

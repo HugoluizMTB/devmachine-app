@@ -29,8 +29,6 @@ struct SidebarView: View {
         HStack(spacing: 0) {
             footerButton("chart.bar") { model.showPage(.stats) }
                 .help("Stats")
-            footerButton("clock") { model.showPage(.scheduled) }
-                .help("Scheduled")
             if model.hasCaddyMachine {
                 footerButton("globe") { model.showPage(.subdomains) }
                     .help("Published apps")
@@ -38,11 +36,6 @@ struct SidebarView: View {
             }
             footerButton("gearshape") { model.showPage(.setup) }
                 .help("Settings (⌘,)")
-            footerButton("sidebar.left") {
-                withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = true }
-            }
-            .help("Close sidebar (⌘B)")
-            .demoClickTarget("footer:close-sidebar")
         }
         .padding(.horizontal, m.space.lg)
         .padding(.vertical, m.space.md)
@@ -56,42 +49,15 @@ struct SidebarView: View {
     }
 
     private var topBar: some View {
-        DMSection(
-            headerSpacing: 8,
-            padding: EdgeInsets(top: 0, leading: 12, bottom: 6, trailing: 12),
-            label: {
-                Text("WORKSPACES")
-                    .font(.dm(11, weight: .semibold))
-                    .foregroundStyle(Color.dmMuted)
-                    .kerning(0.8)
-            },
-            trailing: {
-                DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize) { model.refreshAllNow() }
-                    .help("Refresh")
-
-                Menu {
-                    ForEach(model.visibleWorkspaces) { ws in
-                        Button(ws.name) { model.newSession(alias: ws.alias) }
-                    }
-                    Divider()
-                    Button {
-                        model.requestNewWorkspace()
-                    } label: {
-                        Label("New workspace…", systemImage: "person.crop.square.badge.plus")
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .foregroundStyle(Color.dmMuted)
-                .help("New session or workspace…")
+        VStack(alignment: .leading, spacing: m.pt(10)) {
+            SidebarModeHeader(refresh: { model.refreshAllNow() })
+            SidebarNewRow(title: "New session", systemImage: "plus.rectangle", shortcut: "⌘N") {
+                model.requestQuickSession()
             }
-        )
-        .safeAreaInset(edge: .top) {
-            Color.clear.frame(height: m.pt(12))
+            .help("A new session, like the one in front of you, or pick where")
         }
+        .padding(.bottom, m.pt(SidebarHeaderSpacing.blockGap))
+        .modifier(SidebarHeaderTop())
     }
 }
 

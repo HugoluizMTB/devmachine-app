@@ -91,6 +91,18 @@ final class PaletteDispatcherTests: XCTestCase {
             id: id, title: "t", subtitle: "", category: .action, systemImage: "circle", action: action))
     }
 
+    func testChatCommandsOpenChats() {
+        let store = ChatStore(runner: FakeChatRunner())
+        dispatcher.chats = store
+        run(.newChat(place: .workspace("acme"), harness: .codex))
+        XCTAssertEqual(model.appMode, .chats)
+        XCTAssertEqual(store.draftPlace, .workspace("acme"))
+        run(.openChat(id: "c1"))
+        XCTAssertEqual(store.selectedID, "c1")
+        run(.showCode)
+        XCTAssertEqual(model.appMode, .code)
+    }
+
     func testRunningACommandClosesThePaletteAndRemembersIt() {
         model.showCommandPalette = true
         run(.showShortcuts, id: "go.shortcuts")

@@ -9,12 +9,13 @@ public enum AppStackWidgets {
         "workspaces": "app/workspaces", "shortcuts": "app/shortcuts", "publish-port": "app/publish-port",
         "monitors": "app/session-context", "shells": "app/session-context", "sub-agents": "app/session-context",
         "todo": "app/session-context", "pull-requests": "app/session-context", "links": "app/session-context",
+        "ask": "app/session-ask",
     ]
     public static let viewKinds = Set(providers.keys.map { "app.\($0)" })
     public static let titles: [String: String] = [
         "workspaces": "WORKSPACES", "shortcuts": "SHORTCUTS", "publish-port": "PUBLISH A PORT",
         "monitors": "MONITORS", "shells": "SHELLS", "sub-agents": "SUB-AGENTS", "todo": "TO-DO",
-        "pull-requests": "PULL REQUESTS", "links": "LINKS",
+        "pull-requests": "PULL REQUESTS", "links": "LINKS", "ask": "ASK",
     ]
     private static let summaries: [String: String] = [
         "workspaces": "Your workspaces and their sessions.",
@@ -26,6 +27,7 @@ public enum AppStackWidgets {
         "todo": "The selected session's plan.",
         "pull-requests": "Pull requests the selected session named.",
         "links": "Links the selected session named.",
+        "ask": "Ask about the selected session without interrupting it.",
     ]
 
     public static func catalogWidget(_ widget: String) -> CatalogWidget? {

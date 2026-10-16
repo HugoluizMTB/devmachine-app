@@ -528,6 +528,7 @@ final class AppModel: ObservableObject {
         didSet {
             if let selection {
                 activePage = nil
+                appMode = .code
                 TerminalRegistry.shared.requestFocus(selection.terminalKind)
             }
             // Leaving the session list (ops shell, Home) drops the session
@@ -611,6 +612,22 @@ final class AppModel: ObservableObject {
     /// screen asked for it.
     @Published var hostKeyMachine: String?
     var selectionAnchor: SessionRef? = nil
+
+    /// Chats or Code: the toolbar toggle, ⌘1 and ⌘2. Code is everything the
+    /// app did before Chats.
+    @Published var appMode: AppMode = AppMode.saved() {
+        didSet {
+            showsModeMenu = false
+            guard appMode != oldValue else { return }
+            AppMode.save(appMode)
+            if appMode == .code, activePage == nil, let selection {
+                TerminalRegistry.shared.requestRepaint(selection.terminalKind)
+            }
+        }
+    }
+
+    /// The Code / Chats menu under the sidebar's title.
+    @Published var showsModeMenu = false
 
     @Published var sidebarCollapsed: Bool = (UserDefaults.standard.object(forKey: "sidebarCollapsed") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "sidebarCollapsed") }
@@ -1051,7 +1068,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Scheduled is a mode of its own; every other page opens in Code.
     func showPage(_ page: AppPage) {
+        if page == .scheduled {
+            activePage = nil
+            appMode = .schedule
+            return
+        }
+        appMode = .code
         activePage = page
     }
 
@@ -1320,6 +1344,7 @@ final class AppModel: ObservableObject {
     }
 
     func goHome() {
+        appMode = .code
         selection = nil
         selectedSessions = []
         selectionAnchor = nil
@@ -1369,7 +1394,34 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func showChats(select id: String? = nil, store: ChatStore = .shared) {
+        if let id { store.select(id) }
+        if sidebarCollapsed { sidebarCollapsed = false }
+        appMode = .chats
+    }
+
+    func showNewChat(place: ChatPlace? = nil, store: ChatStore = .shared) {
+        store.startNewChat(place: place)
+        showChats()
+    }
+
+    /// "Log in on W": a Code session on W running the harness, where its
+    /// first start asks for the login.
+    func openHarnessLogin(_ harness: HarnessID, place: ChatPlace) {
+        appMode = .code
+        let alias = place.workspaceName.map(alias(forWorkspace:)) ?? Workspace.local.alias
+        openSession(in: alias, startup: .program(.harness(harness)))
+    }
+
+    /// The blue dot on Code: a session there waits for the person.
+    var codeNeedsAttention: Bool {
+        guard settings?.showsAttention ?? true else { return false }
+        return sessionsByAlias.values.contains { $0.contains { $0.indicators?.attention == true } }
+            || localSessionIndicators.values.contains { $0.attention }
+    }
+
     func openSettings(_ section: SettingsSection) {
+        appMode = .code
         requestedSettingsSection = section
         activePage = .setup
     }
@@ -2477,6 +2529,34 @@ final class AppModel: ObservableObject {
         case nil:
             return nil
         }
+    }
+
+    /// The selected session's harnesses, Claude and Codex first.
+    var selectedSessionHarnessIDs: [HarnessID] {
+        selectedSessionHarnesses.sorted { lhs, rhs in
+            let order = ChatHarness.supported
+            return (order.firstIndex(of: lhs) ?? order.count, lhs.rawValue)
+                < (order.firstIndex(of: rhs) ?? order.count, rhs.rawValue)
+        }
+    }
+
+    /// The selected session as Ask names it: where it runs and its name.
+    var askSessionKey: AskSessionKey? {
+        switch selection {
+        case let .session(alias, name):
+            guard let workspace = workspaces.first(where: { $0.alias == alias })?.name else { return nil }
+            return AskSessionKey(place: .workspace(workspace), session: name)
+        case let .localSession(name, _):
+            return AskSessionKey(place: .local, session: name)
+        case nil:
+            return nil
+        }
+    }
+
+    /// A session on this Mac outside tmux is found by its folder.
+    var askSessionFolder: String? {
+        guard case .local(_, let path)? = selectedSessionTarget else { return nil }
+        return path
     }
 
     private var selectedSessionHarnesses: Set<HarnessID> {

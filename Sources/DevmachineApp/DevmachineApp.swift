@@ -24,7 +24,7 @@ struct DevmachineApp: App {
     @StateObject private var updates = UpdateController.live()
 
     init() {
-        DemoSnapshots.applyScrollBarDefaultsIfNeeded()
+        ScrollBarStyle.apply()
         MainWindowSizer.readSavedFrame()
         let prs = PRStore()
         let stats = StatsStore()
@@ -61,6 +61,17 @@ struct DevmachineApp: App {
         let usage = HarnessUsageStore(providers: providers)
         _usageStore = StateObject(wrappedValue: usage)
         MenubarController.shared.start(prs: prs, providers: AppWidgetProviders(usage: usage, stats: stats, prs: prs))
+        if !DemoMode.isActive, NSClassFromString("XCTestCase") == nil {
+            QuickChatPanelController.shared.start()
+        }
+    }
+
+    static func newItemTitle(_ mode: AppMode) -> String {
+        switch mode {
+        case .chats: return "New Chat"
+        case .schedule: return "New Task"
+        case .code: return "New Session"
+        }
     }
 
     private var metrics: DMMetrics {
@@ -158,6 +169,7 @@ struct DevmachineApp: App {
                 .background(MainWindowSizer().frame(width: 0, height: 0))
         }
         .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) { }
             // Replaces File > Close so ⌘W can ask to end the one session on
@@ -169,8 +181,14 @@ struct DevmachineApp: App {
             CommandMenu("Session") {
                 Button("Home") { model.goHome() }
                     .keyboardShortcut("0", modifiers: .command)
-                Button("New Session") { model.requestQuickSession() }
-                    .keyboardShortcut("n", modifiers: .command)
+                Button(Self.newItemTitle(model.appMode)) {
+                    switch model.appMode {
+                    case .chats: model.showNewChat()
+                    case .schedule: ScheduledStore.shared.requestNewTask()
+                    case .code: model.requestQuickSession()
+                    }
+                }
+                .keyboardShortcut("n", modifiers: .command)
                 Button("End Session…") { model.requestEndSession() }
                     .disabled(model.endableSession == nil)
                 Divider()
@@ -204,6 +222,13 @@ struct DevmachineApp: App {
             // terminal is a view from AppKit that holds first responder, which
             // is where the hidden-button shortcuts were being lost.
             CommandGroup(after: .sidebar) {
+                Button("Code") { model.appMode = .code }
+                    .keyboardShortcut("1", modifiers: .command)
+                Button("Chats") { model.showChats() }
+                    .keyboardShortcut("2", modifiers: .command)
+                Button("Schedule") { model.showPage(.scheduled) }
+                    .keyboardShortcut("3", modifiers: .command)
+                Divider()
                 Button("Toggle Sidebar") {
                     withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed.toggle() }
                 }

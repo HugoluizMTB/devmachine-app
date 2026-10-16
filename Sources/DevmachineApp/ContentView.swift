@@ -20,7 +20,11 @@ struct ContentView: View {
     @ObservedObject private var shares = SessionShareStore.shared
     @ObservedObject private var split = DocumentSplitState.shared
     @ObservedObject private var compat = WidgetCompatibilityStore.shared
-    @State private var sidebarButtonFrame: CGRect?
+    @ObservedObject private var chats = ChatStore.shared
+    @State private var windowButtons = CGRect.zero
+    @State private var toggleFrame: CGRect?
+    @State private var titlebarHeight: CGFloat = 0
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -33,18 +37,46 @@ struct ContentView: View {
                     onStart: { Task { await model.completeOnboarding(saving: settingsStore) } },
                     onSkip: { Task { await model.skipOnboarding(saving: settingsStore) } })
             } else {
-                mainRow
-                    .onAppear { stats.start() }
-                    .environment(\.collapsedSidebarButtonFrame, model.sidebarCollapsed ? sidebarButtonFrame : nil)
-                if model.sidebarCollapsed {
-                    collapsedSidebarButton
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.windowSpace)) } action: {
-                            sidebarButtonFrame = $0
-                        }
+                Group {
+                    switch model.appMode {
+                    case .chats: ChatsView(store: chats)
+                    case .schedule: ScheduleModeView()
+                    case .code: mainRow
+                    }
                 }
+                    .onAppear { stats.start() }
+                    .environment(\.collapsedSidebarButtonFrame, model.sidebarCollapsed ? toggleFrame : nil)
+                    .environment(
+                        \.sidebarHeaderTop,
+                        SidebarHeaderSpacing.top(buttons: windowButtons))
+                    .environment(\.titleLine, SidebarHeaderSpacing.line(buttons: windowButtons))
             }
         }
+        .overlay(alignment: .topLeading) {
+            if !model.showsOnboarding, windowButtons != .zero {
+                let center = SidebarTogglePlacement.center(
+                    collapsed: model.sidebarCollapsed, sidebarWidth: m.pt(model.sidebarWidth), buttons: windowButtons)
+                SidebarToggleButton()
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.windowSpace)) } action: {
+                        toggleFrame = $0
+                    }
+                    .position(center)
+                    .ignoresSafeArea()
+            }
+        }
+        .background(WindowButtonsReader(frame: $windowButtons).frame(width: 0, height: 0))
+        // The one item keeps the toolbar, which is what makes the title bar
+        // the taller one; the sidebar toggle is drawn over the band instead,
+        // because a toolbar item cannot follow the sidebar's edge.
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+            }
+        }
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { titlebarHeight = $0 }
         .coordinateSpace(.named(Self.windowSpace))
+        .modifier(SidebarModeMenuOverlay(model: model))
         .background(Color.dmSidebarBg)
         .overlay {
             if model.showFileSearch, let target = model.commandTarget(for: model.selection) {
@@ -113,12 +145,25 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.phase))
         }
         .onAppear {
+            let open = openWindow
+            MainWindowOpener.openWindow = { open(id: "main") }
             model.settings = settingsStore.settings
             model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
             Task { await compat.check() }
             StackBoardController.startAll()
         }
-        .onReceive(settingsStore.$settings) { model.settings = $0 }
+        .onReceive(settingsStore.$settings) {
+            model.settings = $0
+            if !DemoMode.isActive { chats.settings = $0?.chats ?? .default }
+        }
+        .onReceive(model.$workspaces) { workspaces in
+            guard !DemoMode.isActive else { return }
+            let names = WorkspaceVisibility.visible(workspaces, hidden: model.settings?.hiddenWorkspaces ?? []).map(\.name)
+            if chats.workspaces != names { chats.workspaces = names }
+        }
+        .onChange(of: model.appMode) { _, mode in
+            if mode == .chats { chats.retryAwaitedLogin() }
+        }
         .onChange(of: model.pendingPublishWorkspace) { _, workspace in
             guard let workspace else { return }
             model.pendingPublishWorkspace = nil
@@ -231,6 +276,7 @@ struct ContentView: View {
             SidebarView()
                 .frame(width: model.sidebarCollapsed ? 0 : m.pt(model.sidebarWidth))
                 .clipped()
+                .modifier(SidebarUnderTitlebar())
             if !model.sidebarCollapsed {
                 sidebarDivider
             }
@@ -267,10 +313,11 @@ struct ContentView: View {
         ZStack {
             // Under the hidden title bar too: the wallpaper and the cards reach
             // the window's top edge, no content-colored band above them.
-            MainPane()
+            MainPane(terminalTopInset: model.sidebarCollapsed ? titlebarHeight : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.dmContentBg)
                 .ignoresSafeArea(edges: .top)
+                .demoClickTarget("pane:main")
             if let page = model.activePage {
                 PageHost(page: page)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -291,6 +338,7 @@ struct ContentView: View {
     private var contextArea: some View {
         if model.contextCollapsed {
             ContextCollapsedStrip()
+                .modifier(SidebarUnderTitlebar())
         } else {
             ResizeHandle(
                 onDrag: { dx in
@@ -300,27 +348,14 @@ struct ContentView: View {
                 },
                 onEnd: { contextDragStartWidth = nil }
             )
+            .modifier(SidebarUnderTitlebar())
             ContextPanel(store: model.context)
                 .frame(width: m.pt(model.contextWidth))
+                .modifier(SidebarUnderTitlebar())
         }
     }
 
     static let windowSpace = "window"
-
-    private var collapsedSidebarButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = false }
-        } label: {
-            Image(systemName: "sidebar.left")
-                .padding(m.pt(9))
-                .dmGlass(in: Circle(), stroke: .white.opacity(0.15))
-                .shadow(radius: m.pt(6), y: m.pt(2))
-        }
-        .buttonStyle(DMIconButtonStyle(size: 13, weight: .semibold, tint: .white.opacity(0.9)))
-        .help("Open sidebar (⌘B)")
-        .padding(.top, m.pt(18))
-        .padding(.leading, m.pt(14))
-    }
 
 }
 
@@ -348,6 +383,10 @@ private struct PageHost: View {
 
 private struct MainPane: View {
     @EnvironmentObject var model: AppModel
+    /// The title bar's height while the sidebar is closed: the window buttons
+    /// and the sidebar toggle sit over the pane then, so the terminal starts
+    /// below them. Home keeps running under them, edge to edge.
+    var terminalTopInset: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -394,6 +433,7 @@ private struct MainPane: View {
         .floatingCard()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(FloatingCardLayout.margin)
+        .padding(.top, terminalTopInset)
     }
 
     private func key(_ item: SidebarItem) -> String {

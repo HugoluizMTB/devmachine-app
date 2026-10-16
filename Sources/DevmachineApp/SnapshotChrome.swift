@@ -16,18 +16,37 @@ enum SnapshotChrome {
     static let margin: CGFloat = 40
     static let cornerRadius: CGFloat = 10
     static let trafficLightDiameter: CGFloat = 12
-    /// Centers in points from the window's top-left corner, where macOS puts
-    /// them on a window with a hidden title bar.
-    static let trafficLightCenters: [CGPoint] = [
+    /// Centers in points from the window's top-left corner: where macOS put
+    /// them on the captured window (`measure`), which a toolbar moves.
+    @MainActor static var trafficLightCenters: [CGPoint] = [
         CGPoint(x: 14, y: 14), CGPoint(x: 34, y: 14), CGPoint(x: 54, y: 14),
     ]
+
+    /// Reads where the window draws its buttons. The capture shows them grey
+    /// (the window is never key), so they are painted again in color there.
+    @MainActor static func measure(_ window: NSWindow) {
+        let buttons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        let centers = buttons.compactMap { type -> CGPoint? in
+            guard let button = window.standardWindowButton(type), let frameView = window.contentView?.superview
+            else { return nil }
+            let rect = button.convert(button.bounds, to: frameView)
+            let y = frameView.isFlipped ? rect.midY : frameView.bounds.height - rect.midY
+            return CGPoint(x: rect.midX, y: y)
+        }
+        if centers.count == 3 { trafficLightCenters = centers }
+    }
+
+    /// The window's whole frame view: the content and, above it, the toolbar.
+    @MainActor static func capturedView(_ window: NSWindow) -> NSView {
+        window.contentView?.superview ?? window.contentView ?? NSView()
+    }
     private static let trafficLightColors: [NSColor] = [
         NSColor(srgbRed: 1.00, green: 0.37, blue: 0.34, alpha: 1),
         NSColor(srgbRed: 1.00, green: 0.74, blue: 0.18, alpha: 1),
         NSColor(srgbRed: 0.16, green: 0.78, blue: 0.25, alpha: 1),
     ]
 
-    static func framed(_ rep: NSBitmapImageRep, scale: CGFloat, kind: Kind) -> NSBitmapImageRep {
+    @MainActor static func framed(_ rep: NSBitmapImageRep, scale: CGFloat, kind: Kind) -> NSBitmapImageRep {
         let inset = margin * scale
         let windowSize = NSSize(width: rep.pixelsWide, height: rep.pixelsHigh)
         let width = rep.pixelsWide + Int(inset) * 2
@@ -69,7 +88,7 @@ enum SnapshotChrome {
         return framed
     }
 
-    private static func drawTrafficLights(in windowRect: NSRect, scale: CGFloat) {
+    @MainActor private static func drawTrafficLights(in windowRect: NSRect, scale: CGFloat) {
         let diameter = trafficLightDiameter * scale
         for (center, color) in zip(trafficLightCenters, trafficLightColors) {
             let x = windowRect.minX + center.x * scale - diameter / 2

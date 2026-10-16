@@ -18,7 +18,54 @@ enum CommandRegistry {
             + workspaceCommands(context)
             + previewCommands(context)
             + machineCommands(context)
+            + chatCommands(context)
             + settingsCommands()
+    }
+
+    private static let chatKeywords = ["chat", "ask", "question", "conversation", "claude", "codex"]
+
+    /// New chat (where Settings → Chats says), New chat in each other
+    /// workspace, every chat by title, and the two modes.
+    static func chatCommands(_ context: PaletteContext) -> [PaletteCommand] {
+        let settings = context.chatSettings
+        let defaultPlace = context.chatConfig.defaultPlace(workspaces: context.chatWorkspaces)
+        func harness(for place: ChatPlace) -> HarnessID {
+            ChatGrouping.sorted(context.chats).first { $0.place == place && settings.harnesses.contains($0.harness) }?
+                .harness ?? (settings.harnesses.contains(context.chatConfig.harness)
+                    ? context.chatConfig.harness : settings.harnesses[0])
+        }
+        var commands = [
+            PaletteCommand(
+                id: "action.new-chat", title: "New chat", subtitle: ChatPlaceLabel.title(defaultPlace),
+                category: .action, systemImage: "square.and.pencil", shortcut: settings.hotkey?.display,
+                keywords: chatKeywords, action: .newChat(place: nil, harness: nil)),
+        ]
+        let places = context.chatWorkspaces.map(ChatPlace.workspace) + [.local]
+        for place in places where place != defaultPlace {
+            let name = ChatPlaceLabel.title(place)
+            let chosen = harness(for: place)
+            commands.append(PaletteCommand(
+                id: "action.new-chat." + (place.workspaceName ?? "local"),
+                title: place == .local ? "New chat on This Mac" : "New chat in \(name)",
+                subtitle: ChatHarness.title(chosen), category: .action, systemImage: "square.and.pencil",
+                keywords: chatKeywords + [name], action: .newChat(place: place, harness: chosen)))
+        }
+        commands += ChatGrouping.sorted(context.chats).map { chat in
+            PaletteCommand(
+                id: "chat." + chat.id, title: chat.title, subtitle: ChatPlaceLabel.title(chat.place),
+                category: .chats, systemImage: "bubble.left", keywords: chatKeywords + [ChatHarness.title(chat.harness)],
+                harness: chat.harness, action: .openChat(id: chat.id))
+        }
+        commands.append(PaletteCommand(
+            id: "go.chats", title: "Chats", subtitle: "switch to Chats", category: .goTo,
+            systemImage: "bubble.left.and.bubble.right", shortcut: "⌘2",
+            keywords: chatKeywords + ["chats", "switch", "mode"],
+            action: .showChats))
+        commands.append(PaletteCommand(
+            id: "go.code", title: "Code", subtitle: "switch to Code", category: .goTo,
+            systemImage: "chevron.left.forwardslash.chevron.right", shortcut: "⌘1",
+            keywords: ["code", "sessions", "terminal", "workspaces", "switch", "mode"], action: .showCode))
+        return commands
     }
 
     private static let subdomainKeywords = ["dns", "domains", "subdomains", "caddy", "sites", "apps", "expose", "https", "publish"]
@@ -37,8 +84,9 @@ enum CommandRegistry {
                 id: "go.stats", title: "Stats", subtitle: "", category: .goTo,
                 systemImage: "chart.bar", keywords: statsKeywords, action: .showPage(.stats))),
             Entry(command: PaletteCommand(
-                id: "go.scheduled", title: "Scheduled", subtitle: "", category: .goTo,
-                systemImage: "clock", keywords: ["schedule", "cron", "timer", "routine", "tasks", "recurring"],
+                id: "go.scheduled", title: "Schedule", subtitle: "switch to Schedule", category: .goTo,
+                systemImage: "clock", shortcut: "⌘3",
+                keywords: ["scheduled", "cron", "timer", "routine", "tasks", "recurring", "switch", "mode"],
                 action: .showPage(.scheduled))),
             Entry(
                 command: PaletteCommand(

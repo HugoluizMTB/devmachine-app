@@ -56,20 +56,6 @@ enum DemoSnapshots {
         return parseWindowSize(raw) ?? defaultWindowSize
     }
 
-    /// The capturing Mac may be set to always show scroll bars; the website
-    /// shows the macOS default, where a bar appears only while scrolling.
-    static let scrollBarDefaults: [String: Any] = ["AppleShowScrollBars": "WhenScrolling"]
-
-    /// Applied before any window exists, since AppKit reads the scroller
-    /// style once when it first lays out a scroll view.
-    static func applyScrollBarDefaultsIfNeeded() {
-        guard targetDirectory != nil else { return }
-        let defaults = UserDefaults.standard
-        var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
-        arguments.merge(scrollBarDefaults) { _, new in new }
-        defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
-    }
-
     /// The menubar's Usage pane is 640pt tall and scrolls; a little taller
     /// here, the screenshot shows the model rows to the end instead of
     /// cutting one in half.
@@ -80,12 +66,14 @@ enum DemoSnapshots {
         case "pull-requests", "publish-port", "publish-port-via", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
              "worktree-remove", "worktrees-merged", "worktree-foreign",
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
-             "file-viewer", "packages-confirm", "map-location-editor",
+             "file-viewer", "files-tab", "files-window", "packages-confirm", "map-location-editor",
              "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
              "cli-update-toast-manual", "cli-update-toast-pinned", "packages-update-toast",
              "packages-update-toast-running", "packages-update-toast-done", "packages-update-toast-failed":
             return .panel
         case _ where DemoHostKey.handles(screenID):
+            return .panel
+        case _ where DemoChats.panelScreens.contains(screenID):
             return .panel
         default:
             return .window
@@ -116,6 +104,10 @@ enum DemoSnapshots {
         let id: String
         let fileName: String
         let settleNanoseconds: UInt64
+        /// The control a zoomed capture centres on; nil captures the whole view.
+        var zoom: String?
+        /// The window's content size for this screen; nil keeps the walk's.
+        var windowSize: NSSize?
     }
 
     /// The fixed walk, in capture order. `settleNanoseconds` is how long each
@@ -139,6 +131,12 @@ enum DemoSnapshots {
         Screen(id: "drop-files", fileName: "22-drop-files.png", settleNanoseconds: 900_000_000),
         Screen(id: "preview", fileName: "23-preview.png", settleNanoseconds: 1_500_000_000),
         Screen(id: "scheduled", fileName: "24-scheduled.png", settleNanoseconds: 700_000_000),
+        Screen(id: "quick-panel-answer", fileName: "25-quick-panel.png", settleNanoseconds: 600_000_000),
+        Screen(id: "chat-main", fileName: "26-chats.png", settleNanoseconds: 900_000_000),
+        Screen(
+            id: "context-ask-claude", fileName: "27-ask.png", settleNanoseconds: 1_200_000_000,
+            zoom: "context:ask", windowSize: NSSize(width: 1600, height: 1000)),
+        Screen(id: "chat-mode-menu", fileName: "28-mode-menu.png", settleNanoseconds: 500_000_000),
     ]
 
     /// The preview screen: acme's dev server session with its landing page
@@ -323,6 +321,18 @@ enum DemoSnapshots {
     /// The file viewer walk (`DEVMACHINE_DEMO_WALK=file-viewer`): a Swift file
     /// in the viewer, highlighted. It is also the check that a packaged app
     /// finds the highlighter's script inside its own bundle.
+    /// The scroll bar walk (`DEVMACHINE_DEMO_WALK=scroll-bars`): views that
+    /// scroll, to check that none draws a scroll bar track. Run it with
+    /// `DEVMACHINE_DEMO_SCROLL_BARS=Always` to stand in for that setting.
+    static let scrollBarScreens: [Screen] = [
+        Screen(id: "session-claude", fileName: "110-scroll-code.png", settleNanoseconds: 700_000_000),
+        Screen(id: "files-tab", fileName: "111-scroll-files-tab.png", settleNanoseconds: 300_000_000),
+        Screen(id: "files-window", fileName: "112-scroll-files-window.png", settleNanoseconds: 300_000_000),
+        Screen(id: "file-viewer", fileName: "113-scroll-file-viewer.png", settleNanoseconds: 200_000_000),
+        Screen(id: "session-defaults", fileName: "114-scroll-settings.png", settleNanoseconds: 500_000_000),
+        Screen(id: "chat-main", fileName: "115-scroll-chats.png", settleNanoseconds: 900_000_000),
+    ]
+
     static let fileViewerScreens: [Screen] = [
         Screen(id: "file-viewer", fileName: "40-file-viewer.png", settleNanoseconds: 200_000_000),
     ]
@@ -410,6 +420,8 @@ enum DemoSnapshots {
         case "workspaces": return DemoWorkspaces.screens
         case "site": return DemoSiteWalk.screens
         #endif
+        case "chats": return DemoChats.screens
+        case "scroll-bars": return scrollBarScreens
         default: return screens
         }
     }
@@ -478,6 +490,11 @@ enum DemoSnapshots {
         }
         #endif
         for screen in screens where !screen.id.hasPrefix("site-") {
+            let size = screen.windowSize ?? windowSize
+            if window.contentLayoutRect.size != size {
+                window.setContentSize(size)
+                if isHidden { window.setFrameOrigin(hiddenOrigin) }
+            }
             await prepare(screen, environment: environment, mainWindow: window)
             try? await Task.sleep(nanoseconds: screen.settleNanoseconds)
             // A pane resized after its transcript was drawn (the grid, the
@@ -523,10 +540,16 @@ enum DemoSnapshots {
                 view = await hostKeySheetView(screen.id, model: environment.model)
             case "file-viewer":
                 view = await fileViewerView(model: environment.model)
+            case "files-tab":
+                view = await scrollingFilesTab(model: environment.model)
+            case "files-window":
+                view = scrollingFilesWindow(model: environment.model)
             case "file-transfer-tree":
                 view = await fileTransferTree(model: environment.model)
             case "file-transfer-saved", "file-transfer-failed":
                 view = fileTransferNotice(failed: screen.id == "file-transfer-failed")
+            case _ where DemoChats.panelScreens.contains(screen.id):
+                view = DemoChats.standaloneView(screen.id, environment: environment)
             #if DEBUG
             case "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
                 view = await updateToastView(screen.id, model: environment.model)
@@ -550,15 +573,19 @@ enum DemoSnapshots {
             #endif
             default:
                 window.displayIfNeeded()
-                view = window.contentView ?? NSView()
+                SnapshotChrome.measure(window)
+                view = SnapshotChrome.capturedView(window)
             }
-            capture(view, kind: chrome(for: screen.id), to: directory.appendingPathComponent(screen.fileName))
+            capture(
+                view, kind: chrome(for: screen.id), zoom: screen.zoom,
+                to: directory.appendingPathComponent(screen.fileName))
         }
 
         environment.model.showCommandPalette = false
         PaneUploadStore.shared.dropTarget = nil
         DemoData.typedAtPrompt = [:]
         PreviewStore.shared.closeAll()
+        DemoChats.reset()
         #if DEBUG
         DemoDNSWalk.reset()
         DemoPackages.reset()
@@ -612,6 +639,10 @@ enum DemoSnapshots {
             return
         }
         #endif
+        if DemoChats.handles(screen.id) {
+            await DemoChats.prepare(screen.id, model: model)
+            return
+        }
         switch screen.id {
         case "sessions":
             model.openSessionGrid(acmeAlias)
@@ -745,7 +776,7 @@ enum DemoSnapshots {
 
     // MARK: - Standalone screens
 
-    private static func prPanel(
+    static func prPanel(
         _ environment: Environment, tab: MenuBarTab = .pullRequests, height: CGFloat? = nil
     ) -> some View {
         MenuBarPanel(initialTab: tab, height: height)
@@ -809,6 +840,44 @@ enum DemoSnapshots {
     }
 
     /// Every store here answers from silence, so the tree never reaches a host.
+    /// More rows than fit, so each view has to scroll.
+    static let scrollingFileNames = (1...40).map { String(format: "module_%02d.swift", $0) }
+
+    private static func scrollingFilesTab(model: AppModel) async -> NSView {
+        let silent = HostRunner(remote: RemoteService(runner: DemoFileRunner(stdout: "")), local: DemoMode.runner)
+        let root = "/home/acme/dash"
+        let target = CommandTarget.remote(alias: acmeAlias, session: "dash")
+        let store = FileTreeStore(host: silent)
+        store.start(target)
+        for _ in 0..<50 where store.isLoading {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        store.root = root
+        store.children = [root: scrollingFileNames.map { FileTreeEntry(name: $0, kind: .file) }]
+        let tab = FilesTab(
+            store: store, target: target, workspace: "acme",
+            transfers: FileTransferStore(cli: { throw DevmachineCLIError.commandFailed("demo") }))
+            .environmentObject(model)
+            .environmentObject(FileViewerStore(host: silent))
+            .environmentObject(FileSearchStore(host: silent))
+            .environmentObject(FilesStore(service: FileService(host: silent), runner: DemoFileRunner(stdout: "")))
+            .background(Color.dmSidebarBg)
+        return standaloneView(tab, fittingSize: NSSize(width: 320, height: 420), autosize: false)
+    }
+
+    private static func scrollingFilesWindow(model: AppModel) -> NSView {
+        let silent = HostRunner(remote: RemoteService(runner: DemoFileRunner(stdout: "")), local: DemoMode.runner)
+        let store = FilesStore(service: FileService(host: silent), runner: DemoFileRunner(stdout: ""))
+        store.target = CommandTarget.remote(alias: acmeAlias, session: "dash")
+        store.path = "/home/acme/dash/Sources"
+        store.entries = scrollingFileNames.map { FileEntry(name: $0, isDir: false) }
+        let view = FilesView()
+            .environmentObject(store)
+            .environmentObject(FileViewerStore(host: silent))
+            .environmentObject(model)
+        return standaloneView(view, fittingSize: NSSize(width: 520, height: 420), autosize: false)
+    }
+
     private static func fileTransferTree(model: AppModel) async -> NSView {
         let silent = HostRunner(remote: RemoteService(runner: DemoFileRunner(stdout: "")), local: DemoMode.runner)
         let root = "/home/acme/dash"
@@ -1009,10 +1078,63 @@ enum DemoSnapshots {
         return hosting
     }
 
-    private static func capture(_ view: NSView, kind: SnapshotChrome.Kind, to url: URL) {
+    private static func capture(_ view: NSView, kind: SnapshotChrome.Kind, zoom: String? = nil, to url: URL) {
+        #if DEBUG
+        if let zoom, let control = DemoClickTargets.frames[zoom],
+           let rep = bitmap(of: view, scale: DemoCamera.captureScale) {
+            let scale = CGFloat(rep.pixelsWide) / view.bounds.width
+            let rect = zoomRect(
+                around: control, in: view.bounds.size, zoom: DemoCamera.zoom,
+                left: zoomLeftEdge(for: zoom, frames: DemoClickTargets.frames))
+            let cropped = DemoCamera.crop(flattenTransparency(rep), to: rect, scale: scale)
+            let windowScale = view.window?.backingScaleFactor ?? 2
+            let resized = resample(cropped, width: Int(view.bounds.width * windowScale))
+            write(SnapshotChrome.framed(resized, scale: windowScale, kind: .panel), to: url)
+            return
+        }
+        #endif
         guard let rep = bitmap(of: view) else { return }
         let scale = CGFloat(rep.pixelsWide) / view.bounds.width
         write(SnapshotChrome.framed(flattenTransparency(rep), scale: scale, kind: kind), to: url)
+    }
+
+    private static func resample(_ rep: NSBitmapImageRep, width: Int) -> NSBitmapImageRep {
+        let height = Int((CGFloat(rep.pixelsHigh) * CGFloat(width) / CGFloat(rep.pixelsWide)).rounded())
+        guard let copy = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+            let context = NSGraphicsContext(bitmapImageRep: copy)
+        else { return rep }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        context.imageInterpolation = .high
+        let image = NSImage(size: NSSize(width: rep.pixelsWide, height: rep.pixelsHigh))
+        image.addRepresentation(rep)
+        image.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+        return copy
+    }
+
+    /// A rect of the view's shape around a control, `zoom` times smaller,
+    /// kept inside the view. With `left`, it widens until that x is in view.
+    nonisolated static func zoomRect(around control: CGRect, in size: NSSize, zoom: CGFloat, left: CGFloat? = nil) -> CGRect {
+        var width = size.width / zoom
+        if let left { width = min(size.width, max(width, control.maxX - left)) }
+        let height = width * size.height / size.width
+        var x = min(max(0, control.midX - width / 2), size.width - width)
+        if let left { x = min(x, max(0, left)) }
+        let y = min(max(0, control.midY - height / 2), size.height - height)
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    /// The zooms that also keep the session pane's left edge in view, so the
+    /// terminal's output shows beside the control.
+    nonisolated static let zoomsReachingThePane: Set<String> = ["context:ask"]
+
+    static func zoomLeftEdge(for target: String, frames: [String: CGRect]) -> CGFloat? {
+        guard zoomsReachingThePane.contains(target) else { return nil }
+        return frames["pane:main"]?.minX
     }
 
     /// At the window's own scale, or at `scale` pixels per point when given.

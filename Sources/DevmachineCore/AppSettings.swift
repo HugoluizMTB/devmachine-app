@@ -149,6 +149,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// The Operator session in the sidebar and ⌘K. Off hides it; a shell it
     /// already runs keeps running.
     public var operatorSessionEnabled: Bool
+    public var chats: ChatSettings
 
     public var newSessionProgram: NewSessionProgram {
         get {
@@ -194,6 +195,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         linkOpening: LinkOpening = .defaultBrowser,
         operatorProgram: SessionLaunchChoice? = nil,
         operatorSessionEnabled: Bool = true,
+        chats: ChatSettings = .default,
         newSessionProgram: NewSessionProgram? = nil
     ) {
         self.opsRepoPath = opsRepoPath
@@ -225,6 +227,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.linkOpening = linkOpening
         self.operatorProgram = operatorProgram
         self.operatorSessionEnabled = operatorSessionEnabled
+        self.chats = chats
 
         if let newSessionProgram {
             let choice: SessionLaunchChoice = newSessionProgram == .claude ? .harness(.claude) : .terminal
@@ -243,7 +246,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case showsBusySpinner, showsBranch, showsSessionAge, showsAttention
         case hiddenWorkspaces, autoConnectWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram, linkOpening
-        case operatorProgram, operatorSessionEnabled
+        case operatorProgram, operatorSessionEnabled, chats
     }
 
     public init(from decoder: Decoder) throws {
@@ -281,6 +284,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         linkOpening = (try? values.decodeIfPresent(LinkOpening.self, forKey: .linkOpening)) ?? .defaultBrowser
         operatorProgram = try? values.decodeIfPresent(SessionLaunchChoice.self, forKey: .operatorProgram)
         operatorSessionEnabled = (try? values.decodeIfPresent(Bool.self, forKey: .operatorSessionEnabled)) ?? true
+        chats = (try? values.decodeIfPresent(ChatSettings.self, forKey: .chats)) ?? .default
         hiddenWorkspaces =
             try values.decodeIfPresent([String].self, forKey: .hiddenWorkspaces) ?? []
         autoConnectWorkspaces = try values.decodeIfPresent([String].self, forKey: .autoConnectWorkspaces) ?? []
@@ -351,6 +355,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(linkOpening, forKey: .linkOpening)
         try values.encodeIfPresent(operatorProgram, forKey: .operatorProgram)
         try values.encode(operatorSessionEnabled, forKey: .operatorSessionEnabled)
+        try values.encode(chats, forKey: .chats)
     }
 
     private func normalized(_ choice: SessionLaunchChoice) -> SessionLaunchChoice {

@@ -4,13 +4,14 @@ import DevmachineCore
 /// The group a command is listed under. The order here is the order of the
 /// groups when nothing else decides it.
 enum PaletteCategory: Int, CaseIterable, Comparable {
-    case recent, goTo, session, workspace, machine, settings, action
+    case recent, goTo, session, chats, workspace, machine, settings, action
 
     var title: String {
         switch self {
         case .recent: return "Recent"
         case .goTo: return "Go to"
         case .session: return "Session"
+        case .chats: return "Chats"
         case .workspace: return "Workspace"
         case .machine: return "Machine"
         case .settings: return "Settings"
@@ -62,6 +63,10 @@ enum PaletteAction: Equatable {
     case preview(PreviewRequest)
     case openPreviewField
     case pickColor
+    case newChat(place: ChatPlace?, harness: HarnessID?)
+    case openChat(id: String)
+    case showChats
+    case showCode
     case quit
 }
 
@@ -75,6 +80,7 @@ struct PaletteCommand: Identifiable {
     var keywords: [String] = []
     var badges: [HarnessBadgePresentation] = []
     var badgeText: String? = nil
+    var harness: HarnessID? = nil
     let action: PaletteAction
 }
 
@@ -99,6 +105,10 @@ struct PaletteContext {
     var activePage: AppPage?
     var cliUpdate: CLIUpdateNotice?
     var previewTargets: [PalettePreviewGroup] = []
+    var chats: [ChatRecord] = []
+    var chatSettings = ChatSettings.default
+    var chatConfig = ChatCLIConfig()
+    var chatWorkspaces: [String] = []
 
     var currentWorkspace: Workspace? {
         guard let alias = currentWorkspaceAlias else { return nil }

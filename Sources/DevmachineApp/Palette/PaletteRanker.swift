@@ -17,11 +17,21 @@ enum PaletteRanker {
     static let currentWorkspaceBonus = 30
 
     static func sections(
-        _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String? = nil
+        _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String? = nil,
+        inChats: Bool = false
     ) -> [PaletteSection] {
         query.trimmingCharacters(in: .whitespaces).isEmpty
             ? emptyQuerySections(commands, mru: mru)
-            : matchedSections(commands, query: query, mru: mru, currentWorkspace: currentWorkspace)
+            : matchedSections(
+                commands, query: query, mru: mru, currentWorkspace: currentWorkspace, inChats: inChats)
+    }
+
+    static let chatsBonus = 40
+
+    /// In Chats mode, the groups that start or open a chat come first, and
+    /// inside a group so do those commands.
+    static func isChatCommand(_ command: PaletteCommand) -> Bool {
+        command.category == .chats || command.id.hasPrefix("action.new-chat")
     }
 
     private static func emptyQuerySections(_ commands: [PaletteCommand], mru: CommandMRU) -> [PaletteSection] {
@@ -37,13 +47,14 @@ enum PaletteRanker {
     }
 
     private static func matchedSections(
-        _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String?
+        _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String?, inChats: Bool
     ) -> [PaletteSection] {
         let scored = commands.compactMap { command -> (PaletteCommand, Int)? in
             let fields = [command.title, command.subtitle, command.keywords.joined(separator: " ")]
             guard let score = FuzzyMatch.score(query, fields: fields) else { return nil }
             var total = score + mru.boost(for: command.id)
             if command.category == .session { total += sessionBonus }
+            if inChats, isChatCommand(command) { total += chatsBonus }
             if let currentWorkspace, !command.subtitle.isEmpty, command.subtitle == currentWorkspace {
                 total += currentWorkspaceBonus
             }
@@ -58,7 +69,11 @@ enum PaletteRanker {
                 return (PaletteSection(category: category, commands: sorted.map(\.0)), sorted[0].1)
             }
             .sorted { lhs, rhs in
-                lhs.1 != rhs.1 ? lhs.1 > rhs.1 : lhs.0.category < rhs.0.category
+                let left = inChats && lhs.0.commands.first.map(isChatCommand) == true
+                let right = inChats && rhs.0.commands.first.map(isChatCommand) == true
+                if left != right { return left }
+                if left, lhs.0.category != rhs.0.category { return lhs.0.category == .action }
+                return lhs.1 != rhs.1 ? lhs.1 > rhs.1 : lhs.0.category < rhs.0.category
             }
             .map(\.0)
     }
