@@ -5,21 +5,27 @@ import Foundation
 /// defaults filled in. The CLI owns them, so a chat started from a terminal
 /// lands where one started from the app does.
 public struct ChatCLIConfig: Codable, Equatable, Sendable {
-    public static let keys = (workspace: "chat.default_workspace", folder: "chat.folder", harness: "chat.harness")
+    public static let keys = (
+        workspace: "chat.default_workspace", folder: "chat.folder", harness: "chat.harness", mcp: "chat.mcp")
 
     public var defaultWorkspace: String
     public var folder: String
     public var harness: HarnessID
+    /// Whether a new chat loads the account's MCP servers; off by default.
+    public var mcp: Bool
 
-    public init(defaultWorkspace: String = "", folder: String = "~/chats", harness: HarnessID = .claude) {
+    public init(
+        defaultWorkspace: String = "", folder: String = "~/chats", harness: HarnessID = .claude, mcp: Bool = false
+    ) {
         self.defaultWorkspace = defaultWorkspace
         self.folder = folder
         self.harness = harness
+        self.mcp = mcp
     }
 
     enum CodingKeys: String, CodingKey {
         case defaultWorkspace = "default_workspace"
-        case folder, harness
+        case folder, harness, mcp
     }
 
     public init(from decoder: Decoder) throws {
@@ -29,6 +35,7 @@ public struct ChatCLIConfig: Codable, Equatable, Sendable {
         self.folder = folder.isEmpty ? "~/chats" : folder
         let harness = (try? values.decodeIfPresent(String.self, forKey: .harness)) ?? ""
         self.harness = harness.isEmpty ? .claude : HarnessID(rawValue: harness)
+        mcp = (try? values.decodeIfPresent(Bool.self, forKey: .mcp)) ?? false
     }
 
     private struct Show: Decodable { let chat: ChatCLIConfig? }
@@ -60,6 +67,9 @@ public struct ChatCLIConfig: Codable, Equatable, Sendable {
         }
         if harness != old.harness {
             runs.append(["config", "set", Self.keys.harness, harness.rawValue])
+        }
+        if mcp != old.mcp {
+            runs.append(mcp ? ["config", "set", Self.keys.mcp, "true"] : ["config", "unset", Self.keys.mcp])
         }
         return runs
     }

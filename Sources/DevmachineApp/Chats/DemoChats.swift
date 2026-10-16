@@ -42,7 +42,7 @@ enum DemoChats {
         return rows.map { id, title, workspace, harness, date in
             ChatRecord(
                 id: id, title: title, harness: harness, workspace: workspace, folder: ChatSettings.defaultFolder,
-                harnessSessionID: "demo-\(id)", createdAt: date, updatedAt: date)
+                harnessSessionID: "demo-\(id)", createdAt: date, updatedAt: date, mcp: id == selectedID)
         }
     }
 

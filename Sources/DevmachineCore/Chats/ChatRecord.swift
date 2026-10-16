@@ -21,11 +21,15 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
     public var mode: String?
     /// For a transcript ask: how many transcript excerpts the answer read.
     public var excerpts: Int?
+    /// Whether the harness runs with the account's MCP servers, hooks and
+    /// plugins; off, it starts several seconds faster.
+    public var mcp: Bool
 
     public init(
         id: String, title: String, harness: HarnessID, workspace: String, folder: String = "",
         harnessSessionID: String = "", createdAt: Date, updatedAt: Date, kind: String = ChatRecord.chatKind,
-        session: String? = nil, sourceSessionID: String? = nil, mode: String? = nil, excerpts: Int? = nil
+        session: String? = nil, sourceSessionID: String? = nil, mode: String? = nil, excerpts: Int? = nil,
+        mcp: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -40,6 +44,7 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
         self.sourceSessionID = sourceSessionID
         self.mode = mode
         self.excerpts = excerpts
+        self.mcp = mcp
     }
 
     public var isLocal: Bool { workspace == Self.localWorkspace }
@@ -47,7 +52,7 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
     public var place: ChatPlace { isLocal ? .local : .workspace(workspace) }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, harness, workspace, folder, kind, session, mode, excerpts
+        case id, title, harness, workspace, folder, kind, session, mode, excerpts, mcp
         case harnessSessionID = "harness_session_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -70,6 +75,7 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
         sourceSessionID = try values.decodeIfPresent(String.self, forKey: .sourceSessionID)
         mode = try values.decodeIfPresent(String.self, forKey: .mode)
         excerpts = try? values.decodeIfPresent(Int.self, forKey: .excerpts)
+        mcp = (try? values.decodeIfPresent(Bool.self, forKey: .mcp)) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -87,6 +93,7 @@ public struct ChatRecord: Codable, Equatable, Identifiable, Sendable {
         try values.encodeIfPresent(sourceSessionID, forKey: .sourceSessionID)
         try values.encodeIfPresent(mode, forKey: .mode)
         try values.encodeIfPresent(excerpts, forKey: .excerpts)
+        try values.encode(mcp, forKey: .mcp)
     }
 }
 

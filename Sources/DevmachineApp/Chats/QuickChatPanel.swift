@@ -46,6 +46,12 @@ final class QuickChatModel: ObservableObject {
 
     var recentChats: [ChatRecord] { Array(store.visibleChats.prefix(4)) }
 
+    var usesMCP: Bool { store.usesMCP(chatID ?? continuing) }
+
+    func toggleMCP() {
+        store.setMCP(!usesMCP, chat: chatID ?? continuing)
+    }
+
     /// A fresh panel, unless an answer is still coming into it.
     func prepareForShow() {
         guard !isStreaming else { return }
@@ -458,6 +464,7 @@ struct QuickChatCard: View {
                     },
                     toggle: { store.openPicker = store.openPicker == picker ? nil : picker })
             }
+            ChatMCPChip(isOn: model.usesMCP, height: 28, fontSize: 12.5) { model.toggleMCP() }
             Spacer()
             if model.question != nil {
                 Text(verbatim: "Open in Devmachine ⌘↩  ·  Esc to close")

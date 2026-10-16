@@ -112,6 +112,15 @@ final class ChatEventDecoderTests: XCTestCase {
             "No workspace named \"nope\", and none is configured")
     }
 
+    func testARecordSaysWhetherItLoadsMCPServers() throws {
+        let on = try JSONDecoder().decode(ChatRecord.self, from: Data(#"{"id":"c_1","mcp":true}"#.utf8))
+        XCTAssertTrue(on.mcp)
+        let old = try JSONDecoder().decode(ChatRecord.self, from: Data(#"{"id":"c_2"}"#.utf8))
+        XCTAssertFalse(old.mcp)
+        let again = try JSONDecoder().decode(ChatRecord.self, from: JSONEncoder().encode(on))
+        XCTAssertTrue(again.mcp)
+    }
+
     func testExcerpts() throws {
         let chat = try JSONDecoder().decode(ChatRecord.self, from: Data(
             #"{"id":"c_1","kind":"ask","mode":"transcript","excerpts":3,"created_at":"2026-10-15T10:00:00Z"}"#.utf8))

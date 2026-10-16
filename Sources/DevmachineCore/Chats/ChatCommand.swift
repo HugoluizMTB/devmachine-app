@@ -23,13 +23,18 @@ public enum ChatPlace: Hashable, Sendable {
 public enum ChatCommand {
     /// A new chat names where and with what; its folder is the CLI's
     /// `chat.folder`. A continued chat takes all three from its record.
-    public static func send(chatID: String?, place: ChatPlace, harness: HarnessID, message: String) -> [String] {
+    /// `mcp` nil leaves the chat's own choice (off for a new chat); see
+    /// `ChatMCP.flag`.
+    public static func send(
+        chatID: String?, place: ChatPlace, harness: HarnessID, message: String, mcp: Bool? = nil
+    ) -> [String] {
         var arguments = ["chat", "send"]
         if let chatID {
             arguments += ["--chat", chatID]
         } else {
             arguments += place.flags + ["--harness", harness.rawValue]
         }
+        arguments += ChatMCP.arguments(mcp)
         return arguments + ["--", message]
     }
 
@@ -55,4 +60,25 @@ public enum ChatCommand {
     public static func rename(id: String, title: String) -> [String] { ["chat", "rename", id, "--", title] }
 
     public static func delete(id: String) -> [String] { ["chat", "delete", id] }
+}
+
+/// MCP servers, hooks and plugins are off in a chat unless asked for; the
+/// CLI keeps the choice on the chat.
+public enum ChatMCP {
+    /// What to pass for a message: nil when the chat already has `chosen`,
+    /// so an older CLI without `--mcp` still works. A new chat says it
+    /// whenever MCP is in play (`chat.mcp` on, or the chip on), whichever
+    /// default the CLI applies.
+    public static func flag(chosen: Bool, record: ChatRecord?, configDefault: Bool = false) -> Bool? {
+        guard let record else { return chosen || configDefault ? chosen : nil }
+        return chosen == record.mcp ? nil : chosen
+    }
+
+    static func arguments(_ mcp: Bool?) -> [String] {
+        switch mcp {
+        case true?: return ["--mcp"]
+        case false?: return ["--mcp=false"]
+        case nil: return []
+        }
+    }
 }

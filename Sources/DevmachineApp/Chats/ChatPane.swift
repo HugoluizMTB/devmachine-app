@@ -44,6 +44,8 @@ struct ChatPane: View {
             }
             ChatComposer(
                 text: $reply, harness: harness, place: place, locked: true, streaming: conversation.isStreaming,
+                mcp: store.usesMCP(chatID),
+                toggleMCP: { store.setMCP(!store.usesMCP(chatID), chat: chatID) },
                 send: {
                     if store.send(reply, toChat: store.current(chatID)) != nil { reply = "" }
                 },
@@ -130,6 +132,8 @@ struct NewChatView: View {
                         picker, store: store, harness: store.draftHarness, place: store.draftPlace,
                         pickHarness: { store.draft.harness = $0 }, pickPlace: { store.draft.place = $0 })
                 },
+                mcp: store.usesMCP(nil),
+                toggleMCP: { store.setMCP(!store.usesMCP(nil), chat: nil) },
                 send: { store.sendFromPane(store.draft.text) })
                 .frame(width: m.pt(680))
             if let failure = store.listFailure, failure.kind == .needsNewerCLI {

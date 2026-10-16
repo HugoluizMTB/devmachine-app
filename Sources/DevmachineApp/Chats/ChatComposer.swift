@@ -15,6 +15,8 @@ struct ChatComposer: View {
     var openPicker: ChatPicker?
     var togglePicker: (ChatPicker) -> Void = { _ in }
     var pickerItems: (ChatPicker) -> [ChatMenuItem] = { _ in [] }
+    var mcp = false
+    var toggleMCP: () -> Void = {}
     let send: () -> Void
     var stop: () -> Void = {}
     @Environment(\.dmMetrics) private var m
@@ -57,6 +59,7 @@ struct ChatComposer: View {
                     picker: .workspace, harness: harness, place: place, locked: locked,
                     open: openPicker == .workspace, items: { pickerItems(.workspace) },
                     toggle: { togglePicker(.workspace) })
+                ChatMCPChip(isOn: mcp, toggle: toggleMCP)
                 ChatReadOnlyLabel()
                     .padding(.leading, m.pt(4))
                     .demoClickTarget("chat:readonly")

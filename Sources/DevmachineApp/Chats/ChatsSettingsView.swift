@@ -66,6 +66,9 @@ struct ChatsSettingsView: View {
                     .menuIndicator(.hidden)
                     .fixedSize()
                 }
+                toggle("Load MCP servers in new chats",
+                       detail: "Off, a chat starts several seconds faster. A chat can turn them on with its MCP chip.",
+                       isOn: $config.mcp)
                 HStack(spacing: m.pt(6)) {
                     Image(systemName: "ellipsis.circle").font(.dm(11)).foregroundStyle(Color.dmMuted)
                     Text(verbatim: "More coming soon").font(.dm(11)).foregroundStyle(Color.dmMuted)

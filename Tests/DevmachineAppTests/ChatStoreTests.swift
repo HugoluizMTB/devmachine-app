@@ -335,4 +335,28 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertTrue(runner.arguments.contains(["chat", "delete", "c1"]))
         XCTAssertTrue(store.records.isEmpty)
     }
+
+    func testTheMCPChipGoesOutAsAFlagOnlyWhenItDiffersFromTheChat() async {
+        let runner = FakeChatRunner(streams: [
+            .init(lines: [ChatFixtures.started("c1"), ChatFixtures.done("c1")]),
+            .init(lines: [ChatFixtures.started("c1"), ChatFixtures.done("c1")]),
+            .init(lines: [ChatFixtures.started("c1"), ChatFixtures.done("c1")]),
+        ])
+        let store = ChatStore(runner: runner)
+        XCTAssertFalse(store.usesMCP(nil))
+        store.setMCP(true, chat: nil)
+        let key = store.send("hi", harness: .claude, place: .local)!
+        await waitForChat { !runner.arguments.isEmpty }
+        XCTAssertTrue(runner.arguments.last?.contains("--mcp") ?? false)
+        XCTAssertFalse(store.usesMCP(nil))
+        await waitForChat { store.current(key) == "c1" && !store.isAnswering("c1") }
+        XCTAssertTrue(store.usesMCP("c1"))
+        store.send("and?", toChat: "c1")
+        await waitForChat { !store.isAnswering("c1") }
+        XCTAssertTrue(runner.arguments.last?.contains("--mcp") ?? false)
+        store.setMCP(false, chat: "c1")
+        store.send("more?", toChat: "c1")
+        await waitForChat { !store.isAnswering("c1") }
+        XCTAssertFalse(runner.arguments.last?.contains { $0.hasPrefix("--mcp") } ?? true)
+    }
 }

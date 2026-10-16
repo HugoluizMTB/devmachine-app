@@ -129,6 +129,11 @@ final class ChatStore: ObservableObject {
     /// The chat whose question goes out again once the person comes back
     /// from logging in.
     @Published private(set) var awaitingLogin: String?
+    /// The MCP chip where the person changed it: per chat, and for the next
+    /// new chat. Until then a chat follows its record and a new chat the
+    /// CLI's `chat.mcp`.
+    @Published private(set) var mcpChoices: [String: Bool] = [:]
+    @Published private(set) var newChatMCP: Bool?
 
     private let runner: any ChatCommandRunning
     private let now: () -> Date
@@ -271,6 +276,25 @@ final class ChatStore: ObservableObject {
         openPicker = .workspace
     }
 
+    // MARK: - MCP
+
+    /// Whether the chat (nil: the next new chat) loads MCP servers.
+    func usesMCP(_ id: String?) -> Bool {
+        guard let id else { return newChatMCP ?? config.mcp }
+        let key = current(id)
+        return mcpChoices[key] ?? record(key)?.mcp ?? config.mcp
+    }
+
+    func setMCP(_ on: Bool, chat id: String?) {
+        if let id { mcpChoices[current(id)] = on } else { newChatMCP = on }
+    }
+
+    private func mcpFlag(_ key: String) -> Bool? {
+        ChatMCP.flag(
+            chosen: usesMCP(key), record: key.hasPrefix(Self.pendingPrefix) ? nil : record(key),
+            configDefault: config.mcp)
+    }
+
     // MARK: - Sending
 
     /// Sends from the chat pane: into the selected chat, or a new chat with
@@ -291,17 +315,22 @@ final class ChatStore: ObservableObject {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return nil }
         let key = Self.pendingPrefix + UUID().uuidString
+        let mcp = usesMCP(nil)
         let placeholder = ChatRecord(
             id: key, title: Self.title(of: body), harness: harness,
             workspace: place.workspaceName ?? ChatRecord.localWorkspace, folder: config.folder,
-            createdAt: now(), updatedAt: now())
+            createdAt: now(), updatedAt: now(), mcp: mcp)
         records.append(placeholder)
         conversations[key] = ChatConversation(record: placeholder)
+        mcpChoices[key] = mcp
+        newChatMCP = nil
         if selects { selectedID = key }
         openPicker = nil
         launch(
             key: key, text: body,
-            arguments: ChatCommand.send(chatID: nil, place: place, harness: harness, message: body))
+            arguments: ChatCommand.send(
+                chatID: nil, place: place, harness: harness, message: body,
+                mcp: ChatMCP.flag(chosen: mcp, record: nil, configDefault: config.mcp)))
         return key
     }
 
@@ -314,7 +343,7 @@ final class ChatStore: ObservableObject {
             key: id, text: body,
             arguments: ChatCommand.send(
                 chatID: id.hasPrefix(Self.pendingPrefix) ? nil : id, place: record.place, harness: record.harness,
-                message: body))
+                message: body, mcp: mcpFlag(id)))
         return id
     }
 
@@ -359,7 +388,8 @@ final class ChatStore: ObservableObject {
                 place: record.place, session: session, folder: record.folder, harness: record.harness, chatID: chatID,
                 question: text)
         } else {
-            arguments = ChatCommand.send(chatID: chatID, place: record.place, harness: record.harness, message: text)
+            arguments = ChatCommand.send(
+                chatID: chatID, place: record.place, harness: record.harness, message: text, mcp: mcpFlag(id))
         }
         launch(key: id, text: text, arguments: arguments)
     }
@@ -473,6 +503,7 @@ final class ChatStore: ObservableObject {
         }
         if let task = tasks.removeValue(forKey: pending) { tasks[chat.id] = task }
         if let turn = turns.removeValue(forKey: pending) { turns[chat.id] = turn }
+        if let mcp = mcpChoices.removeValue(forKey: pending) { mcpChoices[chat.id] = mcp }
         records.removeAll { $0.id == pending }
         if selectedID == pending { selectedID = chat.id }
     }

@@ -53,6 +53,30 @@ struct ChatChip: View {
     }
 }
 
+/// MCP servers, hooks and plugins for this chat: off by default, since they
+/// are most of a harness's start-up.
+struct ChatMCPChip: View {
+    let isOn: Bool
+    var height: CGFloat = 24
+    var fontSize: CGFloat = 11.5
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            ChatChip(
+                systemImage: "puzzlepiece.extension", title: isOn ? "MCP on" : "MCP off",
+                tint: isOn ? .accentColor : .dmMuted, open: isOn, height: height, fontSize: fontSize)
+        }
+        .buttonStyle(.plain)
+        .help("Load this workspace's MCP servers (slower start)")
+        .accessibilityLabel("MCP servers")
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityHint("Turns the workspace's MCP servers on or off for this chat; on starts slower")
+        .demoClickTarget("chat:mcp")
+    }
+}
+
 struct ChatReadOnlyLabel: View {
     var fontSize: CGFloat = 10.5
     @Environment(\.dmMetrics) private var m

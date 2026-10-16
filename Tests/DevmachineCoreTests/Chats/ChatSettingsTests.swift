@@ -62,6 +62,8 @@ final class ChatSettingsTests: XCTestCase {
         XCTAssertEqual(
             ChatCLIConfig.fromConfigShow(show),
             ChatCLIConfig(defaultWorkspace: "acme", folder: "~/notes", harness: .codex))
+        XCTAssertEqual(
+            ChatCLIConfig.fromConfigShow(Data(#"{"chat":{"mcp":true}}"#.utf8))?.mcp, true)
         XCTAssertNil(ChatCLIConfig.fromConfigShow(Data(#"{"machines":[]}"#.utf8)))
     }
 
@@ -74,5 +76,9 @@ final class ChatSettingsTests: XCTestCase {
             ["config", "unset", "chat.folder"],
             ["config", "set", "chat.harness", "codex"],
         ])
+        var mcp = old
+        mcp.mcp = true
+        XCTAssertEqual(mcp.changes(from: old), [["config", "set", "chat.mcp", "true"]])
+        XCTAssertEqual(old.changes(from: mcp), [["config", "unset", "chat.mcp"]])
     }
 }

@@ -17,6 +17,23 @@ final class ChatCommandTests: XCTestCase {
             ["chat", "send", "--chat", "c1", "--", "and?"])
     }
 
+    func testMCPGoesOnlyWhereItChangesSomething() {
+        XCTAssertEqual(
+            ChatCommand.send(chatID: nil, place: .local, harness: .claude, message: "hi", mcp: true),
+            ["chat", "send", "--local", "--harness", "claude", "--mcp", "--", "hi"])
+        XCTAssertEqual(
+            ChatCommand.send(chatID: "c1", place: .local, harness: .claude, message: "and?", mcp: false),
+            ["chat", "send", "--chat", "c1", "--mcp=false", "--", "and?"])
+        XCTAssertNil(ChatMCP.flag(chosen: false, record: nil))
+        XCTAssertEqual(ChatMCP.flag(chosen: true, record: nil), true)
+        XCTAssertEqual(ChatMCP.flag(chosen: false, record: nil, configDefault: true), false)
+        let record = ChatRecord(
+            id: "c1", title: "", harness: .claude, workspace: "main", createdAt: .distantPast,
+            updatedAt: .distantPast, mcp: true)
+        XCTAssertNil(ChatMCP.flag(chosen: true, record: record))
+        XCTAssertEqual(ChatMCP.flag(chosen: false, record: record), false)
+    }
+
     func testAsk() {
         XCTAssertEqual(
             ChatCommand.ask(place: .workspace("acme"), session: "claude", chatID: nil, question: "why?"),
