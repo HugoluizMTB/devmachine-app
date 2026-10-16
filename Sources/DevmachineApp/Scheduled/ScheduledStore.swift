@@ -32,17 +32,24 @@ final class ScheduledStore: ObservableObject {
     /// Bumped by "New task" outside the page (the sidebar row, ⌘N); the page
     /// opens its sheet when it changes.
     @Published private(set) var newTaskRequests = 0
+    /// A workspace's first task while the CLI sets the package up there.
+    @Published private(set) var setup: ScheduledSetupProgress?
 
     func requestNewTask() {
         newTaskRequests += 1
     }
 
     private let makeCLI: @Sendable () throws -> DevmachineCLI
+    private let pollInterval: Duration
     private var polling: Set<String> = []
     private var isDemo = false
 
-    init(makeCLI: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() }) {
+    init(
+        makeCLI: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
+        pollInterval: Duration = .seconds(2)
+    ) {
         self.makeCLI = makeCLI
+        self.pollInterval = pollInterval
     }
 
     /// Tasks across every workspace: the next to run first, paused and done
@@ -62,6 +69,12 @@ final class ScheduledStore: ObservableObject {
     var failedWorkspaces: [ScheduledWorkspace] { workspaces.filter { $0.error != nil } }
 
     func row(_ id: String) -> ScheduledRow? { rows.first { $0.id == id } }
+
+    /// The row's newest run: the list's, or a newer one the runs read since
+    /// found, so a Run now shows on the row before the next refresh.
+    func lastRun(_ row: ScheduledRow) -> ScheduledRun? {
+        ScheduledRun.latest(listed: row.task.lastRun, read: runs[row.id] ?? [])
+    }
 
     func appear() {
         if !hasLoaded && !isLoading { refresh() }
@@ -89,10 +102,25 @@ final class ScheduledStore: ObservableObject {
     func harness(_ name: String) -> ScheduledHarness? { harnesses.first { $0.name == name } }
 
     /// Saves the form. On a workspace without the package, `add --yes` sets
-    /// it up and syncs the machine first.
-    func save(_ draft: ScheduledDraft, editing: String?, allowDangerous: Bool) async throws -> ScheduledTask {
+    /// it up and syncs `settingUpOn` first; `setup` follows the lines it
+    /// prints meanwhile.
+    func save(
+        _ draft: ScheduledDraft, editing: String?, allowDangerous: Bool, settingUpOn machine: String? = nil
+    ) async throws -> ScheduledTask {
         let args = draft.arguments(editing: editing, allowDangerous: allowDangerous)
-        let task = try await cli { try $0.scheduledSave(args) }
+        guard let machine else {
+            let task = try await cli { try $0.scheduledSave(args) }
+            refresh()
+            return task
+        }
+        setup = ScheduledSetupProgress(workspace: draft.workspace, machine: machine)
+        defer { setup = nil }
+        // The main queue keeps the lines in order and ahead of the reply.
+        let task = try await cli { cli in
+            try cli.scheduledSave(args) { line in
+                DispatchQueue.main.async { MainActor.assumeIsolated { [weak self] in self?.setup?.read(line) } }
+            }
+        }
         refresh()
         return task
     }
@@ -161,7 +189,7 @@ final class ScheduledStore: ObservableObject {
         }
     }
 
-    /// Reads a task's runs every two seconds until `runID` is listed and no
+    /// Reads a task's runs every `pollInterval` until `runID` is listed and no
     /// run is still going, for at most ten minutes, so Run now shows the end
     /// without a refresh. A Run now that lands on a running one is skipped at
     /// once, and the run it met is the one to wait for.
@@ -170,14 +198,13 @@ final class ScheduledStore: ObservableObject {
         Task {
             defer { polling.remove(row.id) }
             let deadline = Date().addingTimeInterval(600)
-            try? await Task.sleep(for: .seconds(1))
             while Date() < deadline {
                 guard let found = try? await cli({ try $0.scheduledRuns(row.task.id, workspace: row.workspace.name) })
                 else { return }
                 runs[row.id] = found
                 let listed = found.contains { $0.id == runID }
                 if listed && !found.contains(where: { $0.status == .running }) { break }
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: pollInterval)
             }
             refresh()
         }
@@ -197,6 +224,10 @@ final class ScheduledStore: ObservableObject {
         loadError = nil
         refreshedAt = Date()
         isDemo = true
+    }
+
+    func seedDemoSetup(_ progress: ScheduledSetupProgress?) {
+        setup = progress
     }
     #endif
 

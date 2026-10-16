@@ -66,7 +66,7 @@ enum DemoSnapshots {
         case "pull-requests", "publish-port", "publish-port-via", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
              "worktree-remove", "worktrees-merged", "worktree-foreign",
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
-             "file-viewer", "files-tab", "files-window", "packages-confirm", "map-location-editor",
+             "file-viewer", "files-tab", "files-window", "packages-confirm", "map-location-editor", "scheduled-setup-sheet",
              "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
              "cli-update-toast-manual", "cli-update-toast-pinned", "packages-update-toast",
              "packages-update-toast-running", "packages-update-toast-done", "packages-update-toast-failed":
@@ -324,6 +324,15 @@ enum DemoSnapshots {
     /// The scroll bar walk (`DEVMACHINE_DEMO_WALK=scroll-bars`): views that
     /// scroll, to check that none draws a scroll bar track. Run it with
     /// `DEVMACHINE_DEMO_SCROLL_BARS=Always` to stand in for that setting.
+    /// The Scheduled walk (`DEVMACHINE_DEMO_WALK=scheduled`): a task's row
+    /// and its sidebar row right after Run now, a workspace's first task
+    /// setting up in the corner, and the same card over the New task sheet.
+    static let scheduledScreens: [Screen] = [
+        Screen(id: "scheduled-running", fileName: "140-scheduled-running.png", settleNanoseconds: 700_000_000),
+        Screen(id: "scheduled-setup", fileName: "141-scheduled-setup.png", settleNanoseconds: 700_000_000),
+        Screen(id: "scheduled-setup-sheet", fileName: "142-scheduled-setup-sheet.png", settleNanoseconds: 400_000_000),
+    ]
+
     static let scrollBarScreens: [Screen] = [
         Screen(id: "session-claude", fileName: "110-scroll-code.png", settleNanoseconds: 700_000_000),
         Screen(id: "files-tab", fileName: "111-scroll-files-tab.png", settleNanoseconds: 300_000_000),
@@ -422,6 +431,7 @@ enum DemoSnapshots {
         #endif
         case "chats": return DemoChats.screens
         case "scroll-bars": return scrollBarScreens
+        case "scheduled": return scheduledScreens
         default: return screens
         }
     }
@@ -564,6 +574,12 @@ enum DemoSnapshots {
                 view = await packagesUpdateToastView(screen.id, model: environment.model)
             case "packages-confirm":
                 view = DemoPackages.confirmView()
+            case "scheduled-setup-sheet":
+                view = standaloneView(
+                    ScheduledTaskSheet(request: .new, draft: DemoScheduled.weeklyDraft) { _ in }
+                        .environmentObject(environment.model),
+                    fittingSize: NSSize(width: 600, height: 680))
+                try? await Task.sleep(nanoseconds: 300_000_000)
             case "map-location-editor":
                 view = DemoMachinesMap.locationEditorView()
             case "ready-old-cli", "ready-outdated":
@@ -590,6 +606,7 @@ enum DemoSnapshots {
         DemoDNSWalk.reset()
         DemoPackages.reset()
         DemoMachinesMap.reset()
+        ScheduledStore.shared.seedDemoSetup(nil)
         if screens.contains(where: { DemoSiteWalk.handles($0.id) }) { DemoSiteWalk.reset(environment.model) }
         #endif
         environment.model.goHome()
@@ -684,6 +701,16 @@ enum DemoSnapshots {
             DemoScheduled.seed(ScheduledStore.shared)
             ScheduledStore.shared.selectedID = DemoScheduled.briefingID
             ScheduledStore.shared.openRunID = DemoScheduled.briefingRun
+            model.contextCollapsed = true
+            model.showPage(.scheduled)
+        case "scheduled-running":
+            DemoScheduled.seed(ScheduledStore.shared, standupRunning: true)
+            ScheduledStore.shared.selectedID = DemoScheduled.standupID
+            model.contextCollapsed = true
+            model.showPage(.scheduled)
+        case "scheduled-setup", "scheduled-setup-sheet":
+            DemoScheduled.seed(ScheduledStore.shared)
+            ScheduledStore.shared.seedDemoSetup(DemoScheduled.setupProgress)
             model.contextCollapsed = true
             model.showPage(.scheduled)
         case "settings-connection", "settings-needs-setup", "settings-cli-missing", "settings-no-machine":

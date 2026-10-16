@@ -17,8 +17,11 @@ extension DevmachineCLI {
     /// Runs `add` or `edit` as `ScheduledDraft.arguments` built it. A first
     /// task in a workspace also sets up the package and syncs the machine,
     /// which can take a minute.
-    func scheduledSave(_ arguments: [String]) throws -> ScheduledTask {
-        let result = try scheduled(arguments)
+    /// `onStderrLine` gets what the setup prints while it runs.
+    func scheduledSave(
+        _ arguments: [String], onStderrLine: (@Sendable (String) -> Void)? = nil
+    ) throws -> ScheduledTask {
+        let result = try scheduled(arguments, onStderrLine: onStderrLine)
         return try ScheduledJSON.decodeSaved(Data(result.stdout.utf8))
     }
 
@@ -51,8 +54,12 @@ extension DevmachineCLI {
         try scheduled(["scheduled", "log", id, run, "--workspace", workspace]).stdout
     }
 
-    private func scheduled(_ args: [String]) throws -> (stdout: String, stderr: String, exitCode: Int32) {
-        let result = try runner.runCapturing(executable: executable, args: args, environment: environment())
+    private func scheduled(
+        _ args: [String], onStderrLine: (@Sendable (String) -> Void)? = nil
+    ) throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        let result = try onStderrLine.map {
+            try runner.runCapturing(executable: executable, args: args, environment: environment(), onStderrLine: $0)
+        } ?? runner.runCapturing(executable: executable, args: args, environment: environment())
         if result.exitCode != 0, result.stderr.contains("unknown command \"scheduled\"") {
             throw DevmachineCLIError.needsNewerCLI("scheduled")
         }

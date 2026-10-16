@@ -279,6 +279,10 @@ Rules:
   panel loading its own content, not a job. A `devmachine` run against a
   machine is a machine job instead (see Machine jobs). A widget's own poll is the
   exception: it is the widget's content (see Home widgets).
+- **A sheet dims the window under it, corner cards included.** A sheet open
+  while a job runs (New scheduled task setting up a workspace) draws the
+  cards over itself with `.showsProgressCards()`; the corner leaves them
+  out while `sheetsShowingProgress` is above zero.
 - **`.clipped()` / `.clipShape` do NOT clip hit-testing.** A `scaledToFill` image
   overflows its container and its invisible overflow still swallows clicks over
   neighboring views (this once killed the sidebar's right edge for a whole day).
