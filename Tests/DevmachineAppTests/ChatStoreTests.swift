@@ -329,4 +329,14 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertNil(store.conversation("c1").failure)
         store.stop("c1")
     }
+
+    func testDeletingAChatStillUnderItsPendingKeyDeletesTheRealOne() async {
+        let runner = FakeChatRunner(streams: [.init(lines: [ChatFixtures.started("c1"), ChatFixtures.done("c1")])])
+        let store = ChatStore(runner: runner)
+        let key = store.send("hi", harness: .claude, place: .local)!
+        await waitForChat { store.current(key) == "c1" && !store.isAnswering("c1") }
+        await store.delete(key)
+        XCTAssertTrue(runner.arguments.contains(["chat", "delete", "c1"]))
+        XCTAssertTrue(store.records.isEmpty)
+    }
 }

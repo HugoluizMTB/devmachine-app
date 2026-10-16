@@ -211,7 +211,10 @@ final class ChatStore: ObservableObject {
     /// Returns what the CLI said when it refused a change.
     func saveConfig(_ wanted: ChatCLIConfig) async -> String? {
         for arguments in wanted.changes(from: config) {
-            guard let output = try? await runner.run(arguments) else { return "The devmachine CLI could not run." }
+            guard let output = try? await runner.run(arguments) else {
+                await loadConfig()
+                return "The devmachine CLI could not run."
+            }
             if output.exitCode != 0 {
                 await loadConfig()
                 let message = (output.stderr.isEmpty ? output.stdout : output.stderr)
@@ -377,6 +380,7 @@ final class ChatStore: ObservableObject {
         let key = current(id)
         tasks[key]?.cancel()
         tasks[key] = nil
+        turns[key] = nil
         conversations[key]?.stop()
     }
 
@@ -392,6 +396,7 @@ final class ChatStore: ObservableObject {
     }
 
     func delete(_ id: String) async {
+        let id = current(id)
         stop(id)
         if !id.hasPrefix(Self.pendingPrefix) {
             let output = try? await runner.run(ChatCommand.delete(id: id))
