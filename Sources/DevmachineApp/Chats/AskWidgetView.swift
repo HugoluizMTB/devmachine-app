@@ -45,6 +45,7 @@ struct AskWidgetView: View {
                     question = ""
                 }
                 .help("Start a new thread")
+                .accessibilityLabel("Start a new thread")
                 .disabled(threadID == nil)
                 StackHeaderControls()
             }
@@ -94,6 +95,8 @@ struct AskWidgetView: View {
         HStack(spacing: m.pt(6)) {
             TextField("Ask about this session…", text: $question)
                 .textFieldStyle(.plain)
+                .accessibilityLabel("Ask about this session")
+                .accessibilityHint("Return asks; the session is not interrupted")
                 .font(.dm(12))
                 .onSubmit { send(key) }
                 .onKeyPress(.escape) {
@@ -106,6 +109,7 @@ struct AskWidgetView: View {
             ) {
                 if streaming, let threadID { store.stop(threadID) } else { send(key) }
             }
+            .help(streaming ? "Stop (Esc)" : "Ask (Return)")
         }
         .padding(.leading, m.pt(10))
         .padding(.trailing, m.pt(5))

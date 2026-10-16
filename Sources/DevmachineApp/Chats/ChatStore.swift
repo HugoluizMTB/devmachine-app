@@ -95,7 +95,7 @@ struct ChatDraft: Equatable {
     var place: ChatPlace?
 }
 
-enum ChatPicker: Equatable {
+enum ChatPicker: Hashable {
     case harness
     case workspace
 }

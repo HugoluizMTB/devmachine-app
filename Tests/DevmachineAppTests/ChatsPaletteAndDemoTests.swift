@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import DevmachineCore
 @testable import DevmachineApp
 
@@ -36,6 +37,42 @@ final class ChatsPaletteAndDemoTests: XCTestCase {
         XCTAssertNil(commands.first { $0.id == "action.new-chat.main" })
         XCTAssertEqual(commands.filter { $0.category == .chats }.map(\.id), ["chat.b", "chat.a"])
         XCTAssertEqual(commands.first { $0.id == "go.chats" }?.action, .showChats)
+    }
+
+    func testCodeAndChatsShowTheirShortcutsAndAreFoundByName() {
+        let commands = CommandRegistry.commands(in: context())
+        XCTAssertEqual(commands.first { $0.id == "go.code" }?.shortcut, "⌘1")
+        XCTAssertEqual(commands.first { $0.id == "go.chats" }?.shortcut, "⌘2")
+        func ids(_ query: String) -> [String] {
+            PaletteRanker.sections(commands, query: query, mru: CommandMRU(ids: [])).flatMap(\.commands).map(\.id)
+        }
+        XCTAssertTrue(ids("code").contains("go.code"))
+        XCTAssertTrue(ids("chats").contains("go.chats"))
+        XCTAssertTrue(ids("switch").contains("go.code"))
+        XCTAssertTrue(ids("switch").contains("go.chats"))
+    }
+
+    func testAccessibilityWords() {
+        let chat = ChatRecord(
+            id: "c", title: "Caddy reload", harness: .claude, workspace: "main", createdAt: Date(), updatedAt: Date())
+        XCTAssertEqual(ChatAccessibility.rowLabel(chat, answering: false), "Caddy reload, Claude on main")
+        XCTAssertEqual(ChatAccessibility.rowLabel(chat, answering: true), "Caddy reload, Claude on main, answering")
+        XCTAssertEqual(SidebarModeHeader.accessibilityValue(.code, codeWaits: true), "current: Code")
+        XCTAssertEqual(
+            SidebarModeHeader.accessibilityValue(.chats, codeWaits: true), "current: Chats, a session in Code is waiting")
+        XCTAssertEqual(ChatMenuItem(id: "x", title: "main", detail: "(default)").accessibilityTitle, "main, (default)")
+        XCTAssertEqual(ChatMenuShortcut.keys("⌘1")?.0, KeyEquivalent("1"))
+        XCTAssertNil(ChatMenuShortcut.keys("⌃⌥Space"))
+    }
+
+    func testTheModeMenuOffersCodeAndChatsWithTheirShortcuts() {
+        let model = AppModel(services: fixtureServices())
+        let items = SidebarModeMenuOverlay.items(model)
+        XCTAssertEqual(items.prefix(2).map(\.title), ["Code", "Chats"])
+        XCTAssertEqual(items.prefix(2).map(\.shortcut), ["⌘1", "⌘2"])
+        XCTAssertEqual(items.first?.checked, true)
+        items[1].action?()
+        XCTAssertEqual(model.appMode, .chats)
     }
 
     func testInChatsModeTheChatCommandsLead() {

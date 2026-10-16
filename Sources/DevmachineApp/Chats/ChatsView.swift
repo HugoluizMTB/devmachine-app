@@ -111,9 +111,22 @@ struct ChatsSidebar: View {
                 }
                 .padding(.bottom, m.pt(10))
             }
+            .focusable()
+            .focusEffectDisabled()
+            .onKeyPress(.downArrow) { move(1) }
+            .onKeyPress(.upArrow) { move(-1) }
+            .accessibilityLabel("Chats")
+            .accessibilityHint("Up and down arrows move between chats")
             footer
         }
         .background(Color.dmSidebarBg)
+    }
+
+    private func move(_ step: Int) -> KeyPress.Result {
+        let ids = groups.flatMap(\.chats).map(\.id)
+        guard let next = ChatListNavigation.neighbor(of: store.selectedID, in: ids, step: step) else { return .ignored }
+        store.select(next)
+        return .handled
     }
 
     private func row(_ chat: ChatRecord) -> some View {
@@ -140,6 +153,12 @@ struct ChatsSidebar: View {
             Button("Rename…") { rename(chat.id) }
             Button("Delete", role: .destructive) { delete(chat.id) }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ChatAccessibility.rowLabel(chat, answering: store.isAnswering(chat.id)))
+        .accessibilityAddTraits(chat.id == store.selectedID ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { store.select(chat.id) }
+        .accessibilityAction(named: "Rename") { rename(chat.id) }
+        .accessibilityAction(named: "Delete") { delete(chat.id) }
     }
 
     private var footer: some View {

@@ -122,14 +122,23 @@ struct ChatMenuItem: Identifiable {
     var checked = false
     var disabled = false
     var shortcut: String?
+    /// One of a set where one is picked (drawn with a checkmark); false for
+    /// a plain command such as "New workspace…".
+    var choice = true
     var action: (() -> Void)?
+
+    /// What VoiceOver reads for the row.
+    var accessibilityTitle: String {
+        [title, detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
 
     static func separator(_ id: String) -> ChatMenuItem { ChatMenuItem(id: id, kind: .separator) }
     static func header(_ title: String) -> ChatMenuItem { ChatMenuItem(id: "header-" + title, kind: .header, title: title) }
 }
 
-/// A menu drawn in the view, not an `NSMenu`: it sits where the mockups
-/// put it and a demo frame can show it open.
+/// A menu drawn in the view: only the demo walk uses it, because a frame
+/// captured from the window never shows a native menu. Real use opens the
+/// same items as a native menu (`ChatDropdown`).
 struct ChatMenuCard: View {
     let items: [ChatMenuItem]
     var width: CGFloat = 240
@@ -189,6 +198,102 @@ struct ChatMenuCard: View {
         .contentShape(Rectangle())
         .onHover { hovered = $0 ? item.id : (hovered == item.id ? nil : hovered) }
         .onTapGesture { if !item.disabled { item.action?() } }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(item.accessibilityTitle)
+        .accessibilityAddTraits(item.checked ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// A chip or title that opens a menu. In real use it is a native menu, so
+/// the keyboard (Full Keyboard Access, arrows, type-select) and VoiceOver
+/// work as in any Mac menu; in demo mode it toggles the drawn `ChatMenuCard`.
+struct ChatDropdown<Trigger: View>: View {
+    let items: [ChatMenuItem]
+    let accessibilityLabel: String
+    let accessibilityValue: String
+    var accessibilityHint = ""
+    var help = ""
+    let toggleDrawn: () -> Void
+    @ViewBuilder let trigger: () -> Trigger
+
+    var body: some View {
+        Group {
+            if DemoMode.isActive {
+                Button(action: toggleDrawn, label: trigger)
+                    .buttonStyle(.plain)
+            } else {
+                Menu {
+                    ChatNativeMenuContent(items: items)
+                } label: {
+                    trigger()
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+            }
+        }
+        .help(help.isEmpty ? accessibilityLabel : help)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityHint(accessibilityHint)
+    }
+}
+
+/// `ChatMenuItem`s as native menu items: a choice is a toggle (the system
+/// checkmark), a header is a disabled line.
+struct ChatNativeMenuContent: View {
+    let items: [ChatMenuItem]
+
+    var body: some View {
+        ForEach(items) { item in
+            switch item.kind {
+            case .separator:
+                Divider()
+            case .header:
+                Text(verbatim: item.title.prefix(1) + item.title.dropFirst().lowercased())
+            case .item:
+                if item.disabled {
+                    Text(verbatim: item.title)
+                } else if item.choice {
+                    Toggle(isOn: Binding(get: { item.checked }, set: { _ in item.action?() })) { label(item) }
+                        .modifier(ChatMenuShortcut(shortcut: item.shortcut))
+                } else {
+                    Button { item.action?() } label: { label(item) }
+                        .modifier(ChatMenuShortcut(shortcut: item.shortcut))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func label(_ item: ChatMenuItem) -> some View {
+        let title = item.detail.map { "\(item.title)  \($0)" } ?? item.title
+        if let harness = item.harness, let icon = HarnessIconLibrary.bundled.icon(for: harness, style: .color) {
+            Label { Text(verbatim: title) } icon: { Image(nsImage: icon.image) }
+        } else if let symbol = item.systemImage {
+            Label { Text(verbatim: title) } icon: { Image(systemName: symbol) }
+        } else {
+            Text(verbatim: title)
+        }
+    }
+}
+
+/// "⌘1" on a menu item: shown beside it and typed while the menu is open.
+struct ChatMenuShortcut: ViewModifier {
+    let shortcut: String?
+
+    static func keys(_ shortcut: String?) -> (KeyEquivalent, EventModifiers)? {
+        guard let shortcut, shortcut.hasPrefix("⌘"), shortcut.count == 2, let key = shortcut.last else { return nil }
+        return (KeyEquivalent(Character(key.lowercased())), .command)
+    }
+
+    func body(content: Content) -> some View {
+        if let keys = Self.keys(shortcut) {
+            content.keyboardShortcut(keys.0, modifiers: keys.1)
+        } else {
+            content
+        }
     }
 }
 
@@ -240,5 +345,13 @@ enum ChatPlaceLabel {
 
     static func symbol(_ place: ChatPlace) -> String {
         place == .local ? "laptopcomputer" : "server.rack"
+    }
+}
+
+enum ChatAccessibility {
+    /// "Caddy reload without downtime, Claude on main, answering".
+    static func rowLabel(_ chat: ChatRecord, answering: Bool) -> String {
+        let base = "\(chat.title), \(ChatHarness.title(chat.harness)) on \(ChatPlaceLabel.title(chat.place))"
+        return answering ? base + ", answering" : base
     }
 }

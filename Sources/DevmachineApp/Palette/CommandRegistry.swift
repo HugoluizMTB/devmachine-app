@@ -58,12 +58,13 @@ enum CommandRegistry {
         }
         commands.append(PaletteCommand(
             id: "go.chats", title: "Chats", subtitle: "switch to Chats", category: .goTo,
-            systemImage: "bubble.left.and.bubble.right", shortcut: "⌘2", keywords: chatKeywords,
+            systemImage: "bubble.left.and.bubble.right", shortcut: "⌘2",
+            keywords: chatKeywords + ["chats", "switch", "mode"],
             action: .showChats))
         commands.append(PaletteCommand(
             id: "go.code", title: "Code", subtitle: "switch to Code", category: .goTo,
             systemImage: "chevron.left.forwardslash.chevron.right", shortcut: "⌘1",
-            keywords: ["sessions", "terminal", "workspaces"], action: .showCode))
+            keywords: ["code", "sessions", "terminal", "workspaces", "switch", "mode"], action: .showCode))
         return commands
     }
 

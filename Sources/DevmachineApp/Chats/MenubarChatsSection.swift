@@ -31,6 +31,11 @@ struct MenubarChatsSection: View {
             .background(DMRowBackground(selected: true, cornerRadius: DMRadius.control, selectedColor: .dmActive))
             .contentShape(Rectangle())
             .onTapGesture { newChat() }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("New chat")
+            .accessibilityHint(store.settings.hotkey.map { "Shortcut \($0.display)" } ?? "")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { newChat() }
             let recent = Array(store.visibleChats.prefix(3))
             if !recent.isEmpty {
                 DMSectionLabel(text: "RECENT CHATS")
@@ -56,6 +61,10 @@ struct MenubarChatsSection: View {
                     .background(DMRowBackground(selected: false))
                     .contentShape(Rectangle())
                     .onTapGesture { open(chat.id) }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(ChatAccessibility.rowLabel(chat, answering: store.isAnswering(chat.id)))
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { open(chat.id) }
                 }
             }
         }

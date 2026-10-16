@@ -14,6 +14,7 @@ struct ChatComposer: View {
     var streaming = false
     var openPicker: ChatPicker?
     var togglePicker: (ChatPicker) -> Void = { _ in }
+    var pickerItems: (ChatPicker) -> [ChatMenuItem] = { _ in [] }
     let send: () -> Void
     var stop: () -> Void = {}
     @Environment(\.dmMetrics) private var m
@@ -31,6 +32,8 @@ struct ChatComposer: View {
                 .foregroundStyle(Color.white.opacity(0.92))
                 .lineLimit(1...12)
                 .focused($focused)
+                .accessibilityLabel(placeholder.trimmingCharacters(in: CharacterSet(charactersIn: "…")))
+                .accessibilityHint("Return sends, Shift-Return starts a new line, Escape stops an answer")
                 .frame(maxWidth: .infinity, minHeight: m.pt(minHeight), alignment: .topLeading)
                 .onKeyPress(.return, phases: .down) { press in
                     if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
@@ -47,32 +50,72 @@ struct ChatComposer: View {
                 }
                 .demoClickTarget("chat:composer")
             HStack(spacing: m.pt(6)) {
-                Button { if !locked { togglePicker(.harness) } } label: {
-                    ChatChip(harness: harness, title: ChatHarness.title(harness), menu: !locked,
-                             open: openPicker == .harness)
-                }
-                .buttonStyle(.plain)
-                .anchorPreference(key: ChatAnchorKey.self, value: .bounds) { ["harness": $0] }
-                .help(locked ? "A chat keeps its coding agent." : "Coding agent")
-                Button { if !locked { togglePicker(.workspace) } } label: {
-                    ChatChip(systemImage: ChatPlaceLabel.symbol(place), title: ChatPlaceLabel.title(place),
-                             menu: !locked, open: openPicker == .workspace)
-                }
-                .buttonStyle(.plain)
-                .anchorPreference(key: ChatAnchorKey.self, value: .bounds) { ["workspace": $0] }
-                .help(locked ? "A chat keeps its workspace." : "Where the chat runs")
+                ChatPickerChip(
+                    picker: .harness, harness: harness, place: place, locked: locked, open: openPicker == .harness,
+                    items: { pickerItems(.harness) }, toggle: { togglePicker(.harness) })
+                ChatPickerChip(
+                    picker: .workspace, harness: harness, place: place, locked: locked,
+                    open: openPicker == .workspace, items: { pickerItems(.workspace) },
+                    toggle: { togglePicker(.workspace) })
                 ChatReadOnlyLabel()
                     .padding(.leading, m.pt(4))
                 Spacer()
                 ChatSendButton(enabled: canSend, stops: streaming) {
                     if streaming { stop() } else if canSend { send() }
                 }
+                .help(streaming ? "Stop (Esc)" : "Send (Return)")
             }
         }
         .padding(m.pt(14))
         .dmSurface(Color(hex: 0x1A2027), radius: DMRadius.card, style: .continuous)
         .shadow(color: .black.opacity(0.25), radius: m.pt(12), y: m.pt(4))
         .onAppear { if !DemoMode.isActive { focused = true } }
+    }
+}
+
+/// The harness or workspace chip: a menu while the chat has no message,
+/// then a plain label of what the chat keeps.
+struct ChatPickerChip: View {
+    let picker: ChatPicker
+    let harness: HarnessID
+    let place: ChatPlace
+    var locked = false
+    var open = false
+    var height: CGFloat = 24
+    var fontSize: CGFloat = 11.5
+    let items: () -> [ChatMenuItem]
+    let toggle: () -> Void
+
+    private var name: String { picker == .harness ? "Coding agent" : "Workspace" }
+    private var value: String { picker == .harness ? ChatHarness.title(harness) : ChatPlaceLabel.title(place) }
+
+    var body: some View {
+        Group {
+            if locked {
+                chip
+                    .help(picker == .harness ? "A chat keeps its coding agent." : "A chat keeps its workspace.")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(name)
+                    .accessibilityValue(value)
+            } else {
+                ChatDropdown(
+                    items: items(), accessibilityLabel: name, accessibilityValue: value,
+                    accessibilityHint: "Opens the list to pick another", help: name, toggleDrawn: toggle
+                ) { chip }
+            }
+        }
+        .anchorPreference(key: ChatAnchorKey.self, value: .bounds) { [picker == .harness ? "harness" : "workspace": $0] }
+    }
+
+    private var chip: some View {
+        Group {
+            if picker == .harness {
+                ChatChip(harness: harness, title: value, menu: !locked, open: open, height: height, fontSize: fontSize)
+            } else {
+                ChatChip(systemImage: ChatPlaceLabel.symbol(place), title: value, menu: !locked, open: open,
+                         height: height, fontSize: fontSize)
+            }
+        }
     }
 }
 
@@ -89,7 +132,7 @@ struct ChatPickerOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         content.overlayPreferenceValue(ChatAnchorKey.self) { anchors in
-            if let picker = store.openPicker,
+            if DemoMode.isActive, let picker = store.openPicker,
                let anchor = anchors[picker == .harness ? "harness" : "workspace"] {
                 GeometryReader { proxy in
                     let rect = proxy[anchor]
@@ -111,6 +154,13 @@ struct ChatPickerOverlay: ViewModifier {
     }
 
     private func items(_ picker: ChatPicker) -> [ChatMenuItem] {
+        Self.items(picker, store: store, harness: harness, place: place, pickHarness: pickHarness, pickPlace: pickPlace)
+    }
+
+    static func items(
+        _ picker: ChatPicker, store: ChatStore, harness: HarnessID, place: ChatPlace,
+        pickHarness: @escaping (HarnessID) -> Void, pickPlace: @escaping (ChatPlace) -> Void
+    ) -> [ChatMenuItem] {
         switch picker {
         case .harness:
             return ChatMenus.harnesses(selected: harness, available: store.settings.harnesses) { id in

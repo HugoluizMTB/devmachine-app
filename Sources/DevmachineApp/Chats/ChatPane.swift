@@ -81,6 +81,8 @@ struct ChatPane: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(chatID.hasPrefix(ChatStore.pendingPrefix))
+            .help("Rename or delete this chat")
+            .accessibilityLabel("Chat actions")
         }
         .padding(.horizontal, m.pt(20))
         .padding(.top, m.pt(12))
@@ -123,6 +125,11 @@ struct NewChatView: View {
                 text: $store.draft.text, placeholder: "Ask anything…", minHeight: 70,
                 harness: store.draftHarness, place: store.draftPlace, openPicker: store.openPicker,
                 togglePicker: { picker in store.openPicker = store.openPicker == picker ? nil : picker },
+                pickerItems: { picker in
+                    ChatPickerOverlay.items(
+                        picker, store: store, harness: store.draftHarness, place: store.draftPlace,
+                        pickHarness: { store.draft.harness = $0 }, pickPlace: { store.draft.place = $0 })
+                },
                 send: { store.sendFromPane(store.draft.text) })
                 .frame(width: m.pt(680))
             if let failure = store.listFailure, failure.kind == .needsNewerCLI {
@@ -132,14 +139,17 @@ struct NewChatView: View {
             } else {
                 HStack(spacing: m.pt(8)) {
                     ForEach(Self.suggestions, id: \.title) { suggestion in
-                        Text(verbatim: suggestion.title)
-                            .font(.dm(11.5))
-                            .foregroundStyle(Color.dmRowText)
-                            .padding(.horizontal, m.pt(10))
-                            .padding(.vertical, m.pt(5))
-                            .dmSurface(Color.white.opacity(0.05), in: Capsule())
-                            .contentShape(Capsule())
-                            .onTapGesture { store.draft.text = suggestion.text }
+                        Button { store.draft.text = suggestion.text } label: {
+                            Text(verbatim: suggestion.title)
+                                .font(.dm(11.5))
+                                .foregroundStyle(Color.dmRowText)
+                                .padding(.horizontal, m.pt(10))
+                                .padding(.vertical, m.pt(5))
+                                .dmSurface(Color.white.opacity(0.05), in: Capsule())
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Starts the message for you")
                     }
                 }
             }
@@ -184,6 +194,10 @@ struct NewChatView: View {
                     .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: m.pt(DMRadius.row)))
                     .contentShape(Rectangle())
                     .onTapGesture { store.select(chat.id) }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(ChatAccessibility.rowLabel(chat, answering: store.isAnswering(chat.id)))
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { store.select(chat.id) }
                 }
             }
         }

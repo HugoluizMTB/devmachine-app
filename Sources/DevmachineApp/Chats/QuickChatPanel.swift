@@ -318,18 +318,23 @@ struct QuickChatCard: View {
             } else {
                 field
             }
-            Button { model.showsChooser.toggle() } label: {
+            ChatDropdown(
+                items: chooserItems, accessibilityLabel: "Conversation",
+                accessibilityValue: model.isContinuing ? "Continuing a chat" : "New chat",
+                accessibilityHint: "Start a new chat or continue a recent one",
+                help: "New chat or continue a recent one", toggleDrawn: { model.showsChooser.toggle() }
+            ) {
                 ChatChip(
                     systemImage: model.isContinuing ? "bubble.left" : "square.and.pencil",
                     title: model.isContinuing ? "Continuing" : "New chat", menu: true, open: model.showsChooser,
                     height: 28, fontSize: 12.5)
             }
-            .buttonStyle(.plain)
             ChatSendButton(
                 size: 30, stops: model.isStreaming, tint: Color(hex: 0xD97757)
             ) {
                 if model.isStreaming { model.stop() } else { model.send() }
             }
+            .help(model.isStreaming ? "Stop" : "Send (Return)")
         }
         .padding(.horizontal, m.pt(14))
         .padding(.vertical, m.pt(12))
@@ -343,6 +348,8 @@ struct QuickChatCard: View {
                 .textFieldStyle(.plain)
                 .font(.dm(16))
                 .focused(focused)
+                .accessibilityLabel(prompt.trimmingCharacters(in: CharacterSet(charactersIn: "…")))
+                .accessibilityHint("Return sends, Command-Return opens the chat in Devmachine, Escape closes")
                 .onSubmit { model.send() }
                 .onKeyPress(.return, phases: .down) { press in
                     if press.modifiers.contains(.command) {
@@ -353,6 +360,7 @@ struct QuickChatCard: View {
                 }
         } else {
             Text(verbatim: model.text.isEmpty ? prompt : model.text)
+                .accessibilityLabel(prompt)
                 .font(.dm(16))
                 .foregroundStyle(model.text.isEmpty ? Color.dmMuted : .white)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -389,19 +397,17 @@ struct QuickChatCard: View {
 
     private var chipsRow: some View {
         HStack(spacing: m.pt(6)) {
-            let locked = model.isContinuing
-            Button { if !locked { store.openPicker = store.openPicker == .harness ? nil : .harness } } label: {
-                ChatChip(harness: model.shownHarness, title: ChatHarness.title(model.shownHarness), menu: !locked,
-                         open: store.openPicker == .harness, height: 28, fontSize: 12.5)
+            ForEach([ChatPicker.harness, .workspace], id: \.self) { picker in
+                ChatPickerChip(
+                    picker: picker, harness: model.shownHarness, place: model.shownPlace, locked: model.isContinuing,
+                    open: store.openPicker == picker, height: 28, fontSize: 12.5,
+                    items: {
+                        ChatPickerOverlay.items(
+                            picker, store: store, harness: model.shownHarness, place: model.shownPlace,
+                            pickHarness: { model.harness = $0 }, pickPlace: { model.place = $0 })
+                    },
+                    toggle: { store.openPicker = store.openPicker == picker ? nil : picker })
             }
-            .buttonStyle(.plain)
-            .anchorPreference(key: ChatAnchorKey.self, value: .bounds) { ["harness": $0] }
-            Button { if !locked { store.openPicker = store.openPicker == .workspace ? nil : .workspace } } label: {
-                ChatChip(systemImage: ChatPlaceLabel.symbol(model.shownPlace), title: ChatPlaceLabel.title(model.shownPlace),
-                         menu: !locked, open: store.openPicker == .workspace, height: 28, fontSize: 12.5)
-            }
-            .buttonStyle(.plain)
-            .anchorPreference(key: ChatAnchorKey.self, value: .bounds) { ["workspace": $0] }
             Spacer()
             if model.question != nil {
                 Text(verbatim: "Open in Devmachine ⌘↩  ·  Esc to close")

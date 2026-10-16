@@ -59,3 +59,15 @@ public enum ChatGrouping {
         }
     }
 }
+
+/// ↑ and ↓ in the chat list: the chat next to the selected one, in the
+/// order the list shows. Nothing selected: ↓ picks the first, ↑ the last.
+public enum ChatListNavigation {
+    public static func neighbor(of selected: String?, in ids: [String], step: Int) -> String? {
+        guard !ids.isEmpty else { return nil }
+        guard let selected, let index = ids.firstIndex(of: selected) else {
+            return step > 0 ? ids.first : ids.last
+        }
+        return ids[min(max(index + step, 0), ids.count - 1)]
+    }
+}

@@ -48,3 +48,19 @@ final class ChatGroupingTests: XCTestCase {
         XCTAssertEqual(ChatGrouping.age(of: now.addingTimeInterval(60), now: now), "now")
     }
 }
+
+final class ChatListNavigationTests: XCTestCase {
+    func testArrowsWalkTheListAndStopAtItsEnds() {
+        let ids = ["a", "b", "c"]
+        XCTAssertEqual(ChatListNavigation.neighbor(of: "a", in: ids, step: 1), "b")
+        XCTAssertEqual(ChatListNavigation.neighbor(of: "b", in: ids, step: -1), "a")
+        XCTAssertEqual(ChatListNavigation.neighbor(of: "c", in: ids, step: 1), "c")
+        XCTAssertEqual(ChatListNavigation.neighbor(of: "a", in: ids, step: -1), "a")
+    }
+
+    func testWithNothingSelectedTheArrowsStartAtAnEnd() {
+        XCTAssertEqual(ChatListNavigation.neighbor(of: nil, in: ["a", "b"], step: 1), "a")
+        XCTAssertEqual(ChatListNavigation.neighbor(of: "gone", in: ["a", "b"], step: -1), "b")
+        XCTAssertNil(ChatListNavigation.neighbor(of: nil, in: [], step: 1))
+    }
+}

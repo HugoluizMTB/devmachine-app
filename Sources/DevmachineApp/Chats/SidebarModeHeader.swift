@@ -14,9 +14,19 @@ struct SidebarModeHeader: View {
         mode == .code ? "CODE WORKSPACES" : "CHAT WORKSPACES"
     }
 
+    static func accessibilityValue(_ mode: AppMode, codeWaits: Bool) -> String {
+        let current = mode == .code ? "current: Code" : "current: Chats"
+        return mode == .chats && codeWaits ? current + ", a session in Code is waiting" : current
+    }
+
     var body: some View {
         HStack(spacing: m.space.sm) {
-            Button { model.showsModeMenu.toggle() } label: {
+            ChatDropdown(
+                items: SidebarModeMenuOverlay.items(model), accessibilityLabel: "Switch mode",
+                accessibilityValue: Self.accessibilityValue(model.appMode, codeWaits: model.codeNeedsAttention),
+                accessibilityHint: "Command-1 for Code, Command-2 for Chats",
+                help: "Code or Chats (⌘1, ⌘2)", toggleDrawn: { model.showsModeMenu.toggle() }
+            ) {
                 HStack(spacing: m.pt(5)) {
                     Text(verbatim: Self.title(model.appMode))
                         .font(.dm(11, weight: .semibold))
@@ -33,17 +43,17 @@ struct SidebarModeHeader: View {
                 .foregroundStyle(model.showsModeMenu ? Color.dmRowText : Color.dmMuted)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .anchorPreference(key: SidebarModeMenuAnchor.self, value: .bounds) { $0 }
-            .help("Code or Chats (⌘1, ⌘2)")
             .demoClickTarget("sidebar:mode")
             Spacer(minLength: m.space.sm)
             DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, action: refresh)
                 .help("Refresh")
+                .accessibilityLabel("Refresh")
             DMIconButton(systemImage: "sidebar.left", size: DMMetrics.baseFontSize) {
                 withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = true }
             }
             .help("Close sidebar (⌘B)")
+            .accessibilityLabel("Close sidebar")
             .demoClickTarget("footer:close-sidebar")
         }
         .padding(.horizontal, m.pt(12))
@@ -59,7 +69,7 @@ struct SidebarNewRow: View {
     let action: () -> Void
     @Environment(\.dmMetrics) private var m
 
-    var body: some View {
+    private var row: some View {
         HStack(spacing: m.pt(8)) {
             Image(systemName: systemImage).font(.dm(12, weight: .medium))
             Text(verbatim: title).font(.dm(13, weight: .medium))
@@ -73,9 +83,15 @@ struct SidebarNewRow: View {
         .frame(height: m.pt(32))
         .dmSurface(selected ? Color.white.opacity(0.1) : Color.white.opacity(0.07), radius: DMRadius.control)
         .contentShape(Rectangle())
-        .onTapGesture(perform: action)
-        .padding(.horizontal, m.pt(10))
-        .accessibilityAddTraits(.isButton)
+    }
+
+    var body: some View {
+        Button(action: action) { row }
+            .buttonStyle(.plain)
+            .padding(.horizontal, m.pt(10))
+            .help(shortcut.map { "\(title) (\($0))" } ?? title)
+            .accessibilityLabel(title)
+            .accessibilityHint(shortcut.map { "Shortcut \($0)" } ?? "")
     }
 }
 
@@ -94,7 +110,7 @@ struct SidebarModeMenuOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         content.overlayPreferenceValue(SidebarModeMenuAnchor.self) { anchor in
-            if model.showsModeMenu, let anchor {
+            if DemoMode.isActive, model.showsModeMenu, let anchor {
                 GeometryReader { proxy in
                     let rect = proxy[anchor]
                     ZStack(alignment: .topLeading) {
@@ -110,7 +126,9 @@ struct SidebarModeMenuOverlay: ViewModifier {
 
     private var highlighted: String { model.appMode == .code ? "mode-code" : "mode-chats" }
 
-    private var items: [ChatMenuItem] {
+    private var items: [ChatMenuItem] { Self.items(model) }
+
+    static func items(_ model: AppModel) -> [ChatMenuItem] {
         var items = [
             ChatMenuItem(
                 id: "mode-code", title: "Code", systemImage: "chevron.left.forwardslash.chevron.right",
@@ -126,7 +144,7 @@ struct SidebarModeMenuOverlay: ViewModifier {
                 .separator("mode-sep"),
                 ChatMenuItem(
                     id: "new-workspace", title: "New workspace…", systemImage: "person.crop.square.badge.plus",
-                    action: { model.showsModeMenu = false; model.requestNewWorkspace() }),
+                    choice: false, action: { model.showsModeMenu = false; model.requestNewWorkspace() }),
             ]
         }
         return items
