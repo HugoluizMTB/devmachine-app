@@ -170,4 +170,14 @@ final class QuickChatModelTests: XCTestCase {
         XCTAssertFalse(QuickChatPanelController.returnsFocus(toPID: 7, ownPID: 7))
         XCTAssertFalse(QuickChatPanelController.returnsFocus(toPID: nil, ownPID: 7))
     }
+    func testThePanelIsAsWideAsTheCardAtTheFontSize() {
+        let normal = DMMetrics(scale: 1)
+        let large = DMMetrics(scale: 1.3)
+        XCTAssertEqual(QuickChatPanelController.width(normal, fitting: 4000), normal.pt(680) + 2 * normal.pt(24))
+        XCTAssertEqual(QuickChatPanelController.width(large, fitting: 4000), large.pt(680) + 2 * large.pt(24))
+    }
+
+    func testThePanelNeverGrowsPastTheScreen() {
+        XCTAssertEqual(QuickChatPanelController.width(DMMetrics(scale: 1.6), fitting: 900), 900 - 32)
+    }
 }
