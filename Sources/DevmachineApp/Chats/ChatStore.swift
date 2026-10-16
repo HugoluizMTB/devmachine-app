@@ -662,8 +662,11 @@ final class ChatStore: ObservableObject {
         live.turn = turn
         live.fallback = fallback
         live.output = []
-        if !sessions.asks.values.contains(where: { $0 === live }) { sessions.chats[key] = live }
-        conversations[key]?.status = live.isReady ? Self.thinking(record(key)?.harness ?? live.spec?.harness) : live.status
+        let isAsk = sessions.asks.values.contains { $0 === live }
+        if !isAsk { sessions.chats[key] = live }
+        // An ask reads the session's transcript first, and says so itself.
+        let ready = isAsk ? nil : Self.thinking(record(key)?.harness ?? live.spec?.harness)
+        conversations[key]?.status = live.isReady ? ready : live.status
         live.channel.write(ChatSessionInput.send(text))
     }
 

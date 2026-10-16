@@ -804,7 +804,8 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   quick panel and Ask; the first `text`/`tool`/`denied`, `done`, `error`, a
   stop or the exit clear it. A send into a warm session that is still starting
   shows that session's latest start-up status; into a ready one, "<Harness> is
-  thinking…" until the CLI's `waiting`. An older CLI sends none and nothing is
+  thinking…" until the CLI's `waiting` (not for Ask, which reads the
+  transcript first and says so). An older CLI sends none and nothing is
   made up. VoiceOver hears each status once, as a low-priority announcement.
 - **MCP.** Chats start without MCP servers, hooks and plugins (`chat.mcp`
   off); the chip (`ChatMCPChip`) is kept per chat as the record's `mcp`, and

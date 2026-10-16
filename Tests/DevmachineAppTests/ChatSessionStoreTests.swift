@@ -156,7 +156,7 @@ final class ChatSessionStoreTests: XCTestCase {
         XCTAssertEqual(runner.channels[1].arguments, ["chat", "session", "--chat", "c1", "--mcp"])
     }
 
-    func testAnAskUsesItsServedSessionAndQuitClosesEverything() {
+    func testAnAskUsesItsServedSessionAndQuitClosesEverything() async {
         let runner = FakeSessionRunner()
         let store = ChatStore(runner: runner)
         let askKey = AskSessionKey(place: .workspace("acme"), session: "claude — api")
@@ -164,8 +164,11 @@ final class ChatSessionStoreTests: XCTestCase {
         XCTAssertEqual(runner.channels[0].arguments, [
             "chat", "ask", "--serve", "--workspace", "acme", "--session", "claude — api", "--harness", "claude",
         ])
-        store.ask("why?", key: askKey, harness: .claude, chatID: nil)
+        runner.channels[0].emit(#"{"type":"ready","chat":null}"#)
+        await waitForChat { store.sessions.asks[askKey]?.isReady == true }
+        let key = store.ask("why?", key: askKey, harness: .claude, chatID: nil)!
         XCTAssertEqual(runner.channels[0].writes, [ChatSessionInput.send("why?")])
+        XCTAssertNil(store.conversation(key).status)
         store.prewarm(spec)
         store.closeAllSessions()
         XCTAssertTrue(runner.channels.allSatisfy(\.closed))
