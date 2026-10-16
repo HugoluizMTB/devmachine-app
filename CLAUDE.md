@@ -768,6 +768,13 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   renders views that scroll (Code, the Files tab, the Files window, the file
   viewer, Settings, Chats) to check that none draws a track.
 
+## Right panel
+- The context panel (Context, Preview, Files, Git) runs under the
+  see-through title bar like the sidebars (`SidebarUnderTitlebar`); its tab
+  row is centred on the window buttons' line (`\.titleLine`, from
+  `SidebarHeaderSpacing.line(buttons:)`), the same line as the sidebar
+  toggle. The collapsed strip's icon sits on that line too.
+
 ## Chats
 - **The engine is `devmachine chat`; the app only draws.** One process per
   message (`chat send`, `chat ask`), NDJSON `started/text/tool/denied/done/error`

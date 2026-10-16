@@ -255,7 +255,18 @@ private struct SidebarHeaderTopKey: EnvironmentKey {
     static let defaultValue: CGFloat = SidebarHeaderSpacing.fallback
 }
 
+private struct TitleLineKey: EnvironmentKey {
+    static let defaultValue: CGFloat = SidebarHeaderSpacing.fallbackLine
+}
+
 extension EnvironmentValues {
+    /// The window buttons' vertical center, in points from the window's top:
+    /// the line the title bar's controls sit on.
+    var titleLine: CGFloat {
+        get { self[TitleLineKey.self] }
+        set { self[TitleLineKey.self] = newValue }
+    }
+
     /// Where the sidebar's header starts, in points from the window's top:
     /// close under the window buttons. The sidebars run under the title bar.
     var sidebarHeaderTop: CGFloat {
@@ -273,6 +284,11 @@ enum SidebarHeaderSpacing {
     /// title row has; this evens the two, so the gaps read the same.
     static let textAlignment: CGFloat = 9.5
     static let fallback: CGFloat = 52
+    static let fallbackLine: CGFloat = 22
+
+    static func line(buttons: CGRect) -> CGFloat {
+        buttons == .zero ? fallbackLine : buttons.midY
+    }
 
     static func top(buttons: CGRect) -> CGFloat {
         buttons == .zero ? fallback : buttons.maxY + blockGap + textAlignment

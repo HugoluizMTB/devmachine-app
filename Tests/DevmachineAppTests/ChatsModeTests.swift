@@ -146,4 +146,9 @@ final class SidebarTogglePlacementTests: XCTestCase {
             buttons.maxY + SidebarHeaderSpacing.blockGap + SidebarHeaderSpacing.textAlignment)
         XCTAssertEqual(SidebarHeaderSpacing.top(buttons: .zero), SidebarHeaderSpacing.fallback)
     }
+
+    func testTheRightPanelTabsSitOnTheWindowButtonsLine() {
+        XCTAssertEqual(SidebarHeaderSpacing.line(buttons: buttons), buttons.midY)
+        XCTAssertEqual(SidebarHeaderSpacing.line(buttons: .zero), SidebarHeaderSpacing.fallbackLine)
+    }
 }

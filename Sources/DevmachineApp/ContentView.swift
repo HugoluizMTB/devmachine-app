@@ -49,6 +49,7 @@ struct ContentView: View {
                     .environment(
                         \.sidebarHeaderTop,
                         SidebarHeaderSpacing.top(buttons: windowButtons))
+                    .environment(\.titleLine, SidebarHeaderSpacing.line(buttons: windowButtons))
             }
         }
         .overlay(alignment: .topLeading) {
@@ -337,6 +338,7 @@ struct ContentView: View {
     private var contextArea: some View {
         if model.contextCollapsed {
             ContextCollapsedStrip()
+                .modifier(SidebarUnderTitlebar())
         } else {
             ResizeHandle(
                 onDrag: { dx in
@@ -346,8 +348,10 @@ struct ContentView: View {
                 },
                 onEnd: { contextDragStartWidth = nil }
             )
+            .modifier(SidebarUnderTitlebar())
             ContextPanel(store: model.context)
                 .frame(width: m.pt(model.contextWidth))
+                .modifier(SidebarUnderTitlebar())
         }
     }
 

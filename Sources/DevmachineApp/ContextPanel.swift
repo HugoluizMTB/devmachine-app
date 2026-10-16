@@ -33,6 +33,7 @@ enum ContextTab: String, CaseIterable {
 }
 
 struct ContextPanel: View {
+    @Environment(\.titleLine) private var titleLine
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: ContextStore
@@ -215,6 +216,7 @@ struct ContextPanel: View {
                 .help("Close context panel")
             }
         )
+        .frame(height: 2 * titleLine)
     }
 
 }
@@ -232,6 +234,7 @@ private struct GitProbeTrigger: Equatable {
 }
 
 struct ContextCollapsedStrip: View {
+    @Environment(\.titleLine) private var titleLine
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
 
@@ -257,7 +260,7 @@ struct ContextCollapsedStrip: View {
 
                 Spacer()
             }
-            .padding(.top, m.space.lg)
+            .padding(.top, titleLine - m.pt(13) / 2)
             .frame(width: m.pt(34))
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
