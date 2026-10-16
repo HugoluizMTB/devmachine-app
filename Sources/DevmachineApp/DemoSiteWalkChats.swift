@@ -219,7 +219,7 @@ extension DemoSiteWalk {
             model.contextTab = .context
             model.goHome()
             model.clickSession(contextSession)
-            asks.reset(askKey)
+            asks.resetDemo(askKey)
             try? await Task.sleep(nanoseconds: 700_000_000)
             model.context.retry()
         case let .typing(index):
@@ -240,7 +240,7 @@ extension DemoSiteWalk {
                 answers: [DemoChats.askAnswer, prefix(of: DemoChats.askFollowUpAnswer, step: index, of: askAnswerSteps)],
                 streaming: index < askAnswerSteps, followUp: true))
         case .cleared:
-            asks.reset(askKey)
+            asks.resetDemo(askKey)
         }
     }
 

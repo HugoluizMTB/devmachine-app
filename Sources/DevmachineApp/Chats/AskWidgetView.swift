@@ -57,14 +57,17 @@ struct AskWidgetView: View {
             trailing: {
                 if hasThread {
                     DMButton("Clear", variant: .ghost, size: .small) {
-                        asks.reset(key)
-                        store.closeAsk(key)
-                        warm(key)
+                        Task {
+                            guard await asks.clear(key, store: store) else { return }
+                            store.closeAsk(key)
+                            warm(key)
+                        }
                     }
+                    .disabled(conversation?.isStreaming == true)
                     .demoClickTarget("ask:clear")
-                    .help("Start a new Ask thread for this session")
+                    .help("Delete this Ask thread and start a new one")
                     .accessibilityLabel("Clear the Ask thread")
-                    .accessibilityHint("Starts a new Ask thread for this session")
+                    .accessibilityHint("Deletes this Ask thread and starts a new one")
                 }
                 StackHeaderControls()
             }
@@ -90,6 +93,14 @@ struct AskWidgetView: View {
                         }
                         .foregroundStyle(Color.dmMuted)
                     }
+                }
+                if let failure = asks.clearFailures[key] {
+                    HStack(alignment: .top, spacing: m.pt(5)) {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.dm(10))
+                        Text(verbatim: "Could not delete this thread: \(failure)").font(.dm(10.5))
+                    }
+                    .foregroundStyle(Color.red)
+                    .accessibilityElement(children: .combine)
                 }
                 if mode.isSupported {
                     input(key, streaming: conversation?.isStreaming == true, threadID: threadID)

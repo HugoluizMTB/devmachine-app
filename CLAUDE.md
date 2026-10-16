@@ -837,7 +837,12 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
 - **Ask** (`app.ask`, provider `app/session-ask`, engine 1.8, after Links in
   the default Context tab): `AskStore` keeps one thread per session
   (`AskSessionKey`); a session on this Mac passes its folder. "Clear" (shown once a
-  thread has messages) starts a new thread and hides the old one.
+  thread has messages) runs `chat delete` on that thread and starts a new one,
+  so it does not come back after a restart; a refused delete keeps the thread
+  and says why under it. Clear waits while an answer is coming. Ask chats left
+  in the CLI's store from before Clear deleted (only the newest shows) are
+  never deleted on their own: after a restart the next one shows, and Clear
+  removes it too.
 - Demo walk `DEVMACHINE_DEMO_WALK=chats` (`DemoChats`): the 14 screens of the
   approved mockups drawn from the real views over invented chats.
   `DEVMACHINE_CHAT_E2E=<devmachine binary>` runs `ChatCLILiveTests`: a real

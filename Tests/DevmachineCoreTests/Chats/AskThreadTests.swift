@@ -31,15 +31,8 @@ final class AskThreadTests: XCTestCase {
             chat,
         ]
         let key = AskSessionKey(place: .workspace("acme"), session: "claude")
-        XCTAssertEqual(AskThreadPicker.latest(in: records, key: key, after: nil)?.id, "new")
+        XCTAssertEqual(AskThreadPicker.latest(in: records, key: key)?.id, "new")
         XCTAssertEqual(
-            AskThreadPicker.latest(in: records, key: AskSessionKey(place: .local, session: "claude"), after: nil)?.id,
-            "local")
-    }
-
-    func testAResetHidesOlderThreads() {
-        let records = [ask("old", session: "claude", minutes: 1)]
-        let key = AskSessionKey(place: .workspace("acme"), session: "claude")
-        XCTAssertNil(AskThreadPicker.latest(in: records, key: key, after: base.addingTimeInterval(120)))
+            AskThreadPicker.latest(in: records, key: AskSessionKey(place: .local, session: "claude"))?.id, "local")
     }
 }

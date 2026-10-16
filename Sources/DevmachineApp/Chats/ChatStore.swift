@@ -481,16 +481,26 @@ final class ChatStore: ObservableObject {
         conversations[id]?.record?.title = trimmed
     }
 
-    func delete(_ id: String) async {
+    /// Nil once the chat is gone; else why the CLI kept it.
+    @discardableResult
+    func delete(_ id: String) async -> String? {
         let id = current(id)
         stop(id)
         if !id.hasPrefix(Self.pendingPrefix) {
-            let output = try? await runner.run(ChatCommand.delete(id: id))
-            guard output?.exitCode == 0 else { return }
+            do {
+                let output = try await runner.run(ChatCommand.delete(id: id))
+                guard output.exitCode == 0 else {
+                    let reason = (output.stderr + output.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+                    return reason.isEmpty ? "devmachine chat delete exited with status \(output.exitCode)" : reason
+                }
+            } catch {
+                return Self.failure(from: error).message
+            }
         }
         records.removeAll { $0.id == id }
         conversations[id] = nil
         if selectedID == id { selectedID = nil }
+        return nil
     }
 
     // MARK: - Streaming

@@ -47,11 +47,10 @@ public struct AskSessionKey: Hashable, Sendable {
 }
 
 public enum AskThreadPicker {
-    /// The session's newest ask chat, ignoring any started before `reset`.
-    public static func latest(in records: [ChatRecord], key: AskSessionKey, after reset: Date?) -> ChatRecord? {
+    /// The session's newest ask chat; older ones are left alone and hidden.
+    public static func latest(in records: [ChatRecord], key: AskSessionKey) -> ChatRecord? {
         records
             .filter { $0.isAsk && $0.place == key.place && $0.session == key.session }
-            .filter { record in reset.map { record.createdAt > $0 } ?? true }
             .max { $0.updatedAt < $1.updatedAt }
     }
 }

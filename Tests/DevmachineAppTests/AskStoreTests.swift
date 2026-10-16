@@ -38,26 +38,72 @@ final class AskStoreTests: XCTestCase {
         XCTAssertNil(asks.threadID(for: AskSessionKey(place: .local, session: "codex"), in: store))
     }
 
-    func testEachSessionKeepsItsOwnDraftAndClearDropsIt() {
+    private func storeWithAsk(deleteExit: Int32 = 0) async -> (ChatStore, FakeChatRunner) {
+        let list = "[\(ChatFixtures.record("a1", kind: "ask", session: "claude — api"))]"
+        let runner = FakeChatRunner(outputs: [
+            "chat list": ChatCommandOutput(stdout: list, stderr: "", exitCode: 0),
+            "chat delete": ChatCommandOutput(
+                stdout: "", stderr: deleteExit == 0 ? "" : "error: cannot remove the chat", exitCode: deleteExit),
+        ])
+        let store = ChatStore(runner: runner)
+        await store.refresh()
+        return (store, runner)
+    }
+
+    func testEachSessionKeepsItsOwnDraftAndClearDropsIt() async {
+        let (store, _) = await storeWithAsk()
         let asks = AskStore()
         let other = AskSessionKey(place: .workspace("acme"), session: "codex")
         asks.drafts[key] = "why?"
         asks.drafts[other] = "what changed?"
-        asks.reset(key)
+        await asks.clear(key, store: store)
         XCTAssertNil(asks.drafts[key])
         XCTAssertEqual(asks.drafts[other], "what changed?")
     }
 
-    func testResetStartsANewThread() async {
-        let list = "[\(ChatFixtures.record("a1", kind: "ask", session: "claude — api"))]"
-        let runner = FakeChatRunner(outputs: ["chat list": ChatCommandOutput(stdout: list, stderr: "", exitCode: 0)])
-        let store = ChatStore(runner: runner)
-        await store.refresh()
-        let asks = AskStore(now: { Date(timeIntervalSince1970: 2_000_000_000) })
+    func testClearDeletesTheThreadSoARestartDoesNotBringItBack() async {
+        let (store, runner) = await storeWithAsk()
         let key = AskSessionKey(place: .workspace("main"), session: "claude — api")
+        let asks = AskStore()
         XCTAssertEqual(asks.threadID(for: key, in: store), "a1")
-        asks.reset(key)
+        await asks.clear(key, store: store)
+        XCTAssertTrue(runner.arguments.contains(["chat", "delete", "a1"]))
         XCTAssertNil(asks.threadID(for: key, in: store))
+        XCTAssertNil(asks.clearFailures[key])
+        XCTAssertNil(AskStore().threadID(for: key, in: store))
+    }
+
+    func testAFailedDeleteKeepsTheThreadAndSaysWhy() async {
+        let (store, _) = await storeWithAsk(deleteExit: 1)
+        let key = AskSessionKey(place: .workspace("main"), session: "claude — api")
+        let asks = AskStore()
+        await asks.clear(key, store: store)
+        XCTAssertEqual(asks.threadID(for: key, in: store), "a1")
+        XCTAssertEqual(asks.clearFailures[key], "error: cannot remove the chat")
+    }
+
+    func testClearWaitsWhileTheAnswerIsComing() async {
+        let runner = FakeChatRunner(streams: [.init(lines: [ChatFixtures.started("a1", kind: "ask")], waitsForCancel: true)])
+        let store = ChatStore(runner: runner)
+        let asks = AskStore()
+        asks.ask("why?", key: key, mode: .supported(.claude), folder: nil, store: store)
+        await waitForChat { asks.threadID(for: self.key, in: store) == "a1" }
+        let cleared = await asks.clear(key, store: store)
+        XCTAssertFalse(cleared)
+        XCTAssertTrue(store.isAnswering("a1"))
+        XCTAssertFalse(runner.arguments.contains { $0.prefix(2) == ["chat", "delete"] })
+        store.stop("a1")
+    }
+
+    func testAPendingThreadIsClearedWithoutAskingTheCLI() async {
+        let runner = FakeChatRunner(streams: [.init(lines: ["ssh: connection refused"], status: 255)])
+        let store = ChatStore(runner: runner)
+        let asks = AskStore()
+        let pending = asks.ask("why?", key: key, mode: .supported(.claude), folder: nil, store: store)!
+        await waitForChat { !store.isAnswering(pending) }
+        await asks.clear(key, store: store)
+        XCTAssertNil(asks.threadID(for: key, in: store))
+        XCTAssertFalse(runner.arguments.contains { $0.prefix(2) == ["chat", "delete"] })
     }
 
     func testAnUnsupportedHarnessSendsNothing() {
