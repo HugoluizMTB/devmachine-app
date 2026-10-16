@@ -151,6 +151,8 @@ enum DemoChats {
         .init(id: "chat-mode-menu", fileName: "15-chat-mode-menu.png", settleNanoseconds: 500_000_000),
         .init(id: "schedule-mode", fileName: "16-schedule-mode.png", settleNanoseconds: 900_000_000),
         .init(id: "sidebar-collapsed", fileName: "17-sidebar-collapsed.png", settleNanoseconds: 900_000_000),
+        .init(id: "chats-collapsed", fileName: "18-chats-collapsed.png", settleNanoseconds: 700_000_000),
+        .init(id: "schedule-collapsed", fileName: "19-schedule-collapsed.png", settleNanoseconds: 900_000_000),
     ]
 
     static let panelScreens: Set<String> = ["quick-panel", "quick-panel-answer", "quick-panel-continue", "menubar-chats"]
@@ -171,6 +173,16 @@ enum DemoChats {
             ScheduledStore.shared.selectedID = DemoScheduled.briefingID
             #endif
             model.showPage(.scheduled)
+        case "chats-collapsed":
+            model.showChats(select: selectedID, store: store)
+            model.sidebarCollapsed = true
+        case "schedule-collapsed":
+            #if DEBUG
+            DemoScheduled.seed(ScheduledStore.shared)
+            ScheduledStore.shared.selectedID = DemoScheduled.briefingID
+            #endif
+            model.showPage(.scheduled)
+            model.sidebarCollapsed = true
         case "sidebar-collapsed":
             model.clickSession(SessionRef(alias: "globex-devmachine", name: "claude"))
             model.contextTab = .context
