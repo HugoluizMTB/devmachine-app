@@ -72,20 +72,41 @@ struct ChatAnswerView: View {
                     }
                 }
             }
-            if !message.text.isEmpty || streaming {
-                Markdown(markdown)
-                    .markdownTheme(ChatMarkdown.theme(fontSize: fontSize))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .environment(\.openURL, OpenURLAction { url in
-                        url.absoluteString == Self.cursorURL ? .handled : .systemAction
-                    })
+            if streaming, !DemoMode.isActive {
+                TimelineView(.periodic(from: .now, by: Self.blink)) { context in
+                    text(cursor: ChatCursor.isOn(at: context.date, period: Self.blink))
+                }
+            } else if !message.text.isEmpty || streaming {
+                text(cursor: streaming ? true : nil)
             }
         }
     }
 
-    private var markdown: String {
-        streaming ? message.text + " [▍](\(Self.cursorURL))" : message.text
+    static let blink: TimeInterval = 0.55
+
+    private func text(cursor: Bool?) -> some View {
+        Markdown(ChatCursor.markdown(message.text, cursor: cursor, url: Self.cursorURL))
+            .markdownTheme(ChatMarkdown.theme(fontSize: fontSize))
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .environment(\.openURL, OpenURLAction { url in
+                url.absoluteString == Self.cursorURL ? .handled : .systemAction
+            })
+    }
+}
+
+/// The bar after the last word while an answer is coming. It blinks; off,
+/// a figure space of about its width keeps the line from moving.
+enum ChatCursor {
+    static func isOn(at date: Date, period: TimeInterval) -> Bool {
+        Int(date.timeIntervalSinceReferenceDate / period) % 2 == 0
+    }
+
+    /// `cursor` nil: no cursor at all (the answer ended).
+    static func markdown(_ text: String, cursor: Bool?, url: String) -> String {
+        guard let cursor else { return text }
+        let glyph = cursor ? "▍" : "\u{2007}"
+        return text + " [\(glyph)](\(url))"
     }
 }
 
