@@ -786,6 +786,21 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   line over after the exit, and the turn then read as failed. Each turn carries
   a token (`ChatStore.turns`): the previous turn's process may report its end
   after the next turn started, and only the current turn may end it.
+- **Warm sessions.** A message goes through a long-lived `chat session`
+  (`chat ask --serve` for Ask) when it can: `{"type":"send"}` lines in,
+  `ready`, the same turn events, and `closed` out (`ChatSessionLine`, Core).
+  `ChatSessionPool` keeps one warm session for the next new chat (started
+  when the quick panel or the new chat page shows, replaced when its harness,
+  workspace or MCP changes), one per open chat (the CLI ends it after 10 min
+  idle) and one per visible Ask section. A turn ends on `done`/`error`, not on
+  the exit; Stop writes `cancel`; quit closes every stdin. A session that dies
+  mid-turn fails the turn and the next message opens another. A CLI that
+  refuses the command or a flag before `ready` is older: the turn goes out
+  again with `chat send` and sessions stay off until relaunch. Tests and demo
+  never start one (`ChatCommandRunning.openSession` throws by default).
+- **MCP.** Chats start without MCP servers, hooks and plugins (`chat.mcp`
+  off); the chip (`ChatMCPChip`) is kept per chat as the record's `mcp`, and
+  `--mcp`/`--mcp=false` goes out only when it differs (`ChatMCP.flag`).
 - A new chat is listed at once under `pending-<uuid>` and moves to the CLI's id
   on `started` (`ChatStore.current`). A process that ends with no `done` or
   `error` is a failure (`ChatConversation.processEnded`); `unknown command

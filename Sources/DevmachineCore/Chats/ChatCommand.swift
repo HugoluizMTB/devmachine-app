@@ -51,6 +51,29 @@ public enum ChatCommand {
         return arguments + ["--", question]
     }
 
+    /// A session for a new chat (`spec`) or for chat `chatID`; it stays up
+    /// between messages.
+    public static func session(chatID: String?, spec: ChatSessionSpec, mcp: Bool?) -> [String] {
+        var arguments = ["chat", "session"]
+        if let chatID {
+            arguments += ["--chat", chatID]
+        } else {
+            arguments += spec.place.flags + ["--harness", spec.harness.rawValue]
+        }
+        return arguments + ChatMCP.arguments(mcp)
+    }
+
+    /// `chat ask` kept running: each question is a `send` line.
+    public static func askServe(
+        place: ChatPlace, session: String, folder: String? = nil, harness: HarnessID? = nil, chatID: String?
+    ) -> [String] {
+        var arguments = ["chat", "ask", "--serve"] + place.flags + ["--session", session]
+        if let folder, !folder.isEmpty { arguments += ["--folder", folder] }
+        if let harness { arguments += ["--harness", harness.rawValue] }
+        if let chatID { arguments += ["--chat", chatID] }
+        return arguments
+    }
+
     public static func configShow() -> [String] { ["--format", "json", "config", "show"] }
 
     public static func list() -> [String] { ["chat", "list", "--all", "--json"] }

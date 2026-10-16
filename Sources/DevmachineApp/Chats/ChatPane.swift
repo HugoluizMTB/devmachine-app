@@ -56,6 +56,8 @@ struct ChatPane: View {
                 .frame(maxWidth: .infinity)
         }
         .background(Color.dmContentBg)
+        .onAppear { store.warmChat(chatID) }
+        .onChange(of: chatID) { _, id in store.warmChat(id) }
     }
 
     private var header: some View {
@@ -167,6 +169,8 @@ struct NewChatView: View {
         .modifier(ChatPickerOverlay(
             store: store, harness: store.draftHarness, place: store.draftPlace, opensBelow: true,
             pickHarness: { store.draft.harness = $0 }, pickPlace: { store.draft.place = $0 }))
+        .onAppear { store.prewarm(store.draftSpec) }
+        .onChange(of: store.draftSpec) { _, spec in store.prewarm(spec) }
     }
 
     @ViewBuilder

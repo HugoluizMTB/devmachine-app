@@ -10,8 +10,8 @@ final class QuickChatModel: ObservableObject {
     @Published var text = ""
     @Published private(set) var chatKey: String?
     @Published var continuing: String?
-    @Published var harness: HarnessID?
-    @Published var place: ChatPlace?
+    @Published var harness: HarnessID? { didSet { warm() } }
+    @Published var place: ChatPlace? { didSet { warm() } }
     @Published var showsChooser = false
     @Published private(set) var question: String?
     /// Goes up each time the panel opens, so its field takes the keyboard
@@ -50,6 +50,17 @@ final class QuickChatModel: ObservableObject {
 
     func toggleMCP() {
         store.setMCP(!usesMCP, chat: chatID ?? continuing)
+        warm()
+    }
+
+    /// The panel's next message starts at once: its chat's session, or a warm
+    /// one for a new chat with the panel's harness, workspace and MCP.
+    func warm() {
+        if let id = chatID ?? continuing {
+            store.warmChat(id)
+        } else {
+            store.prewarm(ChatSessionSpec(harness: shownHarness, place: shownPlace, mcp: usesMCP))
+        }
     }
 
     /// A fresh panel, unless an answer is still coming into it.
@@ -93,6 +104,7 @@ final class QuickChatModel: ObservableObject {
         chatKey = nil
         question = nil
         showsChooser = false
+        warm()
     }
 
     func continueChat(_ id: String) {
@@ -101,6 +113,7 @@ final class QuickChatModel: ObservableObject {
         question = nil
         showsChooser = false
         store.loadIfNeeded(id)
+        warm()
     }
 
     func openCurrentInApp() {
@@ -172,6 +185,7 @@ final class QuickChatPanelController: NSObject, NSWindowDelegate {
         position(panel, height: panel.frame.height)
         panel.makeKeyAndOrderFront(nil)
         focusField(in: panel)
+        model.warm()
     }
 
     func hide() {

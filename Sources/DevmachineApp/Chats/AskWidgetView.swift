@@ -24,11 +24,26 @@ struct AskWidgetView: View {
     }
 
     var body: some View {
-        if let key {
-            section(key)
-        } else {
-            StackEmptyWidgetHeader()
+        Group {
+            if let key {
+                section(key)
+            } else {
+                StackEmptyWidgetHeader()
+            }
         }
+        .onAppear { if let key { warm(key) } }
+        .onDisappear { if let key { store.closeAsk(key) } }
+        .onChange(of: key) { old, new in
+            if let old { store.closeAsk(old) }
+            if let new { warm(new) }
+        }
+    }
+
+    /// One `chat ask --serve` per visible Ask section, so a question does
+    /// not wait for the harness to start.
+    private func warm(_ key: AskSessionKey) {
+        guard case let .supported(harness) = mode else { return }
+        store.warmAsk(key, harness: harness, folder: model.askSessionFolder, chatID: asks.threadID(for: key, in: store))
     }
 
     private func section(_ key: AskSessionKey) -> some View {
@@ -43,6 +58,8 @@ struct AskWidgetView: View {
                 if hasThread {
                     DMButton("Clear", variant: .ghost, size: .small) {
                         asks.reset(key)
+                        store.closeAsk(key)
+                        warm(key)
                     }
                     .demoClickTarget("ask:clear")
                     .help("Start a new Ask thread for this session")

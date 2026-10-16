@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import DevmachineCore
 
@@ -14,6 +15,20 @@ protocol ChatCommandRunning: Sendable {
     /// each line of stdout and stderr in the order they were written.
     func stream(_ arguments: [String], line: @escaping @Sendable (String) -> Void) async throws -> Int32
     func run(_ arguments: [String]) async throws -> ChatCommandOutput
+    /// Starts a long-lived session; throws where sessions cannot run.
+    func openSession(
+        _ arguments: [String], line: @escaping @Sendable (String) -> Void,
+        exited: @escaping @Sendable (Int32) -> Void
+    ) throws -> any ChatSessionChannel
+}
+
+extension ChatCommandRunning {
+    func openSession(
+        _ arguments: [String], line: @escaping @Sendable (String) -> Void,
+        exited: @escaping @Sendable (Int32) -> Void
+    ) throws -> any ChatSessionChannel {
+        throw ChatSessionsUnavailable()
+    }
 }
 
 struct ProcessChatCommandRunner: ChatCommandRunning {
@@ -23,6 +38,16 @@ struct ProcessChatCommandRunner: ChatCommandRunning {
         let instance = try cli()
         return try await ChatProcess.run(
             executable: instance.executable, arguments: arguments, environment: instance.environment(), line: line)
+    }
+
+    func openSession(
+        _ arguments: [String], line: @escaping @Sendable (String) -> Void,
+        exited: @escaping @Sendable (Int32) -> Void
+    ) throws -> any ChatSessionChannel {
+        let instance = try cli()
+        return try ChatSessionProcess(
+            executable: instance.executable, arguments: arguments, environment: instance.environment(), line: line,
+            exited: exited)
     }
 
     func run(_ arguments: [String]) async throws -> ChatCommandOutput {
@@ -109,6 +134,13 @@ final class ChatStore: ObservableObject {
         let live = NSClassFromString("XCTestCase") == nil && !DemoMode.isActive
         let store = ChatStore(runner: live ? ProcessChatCommandRunner() : UnavailableChatRunner())
         if DemoMode.isActive { DemoChats.seed(store) }
+        if live {
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+            ) { _ in
+                MainActor.assumeIsolated { store.closeAllSessions() }
+            }
+        }
         return store
     }()
 
@@ -142,6 +174,7 @@ final class ChatStore: ObservableObject {
     /// end after the next turn started; only the current turn may end it.
     private var turns: [String: UUID] = [:]
     private var movedKeys: [String: String] = [:]
+    let sessions = ChatSessionPool()
     private var isDemo = false
 
     init(runner: any ChatCommandRunning, now: @escaping () -> Date = Date.init) {
@@ -180,6 +213,11 @@ final class ChatStore: ObservableObject {
     }
 
     var draftPlace: ChatPlace { draft.place ?? defaultPlace }
+
+    /// What the new chat page would send with right now.
+    var draftSpec: ChatSessionSpec {
+        ChatSessionSpec(harness: draftHarness, place: draftPlace, mcp: usesMCP(nil))
+    }
 
     func refresh() async {
         guard !isDemo else { return }
@@ -326,11 +364,17 @@ final class ChatStore: ObservableObject {
         newChatMCP = nil
         if selects { selectedID = key }
         openPicker = nil
-        launch(
-            key: key, text: body,
-            arguments: ChatCommand.send(
-                chatID: nil, place: place, harness: harness, message: body,
-                mcp: ChatMCP.flag(chosen: mcp, record: nil, configDefault: config.mcp)))
+        let flag = ChatMCP.flag(chosen: mcp, record: nil, configDefault: config.mcp)
+        let arguments = ChatCommand.send(chatID: nil, place: place, harness: harness, message: body, mcp: flag)
+        let spec = ChatSessionSpec(harness: harness, place: place, mcp: mcp)
+        if let warm = sessions.warm, warm.spec == spec, !warm.hasEnded {
+            sessions.warm = nil
+            turn(through: warm, key: key, text: body, fallback: arguments)
+        } else if let live = openSession(ChatCommand.session(chatID: nil, spec: spec, mcp: flag), spec: spec, mcp: mcp) {
+            turn(through: live, key: key, text: body, fallback: arguments)
+        } else {
+            launch(key: key, text: body, arguments: arguments)
+        }
         return key
     }
 
@@ -339,11 +383,15 @@ final class ChatStore: ObservableObject {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty, !isAnswering(id), let record = record(id) else { return nil }
         if conversations[id] == nil { conversations[id] = ChatConversation(record: record) }
-        launch(
-            key: id, text: body,
-            arguments: ChatCommand.send(
-                chatID: id.hasPrefix(Self.pendingPrefix) ? nil : id, place: record.place, harness: record.harness,
-                message: body, mcp: mcpFlag(id)))
+        let isPending = id.hasPrefix(Self.pendingPrefix)
+        let arguments = ChatCommand.send(
+            chatID: isPending ? nil : id, place: record.place, harness: record.harness, message: body,
+            mcp: mcpFlag(id))
+        if !isPending, let live = chatSession(id) {
+            turn(through: live, key: id, text: body, fallback: arguments)
+        } else {
+            launch(key: id, text: body, arguments: arguments)
+        }
         return id
     }
 
@@ -364,11 +412,14 @@ final class ChatStore: ObservableObject {
                 createdAt: now(), updatedAt: now(), kind: ChatRecord.askKind, session: askKey.session)
             conversations[key] = ChatConversation(record: record(key) ?? placeholder)
         }
-        launch(
-            key: key, text: body,
-            arguments: ChatCommand.ask(
-                place: askKey.place, session: askKey.session, folder: folder, harness: harness, chatID: chatID,
-                question: body))
+        let arguments = ChatCommand.ask(
+            place: askKey.place, session: askKey.session, folder: folder, harness: harness, chatID: chatID,
+            question: body)
+        if let live = sessions.asks[askKey], !live.hasEnded, live.turn == nil || live.key == key {
+            turn(through: live, key: key, text: body, fallback: arguments)
+        } else {
+            launch(key: key, text: body, arguments: arguments)
+        }
         return key
     }
 
@@ -408,6 +459,11 @@ final class ChatStore: ObservableObject {
     /// answered so far stays.
     func stop(_ id: String) {
         let key = current(id)
+        if turns[key] != nil, let live = session(answering: key) {
+            live.channel.write(ChatSessionInput.cancel)
+            live.draining += 1
+            live.turn = nil
+        }
         tasks[key]?.cancel()
         tasks[key] = nil
         turns[key] = nil
@@ -439,8 +495,8 @@ final class ChatStore: ObservableObject {
 
     // MARK: - Streaming
 
-    private func launch(key: String, text: String, arguments: [String]) {
-        conversations[key, default: ChatConversation(record: record(key))].begin(userText: text, at: now())
+    private func launch(key: String, text: String, arguments: [String], begins: Bool = true) {
+        if begins { conversations[key, default: ChatConversation(record: record(key))].begin(userText: text, at: now()) }
         let turn = UUID()
         turns[key] = turn
         let runner = self.runner
@@ -504,8 +560,157 @@ final class ChatStore: ObservableObject {
         if let task = tasks.removeValue(forKey: pending) { tasks[chat.id] = task }
         if let turn = turns.removeValue(forKey: pending) { turns[chat.id] = turn }
         if let mcp = mcpChoices.removeValue(forKey: pending) { mcpChoices[chat.id] = mcp }
+        if let live = sessions.chats.removeValue(forKey: pending) {
+            live.key = chat.id
+            sessions.chats[chat.id] = live
+        }
+        for live in sessions.asks.values where live.key == pending { live.key = chat.id }
         records.removeAll { $0.id == pending }
         if selectedID == pending { selectedID = chat.id }
+    }
+
+    // MARK: - Sessions
+
+    /// Starts the harness for the next new chat while the person types, so
+    /// the first message does not wait for it. Another spec replaces it.
+    func prewarm(_ spec: ChatSessionSpec) {
+        if let warm = sessions.warm, warm.spec == spec, !warm.hasEnded { return }
+        sessions.warm?.channel.close()
+        sessions.warm = nil
+        let flag = ChatMCP.flag(chosen: spec.mcp, record: nil, configDefault: config.mcp)
+        sessions.warm = openSession(ChatCommand.session(chatID: nil, spec: spec, mcp: flag), spec: spec, mcp: spec.mcp)
+    }
+
+    /// An open chat keeps a session; the CLI ends it after it idles.
+    func warmChat(_ id: String) {
+        _ = chatSession(current(id))
+    }
+
+    /// The Ask section on screen keeps one `chat ask --serve` for its session.
+    func warmAsk(_ askKey: AskSessionKey, harness: HarnessID, folder: String?, chatID: String?) {
+        if let live = sessions.asks[askKey], !live.hasEnded { return }
+        let arguments = ChatCommand.askServe(
+            place: askKey.place, session: askKey.session, folder: folder, harness: harness, chatID: chatID)
+        guard let live = openSession(arguments, spec: nil, mcp: false) else { return }
+        live.key = chatID
+        sessions.asks[askKey] = live
+    }
+
+    func closeAsk(_ askKey: AskSessionKey) {
+        sessions.asks.removeValue(forKey: askKey)?.channel.close()
+    }
+
+    func closeAllSessions() {
+        sessions.closeAll()
+    }
+
+    private func chatSession(_ id: String) -> ChatSessionPool.Live? {
+        guard !id.hasPrefix(Self.pendingPrefix), let record = record(id), !record.isAsk else { return nil }
+        let mcp = usesMCP(id)
+        if let live = sessions.chats[id], !live.hasEnded {
+            if live.mcp == mcp { return live }
+            if live.turn == nil || turns[id] == nil {
+                live.channel.close()
+                sessions.remove(live)
+            } else {
+                return nil
+            }
+        }
+        let arguments = ChatCommand.session(
+            chatID: id, spec: ChatSessionSpec(harness: record.harness, place: record.place, mcp: mcp), mcp: mcpFlag(id))
+        guard let live = openSession(arguments, spec: nil, mcp: mcp) else { return nil }
+        live.key = id
+        sessions.chats[id] = live
+        return live
+    }
+
+    private func session(answering key: String) -> ChatSessionPool.Live? {
+        if let live = sessions.chats[key], live.turn != nil { return live }
+        return sessions.asks.values.first { $0.key == key && $0.turn != nil }
+    }
+
+    private func openSession(_ arguments: [String], spec: ChatSessionSpec?, mcp: Bool) -> ChatSessionPool.Live? {
+        guard !sessions.isUnsupported, !isDemo else { return nil }
+        let ref = ChatSessionRef()
+        let channel: any ChatSessionChannel
+        do {
+            channel = try runner.openSession(
+                arguments,
+                line: { [weak self] line in
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { if let live = ref.live { self?.sessionLine(line, live) } }
+                    }
+                },
+                exited: { [weak self] status in
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { if let live = ref.live { self?.sessionEnded(live, status: status) } }
+                    }
+                })
+        } catch {
+            return nil
+        }
+        let live = ChatSessionPool.Live(channel: channel, spec: spec, mcp: mcp)
+        ref.live = live
+        return live
+    }
+
+    private func turn(through live: ChatSessionPool.Live, key: String, text: String, fallback: [String]) {
+        conversations[key, default: ChatConversation(record: record(key))].begin(userText: text, at: now())
+        let turn = UUID()
+        turns[key] = turn
+        live.key = key
+        live.turn = turn
+        live.fallback = fallback
+        live.output = []
+        if !sessions.asks.values.contains(where: { $0 === live }) { sessions.chats[key] = live }
+        live.channel.write(ChatSessionInput.send(text))
+    }
+
+    private func sessionLine(_ line: String, _ live: ChatSessionPool.Live) {
+        switch ChatSessionLine.decode(line) {
+        case nil:
+            live.output.append(line)
+        case .ready?:
+            live.isReady = true
+        case .closed?:
+            live.hasEnded = true
+        case let .event(event)?:
+            if live.draining > 0 {
+                switch event {
+                case .done, .error: live.draining -= 1
+                default: break
+                }
+                return
+            }
+            guard let key = live.key, let turn = live.turn else { return }
+            receive(line, key: key, turn: turn)
+            let now = current(key)
+            if now != key { live.key = now }
+            switch event {
+            case .done, .error:
+                if turns[now] == turn { turns[now] = nil }
+                live.turn = nil
+            default:
+                break
+            }
+        }
+    }
+
+    /// The process ended. A turn still open fails with what it printed; on a
+    /// CLI from before sessions it goes out again with `chat send`.
+    private func sessionEnded(_ live: ChatSessionPool.Live, status: Int32) {
+        sessions.remove(live)
+        let output = live.output.joined(separator: "\n")
+        let unsupported = !live.isReady && ChatSessionLine.isUnsupported(output)
+        if unsupported { sessions.isUnsupported = true }
+        guard let key = live.key.map(current), let turn = live.turn, turns[key] == turn else { return }
+        live.turn = nil
+        if unsupported, let fallback = live.fallback {
+            turns[key] = nil
+            launch(key: key, text: "", arguments: fallback, begins: false)
+            return
+        }
+        finish(key: key, turn: turn, status: status, output: output, error: nil)
     }
 
     /// A key the CLI renamed from pending to the chat's id.
