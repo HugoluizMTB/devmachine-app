@@ -305,25 +305,8 @@ enum StreamingProcess {
         let stdout = DataCollector()
         process.standardOutput = stdoutPipe
         process.standardError = pipe
-        if separatesStdout {
-            stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                if data.isEmpty {
-                    handle.readabilityHandler = nil
-                } else {
-                    stdout.append(data)
-                }
-            }
-        }
         let lines = LineSplitter(emit: output)
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty {
-                handle.readabilityHandler = nil
-            } else {
-                lines.append(data)
-            }
-        }
+        let readers = PipeReaders()
         let status: Int32 = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 process.terminationHandler = { finished in
@@ -331,6 +314,8 @@ enum StreamingProcess {
                 }
                 do {
                     try process.run()
+                    readers.read(pipe.fileHandleForReading, into: lines.append)
+                    if separatesStdout { readers.read(stdoutPipe.fileHandleForReading, into: stdout.append) }
                     if Task.isCancelled { process.terminate() }
                 } catch {
                     process.terminationHandler = nil
@@ -340,13 +325,8 @@ enum StreamingProcess {
         } onCancel: {
             if process.isRunning { process.terminate() }
         }
-        pipe.fileHandleForReading.readabilityHandler = nil
-        lines.append(pipe.fileHandleForReading.readDataToEndOfFile())
+        await readers.finished()
         lines.flush()
-        if separatesStdout {
-            stdoutPipe.fileHandleForReading.readabilityHandler = nil
-            stdout.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
-        }
         try Task.checkCancellation()
         return (status, stdout.data)
     }
@@ -366,6 +346,28 @@ enum StreamingProcess {
 
     /// Below the 16 KB a macOS pipe buffers, so the write never blocks.
     static let maxInput = 8 * 1024
+}
+
+/// Reads each pipe to its end on a thread of its own. Nothing else reads
+/// the pipe, so the run returns only once every byte has been handed on.
+private final class PipeReaders: @unchecked Sendable {
+    private let group = DispatchGroup()
+
+    func read(_ handle: FileHandle, into sink: @escaping @Sendable (Data) -> Void) {
+        group.enter()
+        DispatchQueue.global(qos: .utility).async { [group] in
+            defer { group.leave() }
+            while let data = try? handle.read(upToCount: 64 * 1024), !data.isEmpty {
+                sink(data)
+            }
+        }
+    }
+
+    func finished() async {
+        await withCheckedContinuation { continuation in
+            group.notify(queue: .global(qos: .utility)) { continuation.resume() }
+        }
+    }
 }
 
 private final class DataCollector: @unchecked Sendable {
