@@ -153,6 +153,8 @@ enum DemoChats {
         .init(id: "sidebar-collapsed", fileName: "17-sidebar-collapsed.png", settleNanoseconds: 900_000_000),
         .init(id: "chats-collapsed", fileName: "18-chats-collapsed.png", settleNanoseconds: 700_000_000),
         .init(id: "schedule-collapsed", fileName: "19-schedule-collapsed.png", settleNanoseconds: 900_000_000),
+        .init(id: "home-open", fileName: "20-home-open.png", settleNanoseconds: 900_000_000),
+        .init(id: "home-collapsed", fileName: "21-home-collapsed.png", settleNanoseconds: 900_000_000),
     ]
 
     static let panelScreens: Set<String> = ["quick-panel", "quick-panel-answer", "quick-panel-continue", "menubar-chats"]
@@ -173,6 +175,11 @@ enum DemoChats {
             ScheduledStore.shared.selectedID = DemoScheduled.briefingID
             #endif
             model.showPage(.scheduled)
+        case "home-open":
+            model.goHome()
+        case "home-collapsed":
+            model.goHome()
+            model.sidebarCollapsed = true
         case "chats-collapsed":
             model.showChats(select: selectedID, store: store)
             model.sidebarCollapsed = true

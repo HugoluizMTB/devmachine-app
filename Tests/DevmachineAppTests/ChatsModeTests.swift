@@ -124,3 +124,24 @@ final class SidebarToggleButtonTests: XCTestCase {
         XCTAssertEqual(SidebarToggleButton.label(collapsed: false), "Hide sidebar")
     }
 }
+
+final class SidebarTogglePlacementTests: XCTestCase {
+    private let buttons = CGRect(x: 20, y: 20, width: 52, height: 14)
+
+    func testOpenItSitsAtTheSidebarsRightEdgeOnTheButtonsLine() {
+        let center = SidebarTogglePlacement.center(collapsed: false, sidebarWidth: 260, buttons: buttons)
+        XCTAssertEqual(center.x, 260 - 12 - 12)
+        XCTAssertEqual(center.y, buttons.midY)
+    }
+
+    func testClosedItFollowsTheWindowButtons() {
+        let center = SidebarTogglePlacement.center(collapsed: true, sidebarWidth: 260, buttons: buttons)
+        XCTAssertEqual(center.x, buttons.maxX + 14 + 12)
+        XCTAssertEqual(center.y, buttons.midY)
+    }
+
+    func testTheHeaderSitsCloseUnderTheButtons() {
+        XCTAssertEqual(SidebarHeaderSpacing.top(buttons: buttons), buttons.maxY + 4)
+        XCTAssertEqual(SidebarHeaderSpacing.top(buttons: .zero), 40)
+    }
+}

@@ -15,6 +15,7 @@ struct ChatsView: View {
         HStack(spacing: 0) {
             if !model.sidebarCollapsed {
                 ChatsSidebar(store: store, rename: beginRename, delete: { deleting = $0 })
+                    .modifier(SidebarUnderTitlebar())
                     .frame(width: m.pt(model.sidebarWidth))
                 Color.dmSidebarBg.frame(width: m.pt(6))
             }
@@ -78,9 +79,7 @@ struct ChatsSidebar: View {
                               selected: store.selectedID == nil) { store.startNewChat() }
                     .demoClickTarget("chats:new")
             }
-            .safeAreaInset(edge: .top) {
-                Color.clear.frame(height: m.pt(12))
-            }
+            .modifier(SidebarHeaderTop())
             DMSearchField(prompt: "Search chats", text: $query)
                 .padding(.horizontal, m.pt(10))
                 .frame(height: m.pt(30))

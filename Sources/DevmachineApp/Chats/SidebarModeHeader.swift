@@ -161,21 +161,131 @@ struct SidebarModeMenuOverlay: ViewModifier {
     }
 }
 
-/// Shows or hides the sidebar, in the window's toolbar right after the
-/// window buttons.
+/// Shows or hides the sidebar, in the title bar band on the window
+/// buttons' line: at the sidebar's right edge while it is open, right after
+/// the window buttons while it is closed.
 struct SidebarToggleButton: View {
     @EnvironmentObject private var model: AppModel
 
     static func label(collapsed: Bool) -> String { collapsed ? "Show sidebar" : "Hide sidebar" }
 
     var body: some View {
-        Button {
+        DMIconButton(systemImage: "sidebar.left", size: 13, hitSize: CGSize(width: 24, height: 24)) {
             withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed.toggle() }
-        } label: {
-            Image(systemName: "sidebar.left")
         }
         .help(Self.label(collapsed: model.sidebarCollapsed) + " (⌘B)")
         .accessibilityLabel(Self.label(collapsed: model.sidebarCollapsed))
         .demoClickTarget("footer:close-sidebar")
+    }
+}
+
+/// Where the toggle's center goes, in points from the window's top left.
+enum SidebarTogglePlacement {
+    static let hit: CGFloat = 24
+    static let gapAfterButtons: CGFloat = 14
+    static let rightPadding: CGFloat = 12
+
+    static func center(collapsed: Bool, sidebarWidth: CGFloat, buttons: CGRect) -> CGPoint {
+        let x = collapsed
+            ? buttons.maxX + gapAfterButtons + hit / 2
+            : sidebarWidth - rightPadding - hit / 2
+        return CGPoint(x: x, y: buttons.midY)
+    }
+}
+
+/// The window's close, minimise and zoom buttons, in points from the top
+/// left of the window, read where macOS put them (the toolbar moves them).
+/// It also keeps the title bar see-through, so each mode's own surface runs
+/// up under it.
+struct WindowButtonsReader: NSViewRepresentable {
+    @Binding var frame: CGRect
+
+    func makeNSView(context: Context) -> ReaderView {
+        let view = ReaderView()
+        view.onChange = { frame = $0 }
+        return view
+    }
+
+    func updateNSView(_ view: ReaderView, context: Context) {
+        view.onChange = { frame = $0 }
+    }
+
+    final class ReaderView: NSView {
+        var onChange: (CGRect) -> Void = { _ in }
+        private var last: CGRect = .zero
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            NotificationCenter.default.removeObserver(self)
+            guard let window else { return }
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
+            window.styleMask.insert(.fullSizeContentView)
+            for name in [NSWindow.didResizeNotification, NSWindow.didEnterFullScreenNotification,
+                         NSWindow.didExitFullScreenNotification] {
+                NotificationCenter.default.addObserver(
+                    self, selector: #selector(windowChanged), name: name, object: window)
+            }
+            windowChanged()
+        }
+
+        override func layout() {
+            super.layout()
+            windowChanged()
+        }
+
+        @objc private func windowChanged() {
+            guard let window, let frameView = window.contentView?.superview else { return }
+            let rects = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { type -> CGRect? in
+                guard let button = window.standardWindowButton(type), !button.isHidden else { return nil }
+                let rect = button.convert(button.bounds, to: frameView)
+                let top = frameView.isFlipped ? rect.minY : frameView.bounds.height - rect.maxY
+                return CGRect(x: rect.minX, y: top, width: rect.width, height: rect.height)
+            }
+            guard let first = rects.first else { return }
+            let union = rects.dropFirst().reduce(first) { $0.union($1) }
+            guard union != last else { return }
+            last = union
+            DispatchQueue.main.async { [onChange] in onChange(union) }
+        }
+    }
+}
+
+private struct SidebarHeaderTopKey: EnvironmentKey {
+    static let defaultValue: CGFloat = SidebarHeaderSpacing.fallback
+}
+
+extension EnvironmentValues {
+    /// Where the sidebar's header starts, in points from the window's top:
+    /// close under the window buttons. The sidebars run under the title bar.
+    var sidebarHeaderTop: CGFloat {
+        get { self[SidebarHeaderTopKey.self] }
+        set { self[SidebarHeaderTopKey.self] = newValue }
+    }
+}
+
+/// The sidebar header sits this far under the window buttons' bottom edge.
+enum SidebarHeaderSpacing {
+    static let belowButtons: CGFloat = 4
+    static let fallback: CGFloat = 40
+
+    static func top(buttons: CGRect) -> CGFloat {
+        buttons == .zero ? fallback : buttons.maxY + belowButtons
+    }
+}
+
+struct SidebarHeaderTop: ViewModifier {
+    @Environment(\.sidebarHeaderTop) private var top
+
+    func body(content: Content) -> some View {
+        content.padding(.top, top)
+    }
+}
+
+/// A sidebar column drawn from the window's top edge, under the window
+/// buttons, with its header placed by `SidebarHeaderTop`.
+struct SidebarUnderTitlebar: ViewModifier {
+    func body(content: Content) -> some View {
+        content.ignoresSafeArea(edges: .top)
     }
 }

@@ -736,14 +736,24 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   the pane's own command still counts.
 
 ## Window toolbar
-- The main window has a unified toolbar (`.windowToolbarStyle(.unified(showsTitle: false))`)
-  whose one item is the sidebar toggle (`SidebarToggleButton`, ⌘B), so the
-  title bar is the taller one and macOS places the window buttons itself.
-  Never move them by hand. The terminal pane runs under the bar only while
-  the sidebar is open; closed, it starts below it.
-- Demo frames capture the window's frame view (`SnapshotChrome.capturedView`),
-  so the toolbar shows; the window buttons come out grey (the window is never
-  key) and are painted again where the window put them (`SnapshotChrome.measure`).
+- The main window keeps a unified toolbar (`.windowToolbarStyle(.unified(showsTitle: false))`)
+  only for its height: macOS then places the window buttons with more room.
+  Never move them by hand. The bar is see-through (`titlebarAppearsTransparent`,
+  set by `WindowButtonsReader`), so each mode's own surface runs up under it
+  and Home's wallpaper reaches the top edge.
+- The sidebar toggle (`SidebarToggleButton`, ⌘B) is drawn over the band, on
+  the window buttons' line, read from where macOS put them
+  (`WindowButtonsReader`): at the sidebar's right edge while it is open, right
+  after the buttons while it is closed (`SidebarTogglePlacement`). A toolbar
+  item cannot follow the sidebar's edge.
+- The sidebars run under the band and their header starts just below the
+  buttons (`SidebarHeaderSpacing`). The `.clipped()` sidebar takes
+  `SidebarUnderTitlebar` outside the clip, or the header is cut off. A
+  terminal starts below the band only while the sidebar is closed; Home always
+  runs under it.
+- Demo frames capture the window's frame view (`SnapshotChrome.capturedView`);
+  the window buttons come out grey (the window is never key) and are painted
+  again where the window put them (`SnapshotChrome.measure`).
 
 ## Chats
 - **The engine is `devmachine chat`; the app only draws.** One process per

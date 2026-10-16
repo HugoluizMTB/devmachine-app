@@ -11,6 +11,7 @@ struct ScheduleModeView: View {
         HStack(spacing: 0) {
             if !model.sidebarCollapsed {
                 ScheduleSidebar()
+                    .modifier(SidebarUnderTitlebar())
                     .frame(width: m.pt(model.sidebarWidth))
                 Color.dmSidebarBg.frame(width: m.pt(6))
             }
@@ -51,9 +52,7 @@ struct ScheduleSidebar: View {
                     .disabled(store.workspaces.isEmpty)
             }
             .padding(.bottom, m.pt(14))
-            .safeAreaInset(edge: .top) {
-                Color.clear.frame(height: m.pt(12))
-            }
+            .modifier(SidebarHeaderTop())
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(groups, id: \.name) { group in

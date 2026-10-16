@@ -21,6 +21,9 @@ struct ContentView: View {
     @ObservedObject private var split = DocumentSplitState.shared
     @ObservedObject private var compat = WidgetCompatibilityStore.shared
     @ObservedObject private var chats = ChatStore.shared
+    @State private var windowButtons = CGRect.zero
+    @State private var toggleFrame: CGRect?
+    @State private var titlebarHeight: CGFloat = 0
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -42,15 +45,35 @@ struct ContentView: View {
                     }
                 }
                     .onAppear { stats.start() }
+                    .environment(\.collapsedSidebarButtonFrame, model.sidebarCollapsed ? toggleFrame : nil)
+                    .environment(
+                        \.sidebarHeaderTop,
+                        SidebarHeaderSpacing.top(buttons: windowButtons))
             }
         }
+        .overlay(alignment: .topLeading) {
+            if !model.showsOnboarding, windowButtons != .zero {
+                let center = SidebarTogglePlacement.center(
+                    collapsed: model.sidebarCollapsed, sidebarWidth: m.pt(model.sidebarWidth), buttons: windowButtons)
+                SidebarToggleButton()
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.windowSpace)) } action: {
+                        toggleFrame = $0
+                    }
+                    .position(center)
+                    .ignoresSafeArea()
+            }
+        }
+        .background(WindowButtonsReader(frame: $windowButtons).frame(width: 0, height: 0))
+        // The one item keeps the toolbar, which is what makes the title bar
+        // the taller one; the sidebar toggle is drawn over the band instead,
+        // because a toolbar item cannot follow the sidebar's edge.
         .toolbar {
-            if !model.showsOnboarding {
-                ToolbarItem(placement: .navigation) {
-                    SidebarToggleButton()
-                }
+            ToolbarItem(placement: .navigation) {
+                Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
             }
         }
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { titlebarHeight = $0 }
         .coordinateSpace(.named(Self.windowSpace))
         .modifier(SidebarModeMenuOverlay(model: model))
         .background(Color.dmSidebarBg)
@@ -252,6 +275,7 @@ struct ContentView: View {
             SidebarView()
                 .frame(width: model.sidebarCollapsed ? 0 : m.pt(model.sidebarWidth))
                 .clipped()
+                .modifier(SidebarUnderTitlebar())
             if !model.sidebarCollapsed {
                 sidebarDivider
             }
@@ -288,11 +312,10 @@ struct ContentView: View {
         ZStack {
             // Under the hidden title bar too: the wallpaper and the cards reach
             // the window's top edge, no content-colored band above them.
-            MainPane()
+            MainPane(terminalTopInset: model.sidebarCollapsed ? titlebarHeight : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.dmContentBg)
-                .ignoresSafeArea(edges: model.sidebarCollapsed ? [] : .top)
-                .background(Color.dmContentBg.ignoresSafeArea())
+                .ignoresSafeArea(edges: .top)
             if let page = model.activePage {
                 PageHost(page: page)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -355,6 +378,10 @@ private struct PageHost: View {
 
 private struct MainPane: View {
     @EnvironmentObject var model: AppModel
+    /// The title bar's height while the sidebar is closed: the window buttons
+    /// and the sidebar toggle sit over the pane then, so the terminal starts
+    /// below them. Home keeps running under them, edge to edge.
+    var terminalTopInset: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -401,6 +428,7 @@ private struct MainPane: View {
         .floatingCard()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(FloatingCardLayout.margin)
+        .padding(.top, terminalTopInset)
     }
 
     private func key(_ item: SidebarItem) -> String {

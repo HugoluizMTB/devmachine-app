@@ -57,9 +57,7 @@ struct SidebarView: View {
             .help("A new session, like the one in front of you, or pick where")
         }
         .padding(.bottom, m.pt(14))
-        .safeAreaInset(edge: .top) {
-            Color.clear.frame(height: m.pt(12))
-        }
+        .modifier(SidebarHeaderTop())
     }
 }
 

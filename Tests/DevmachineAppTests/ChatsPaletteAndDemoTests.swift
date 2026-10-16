@@ -92,7 +92,7 @@ final class ChatsPaletteAndDemoTests: XCTestCase {
             "09-menubar-chats.png", "10-palette-chats.png", "11-context-ask-claude.png", "12-context-ask-codex.png",
             "13-chat-error-logged-out.png", "14-settings-chats.png", "15-chat-mode-menu.png",
             "16-schedule-mode.png", "17-sidebar-collapsed.png", "18-chats-collapsed.png",
-            "19-schedule-collapsed.png",
+            "19-schedule-collapsed.png", "20-home-open.png", "21-home-collapsed.png",
         ])
     }
 
