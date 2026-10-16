@@ -23,9 +23,21 @@ struct ShortcutsSheet: View {
             Shortcut(keys: ["⌘", "K"], action: "Command palette: sessions, pages and actions"),
             Shortcut(keys: ["⌘", "?"], action: "This list"),
         ]),
+        Group(title: "Modes", items: [
+            Shortcut(keys: ["⌘", "1"], action: "Code: workspaces and sessions"),
+            Shortcut(keys: ["⌘", "2"], action: "Chats"),
+            Shortcut(keys: ["⌘", "3"], action: "Schedule: tasks that run on their own"),
+            Shortcut(keys: ["⌃", "⌥", "Space"], action: "Quick chat from any app (Settings → Chats)"),
+        ]),
+        Group(title: "Chats", items: [
+            Shortcut(keys: ["↩"], action: "Send"),
+            Shortcut(keys: ["⇧", "↩"], action: "New line"),
+            Shortcut(keys: ["esc"], action: "Stop the answer"),
+            Shortcut(keys: ["↑", "↓"], action: "Previous or next chat in the list"),
+        ]),
         Group(title: "Sessions", items: [
             Shortcut(keys: ["⌘", "0"], action: "Home"),
-            Shortcut(keys: ["⌘", "N"], action: "New session in the current folder"),
+            Shortcut(keys: ["⌘", "N"], action: "New session in the current folder (in Chats a new chat, in Schedule a new task)"),
             Shortcut(keys: ["⌘", "W"], action: "End the session on screen (asks first; a session grid or no session closes the window)"),
             Shortcut(keys: ["⌘", "⇧", "↑"], action: "Previous session"),
             Shortcut(keys: ["⌘", "⇧", "↓"], action: "Next session"),

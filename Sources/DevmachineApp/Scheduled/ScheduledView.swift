@@ -19,6 +19,9 @@ struct ScheduledView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.dmContentBg)
         .onAppear { store.appear() }
+        .onChange(of: store.newTaskRequests) { _, _ in
+            if !store.workspaces.isEmpty { sheet = .new }
+        }
         .sheet(item: $sheet) { request in
             ScheduledTaskSheet(request: request) { saved in
                 store.selectedID = saved

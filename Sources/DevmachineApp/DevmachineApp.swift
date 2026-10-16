@@ -66,6 +66,14 @@ struct DevmachineApp: App {
         }
     }
 
+    static func newItemTitle(_ mode: AppMode) -> String {
+        switch mode {
+        case .chats: return "New Chat"
+        case .schedule: return "New Task"
+        case .code: return "New Session"
+        }
+    }
+
     private var metrics: DMMetrics {
         DMMetrics(scale: settingsStore.effectiveUIFontScale)
     }
@@ -172,8 +180,12 @@ struct DevmachineApp: App {
             CommandMenu("Session") {
                 Button("Home") { model.goHome() }
                     .keyboardShortcut("0", modifiers: .command)
-                Button(model.appMode == .chats ? "New Chat" : "New Session") {
-                    if model.appMode == .chats { model.showNewChat() } else { model.requestQuickSession() }
+                Button(Self.newItemTitle(model.appMode)) {
+                    switch model.appMode {
+                    case .chats: model.showNewChat()
+                    case .schedule: ScheduledStore.shared.requestNewTask()
+                    case .code: model.requestQuickSession()
+                    }
                 }
                 .keyboardShortcut("n", modifiers: .command)
                 Button("End Session…") { model.requestEndSession() }
@@ -213,6 +225,8 @@ struct DevmachineApp: App {
                     .keyboardShortcut("1", modifiers: .command)
                 Button("Chats") { model.showChats() }
                     .keyboardShortcut("2", modifiers: .command)
+                Button("Schedule") { model.showPage(.scheduled) }
+                    .keyboardShortcut("3", modifiers: .command)
                 Divider()
                 Button("Toggle Sidebar") {
                     withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed.toggle() }

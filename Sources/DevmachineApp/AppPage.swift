@@ -15,6 +15,7 @@ enum AppPage: Hashable {
 enum AppMode: String {
     case chats
     case code
+    case schedule
 
     private static let key = "appMode"
 

@@ -36,10 +36,10 @@ struct ContentView: View {
                     onSkip: { Task { await model.skipOnboarding(saving: settingsStore) } })
             } else {
                 Group {
-                    if model.appMode == .chats {
-                        ChatsView(store: chats)
-                    } else {
-                        mainRow
+                    switch model.appMode {
+                    case .chats: ChatsView(store: chats)
+                    case .schedule: ScheduleModeView()
+                    case .code: mainRow
                     }
                 }
                     .onAppear { stats.start() }

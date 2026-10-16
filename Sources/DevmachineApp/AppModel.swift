@@ -1068,7 +1068,13 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Scheduled is a mode of its own; every other page opens in Code.
     func showPage(_ page: AppPage) {
+        if page == .scheduled {
+            activePage = nil
+            appMode = .schedule
+            return
+        }
         appMode = .code
         activePage = page
     }

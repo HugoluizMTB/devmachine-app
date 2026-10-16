@@ -75,3 +75,45 @@ final class SidebarModeHeaderTests: XCTestCase {
         XCTAssertFalse(model.showsModeMenu)
     }
 }
+
+@MainActor
+final class ScheduleModeTests: XCTestCase {
+    func testScheduledIsAModeOfItsOwn() {
+        let model = AppModel(services: fixtureServices())
+        model.showPage(.scheduled)
+        XCTAssertEqual(model.appMode, .schedule)
+        XCTAssertNil(model.activePage)
+        model.showPage(.stats)
+        XCTAssertEqual(model.appMode, .code)
+        XCTAssertEqual(model.activePage, .stats)
+    }
+
+    func testTheMenuAndTitleNameSchedule() {
+        let model = AppModel(services: fixtureServices())
+        XCTAssertEqual(SidebarModeHeader.title(.schedule), "SCHEDULE")
+        let items = SidebarModeMenuOverlay.items(model)
+        XCTAssertEqual(items.prefix(3).map(\.title), ["Code", "Chats", "Schedule"])
+        XCTAssertEqual(items[2].shortcut, "⌘3")
+        items[2].action?()
+        XCTAssertEqual(model.appMode, .schedule)
+        XCTAssertEqual(SidebarModeMenuOverlay.items(model).count, 3)
+        XCTAssertEqual(DevmachineApp.newItemTitle(.schedule), "New Task")
+    }
+
+    func testThePaletteGoesToSchedule() {
+        let commands = CommandRegistry.commands(in: PaletteContext())
+        let schedule = commands.first { $0.id == "go.scheduled" }
+        XCTAssertEqual(schedule?.title, "Schedule")
+        XCTAssertEqual(schedule?.shortcut, "⌘3")
+        let found = PaletteRanker.sections(commands, query: "switch", mru: CommandMRU(ids: []))
+            .flatMap(\.commands).map(\.id)
+        XCTAssertTrue(found.contains("go.scheduled"))
+    }
+
+    func testANewTaskRequestReachesThePage() {
+        let store = ScheduledStore()
+        let before = store.newTaskRequests
+        store.requestNewTask()
+        XCTAssertEqual(store.newTaskRequests, before + 1)
+    }
+}

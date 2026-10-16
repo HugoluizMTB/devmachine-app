@@ -756,8 +756,9 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   `--format json config show`), so a chat from a terminal lands where one from
   the app does. The app keeps only the shortcut, the menu bar rows and the
   harness switches (`AppSettings.chats`). Read only is fixed and never a setting.
-- **Code or Chats** (`AppModel.appMode`, ⌘1 Code, ⌘2 Chats): the sidebar's
-  title is the switch ("CODE WORKSPACES ▾" / "CHAT WORKSPACES ▾",
+- **Code, Chats or Schedule** (`AppModel.appMode`, ⌘1, ⌘2, ⌘3): the sidebar's
+  title is the switch ("CODE WORKSPACES ▾" / "CHAT WORKSPACES ▾" /
+  "SCHEDULE ▾"; native menus in real use, `ChatMenuCard` only in demo frames,
   `SidebarModeHeader`), with refresh and close at the right of that row and
   "New session" / "New chat" under it. Chats replaces the main row; picking a
   session, a page or Settings goes back to Code. In Chats, a dot by the title
@@ -1968,8 +1969,11 @@ once may fail there.
   the sync pending, running, done, failed); nothing runs.
 
 ## Scheduled page
-- `AppPage.scheduled`, from the clock in the sidebar footer, the menu bar
-  footer and the palette ("Scheduled"). It reads `scheduled list` (every
+- Schedule is a mode (⌘3, the sidebar title, the menu bar footer's clock and
+  ⌘K "Schedule"): `showPage(.scheduled)` switches to it. The sidebar lists the
+  tasks by workspace (`ScheduleSidebar`) with "New task" on top, which asks
+  the page for its sheet (`ScheduledStore.requestNewTask`); the page
+  (`ScheduledView`) is unchanged beside it. It reads `scheduled list` (every
   workspace at once; one that is not set up is `installed: false` and is not
   asked) and `scheduled harnesses`.
 - The agent, permission-mode and model pickers come from `scheduled

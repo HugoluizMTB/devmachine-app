@@ -11,12 +11,24 @@ struct SidebarModeHeader: View {
     @Environment(\.dmMetrics) private var m
 
     static func title(_ mode: AppMode) -> String {
-        mode == .code ? "CODE WORKSPACES" : "CHAT WORKSPACES"
+        switch mode {
+        case .code: return "CODE WORKSPACES"
+        case .chats: return "CHAT WORKSPACES"
+        case .schedule: return "SCHEDULE"
+        }
+    }
+
+    static func name(_ mode: AppMode) -> String {
+        switch mode {
+        case .code: return "Code"
+        case .chats: return "Chats"
+        case .schedule: return "Schedule"
+        }
     }
 
     static func accessibilityValue(_ mode: AppMode, codeWaits: Bool) -> String {
-        let current = mode == .code ? "current: Code" : "current: Chats"
-        return mode == .chats && codeWaits ? current + ", a session in Code is waiting" : current
+        let current = "current: " + name(mode)
+        return mode != .code && codeWaits ? current + ", a session in Code is waiting" : current
     }
 
     var body: some View {
@@ -24,8 +36,8 @@ struct SidebarModeHeader: View {
             ChatDropdown(
                 items: SidebarModeMenuOverlay.items(model), accessibilityLabel: "Switch mode",
                 accessibilityValue: Self.accessibilityValue(model.appMode, codeWaits: model.codeNeedsAttention),
-                accessibilityHint: "Command-1 for Code, Command-2 for Chats",
-                help: "Code or Chats (⌘1, ⌘2)", toggleDrawn: { model.showsModeMenu.toggle() }
+                accessibilityHint: "Command-1 for Code, Command-2 for Chats, Command-3 for Schedule",
+                help: "Code, Chats or Schedule (⌘1, ⌘2, ⌘3)", toggleDrawn: { model.showsModeMenu.toggle() }
             ) {
                 HStack(spacing: m.pt(5)) {
                     Text(verbatim: Self.title(model.appMode))
@@ -33,7 +45,7 @@ struct SidebarModeHeader: View {
                         .kerning(0.8)
                     Image(systemName: "chevron.down")
                         .font(.dm(8, weight: .bold))
-                    if model.appMode == .chats, model.codeNeedsAttention {
+                    if model.appMode != .code, model.codeNeedsAttention {
                         Circle()
                             .fill(Color(hex: 0x3B82F6))
                             .frame(width: m.pt(6), height: m.pt(6))
@@ -124,7 +136,7 @@ struct SidebarModeMenuOverlay: ViewModifier {
         }
     }
 
-    private var highlighted: String { model.appMode == .code ? "mode-code" : "mode-chats" }
+    private var highlighted: String { "mode-" + model.appMode.rawValue }
 
     private var items: [ChatMenuItem] { Self.items(model) }
 
@@ -138,6 +150,10 @@ struct SidebarModeMenuOverlay: ViewModifier {
                 id: "mode-chats", title: "Chats", systemImage: "bubble.left.and.bubble.right",
                 checked: model.appMode == .chats, shortcut: "⌘2",
                 action: { model.showsModeMenu = false; model.showChats() }),
+            ChatMenuItem(
+                id: "mode-schedule", title: "Schedule", systemImage: "clock",
+                checked: model.appMode == .schedule, shortcut: "⌘3",
+                action: { model.showsModeMenu = false; model.showPage(.scheduled) }),
         ]
         if model.appMode == .code {
             items += [
