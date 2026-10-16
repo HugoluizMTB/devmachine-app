@@ -24,8 +24,13 @@ final class DetachedProcessTests: XCTestCase {
     }
 
     func testTheHelperGetsNoneOfTheAppsOpenFiles() throws {
-        let held = open(folder.appendingPathComponent("held").path, O_CREAT | O_WRONLY, 0o600)
-        XCTAssertGreaterThan(held, 2)
+        let opened = open(folder.appendingPathComponent("held").path, O_CREAT | O_WRONLY, 0o600)
+        XCTAssertGreaterThan(opened, 2)
+        // While `> file` is in effect the shell keeps its own stdout at fd 10,
+        // so a held fd that low could read as open in the helper.
+        let held = fcntl(opened, F_DUPFD, 200)
+        close(opened)
+        XCTAssertGreaterThanOrEqual(held, 200)
         defer { close(held) }
         let out = folder.appendingPathComponent("fd")
 

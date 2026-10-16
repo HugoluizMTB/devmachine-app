@@ -82,4 +82,21 @@ final class ProcessHomebrewUpgraderTests: XCTestCase {
         XCTAssertEqual(String(decoding: stdout, as: UTF8.self), "{\n  \"skills\": {\"updated\": true}\n}\n")
         XCTAssertEqual(CLIUpdateReport.parse(stdout)?.skillsUpdated, true)
     }
+
+    func testTheRunReturnsOnlyAfterEveryLineWasHandedOn() async throws {
+        let cli = try fakeBrew(#"""
+            echo "==> Packages" 1>&2
+            sleep 0.1
+            printf '{"skills": {"updated": true}}\n'
+            echo "  done" 1>&2
+            """#)
+        let lines = Lines()
+        let stdout = try await ProcessCLIUpdater(executable: { cli }, environment: [:])
+            .run(.packagesOnly) { line in
+                if line == "==> Packages" { Thread.sleep(forTimeInterval: 0.5) }
+                lines.add(line)
+            }
+        XCTAssertEqual(lines.all, ["==> Packages", "  done"])
+        XCTAssertEqual(CLIUpdateReport.parse(stdout)?.skillsUpdated, true)
+    }
 }

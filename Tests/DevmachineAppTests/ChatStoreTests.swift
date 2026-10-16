@@ -259,13 +259,14 @@ final class ChatStoreTests: XCTestCase {
             trap on_term TERM
             printf '%s\\n' '\(ChatFixtures.started("c7"))'
             printf '%s\\n' '\(ChatFixtures.text("half"))'
-            sleep 30 &
+            cat >/dev/null <&0 &
             wait
             """
         try body.write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
         let path = script.path
         let store = ChatStore(runner: ProcessChatCommandRunner(cli: { DevmachineCLI(executable: path) }))
+        defer { store.closeAllSessions() }
         store.send("hi", harness: .claude, place: .local)
         await waitForChat(10) { store.conversation("c7").messages.last?.text == "half" }
         store.stop("c7")
