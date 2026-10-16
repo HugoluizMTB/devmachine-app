@@ -209,9 +209,9 @@ struct DevmachineApp: App {
             // terminal is a view from AppKit that holds first responder, which
             // is where the hidden-button shortcuts were being lost.
             CommandGroup(after: .sidebar) {
-                Button("Chats") { model.showChats() }
-                    .keyboardShortcut("1", modifiers: .command)
                 Button("Code") { model.appMode = .code }
+                    .keyboardShortcut("1", modifiers: .command)
+                Button("Chats") { model.showChats() }
                     .keyboardShortcut("2", modifiers: .command)
                 Divider()
                 Button("Toggle Sidebar") {

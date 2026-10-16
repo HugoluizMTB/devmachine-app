@@ -148,6 +148,7 @@ enum DemoChats {
         .init(id: "context-ask-codex", fileName: "12-context-ask-codex.png", settleNanoseconds: 1_200_000_000),
         .init(id: "chat-error-logged-out", fileName: "13-chat-error-logged-out.png", settleNanoseconds: 600_000_000),
         .init(id: "settings-chats", fileName: "14-settings-chats.png", settleNanoseconds: 500_000_000),
+        .init(id: "chat-mode-menu", fileName: "15-chat-mode-menu.png", settleNanoseconds: 500_000_000),
     ]
 
     static let panelScreens: Set<String> = ["quick-panel", "quick-panel-answer", "quick-panel-continue", "menubar-chats"]
@@ -176,6 +177,9 @@ enum DemoChats {
                     kind: .harnessLoggedOut,
                     message: "Invalid API key · Please run /login")))
             model.showChats(select: selectedID, store: store)
+        case "chat-mode-menu":
+            model.showChats(select: selectedID, store: store)
+            model.showsModeMenu = true
         case "palette-chats":
             model.showChats(select: selectedID, store: store)
             DemoSnapshots.paletteInitialQuery = "chat"

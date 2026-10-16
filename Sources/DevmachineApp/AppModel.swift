@@ -617,6 +617,7 @@ final class AppModel: ObservableObject {
     /// app did before Chats.
     @Published var appMode: AppMode = AppMode.saved() {
         didSet {
+            showsModeMenu = false
             guard appMode != oldValue else { return }
             AppMode.save(appMode)
             if appMode == .code, activePage == nil, let selection {
@@ -624,6 +625,9 @@ final class AppModel: ObservableObject {
             }
         }
     }
+
+    /// The Code / Chats menu under the sidebar's title.
+    @Published var showsModeMenu = false
 
     @Published var sidebarCollapsed: Bool = (UserDefaults.standard.object(forKey: "sidebarCollapsed") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "sidebarCollapsed") }

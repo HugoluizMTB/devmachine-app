@@ -44,7 +44,6 @@ struct ContentView: View {
                 }
                     .onAppear { stats.start() }
                     .environment(\.collapsedSidebarButtonFrame, model.sidebarCollapsed ? sidebarButtonFrame : nil)
-                modeToggle
                 if model.sidebarCollapsed {
                     collapsedSidebarButton
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.windowSpace)) } action: {
@@ -54,6 +53,7 @@ struct ContentView: View {
             }
         }
         .coordinateSpace(.named(Self.windowSpace))
+        .modifier(SidebarModeMenuOverlay(model: model))
         .background(Color.dmSidebarBg)
         .overlay {
             if model.showFileSearch, let target = model.commandTarget(for: model.selection) {
@@ -328,20 +328,6 @@ struct ContentView: View {
     }
 
     static let windowSpace = "window"
-
-    /// Beside the window buttons, at the sidebar's right edge; with the
-    /// sidebar closed, right after the window buttons.
-    private var modeToggle: some View {
-        HStack(spacing: 0) {
-            if !model.sidebarCollapsed { Spacer(minLength: 0) }
-            ChatsModeToggle()
-        }
-        .frame(width: model.sidebarCollapsed ? nil : m.pt(model.sidebarWidth) - m.pt(12), alignment: .leading)
-        .padding(.leading, model.sidebarCollapsed ? m.pt(78) : 0)
-        .padding(.top, m.pt(3))
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .ignoresSafeArea(edges: .top)
-    }
 
     private var collapsedSidebarButton: some View {
         Button {

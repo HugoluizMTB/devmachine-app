@@ -47,13 +47,13 @@ final class ChatsPaletteAndDemoTests: XCTestCase {
         XCTAssertEqual(codeSections.first?.category, .goTo)
     }
 
-    func testTheChatsWalkKeepsItsFourteenScreens() {
+    func testTheChatsWalkKeepsItsScreensAndShowsTheModeMenu() {
         let walk = DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "chats"])
         XCTAssertEqual(walk.map(\.fileName), [
             "01-chat-main.png", "02-chat-new.png", "03-chat-picker-harness.png", "04-chat-picker-workspace.png",
             "05-code-toggle.png", "06-quick-panel.png", "07-quick-panel-answer.png", "08-quick-panel-continue.png",
             "09-menubar-chats.png", "10-palette-chats.png", "11-context-ask-claude.png", "12-context-ask-codex.png",
-            "13-chat-error-logged-out.png", "14-settings-chats.png",
+            "13-chat-error-logged-out.png", "14-settings-chats.png", "15-chat-mode-menu.png",
         ])
     }
 

@@ -60,3 +60,18 @@ final class ChatsModeTests: XCTestCase {
         XCTAssertFalse(model.codeNeedsAttention)
     }
 }
+
+@MainActor
+final class SidebarModeHeaderTests: XCTestCase {
+    func testTheTitleNamesTheMode() {
+        XCTAssertEqual(SidebarModeHeader.title(.code), "CODE WORKSPACES")
+        XCTAssertEqual(SidebarModeHeader.title(.chats), "CHAT WORKSPACES")
+    }
+
+    func testChangingModeClosesTheMenu() {
+        let model = AppModel(services: fixtureServices())
+        model.showsModeMenu = true
+        model.appMode = .chats
+        XCTAssertFalse(model.showsModeMenu)
+    }
+}

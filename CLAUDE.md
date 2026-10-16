@@ -754,9 +754,12 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   `--format json config show`), so a chat from a terminal lands where one from
   the app does. The app keeps only the shortcut, the menu bar rows and the
   harness switches (`AppSettings.chats`). Read only is fixed and never a setting.
-- **Chats | Code** (`AppModel.appMode`, ⌘1/⌘2): Chats replaces the main row;
-  picking a session, a page or Settings goes back to Code. The dot on Code is
-  any session waiting for the person. Pickers are drawn in the view
+- **Code or Chats** (`AppModel.appMode`, ⌘1 Code, ⌘2 Chats): the sidebar's
+  title is the switch ("CODE WORKSPACES ▾" / "CHAT WORKSPACES ▾",
+  `SidebarModeHeader`), with refresh and close at the right of that row and
+  "New session" / "New chat" under it. Chats replaces the main row; picking a
+  session, a page or Settings goes back to Code. In Chats, a dot by the title
+  says a session in Code waits for the person. Pickers are drawn in the view
   (`ChatMenuCard`), not `NSMenu`, so a demo frame shows them; they lock after
   the first message (a chat keeps its harness and workspace).
 - **Quick panel**: `QuickChatPanelController`, a non-activating `NSPanel`
