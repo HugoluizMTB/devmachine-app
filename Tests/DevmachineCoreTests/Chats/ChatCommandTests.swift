@@ -27,7 +27,6 @@ final class ChatCommandTests: XCTestCase {
                 question: "and?"),
             ["chat", "ask", "--local", "--session", "api", "--folder", "/Users/alice/dev/api", "--harness", "codex",
              "--chat", "a1", "--", "and?"])
-        XCTAssertEqual(ChatCommand.continueAsk(id: "c_1"), ["chat", "continue", "c_1", "--json"])
     }
 
     func testListShowRenameDelete() {

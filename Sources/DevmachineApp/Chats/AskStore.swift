@@ -37,13 +37,4 @@ final class AskStore: ObservableObject {
         resets[key] = now()
         started[key] = nil
     }
-
-    /// "Continue in Chats": the thread joins the chat list and opens there.
-    func continueInChats(_ key: AskSessionKey, store: ChatStore, model: AppModel?) async {
-        guard let id = threadID(for: key, in: store), !id.hasPrefix(ChatStore.pendingPrefix),
-              await store.continueAsk(id) else { return }
-        started[key] = nil
-        resets[key] = now()
-        model?.showChats(select: id, store: store)
-    }
 }

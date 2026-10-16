@@ -793,8 +793,8 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   new shortcut in Settings suspends the old one.
 - **Ask** (`app.ask`, provider `app/session-ask`, engine 1.8, after Links in
   the default Context tab): `AskStore` keeps one thread per session
-  (`AskSessionKey`); a session on this Mac passes its folder. "Continue in
-  Chats" runs `chat continue`, which makes the ask a chat.
+  (`AskSessionKey`); a session on this Mac passes its folder. "Clear" (shown once a
+  thread has messages) starts a new thread and hides the old one.
 - Demo walk `DEVMACHINE_DEMO_WALK=chats` (`DemoChats`): the 14 screens of the
   approved mockups drawn from the real views over invented chats.
   `DEVMACHINE_CHAT_E2E=<devmachine binary>` runs `ChatCLILiveTests`: a real

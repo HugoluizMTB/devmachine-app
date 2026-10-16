@@ -146,8 +146,8 @@ final class ChatStore: ObservableObject {
 
     // MARK: - Reading
 
-    /// The chats Chats mode lists: an ask stays out until "Continue in
-    /// Chats" makes it a chat.
+    /// The chats Chats mode lists: asks about a session stay in their
+    /// session's Ask section.
     var visibleChats: [ChatRecord] {
         ChatGrouping.sorted(records.filter { !$0.isAsk })
     }
@@ -405,22 +405,6 @@ final class ChatStore: ObservableObject {
         records.removeAll { $0.id == id }
         conversations[id] = nil
         if selectedID == id { selectedID = nil }
-    }
-
-    /// "Continue in Chats": `chat continue` makes the ask a chat of its own,
-    /// listed with the others.
-    func continueAsk(_ id: String) async -> Bool {
-        guard let output = try? await runner.run(ChatCommand.continueAsk(id: id)), output.exitCode == 0 else {
-            return false
-        }
-        var record = (try? JSONDecoder().decode(ChatRecord.self, from: Data(output.stdout.utf8)))
-            ?? self.record(id)
-        record?.kind = ChatRecord.chatKind
-        if let record {
-            upsert(record)
-            conversations[id]?.record = record
-        }
-        return true
     }
 
     // MARK: - Streaming

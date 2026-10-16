@@ -46,8 +46,6 @@ public enum ChatCommand {
         return arguments + ["--", question]
     }
 
-    public static func continueAsk(id: String) -> [String] { ["chat", "continue", id, "--json"] }
-
     public static func configShow() -> [String] { ["--format", "json", "config", "show"] }
 
     public static func list() -> [String] { ["chat", "list", "--all", "--json"] }

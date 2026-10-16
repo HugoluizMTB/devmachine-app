@@ -70,26 +70,6 @@ final class AskStoreTests: XCTestCase {
              "--", "why?"])
     }
 
-    func testContinueInChatsMakesItAChatAndOpensIt() async {
-        let list = "[\(ChatFixtures.record("a1", workspace: "main", kind: "ask", session: "claude — api"))]"
-        let continued = ChatFixtures.record("a1", workspace: "main", kind: "chat", session: "claude — api")
-        let runner = FakeChatRunner(outputs: [
-            "chat list": ChatCommandOutput(stdout: list, stderr: "", exitCode: 0),
-            "chat continue": ChatCommandOutput(stdout: continued, stderr: "", exitCode: 0),
-        ])
-        let store = ChatStore(runner: runner)
-        await store.refresh()
-        let model = AppModel(services: fixtureServices())
-        let asks = AskStore()
-        let key = AskSessionKey(place: .workspace("main"), session: "claude — api")
-        await asks.continueInChats(key, store: store, model: model)
-        XCTAssertTrue(runner.arguments.contains(["chat", "continue", "a1", "--json"]))
-        XCTAssertEqual(store.visibleChats.map(\.id), ["a1"])
-        XCTAssertEqual(model.appMode, .chats)
-        XCTAssertEqual(store.selectedID, "a1")
-        XCTAssertNil(asks.threadID(for: key, in: store))
-    }
-
     func testTheAnswerShowsAsComingRightAfterSend() {
         let runner = FakeChatRunner(streams: [.init(lines: [], waitsForCancel: true)])
         let store = ChatStore(runner: runner)

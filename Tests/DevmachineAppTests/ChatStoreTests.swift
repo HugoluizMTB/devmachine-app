@@ -169,10 +169,6 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertEqual(runner.arguments.prefix(2), [["--format", "json", "config", "show"], ["chat", "list", "--all", "--json"]])
         XCTAssertEqual(store.records.map(\.id), ["c1", "a1"])
         XCTAssertEqual(store.visibleChats.map(\.id), ["c1"])
-        let continued = await store.continueAsk("a1")
-        XCTAssertTrue(continued)
-        XCTAssertTrue(runner.arguments.contains(["chat", "continue", "a1", "--json"]))
-        XCTAssertEqual(Set(store.visibleChats.map(\.id)), ["c1", "a1"])
     }
 
     func testSelectingLoadsTheMessages() async {

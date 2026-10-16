@@ -35,18 +35,21 @@ struct AskWidgetView: View {
     private func section(_ key: AskSessionKey) -> some View {
         let threadID = asks.threadID(for: key, in: store)
         let conversation = threadID.map(store.conversation)
+        let hasThread = conversation.map { !$0.messages.isEmpty } ?? false
         return DMSection(
             contentSpacing: 10,
             padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
             label: { DMSectionLabel(text: "ASK") },
             trailing: {
-                DMIconButton(systemImage: "arrow.counterclockwise", size: 10, hitSize: DMHitSize.header) {
-                    asks.reset(key)
-                    question = ""
+                if hasThread {
+                    DMButton("Clear", variant: .ghost, size: .small) {
+                        asks.reset(key)
+                        question = ""
+                    }
+                    .help("Start a new Ask thread for this session")
+                    .accessibilityLabel("Clear the Ask thread")
+                    .accessibilityHint("Starts a new Ask thread for this session")
                 }
-                .help("Start a new thread")
-                .accessibilityLabel("Start a new thread")
-                .disabled(threadID == nil)
                 StackHeaderControls()
             }
         ) {
@@ -74,15 +77,9 @@ struct AskWidgetView: View {
                 }
                 if mode.isSupported {
                     input(key, streaming: conversation?.isStreaming == true, threadID: threadID)
-                    HStack {
-                        DMButton("Continue in Chats", systemImage: "bubble.left.and.bubble.right", variant: .link,
-                                 size: .small) {
-                            Task { await asks.continueInChats(key, store: store, model: model) }
-                        }
-                        .disabled(threadID == nil || threadID?.hasPrefix(ChatStore.pendingPrefix) == true)
-                        Spacer()
-                        Text(verbatim: "the session is not interrupted").font(.dm(10)).foregroundStyle(Color.dmMuted)
-                    }
+                    Text(verbatim: "Asking never types into the session.")
+                        .font(.dm(10))
+                        .foregroundStyle(Color.dmMuted)
                 }
             }
             .task(id: threadID) { if let threadID { store.loadIfNeeded(threadID) } }
