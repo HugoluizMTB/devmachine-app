@@ -735,6 +735,44 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   and 127 is how a host without tmux is told apart. Without a process table
   the pane's own command still counts.
 
+## Chats
+- **The engine is `devmachine chat`; the app only draws.** One process per
+  message (`chat send`, `chat ask`), NDJSON `started/text/tool/done/error`
+  (`ChatEventDecoder`, Core). stdout and stderr share one pipe, so a line that
+  is not an event is kept only as the failure's details. `ChatProcess` reads
+  the pipe to the end before it returns: `StreamingProcess` could hand the last
+  line over after the exit, and the turn then read as failed. Each turn carries
+  a token (`ChatStore.turns`): the previous turn's process may report its end
+  after the next turn started, and only the current turn may end it.
+- A new chat is listed at once under `pending-<uuid>` and moves to the CLI's id
+  on `started` (`ChatStore.current`). A process that ends with no `done` or
+  `error` is a failure (`ChatConversation.processEnded`); `unknown command
+  "chat"` is an older CLI (`needsNewerCLI`, the card offers Update the CLI);
+  a usage error (`error: …` and no NDJSON) is `refused`.
+- **Where chats run belongs to the CLI** (`chat.default_workspace`,
+  `chat.folder`, `chat.harness` via `config set|unset`, read from
+  `--format json config show`), so a chat from a terminal lands where one from
+  the app does. The app keeps only the shortcut, the menu bar rows and the
+  harness switches (`AppSettings.chats`). Read only is fixed and never a setting.
+- **Chats | Code** (`AppModel.appMode`, ⌘1/⌘2): Chats replaces the main row;
+  picking a session, a page or Settings goes back to Code. The dot on Code is
+  any session waiting for the person. Pickers are drawn in the view
+  (`ChatMenuCard`), not `NSMenu`, so a demo frame shows them; they lock after
+  the first message (a chat keeps its harness and workspace).
+- **Quick panel**: `QuickChatPanelController`, a non-activating `NSPanel`
+  opened by a Carbon `RegisterEventHotKey` (no Accessibility permission),
+  default ⌃⌥Space. Tests hand `QuickChatHotkeyController` a fake registrar;
+  nothing registers a real hotkey under XCTest or in demo mode. Recording a
+  new shortcut in Settings suspends the old one.
+- **Ask** (`app.ask`, provider `app/session-ask`, engine 1.8, after Links in
+  the default Context tab): `AskStore` keeps one thread per session
+  (`AskSessionKey`); a session on this Mac passes its folder. "Continue in
+  Chats" runs `chat continue`, which makes the ask a chat.
+- Demo walk `DEVMACHINE_DEMO_WALK=chats` (`DemoChats`): the 14 screens of the
+  approved mockups drawn from the real views over invented chats.
+  `DEVMACHINE_CHAT_E2E=<devmachine binary>` runs `ChatCLILiveTests`: a real
+  chat with the local claude in a temp configuration.
+
 ## Operator session
 - **The Operator is the local session in the CLI's configuration folder**
   (`Workspace.operatorSession`, path `AppSettings.opsRepoPath`). Every way

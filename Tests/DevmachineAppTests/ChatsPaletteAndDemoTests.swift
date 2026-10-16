@@ -41,7 +41,10 @@ final class ChatsPaletteAndDemoTests: XCTestCase {
     func testInChatsModeTheChatCommandsLead() {
         let commands = CommandRegistry.commands(in: context())
         let sections = PaletteRanker.sections(commands, query: "chat", mru: CommandMRU(ids: []), inChats: true)
-        XCTAssertTrue([PaletteCategory.action, .chats].contains(sections.first?.category))
+        XCTAssertEqual(sections.prefix(2).map(\.category), [.action, .chats])
+        XCTAssertEqual(sections.first?.commands.first?.id, "action.new-chat")
+        let codeSections = PaletteRanker.sections(commands, query: "chat", mru: CommandMRU(ids: []), inChats: false)
+        XCTAssertEqual(codeSections.first?.category, .goTo)
     }
 
     func testTheChatsWalkKeepsItsFourteenScreens() {

@@ -7,6 +7,7 @@ final class FakeChatRunner: ChatCommandRunning, @unchecked Sendable {
         var lines: [String]
         var status: Int32 = 0
         var waitsForCancel = false
+        var endsAfterNanoseconds: UInt64 = 0
     }
 
     private let lock = NSLock()
@@ -27,6 +28,7 @@ final class FakeChatRunner: ChatCommandRunning, @unchecked Sendable {
             return streams.isEmpty ? Script(lines: []) : streams.removeFirst()
         }
         script.lines.forEach(line)
+        if script.endsAfterNanoseconds > 0 { try? await Task.sleep(nanoseconds: script.endsAfterNanoseconds) }
         if script.waitsForCancel {
             while !Task.isCancelled { try? await Task.sleep(nanoseconds: 5_000_000) }
             line(#"{"type":"error","kind":"cancelled","message":"stopped"}"#)
@@ -310,5 +312,21 @@ final class ChatStoreTests: XCTestCase {
         store.select("c1")
         await waitForChat { store.conversation("c1").failure != nil }
         XCTAssertEqual(store.conversation("c1").failure?.kind, .harnessMissing)
+    }
+
+    func testALateEndOfTheLastTurnLeavesTheNextOneAlone() async {
+        let runner = FakeChatRunner(streams: [
+            .init(lines: [ChatFixtures.started("c1"), ChatFixtures.text("one"), ChatFixtures.done("c1")],
+                  endsAfterNanoseconds: 300_000_000),
+            .init(lines: [ChatFixtures.started("c1"), ChatFixtures.text("two")], waitsForCancel: true),
+        ])
+        let store = ChatStore(runner: runner)
+        store.send("first", harness: .claude, place: .local)
+        await waitForChat { store.selectedID == "c1" && !store.isAnswering("c1") }
+        store.send("second", toChat: "c1")
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertTrue(store.isAnswering("c1"))
+        XCTAssertNil(store.conversation("c1").failure)
+        store.stop("c1")
     }
 }

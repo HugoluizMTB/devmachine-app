@@ -28,7 +28,8 @@ enum PaletteRanker {
 
     static let chatsBonus = 40
 
-    /// In Chats mode, what starts or opens a chat comes first.
+    /// In Chats mode, the groups that start or open a chat come first, and
+    /// inside a group so do those commands.
     static func isChatCommand(_ command: PaletteCommand) -> Bool {
         command.category == .chats || command.id.hasPrefix("action.new-chat")
     }
@@ -68,7 +69,11 @@ enum PaletteRanker {
                 return (PaletteSection(category: category, commands: sorted.map(\.0)), sorted[0].1)
             }
             .sorted { lhs, rhs in
-                lhs.1 != rhs.1 ? lhs.1 > rhs.1 : lhs.0.category < rhs.0.category
+                let left = inChats && lhs.0.commands.first.map(isChatCommand) == true
+                let right = inChats && rhs.0.commands.first.map(isChatCommand) == true
+                if left != right { return left }
+                if left, lhs.0.category != rhs.0.category { return lhs.0.category == .action }
+                return lhs.1 != rhs.1 ? lhs.1 > rhs.1 : lhs.0.category < rhs.0.category
             }
             .map(\.0)
     }

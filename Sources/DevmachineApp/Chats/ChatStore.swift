@@ -133,6 +133,9 @@ final class ChatStore: ObservableObject {
     private let runner: any ChatCommandRunning
     private let now: () -> Date
     private var tasks: [String: Task<Void, Never>] = [:]
+    /// The turn each conversation is on. A turn's process can report its
+    /// end after the next turn started; only the current turn may end it.
+    private var turns: [String: UUID] = [:]
     private var movedKeys: [String: String] = [:]
     private var isDemo = false
 
@@ -419,6 +422,8 @@ final class ChatStore: ObservableObject {
 
     private func launch(key: String, text: String, arguments: [String]) {
         conversations[key, default: ChatConversation(record: record(key))].begin(userText: text, at: now())
+        let turn = UUID()
+        turns[key] = turn
         let runner = self.runner
         let collected = CollectedOutput()
         tasks[key] = Task { [weak self] in
@@ -430,7 +435,7 @@ final class ChatStore: ObservableObject {
                     // The main queue runs blocks in the order they were sent,
                     // so the events keep their order; separate tasks would not.
                     DispatchQueue.main.async {
-                        MainActor.assumeIsolated { self?.receive(line, key: key) }
+                        MainActor.assumeIsolated { self?.receive(line, key: key, turn: turn) }
                     }
                 }
             } catch {
@@ -438,14 +443,17 @@ final class ChatStore: ObservableObject {
             }
             let output = collected.text
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { self?.finish(key: key, status: status, output: output, error: thrown) }
+                MainActor.assumeIsolated {
+                    self?.finish(key: key, turn: turn, status: status, output: output, error: thrown)
+                }
             }
         }
     }
 
-    func receive(_ line: String, key: String) {
+    func receive(_ line: String, key: String, turn: UUID? = nil) {
         guard let event = ChatEventDecoder.decode(line) else { return }
         var key = current(key)
+        if let turn, turns[key] != turn { return }
         if case let .started(chat) = event, key != chat.id {
             move(key, to: chat)
             key = chat.id
@@ -455,8 +463,10 @@ final class ChatStore: ObservableObject {
         if case let .started(chat) = event { upsert(chat) }
     }
 
-    private func finish(key: String, status: Int32, output: String, error: Error?) {
+    private func finish(key: String, turn: UUID, status: Int32, output: String, error: Error?) {
         let key = current(key)
+        guard turns[key] == turn else { return }
+        turns[key] = nil
         tasks[key] = nil
         guard conversations[key]?.isStreaming == true else { return }
         if let error, !(error is CancellationError) {
@@ -473,6 +483,7 @@ final class ChatStore: ObservableObject {
             conversations[chat.id] = conversation
         }
         if let task = tasks.removeValue(forKey: pending) { tasks[chat.id] = task }
+        if let turn = turns.removeValue(forKey: pending) { turns[chat.id] = turn }
         records.removeAll { $0.id == pending }
         if selectedID == pending { selectedID = chat.id }
     }

@@ -25,9 +25,7 @@ enum DemoChats {
 
     private static func chats(now: Date, calendar: Calendar) -> [ChatRecord] {
         let today = calendar.startOfDay(for: now)
-        func todayAt(_ hoursAgo: Double) -> Date {
-            max(today.addingTimeInterval(60 * (10 - hoursAgo)), now.addingTimeInterval(-hoursAgo * 3600))
-        }
+        func todayAt(_ hoursAgo: Double) -> Date { now.addingTimeInterval(-hoursAgo * 3600) }
         func daysAgo(_ days: Int) -> Date {
             calendar.date(byAdding: .hour, value: 12, to: calendar.date(byAdding: .day, value: -days, to: today)!)!
         }
