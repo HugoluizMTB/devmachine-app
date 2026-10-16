@@ -1562,8 +1562,8 @@ once may fail there.
 ## Website videos
 - `scripts/site_demo_videos.sh <dir>` runs `DEVMACHINE_DEMO_WALK=site`
   (`DemoSiteWalk`) hidden, then writes `<scene>.webm`, `<scene>.mp4` and
-  `<scene>-poster.webp` for the seven home-page loops (operator, sessions, cli,
-  context, publish, share, home). Each opens on its own subject, with no click
+  `<scene>-poster.webp` for the home-page loops (operator, sessions, cli,
+  context, publish, scheduled, share, home, quickchat, chats, ask). Each opens on its own subject, with no click
   first, at a reading pace: 0.5 s pointer moves, ~15 typed characters a second,
   a second after each change and labels on screen for at least two seconds.
   The walk writes numbered frames per scene at 1600×1000 and a
@@ -1588,6 +1588,10 @@ once may fail there.
   so the zoomed text stays sharp. `SITE_DEMO_SCENES="context"` renders one
   scene. The context scene's Links rows come from the app's own extraction
   (`contextExtractRefs` + `contextMapLinks`) over the demo transcript.
+- `quickchat` draws the quick panel alone over a gradient desktop
+  (`desktopView(for:)`), since the real panel is a window of its own. A
+  default-walk screen with `zoom` (`27-ask.png`) is cropped the same way,
+  then scaled back to the window's 2x size.
 - `cacheDisplay` does not catch `NSProgressIndicator`'s animation, so a
   spinner is one still frame; Home's board is written again for the walk's
   window, since the one written at launch was laid out for a smaller one.

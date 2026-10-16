@@ -11,10 +11,13 @@ final class DemoSiteWalkTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testTheSiteWalkIsSixScenesOfNumberedFramesEachInItsOwnFolder() {
+    func testTheSiteWalkIsElevenScenesOfNumberedFramesEachInItsOwnFolder() {
         let screens = DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "site"])
         XCTAssertEqual(
-            DemoSiteWalk.scenes.map(\.id), ["operator", "sessions", "cli", "context", "publish", "scheduled", "share", "home"])
+            DemoSiteWalk.scenes.map(\.id), [
+                "operator", "sessions", "cli", "context", "publish", "scheduled", "share", "home", "quickchat", "chats",
+                "ask",
+            ])
         XCTAssertEqual(screens.count, DemoSiteWalk.scenes.reduce(0) { $0 + $1.frames.count })
         XCTAssertEqual(screens.first?.fileName, "operator/001.png")
         XCTAssertEqual(Set(screens.map(\.id)).count, screens.count)
@@ -55,9 +58,10 @@ final class DemoSiteWalkTests: XCTestCase {
     }
 
     func testEverySceneOpensOnItsSubjectWithoutAClick() {
-        XCTAssertEqual(DemoSiteWalk.scenes.map { $0.frames.first?.pointer }, Array(repeating: nil, count: 8))
+        XCTAssertEqual(DemoSiteWalk.scenes.map { $0.frames.first?.pointer }, Array(repeating: nil, count: 11))
         XCTAssertEqual(DemoSiteWalk.scenes.map { $0.frames.first?.step }, [
             .operatorChooser, .sidebar, .cli(0), .context(0), .publishedApps, .scheduledList, .shareStart, .homeStart,
+            .quickChat(.empty), .chatsTour(0), .ask(.start),
         ])
     }
 
@@ -114,6 +118,8 @@ final class DemoSiteWalkTests: XCTestCase {
             "widget:\(DemoSiteWalk.codexUsage)", "widget:\(DemoSiteWalk.claudeUsage)", "home:add",
             "sheet:gallery:\(DemoSiteWalk.summaryType)",
             "scheduled:\(DemoScheduled.briefingID)", "scheduled:run:\(DemoScheduled.briefingRun)", "scheduled:new",
+            "sidebar:mode", "menu:mode-chats", "chat:copy", "chats:new", "chat:harness", "chat:workspace",
+            "chat:readonly", "ask:input", "ask:clear",
         ])
     }
 

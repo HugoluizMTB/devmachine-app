@@ -10,6 +10,8 @@ final class AskStore: ObservableObject {
 
     @Published private(set) var resets: [AskSessionKey: Date] = [:]
     @Published private(set) var started: [AskSessionKey: String] = [:]
+    /// What is typed in each session's Ask field.
+    @Published var drafts: [AskSessionKey: String] = [:]
     private let now: () -> Date
 
     init(now: @escaping () -> Date = Date.init) {
@@ -36,5 +38,10 @@ final class AskStore: ObservableObject {
     func reset(_ key: AskSessionKey) {
         resets[key] = now()
         started[key] = nil
+        drafts[key] = nil
+    }
+
+    func seedDemoThread(_ key: AskSessionKey, chatID: String?) {
+        started[key] = chatID
     }
 }

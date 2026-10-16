@@ -207,6 +207,7 @@ struct ChatCodeBlock: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Copy code")
+                .demoClickTarget("chat:copy")
             }
             .padding(.horizontal, m.pt(12))
             .padding(.vertical, m.pt(6))

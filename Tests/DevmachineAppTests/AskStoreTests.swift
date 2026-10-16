@@ -38,6 +38,16 @@ final class AskStoreTests: XCTestCase {
         XCTAssertNil(asks.threadID(for: AskSessionKey(place: .local, session: "codex"), in: store))
     }
 
+    func testEachSessionKeepsItsOwnDraftAndClearDropsIt() {
+        let asks = AskStore()
+        let other = AskSessionKey(place: .workspace("acme"), session: "codex")
+        asks.drafts[key] = "why?"
+        asks.drafts[other] = "what changed?"
+        asks.reset(key)
+        XCTAssertNil(asks.drafts[key])
+        XCTAssertEqual(asks.drafts[other], "what changed?")
+    }
+
     func testResetStartsANewThread() async {
         let list = "[\(ChatFixtures.record("a1", kind: "ask", session: "claude — api"))]"
         let runner = FakeChatRunner(outputs: ["chat list": ChatCommandOutput(stdout: list, stderr: "", exitCode: 0)])

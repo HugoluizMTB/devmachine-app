@@ -59,6 +59,7 @@ struct ChatComposer: View {
                     toggle: { togglePicker(.workspace) })
                 ChatReadOnlyLabel()
                     .padding(.leading, m.pt(4))
+                    .demoClickTarget("chat:readonly")
                 Spacer()
                 ChatSendButton(enabled: canSend, stops: streaming) {
                     if streaming { stop() } else if canSend { send() }
@@ -105,6 +106,7 @@ struct ChatPickerChip: View {
             }
         }
         .anchorPreference(key: ChatAnchorKey.self, value: .bounds) { [picker == .harness ? "harness" : "workspace": $0] }
+        .demoClickTarget(picker == .harness ? "chat:harness" : "chat:workspace")
     }
 
     private var chip: some View {

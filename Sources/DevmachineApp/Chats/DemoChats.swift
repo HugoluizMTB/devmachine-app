@@ -95,6 +95,21 @@ enum DemoChats {
 
     // MARK: - Ask
 
+    static let askAnswer = "The retry after a gateway timeout charged twice. It added an idempotency key to "
+        + "`gateway.charge`, so the second call reuses the first charge instead of making a new one."
+    static let askFollowUpAnswer = "Yes: `testTimeoutThenRetryChargesOnce` fakes the timeout and checks one charge."
+
+    /// The selected chat, answered to the end: the site loop scrolls through
+    /// it instead of watching it stream.
+    static func finishedRebuild(_ store: ChatStore) -> ChatConversation {
+        var conversation = store.conversation(selectedID)
+        conversation.isStreaming = false
+        if let last = conversation.messages.indices.last {
+            conversation.messages[last].text += " the workspace is resumed."
+        }
+        return conversation
+    }
+
     static let askClaudeSession = "claude — payments refactor"
     static let askCodexSession = "codex — landing page"
 
@@ -239,7 +254,7 @@ enum DemoChats {
         AppModel.shared?.sidebarCollapsed = false
     }
 
-    private static func askContext(claude: Bool) -> ContextState {
+    static func askContext(claude: Bool) -> ContextState {
         let base = DemoData.contextState
         let stamp = ISO8601DateFormatter().string(from: Date())
         if !claude {
@@ -289,7 +304,7 @@ extension DemoChats {
                 record: record,
                 messages: [
                     ChatMessage(role: .user, text: quickQuestion),
-                    ChatMessage(role: .assistant, text: quickAnswer),
+                    ChatMessage(role: .assistant, text: quickAnswerText),
                 ],
                 isStreaming: true))
             model.seedDemo(chatKey: "quick", question: quickQuestion)
@@ -308,7 +323,7 @@ extension DemoChats {
             fittingSize: NSSize(width: 900, height: height), autosize: false)
     }
 
-    private static let quickAnswer = """
+    static let quickAnswerText = """
         Pass the socket with `-L` (a name) or `-S` (a path) before the command:
 
         ```sh

@@ -118,6 +118,8 @@ enum DemoSnapshots {
         let id: String
         let fileName: String
         let settleNanoseconds: UInt64
+        /// The control a zoomed capture centres on; nil captures the whole view.
+        var zoom: String?
     }
 
     /// The fixed walk, in capture order. `settleNanoseconds` is how long each
@@ -141,6 +143,12 @@ enum DemoSnapshots {
         Screen(id: "drop-files", fileName: "22-drop-files.png", settleNanoseconds: 900_000_000),
         Screen(id: "preview", fileName: "23-preview.png", settleNanoseconds: 1_500_000_000),
         Screen(id: "scheduled", fileName: "24-scheduled.png", settleNanoseconds: 700_000_000),
+        Screen(id: "quick-panel-answer", fileName: "25-quick-panel.png", settleNanoseconds: 600_000_000),
+        Screen(id: "chat-main", fileName: "26-chats.png", settleNanoseconds: 900_000_000),
+        Screen(
+            id: "context-ask-claude", fileName: "27-ask.png", settleNanoseconds: 1_200_000_000,
+            zoom: "context:ask"),
+        Screen(id: "chat-mode-menu", fileName: "28-mode-menu.png", settleNanoseconds: 500_000_000),
     ]
 
     /// The preview screen: acme's dev server session with its landing page
@@ -558,7 +566,9 @@ enum DemoSnapshots {
                 SnapshotChrome.measure(window)
                 view = SnapshotChrome.capturedView(window)
             }
-            capture(view, kind: chrome(for: screen.id), to: directory.appendingPathComponent(screen.fileName))
+            capture(
+                view, kind: chrome(for: screen.id), zoom: screen.zoom,
+                to: directory.appendingPathComponent(screen.fileName))
         }
 
         environment.model.showCommandPalette = false
@@ -1020,10 +1030,50 @@ enum DemoSnapshots {
         return hosting
     }
 
-    private static func capture(_ view: NSView, kind: SnapshotChrome.Kind, to url: URL) {
+    private static func capture(_ view: NSView, kind: SnapshotChrome.Kind, zoom: String? = nil, to url: URL) {
+        #if DEBUG
+        if let zoom, let control = DemoClickTargets.frames[zoom],
+           let rep = bitmap(of: view, scale: DemoCamera.captureScale) {
+            let scale = CGFloat(rep.pixelsWide) / view.bounds.width
+            let rect = zoomRect(around: control, in: view.bounds.size, zoom: DemoCamera.zoom)
+            let cropped = DemoCamera.crop(flattenTransparency(rep), to: rect, scale: scale)
+            let windowScale = view.window?.backingScaleFactor ?? 2
+            let resized = resample(cropped, width: Int(view.bounds.width * windowScale))
+            write(SnapshotChrome.framed(resized, scale: windowScale, kind: .panel), to: url)
+            return
+        }
+        #endif
         guard let rep = bitmap(of: view) else { return }
         let scale = CGFloat(rep.pixelsWide) / view.bounds.width
         write(SnapshotChrome.framed(flattenTransparency(rep), scale: scale, kind: kind), to: url)
+    }
+
+    private static func resample(_ rep: NSBitmapImageRep, width: Int) -> NSBitmapImageRep {
+        let height = Int((CGFloat(rep.pixelsHigh) * CGFloat(width) / CGFloat(rep.pixelsWide)).rounded())
+        guard let copy = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+            let context = NSGraphicsContext(bitmapImageRep: copy)
+        else { return rep }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        context.imageInterpolation = .high
+        let image = NSImage(size: NSSize(width: rep.pixelsWide, height: rep.pixelsHigh))
+        image.addRepresentation(rep)
+        image.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+        return copy
+    }
+
+    /// A rect of the view's shape around a control, `zoom` times smaller,
+    /// kept inside the view.
+    static func zoomRect(around control: CGRect, in size: NSSize, zoom: CGFloat) -> CGRect {
+        let width = size.width / zoom
+        let height = size.height / zoom
+        let x = min(max(0, control.midX - width / 2), size.width - width)
+        let y = min(max(0, control.midY - height / 2), size.height - height)
+        return CGRect(x: x, y: y, width: width, height: height)
     }
 
     /// At the window's own scale, or at `scale` pixels per point when given.

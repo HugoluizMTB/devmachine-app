@@ -78,6 +78,15 @@ enum DemoSiteWalk {
         case scheduledList, scheduledDetail, scheduledOutput, scheduledNew
         case shareStart, shareSheet, shareLink, shared, chat, guestReply, ownerReply
         case homeStart, homeDrag(Int), homeResize(Int), homeGallery, homeAdded
+        case quickChat(QuickPhase), chatsTour(Int), ask(AskPhase)
+    }
+
+    enum QuickPhase: Equatable {
+        case empty, typing(Int), sent, answer(Int), done, inApp
+    }
+
+    enum AskPhase: Equatable {
+        case start, typing(Int), answer(Int), sessionWorks, followTyping(Int), followAnswer(Int), cleared
     }
 
     struct Scene: Equatable {
@@ -109,6 +118,7 @@ enum DemoSiteWalk {
 
     static let scenes: [Scene] = [
         operatorScene, sessionsScene, cliScene, contextScene, publishScene, scheduledScene, shareScene, homeScene,
+        quickChatScene, chatsScene, askScene,
     ]
 
     private static let pickLabel = Label(text: "Pick your coding agent", at: CGPoint(x: 295, y: 340))
@@ -327,6 +337,7 @@ enum DemoSiteWalk {
             var last: Overlay?
             var scale: CGFloat = 2
             var camera: CGRect?
+            var kind: SnapshotChrome.Kind = .window
             let captureScale: CGFloat? = scene.frames.contains { $0.zoom != nil } ? DemoCamera.captureScale : nil
 
             func emit(_ rep: NSBitmapImageRep, hold: Double) {
@@ -335,7 +346,7 @@ enum DemoSiteWalk {
                     DemoSnapshots.writeFramed(
                         DemoCamera.crop(rep, to: camera, scale: scale), scale: scale, kind: .panel, to: url)
                 } else {
-                    DemoSnapshots.writeFramed(rep, scale: scale, to: url)
+                    DemoSnapshots.writeFramed(rep, scale: scale, kind: kind, to: url)
                 }
                 holds.append(hold)
             }
@@ -379,8 +390,10 @@ enum DemoSiteWalk {
                 TerminalRegistry.shared.replayDemoTranscripts()
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 window.displayIfNeeded()
-                SnapshotChrome.measure(window)
-                let content = SnapshotChrome.capturedView(window)
+                let desktop = desktopView(for: frame.step)
+                if desktop == nil { SnapshotChrome.measure(window) }
+                let content = desktop ?? SnapshotChrome.capturedView(window)
+                kind = desktop == nil ? .window : .panel
                 guard let shot = DemoSnapshots.bitmap(of: content, scale: captureScale)
                 else { continue }
                 scale = CGFloat(shot.pixelsWide) / content.bounds.width
@@ -580,6 +593,12 @@ enum DemoSiteWalk {
             HomeBoardController.shared.resize(claudeUsage, to: frame, auto: claude.size == BoardWidget.autoSize, sizes: [])
         case .homeGallery:
             break
+        case let .quickChat(phase):
+            await prepareQuickChat(phase, model: model)
+        case let .chatsTour(index):
+            await prepareChatsTour(index, model: model)
+        case let .ask(phase):
+            await prepareAsk(phase, model: model)
         case .homeAdded:
             let controller = HomeBoardController.shared
             if let summary = controller.catalog.catalog?.widgets.first(where: { $0.name == summaryType }) {

@@ -198,6 +198,7 @@ struct ChatMenuCard: View {
         .contentShape(Rectangle())
         .onHover { hovered = $0 ? item.id : (hovered == item.id ? nil : hovered) }
         .onTapGesture { if !item.disabled { item.action?() } }
+        .demoClickTarget("menu:" + item.id)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(item.accessibilityTitle)
         .accessibilityAddTraits(item.checked ? [.isButton, .isSelected] : .isButton)

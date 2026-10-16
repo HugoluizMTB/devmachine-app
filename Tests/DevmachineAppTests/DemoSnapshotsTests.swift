@@ -59,7 +59,7 @@ final class DemoSnapshotsTests: XCTestCase {
         }
         XCTAssertEqual(numbers, numbers.sorted())
         XCTAssertEqual(numbers.first, "01")
-        XCTAssertEqual(numbers.last, "24")
+        XCTAssertEqual(numbers.last, "28")
     }
 
     func testEveryScreenHasAUniqueID() {
@@ -80,13 +80,27 @@ final class DemoSnapshotsTests: XCTestCase {
             "07-settings-health.png", "08-session-defaults.png", "09-onboarding.png",
             "10-publish-port.png", "18-operator.png", "19-home.png",
             "20-menubar-usage.png", "21-command-palette.png", "22-drop-files.png",
-            "23-preview.png", "24-scheduled.png",
+            "23-preview.png", "24-scheduled.png", "25-quick-panel.png", "26-chats.png", "27-ask.png",
+            "28-mode-menu.png",
         ])
     }
 
-    func testThePreviewAndScheduledScreensCloseTheWalk() {
-        XCTAssertEqual(DemoSnapshots.screens.suffix(2).map(\.id), ["preview", "scheduled"])
-        XCTAssertEqual(DemoSnapshots.screens.last?.fileName, "24-scheduled.png")
+    func testThePreviewAndScheduledScreensComeBeforeTheChatsScreens() {
+        XCTAssertEqual(DemoSnapshots.screens.suffix(6).prefix(2).map(\.id), ["preview", "scheduled"])
+    }
+
+    func testTheChatsScreensCloseTheWalkWithAskZoomed() {
+        let last = Array(DemoSnapshots.screens.suffix(4))
+        XCTAssertEqual(last.map(\.id), ["quick-panel-answer", "chat-main", "context-ask-claude", "chat-mode-menu"])
+        XCTAssertEqual(last.map(\.zoom), [nil, nil, "context:ask", nil])
+    }
+
+    func testAZoomRectKeepsTheViewShapeAndStaysInside() {
+        let size = CGSize(width: 1600, height: 1000)
+        let rect = DemoSnapshots.zoomRect(around: CGRect(x: 1500, y: 900, width: 80, height: 80), in: size, zoom: 2)
+        XCTAssertEqual(rect, CGRect(x: 800, y: 500, width: 800, height: 500))
+        let centred = DemoSnapshots.zoomRect(around: CGRect(x: 700, y: 450, width: 200, height: 100), in: size, zoom: 2)
+        XCTAssertEqual(centred, CGRect(x: 400, y: 250, width: 800, height: 500))
     }
 
     func testThePreviewScreenOpensAnAcmeDevServerSession() {
@@ -170,7 +184,7 @@ final class DemoSnapshotsTests: XCTestCase {
 
     func testMenubarPanesAndTheSheetAreFramedAsPanels() {
         let panels = DemoSnapshots.screens.filter { DemoSnapshots.chrome(for: $0.id) == .panel }.map(\.id)
-        XCTAssertEqual(panels, ["pull-requests", "publish-port", "menubar-usage"])
+        XCTAssertEqual(panels, ["pull-requests", "publish-port", "menubar-usage", "quick-panel-answer"])
     }
 
     func testEveryOtherScreenIsFramedAsAWindow() {

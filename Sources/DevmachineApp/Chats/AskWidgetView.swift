@@ -9,7 +9,6 @@ struct AskWidgetView: View {
     @ObservedObject private var asks = AskStore.shared
     @ObservedObject private var context: ContextStore
     @Environment(\.dmMetrics) private var m
-    @State private var question = ""
 
     init(context: ContextStore) {
         self.context = context
@@ -44,8 +43,8 @@ struct AskWidgetView: View {
                 if hasThread {
                     DMButton("Clear", variant: .ghost, size: .small) {
                         asks.reset(key)
-                        question = ""
                     }
+                    .demoClickTarget("ask:clear")
                     .help("Start a new Ask thread for this session")
                     .accessibilityLabel("Clear the Ask thread")
                     .accessibilityHint("Starts a new Ask thread for this session")
@@ -90,7 +89,7 @@ struct AskWidgetView: View {
 
     private func input(_ key: AskSessionKey, streaming: Bool, threadID: String?) -> some View {
         HStack(spacing: m.pt(6)) {
-            TextField("Ask about this session…", text: $question)
+            TextField("Ask about this session…", text: question(key))
                 .textFieldStyle(.plain)
                 .accessibilityLabel("Ask about this session")
                 .accessibilityHint("Return asks; the session is not interrupted")
@@ -102,7 +101,8 @@ struct AskWidgetView: View {
                     return .handled
                 }
             ChatSendButton(
-                size: 20, enabled: !question.trimmingCharacters(in: .whitespaces).isEmpty, stops: streaming
+                size: 20, enabled: !(asks.drafts[key] ?? "").trimmingCharacters(in: .whitespaces).isEmpty,
+                stops: streaming
             ) {
                 if streaming, let threadID { store.stop(threadID) } else { send(key) }
             }
@@ -112,11 +112,17 @@ struct AskWidgetView: View {
         .padding(.trailing, m.pt(5))
         .padding(.vertical, m.pt(5))
         .dmSurface(Color.dmSelection, radius: DMRadius.pill, style: .continuous)
+        .demoClickTarget("ask:input")
+    }
+
+    private func question(_ key: AskSessionKey) -> Binding<String> {
+        Binding(get: { asks.drafts[key] ?? "" }, set: { asks.drafts[key] = $0 })
     }
 
     private func send(_ key: AskSessionKey) {
-        if asks.ask(question, key: key, mode: mode, folder: model.askSessionFolder, store: store) != nil {
-            question = ""
+        let text = asks.drafts[key] ?? ""
+        if asks.ask(text, key: key, mode: mode, folder: model.askSessionFolder, store: store) != nil {
+            asks.drafts[key] = nil
         }
     }
 }
