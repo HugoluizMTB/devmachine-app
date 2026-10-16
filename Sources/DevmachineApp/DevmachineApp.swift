@@ -24,7 +24,7 @@ struct DevmachineApp: App {
     @StateObject private var updates = UpdateController.live()
 
     init() {
-        DemoSnapshots.applyScrollBarDefaultsIfNeeded()
+        ScrollBarStyle.apply()
         MainWindowSizer.readSavedFrame()
         let prs = PRStore()
         let stats = StatsStore()

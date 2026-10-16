@@ -84,7 +84,6 @@ struct StackBoardView: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .overlay(alignment: .topLeading) { dropLine }
             .coordinateSpace(name: Self.space)
-            .overlayScrollers()
         }
         .scrollIndicators(style.indicators)
         .sheet(item: $choosing) { request in

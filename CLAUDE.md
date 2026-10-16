@@ -756,16 +756,17 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   the window buttons come out grey (the window is never key) and are painted
   again where the window put them (`SnapshotChrome.measure`).
 
-## Sidebar scroll bars
-- The left sidebar lists (workspaces, chats, schedule) and the Context
-  sidebar call `.overlayScrollers()`: the thin scroller with no track, even
-  with System Settings → "Show scroll bars: Always", whose track would take
-  width from these narrow columns. `OverlayScrollerProbe` sets its enclosing
-  `NSScrollView` to `.overlay` and sets it again a turn after
-  `NSScroller.preferredScrollerStyleDidChangeNotification`, since AppKit
-  resets every scroll view on that notification. Other scroll views keep the
-  system setting. `DEVMACHINE_DEMO_SCROLL_BARS=Always` renders the demo
-  under that setting.
+## Scroll bars
+- The app always uses the thin overlay scroll bar that shows only while
+  scrolling, in every window: `ScrollBarStyle.apply()` runs first in the app's
+  `init`, before any window exists, and puts `AppleShowScrollBars =
+  WhenScrolling` in the argument domain. That domain ranks above the system's,
+  so it wins at launch and after every System Settings change or mouse
+  plug-in (AppKit re-reads the same key). No view sets a scroller style.
+- `DEVMACHINE_DEMO_SCROLL_BARS=Always` registers "Always" below it, standing
+  in for that System Settings choice; `DEVMACHINE_DEMO_WALK=scroll-bars`
+  renders views that scroll (Code, the Files tab, the Files window, the file
+  viewer, Settings, Chats) to check that none draws a track.
 
 ## Chats
 - **The engine is `devmachine chat`; the app only draws.** One process per

@@ -75,7 +75,6 @@ struct ScheduleSidebar: View {
                     }
                 }
                 .padding(.bottom, m.pt(10))
-                .overlayScrollers()
             }
             .focusable()
             .focusEffectDisabled()

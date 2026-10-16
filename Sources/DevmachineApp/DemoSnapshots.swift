@@ -56,24 +56,6 @@ enum DemoSnapshots {
         return parseWindowSize(raw) ?? defaultWindowSize
     }
 
-    /// The capturing Mac may be set to always show scroll bars; the website
-    /// shows the macOS default, where a bar appears only while scrolling.
-    /// `DEVMACHINE_DEMO_SCROLL_BARS=Always` forces the other setting, to check
-    /// the views that keep the overlay scroller under it.
-    static func scrollBarDefaults(_ environment: [String: String]) -> [String: Any] {
-        ["AppleShowScrollBars": environment["DEVMACHINE_DEMO_SCROLL_BARS"] ?? "WhenScrolling"]
-    }
-
-    /// Applied before any window exists, since AppKit reads the scroller
-    /// style once when it first lays out a scroll view.
-    static func applyScrollBarDefaultsIfNeeded() {
-        guard targetDirectory != nil else { return }
-        let defaults = UserDefaults.standard
-        var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
-        arguments.merge(scrollBarDefaults(ProcessInfo.processInfo.environment)) { _, new in new }
-        defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
-    }
-
     /// The menubar's Usage pane is 640pt tall and scrolls; a little taller
     /// here, the screenshot shows the model rows to the end instead of
     /// cutting one in half.
@@ -84,7 +66,7 @@ enum DemoSnapshots {
         case "pull-requests", "publish-port", "publish-port-via", "menubar-usage", "skeleton-menubar-prs", "skeleton-menubar-usage",
              "worktree-remove", "worktrees-merged", "worktree-foreign",
              "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed",
-             "file-viewer", "packages-confirm", "map-location-editor",
+             "file-viewer", "files-tab", "files-window", "packages-confirm", "map-location-editor",
              "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
              "cli-update-toast-manual", "cli-update-toast-pinned", "packages-update-toast",
              "packages-update-toast-running", "packages-update-toast-done", "packages-update-toast-failed":
@@ -339,6 +321,18 @@ enum DemoSnapshots {
     /// The file viewer walk (`DEVMACHINE_DEMO_WALK=file-viewer`): a Swift file
     /// in the viewer, highlighted. It is also the check that a packaged app
     /// finds the highlighter's script inside its own bundle.
+    /// The scroll bar walk (`DEVMACHINE_DEMO_WALK=scroll-bars`): views that
+    /// scroll, to check that none draws a scroll bar track. Run it with
+    /// `DEVMACHINE_DEMO_SCROLL_BARS=Always` to stand in for that setting.
+    static let scrollBarScreens: [Screen] = [
+        Screen(id: "session-claude", fileName: "110-scroll-code.png", settleNanoseconds: 700_000_000),
+        Screen(id: "files-tab", fileName: "111-scroll-files-tab.png", settleNanoseconds: 300_000_000),
+        Screen(id: "files-window", fileName: "112-scroll-files-window.png", settleNanoseconds: 300_000_000),
+        Screen(id: "file-viewer", fileName: "113-scroll-file-viewer.png", settleNanoseconds: 200_000_000),
+        Screen(id: "session-defaults", fileName: "114-scroll-settings.png", settleNanoseconds: 500_000_000),
+        Screen(id: "chat-main", fileName: "115-scroll-chats.png", settleNanoseconds: 900_000_000),
+    ]
+
     static let fileViewerScreens: [Screen] = [
         Screen(id: "file-viewer", fileName: "40-file-viewer.png", settleNanoseconds: 200_000_000),
     ]
@@ -427,6 +421,7 @@ enum DemoSnapshots {
         case "site": return DemoSiteWalk.screens
         #endif
         case "chats": return DemoChats.screens
+        case "scroll-bars": return scrollBarScreens
         default: return screens
         }
     }
@@ -545,6 +540,10 @@ enum DemoSnapshots {
                 view = await hostKeySheetView(screen.id, model: environment.model)
             case "file-viewer":
                 view = await fileViewerView(model: environment.model)
+            case "files-tab":
+                view = await scrollingFilesTab(model: environment.model)
+            case "files-window":
+                view = scrollingFilesWindow(model: environment.model)
             case "file-transfer-tree":
                 view = await fileTransferTree(model: environment.model)
             case "file-transfer-saved", "file-transfer-failed":
@@ -841,6 +840,44 @@ enum DemoSnapshots {
     }
 
     /// Every store here answers from silence, so the tree never reaches a host.
+    /// More rows than fit, so each view has to scroll.
+    static let scrollingFileNames = (1...40).map { String(format: "module_%02d.swift", $0) }
+
+    private static func scrollingFilesTab(model: AppModel) async -> NSView {
+        let silent = HostRunner(remote: RemoteService(runner: DemoFileRunner(stdout: "")), local: DemoMode.runner)
+        let root = "/home/acme/dash"
+        let target = CommandTarget.remote(alias: acmeAlias, session: "dash")
+        let store = FileTreeStore(host: silent)
+        store.start(target)
+        for _ in 0..<50 where store.isLoading {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        store.root = root
+        store.children = [root: scrollingFileNames.map { FileTreeEntry(name: $0, kind: .file) }]
+        let tab = FilesTab(
+            store: store, target: target, workspace: "acme",
+            transfers: FileTransferStore(cli: { throw DevmachineCLIError.commandFailed("demo") }))
+            .environmentObject(model)
+            .environmentObject(FileViewerStore(host: silent))
+            .environmentObject(FileSearchStore(host: silent))
+            .environmentObject(FilesStore(service: FileService(host: silent), runner: DemoFileRunner(stdout: "")))
+            .background(Color.dmSidebarBg)
+        return standaloneView(tab, fittingSize: NSSize(width: 320, height: 420), autosize: false)
+    }
+
+    private static func scrollingFilesWindow(model: AppModel) -> NSView {
+        let silent = HostRunner(remote: RemoteService(runner: DemoFileRunner(stdout: "")), local: DemoMode.runner)
+        let store = FilesStore(service: FileService(host: silent), runner: DemoFileRunner(stdout: ""))
+        store.target = CommandTarget.remote(alias: acmeAlias, session: "dash")
+        store.path = "/home/acme/dash/Sources"
+        store.entries = scrollingFileNames.map { FileEntry(name: $0, isDir: false) }
+        let view = FilesView()
+            .environmentObject(store)
+            .environmentObject(FileViewerStore(host: silent))
+            .environmentObject(model)
+        return standaloneView(view, fittingSize: NSSize(width: 520, height: 420), autosize: false)
+    }
+
     private static func fileTransferTree(model: AppModel) async -> NSView {
         let silent = HostRunner(remote: RemoteService(runner: DemoFileRunner(stdout: "")), local: DemoMode.runner)
         let root = "/home/acme/dash"

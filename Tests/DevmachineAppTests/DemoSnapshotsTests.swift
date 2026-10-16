@@ -205,15 +205,6 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(DemoSnapshots.chrome(for: "onboarding"), .window)
     }
 
-    func testTheWalkHidesScrollBarsThatAreNotInUse() {
-        XCTAssertEqual(DemoSnapshots.scrollBarDefaults([:])["AppleShowScrollBars"] as? String, "WhenScrolling")
-    }
-
-    func testTheWalkCanForceScrollBarsAlwaysOn() {
-        let defaults = DemoSnapshots.scrollBarDefaults(["DEVMACHINE_DEMO_SCROLL_BARS": "Always"])
-        XCTAssertEqual(defaults["AppleShowScrollBars"] as? String, "Always")
-    }
-
     func testTheUsagePaneIsTallEnoughForEveryModelRow() {
         XCTAssertEqual(DemoSnapshots.usagePaneHeight, 700)
     }
