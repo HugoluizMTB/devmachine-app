@@ -756,6 +756,17 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   the window buttons come out grey (the window is never key) and are painted
   again where the window put them (`SnapshotChrome.measure`).
 
+## Sidebar scroll bars
+- The left sidebar lists (workspaces, chats, schedule) and the Context
+  sidebar call `.overlayScrollers()`: the thin scroller with no track, even
+  with System Settings → "Show scroll bars: Always", whose track would take
+  width from these narrow columns. `OverlayScrollerProbe` sets its enclosing
+  `NSScrollView` to `.overlay` and sets it again a turn after
+  `NSScroller.preferredScrollerStyleDidChangeNotification`, since AppKit
+  resets every scroll view on that notification. Other scroll views keep the
+  system setting. `DEVMACHINE_DEMO_SCROLL_BARS=Always` renders the demo
+  under that setting.
+
 ## Chats
 - **The engine is `devmachine chat`; the app only draws.** One process per
   message (`chat send`, `chat ask`), NDJSON `started/text/tool/denied/done/error`

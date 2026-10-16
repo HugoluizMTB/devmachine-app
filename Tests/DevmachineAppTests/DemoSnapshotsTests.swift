@@ -193,7 +193,12 @@ final class DemoSnapshotsTests: XCTestCase {
     }
 
     func testTheWalkHidesScrollBarsThatAreNotInUse() {
-        XCTAssertEqual(DemoSnapshots.scrollBarDefaults["AppleShowScrollBars"] as? String, "WhenScrolling")
+        XCTAssertEqual(DemoSnapshots.scrollBarDefaults([:])["AppleShowScrollBars"] as? String, "WhenScrolling")
+    }
+
+    func testTheWalkCanForceScrollBarsAlwaysOn() {
+        let defaults = DemoSnapshots.scrollBarDefaults(["DEVMACHINE_DEMO_SCROLL_BARS": "Always"])
+        XCTAssertEqual(defaults["AppleShowScrollBars"] as? String, "Always")
     }
 
     func testTheUsagePaneIsTallEnoughForEveryModelRow() {

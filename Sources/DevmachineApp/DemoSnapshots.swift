@@ -58,7 +58,11 @@ enum DemoSnapshots {
 
     /// The capturing Mac may be set to always show scroll bars; the website
     /// shows the macOS default, where a bar appears only while scrolling.
-    static let scrollBarDefaults: [String: Any] = ["AppleShowScrollBars": "WhenScrolling"]
+    /// `DEVMACHINE_DEMO_SCROLL_BARS=Always` forces the other setting, to check
+    /// the views that keep the overlay scroller under it.
+    static func scrollBarDefaults(_ environment: [String: String]) -> [String: Any] {
+        ["AppleShowScrollBars": environment["DEVMACHINE_DEMO_SCROLL_BARS"] ?? "WhenScrolling"]
+    }
 
     /// Applied before any window exists, since AppKit reads the scroller
     /// style once when it first lays out a scroll view.
@@ -66,7 +70,7 @@ enum DemoSnapshots {
         guard targetDirectory != nil else { return }
         let defaults = UserDefaults.standard
         var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
-        arguments.merge(scrollBarDefaults) { _, new in new }
+        arguments.merge(scrollBarDefaults(ProcessInfo.processInfo.environment)) { _, new in new }
         defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
     }
 
