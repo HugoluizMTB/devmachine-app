@@ -180,6 +180,7 @@ enum DemoChats {
 
     static func prepare(_ id: String, model: AppModel, store: ChatStore = .shared) async {
         DemoContextOverride.shared.value = nil
+        DemoData.transcriptOverride = [:]
         seed(store)
         store.openPicker = nil
         model.sidebarCollapsed = false
@@ -241,6 +242,9 @@ enum DemoChats {
             let codex = id == "context-ask-codex"
             askConversations(store)
             DemoContextOverride.shared.value = askContext(claude: !codex)
+            if !codex { DemoData.transcriptOverride = [askTranscriptKind: askTranscript(working: false)] }
+            model.contextCollapsed = false
+            model.contextWidth = DMPaneWidth.context.ideal
             model.clickSession(SessionRef(alias: "acme-devmachine", name: codex ? askCodexSession : askClaudeSession))
             model.contextTab = .context
         default:
@@ -250,6 +254,7 @@ enum DemoChats {
 
     static func reset(_ store: ChatStore = .shared) {
         DemoContextOverride.shared.value = nil
+        DemoData.transcriptOverride = [:]
         store.openPicker = nil
         AppModel.shared?.sidebarCollapsed = false
     }
@@ -350,5 +355,75 @@ struct QuickChatBackdrop<Content: View>: View {
         }
         .frame(width: m.pt(900), height: m.pt(height))
         .environment(\.colorScheme, .dark)
+    }
+}
+
+extension DemoChats {
+    static let askTranscriptKind = TerminalKind.remote(alias: "acme-devmachine", session: askClaudeSession)
+
+    /// The payments refactor session's screen, long enough to fill the pane,
+    /// so the terminal beside the Ask section shows output, not empty rows.
+    static func askTranscript(working: Bool) -> String {
+        let esc = "\u{1B}["
+        let cyan = esc + "36m", green = esc + "32m", red = esc + "31m", yellow = esc + "33m"
+        let dim = esc + "2m", bold = esc + "1m", plain = esc + "0m"
+        var lines = [
+            "\(bold)\(cyan)● Claude Code\(plain) — payments refactor",
+            "",
+            "\(cyan)⏺\(plain) Read Sources/Payments/ChargeService.swift (212 lines)",
+            "\(cyan)⏺\(plain) Read Sources/Payments/GatewayClient.swift (148 lines)",
+            "\(cyan)⏺\(plain) Grep \"retry\" in Sources/Payments — 9 matches",
+            "",
+            "The retry loop in ChargeService.charge(_:) calls gateway.charge again after a",
+            "timeout. The gateway may have taken the first charge, so a slow reply turns",
+            "into two charges on the customer's card.",
+            "",
+            "\(bold)Todo\(plain)",
+            "  \(green)✔\(plain) Reproduce the double-charge with a fake gateway",
+            "  \(green)✔\(plain) Add an idempotency key to ChargeService",
+            "  \(yellow)→\(plain) Cover the timeout-then-retry path with a test",
+            "",
+            "\(cyan)⏺\(plain) Update Sources/Payments/ChargeService.swift",
+            "  \(dim)40\(plain)   func charge(_ order: Order) async throws -> Receipt {",
+            "  \(dim)41\(plain)       for attempt in 1...maxAttempts {",
+            "  \(dim)42\(plain) \(red)-         let receipt = try await gateway.charge(order)\(plain)",
+            "  \(dim)42\(plain) \(green)+         let receipt = try await gateway.charge(\(plain)",
+            "  \(dim)43\(plain) \(green)+             order, idempotencyKey: order.id.uuidString)\(plain)",
+            "  \(dim)44\(plain)           if receipt.isSettled { return receipt }",
+            "  \(dim)45\(plain)       }",
+            "",
+            "\(cyan)⏺\(plain) Update Tests/PaymentsTests/ChargeServiceTests.swift",
+            "  \(green)+   func testTimeoutThenRetryChargesOnce() async throws {\(plain)",
+            "  \(green)+       let gateway = FakeGateway(firstReply: .timeout)\(plain)",
+            "  \(green)+       let service = ChargeService(gateway: gateway)\(plain)",
+            "  \(green)+       _ = try await service.charge(.sample)\(plain)",
+            "  \(green)+       XCTAssertEqual(gateway.charges.count, 1)\(plain)",
+            "  \(green)+   }\(plain)",
+            "",
+            "\(cyan)⏺\(plain) Bash swift test --filter ChargeService",
+            "  Building for debugging...",
+            "  Test Suite 'ChargeServiceTests' started",
+            "  Test Case 'testChargeSucceedsOnFirstTry' passed (0.012 seconds)",
+            "  Test Case 'testDeclinedCardThrows' passed (0.009 seconds)",
+            "  Test Case 'testTimeoutThenRetryChargesOnce' passed (0.031 seconds)",
+            "  \(green)Test Suite 'ChargeServiceTests' passed: 6 tests, 0 failures\(plain)",
+            "",
+            "The retry now sends the same idempotency key, so the gateway returns the",
+            "first charge instead of taking a second one.",
+            "",
+            "\(cyan)⏺\(plain) Read Sources/Payments/RefundService.swift (96 lines)",
+            "RefundService has the same retry shape; checking it next.",
+        ]
+        if working {
+            lines += [
+                "",
+                "\(cyan)⏺\(plain) Update Sources/Payments/RefundService.swift",
+                "  \(dim)31\(plain) \(green)+         idempotencyKey: refund.id.uuidString)\(plain)",
+                "\(cyan)⏺\(plain) Bash swift test --filter RefundService",
+                "  \(green)Test Suite 'RefundServiceTests' passed: 4 tests, 0 failures\(plain)",
+            ]
+        }
+        lines.append("\(cyan)❯\(plain)")
+        return lines.joined(separator: "\n")
     }
 }

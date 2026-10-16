@@ -124,6 +124,8 @@ enum DemoSnapshots {
         let settleNanoseconds: UInt64
         /// The control a zoomed capture centres on; nil captures the whole view.
         var zoom: String?
+        /// The window's content size for this screen; nil keeps the walk's.
+        var windowSize: NSSize?
     }
 
     /// The fixed walk, in capture order. `settleNanoseconds` is how long each
@@ -151,7 +153,7 @@ enum DemoSnapshots {
         Screen(id: "chat-main", fileName: "26-chats.png", settleNanoseconds: 900_000_000),
         Screen(
             id: "context-ask-claude", fileName: "27-ask.png", settleNanoseconds: 1_200_000_000,
-            zoom: "context:ask"),
+            zoom: "context:ask", windowSize: NSSize(width: 1600, height: 1000)),
         Screen(id: "chat-mode-menu", fileName: "28-mode-menu.png", settleNanoseconds: 500_000_000),
     ]
 
@@ -493,6 +495,11 @@ enum DemoSnapshots {
         }
         #endif
         for screen in screens where !screen.id.hasPrefix("site-") {
+            let size = screen.windowSize ?? windowSize
+            if window.contentLayoutRect.size != size {
+                window.setContentSize(size)
+                if isHidden { window.setFrameOrigin(hiddenOrigin) }
+            }
             await prepare(screen, environment: environment, mainWindow: window)
             try? await Task.sleep(nanoseconds: screen.settleNanoseconds)
             // A pane resized after its transcript was drawn (the grid, the
@@ -1039,7 +1046,9 @@ enum DemoSnapshots {
         if let zoom, let control = DemoClickTargets.frames[zoom],
            let rep = bitmap(of: view, scale: DemoCamera.captureScale) {
             let scale = CGFloat(rep.pixelsWide) / view.bounds.width
-            let rect = zoomRect(around: control, in: view.bounds.size, zoom: DemoCamera.zoom)
+            let rect = zoomRect(
+                around: control, in: view.bounds.size, zoom: DemoCamera.zoom,
+                left: zoomLeftEdge(for: zoom, frames: DemoClickTargets.frames))
             let cropped = DemoCamera.crop(flattenTransparency(rep), to: rect, scale: scale)
             let windowScale = view.window?.backingScaleFactor ?? 2
             let resized = resample(cropped, width: Int(view.bounds.width * windowScale))
@@ -1071,13 +1080,24 @@ enum DemoSnapshots {
     }
 
     /// A rect of the view's shape around a control, `zoom` times smaller,
-    /// kept inside the view.
-    static func zoomRect(around control: CGRect, in size: NSSize, zoom: CGFloat) -> CGRect {
-        let width = size.width / zoom
-        let height = size.height / zoom
-        let x = min(max(0, control.midX - width / 2), size.width - width)
+    /// kept inside the view. With `left`, it widens until that x is in view.
+    nonisolated static func zoomRect(around control: CGRect, in size: NSSize, zoom: CGFloat, left: CGFloat? = nil) -> CGRect {
+        var width = size.width / zoom
+        if let left { width = min(size.width, max(width, control.maxX - left)) }
+        let height = width * size.height / size.width
+        var x = min(max(0, control.midX - width / 2), size.width - width)
+        if let left { x = min(x, max(0, left)) }
         let y = min(max(0, control.midY - height / 2), size.height - height)
         return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    /// The zooms that also keep the session pane's left edge in view, so the
+    /// terminal's output shows beside the control.
+    nonisolated static let zoomsReachingThePane: Set<String> = ["context:ask"]
+
+    static func zoomLeftEdge(for target: String, frames: [String: CGRect]) -> CGFloat? {
+        guard zoomsReachingThePane.contains(target) else { return nil }
+        return frames["pane:main"]?.minX
     }
 
     /// At the window's own scale, or at `scale` pixels per point when given.

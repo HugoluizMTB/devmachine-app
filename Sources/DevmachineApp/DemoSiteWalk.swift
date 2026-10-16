@@ -353,7 +353,7 @@ enum DemoSiteWalk {
 
             for frame in scene.frames {
                 if let before = last {
-                    let target = frame.zoom.flatMap { DemoClickTargets.frames[$0] }.map(DemoCamera.rect(around:))
+                    let target = frame.zoom.flatMap(DemoCamera.rect(for:))
                     if target != camera {
                         let still = DemoPointer.draw(on: before.image, at: pointer, ring: nil, scale: scale)
                         for rect in DemoCamera.path(from: camera, to: target) {

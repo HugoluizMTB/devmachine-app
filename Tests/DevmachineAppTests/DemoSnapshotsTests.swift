@@ -93,6 +93,19 @@ final class DemoSnapshotsTests: XCTestCase {
         let last = Array(DemoSnapshots.screens.suffix(4))
         XCTAssertEqual(last.map(\.id), ["quick-panel-answer", "chat-main", "context-ask-claude", "chat-mode-menu"])
         XCTAssertEqual(last.map(\.zoom), [nil, nil, "context:ask", nil])
+        XCTAssertEqual(last[2].windowSize, NSSize(width: 1600, height: 1000))
+    }
+
+    func testAZoomThatReachesThePaneWidensToItsLeftEdgeAndKeepsTheShape() {
+        let size = CGSize(width: 1600, height: 1000)
+        let ask = CGRect(x: 1250, y: 600, width: 330, height: 380)
+        let rect = DemoSnapshots.zoomRect(around: ask, in: size, zoom: 1.8, left: 260)
+        XCTAssertEqual(rect.minX, 260)
+        XCTAssertEqual(rect.maxX, ask.maxX)
+        XCTAssertEqual(rect.width / rect.height, 1.6, accuracy: 0.001)
+        XCTAssertEqual(rect.maxY, 1000)
+        XCTAssertEqual(DemoSnapshots.zoomLeftEdge(for: "context:ask", frames: ["pane:main": CGRect(x: 260, y: 0, width: 1, height: 1)]), 260)
+        XCTAssertNil(DemoSnapshots.zoomLeftEdge(for: "context:todo", frames: ["pane:main": .zero]))
     }
 
     func testAZoomRectKeepsTheViewShapeAndStaysInside() {

@@ -316,6 +316,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.dmContentBg)
                 .ignoresSafeArea(edges: .top)
+                .demoClickTarget("pane:main")
             if let page = model.activePage {
                 PageHost(page: page)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

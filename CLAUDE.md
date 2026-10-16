@@ -1602,7 +1602,10 @@ once may fail there.
 - `quickchat` draws the quick panel alone over a gradient desktop
   (`desktopView(for:)`), since the real panel is a window of its own. A
   default-walk screen with `zoom` (`27-ask.png`) is cropped the same way,
-  then scaled back to the window's 2x size.
+  then scaled back to the window's 2x size; a screen may set its own
+  `windowSize`. A zoom on Ask (`zoomsReachingThePane`) widens to the session
+  pane's left edge, and that session gets a transcript that fills the pane,
+  so the terminal beside Ask shows output instead of empty rows.
 - `cacheDisplay` does not catch `NSProgressIndicator`'s animation, so a
   spinner is one still frame; Home's board is written again for the walk's
   window, since the one written at launch was laid out for a smaller one.

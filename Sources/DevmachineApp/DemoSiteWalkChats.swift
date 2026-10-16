@@ -214,7 +214,7 @@ extension DemoSiteWalk {
             reset(model)
             DemoChats.seed(store)
             DemoContextOverride.shared.value = askSceneContext
-            DemoData.transcriptOverride = [contextKind: contextTranscripts[2]]
+            DemoData.transcriptOverride = [contextKind: DemoChats.askTranscript(working: false)]
             model.sessionsByAlias = sessions(busy: true, attention: true)
             model.contextTab = .context
             model.goHome()
@@ -231,7 +231,7 @@ extension DemoSiteWalk {
                 answers: [prefix(of: DemoChats.askAnswer, step: index, of: askAnswerSteps)],
                 streaming: index < askAnswerSteps))
         case .sessionWorks:
-            DemoData.transcriptOverride = [contextKind: contextTranscripts[3]]
+            DemoData.transcriptOverride = [contextKind: DemoChats.askTranscript(working: true)]
         case let .followTyping(index):
             asks.drafts[askKey] = followTyped[index]
         case let .followAnswer(index):
