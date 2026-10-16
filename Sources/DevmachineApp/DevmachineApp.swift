@@ -169,8 +169,10 @@ struct DevmachineApp: App {
             CommandMenu("Session") {
                 Button("Home") { model.goHome() }
                     .keyboardShortcut("0", modifiers: .command)
-                Button("New Session") { model.requestQuickSession() }
-                    .keyboardShortcut("n", modifiers: .command)
+                Button(model.appMode == .chats ? "New Chat" : "New Session") {
+                    if model.appMode == .chats { model.showNewChat() } else { model.requestQuickSession() }
+                }
+                .keyboardShortcut("n", modifiers: .command)
                 Button("End Session…") { model.requestEndSession() }
                     .disabled(model.endableSession == nil)
                 Divider()
@@ -204,6 +206,11 @@ struct DevmachineApp: App {
             // terminal is a view from AppKit that holds first responder, which
             // is where the hidden-button shortcuts were being lost.
             CommandGroup(after: .sidebar) {
+                Button("Chats") { model.showChats() }
+                    .keyboardShortcut("1", modifiers: .command)
+                Button("Code") { model.appMode = .code }
+                    .keyboardShortcut("2", modifiers: .command)
+                Divider()
                 Button("Toggle Sidebar") {
                     withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed.toggle() }
                 }

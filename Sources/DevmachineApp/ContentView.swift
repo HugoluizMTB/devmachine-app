@@ -21,6 +21,7 @@ struct ContentView: View {
     @ObservedObject private var split = DocumentSplitState.shared
     @ObservedObject private var compat = WidgetCompatibilityStore.shared
     @State private var sidebarButtonFrame: CGRect?
+    @ObservedObject private var chats = ChatStore.shared
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -33,9 +34,16 @@ struct ContentView: View {
                     onStart: { Task { await model.completeOnboarding(saving: settingsStore) } },
                     onSkip: { Task { await model.skipOnboarding(saving: settingsStore) } })
             } else {
-                mainRow
+                Group {
+                    if model.appMode == .chats {
+                        ChatsView(store: chats)
+                    } else {
+                        mainRow
+                    }
+                }
                     .onAppear { stats.start() }
                     .environment(\.collapsedSidebarButtonFrame, model.sidebarCollapsed ? sidebarButtonFrame : nil)
+                modeToggle
                 if model.sidebarCollapsed {
                     collapsedSidebarButton
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.windowSpace)) } action: {
@@ -118,7 +126,17 @@ struct ContentView: View {
             Task { await compat.check() }
             StackBoardController.startAll()
         }
-        .onReceive(settingsStore.$settings) { model.settings = $0 }
+        .onReceive(settingsStore.$settings) {
+            model.settings = $0
+            chats.settings = $0?.chats ?? .default
+        }
+        .onReceive(model.$workspaces) { _ in
+            let names = model.visibleWorkspaces.map(\.name)
+            if chats.workspaces != names { chats.workspaces = names }
+        }
+        .onChange(of: model.appMode) { _, mode in
+            if mode == .chats { chats.retryAwaitedLogin() }
+        }
         .onChange(of: model.pendingPublishWorkspace) { _, workspace in
             guard let workspace else { return }
             model.pendingPublishWorkspace = nil
@@ -306,6 +324,20 @@ struct ContentView: View {
     }
 
     static let windowSpace = "window"
+
+    /// Beside the window buttons, at the sidebar's right edge; with the
+    /// sidebar closed, right after the window buttons.
+    private var modeToggle: some View {
+        HStack(spacing: 0) {
+            if !model.sidebarCollapsed { Spacer(minLength: 0) }
+            ChatsModeToggle()
+        }
+        .frame(width: model.sidebarCollapsed ? nil : m.pt(model.sidebarWidth) - m.pt(12), alignment: .leading)
+        .padding(.leading, model.sidebarCollapsed ? m.pt(78) : 0)
+        .padding(.top, m.pt(3))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .ignoresSafeArea(edges: .top)
+    }
 
     private var collapsedSidebarButton: some View {
         Button {

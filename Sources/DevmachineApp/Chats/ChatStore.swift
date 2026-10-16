@@ -126,6 +126,9 @@ final class ChatStore: ObservableObject {
     @Published var openPicker: ChatPicker?
     @Published var workspaces: [String] = []
     @Published var settings = ChatSettings.default
+    /// The chat whose question goes out again once the person comes back
+    /// from logging in.
+    @Published private(set) var awaitingLogin: String?
 
     private let runner: any ChatCommandRunning
     private let defaults: UserDefaults?
@@ -274,7 +277,8 @@ final class ChatStore: ObservableObject {
         launch(
             key: id, text: body,
             arguments: ChatCommand.send(
-                chatID: id, place: record.place, harness: record.harness, folder: record.folder, message: body))
+                chatID: id.hasPrefix(Self.pendingPrefix) ? nil : id, place: record.place, harness: record.harness,
+                folder: record.folder, message: body))
         return id
     }
 
@@ -317,6 +321,16 @@ final class ChatStore: ObservableObject {
                 chatID: chatID, place: record.place, harness: record.harness, folder: record.folder, message: text)
         }
         launch(key: id, text: text, arguments: arguments)
+    }
+
+    func awaitLogin(_ id: String) {
+        awaitingLogin = current(id)
+    }
+
+    func retryAwaitedLogin() {
+        guard let id = awaitingLogin else { return }
+        awaitingLogin = nil
+        retry(id)
     }
 
     /// Esc: the CLI is told to stop (it kills the harness) and what was

@@ -5,7 +5,7 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case general, machines, workspaces, packages, harnesses, shares, appearance, healthCheck, about
+    case general, machines, workspaces, packages, harnesses, chats, shares, appearance, healthCheck, about
 
     var title: String {
         switch self {
@@ -14,6 +14,7 @@ enum SettingsSection: String, CaseIterable {
         case .workspaces: return "Workspaces"
         case .packages: return "Packages"
         case .harnesses: return "Coding agents"
+        case .chats: return "Chats"
         case .shares: return "Shares"
         case .appearance: return "Appearance"
         case .healthCheck: return "Health check"
@@ -28,6 +29,7 @@ enum SettingsSection: String, CaseIterable {
         case .workspaces: return "Every workspace by machine: which ones the app reaches, and new, edit, forget or destroy."
         case .packages: return "Browse the catalog, and add or remove packages on a machine or workspace."
         case .harnesses: return "Choose what new sessions start with."
+        case .chats: return "Quick questions to Claude or Codex, apart from your coding sessions."
         case .shares: return "Sessions this Mac shared: who can still join, and until when."
         case .appearance: return "The size of the interface, the wallpaper, and how a terminal looks."
         case .healthCheck: return "Checks that this Mac, the devmachine CLI and your machines work together. It runs devmachine doctor."
@@ -42,6 +44,7 @@ enum SettingsSection: String, CaseIterable {
         case .workspaces: return "square.grid.2x2"
         case .packages: return "shippingbox"
         case .harnesses: return "sparkles"
+        case .chats: return "bubble.left.and.bubble.right"
         case .shares: return "person.2"
         case .appearance: return "photo"
         case .healthCheck: return "stethoscope"
@@ -310,6 +313,7 @@ struct SetupPage: View {
                     case .workspaces: EmptyView()
                     case .packages: EmptyView()
                     case .harnesses: harnessesBlock.task { await machinesStore.load() }
+                    case .chats: EmptyView()
                     case .shares: SharesSettingsView()
                     case .appearance: appearanceBlock
                     case .healthCheck: HealthCheckView()
