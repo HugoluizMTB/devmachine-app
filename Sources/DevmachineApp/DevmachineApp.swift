@@ -169,6 +169,7 @@ struct DevmachineApp: App {
                 .background(MainWindowSizer().frame(width: 0, height: 0))
         }
         .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) { }
             // Replaces File > Close so ⌘W can ask to end the one session on

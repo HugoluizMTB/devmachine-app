@@ -20,7 +20,6 @@ struct ContentView: View {
     @ObservedObject private var shares = SessionShareStore.shared
     @ObservedObject private var split = DocumentSplitState.shared
     @ObservedObject private var compat = WidgetCompatibilityStore.shared
-    @State private var sidebarButtonFrame: CGRect?
     @ObservedObject private var chats = ChatStore.shared
     @Environment(\.openWindow) private var openWindow
 
@@ -43,12 +42,12 @@ struct ContentView: View {
                     }
                 }
                     .onAppear { stats.start() }
-                    .environment(\.collapsedSidebarButtonFrame, model.sidebarCollapsed ? sidebarButtonFrame : nil)
-                if model.sidebarCollapsed {
-                    collapsedSidebarButton
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.windowSpace)) } action: {
-                            sidebarButtonFrame = $0
-                        }
+            }
+        }
+        .toolbar {
+            if !model.showsOnboarding {
+                ToolbarItem(placement: .navigation) {
+                    SidebarToggleButton()
                 }
             }
         }
@@ -292,7 +291,8 @@ struct ContentView: View {
             MainPane()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.dmContentBg)
-                .ignoresSafeArea(edges: .top)
+                .ignoresSafeArea(edges: model.sidebarCollapsed ? [] : .top)
+                .background(Color.dmContentBg.ignoresSafeArea())
             if let page = model.activePage {
                 PageHost(page: page)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -328,21 +328,6 @@ struct ContentView: View {
     }
 
     static let windowSpace = "window"
-
-    private var collapsedSidebarButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = false }
-        } label: {
-            Image(systemName: "sidebar.left")
-                .padding(m.pt(9))
-                .dmGlass(in: Circle(), stroke: .white.opacity(0.15))
-                .shadow(radius: m.pt(6), y: m.pt(2))
-        }
-        .buttonStyle(DMIconButtonStyle(size: 13, weight: .semibold, tint: .white.opacity(0.9)))
-        .help("Open sidebar (⌘B)")
-        .padding(.top, m.pt(18))
-        .padding(.leading, m.pt(14))
-    }
 
 }
 

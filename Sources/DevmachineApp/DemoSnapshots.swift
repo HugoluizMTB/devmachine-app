@@ -555,7 +555,8 @@ enum DemoSnapshots {
             #endif
             default:
                 window.displayIfNeeded()
-                view = window.contentView ?? NSView()
+                SnapshotChrome.measure(window)
+                view = SnapshotChrome.capturedView(window)
             }
             capture(view, kind: chrome(for: screen.id), to: directory.appendingPathComponent(screen.fileName))
         }

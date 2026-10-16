@@ -117,3 +117,10 @@ final class ScheduleModeTests: XCTestCase {
         XCTAssertEqual(store.newTaskRequests, before + 1)
     }
 }
+
+final class SidebarToggleButtonTests: XCTestCase {
+    func testItsLabelSaysWhatItWillDo() {
+        XCTAssertEqual(SidebarToggleButton.label(collapsed: true), "Show sidebar")
+        XCTAssertEqual(SidebarToggleButton.label(collapsed: false), "Hide sidebar")
+    }
+}

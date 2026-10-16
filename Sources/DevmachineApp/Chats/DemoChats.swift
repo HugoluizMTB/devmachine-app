@@ -149,6 +149,8 @@ enum DemoChats {
         .init(id: "chat-error-logged-out", fileName: "13-chat-error-logged-out.png", settleNanoseconds: 600_000_000),
         .init(id: "settings-chats", fileName: "14-settings-chats.png", settleNanoseconds: 500_000_000),
         .init(id: "chat-mode-menu", fileName: "15-chat-mode-menu.png", settleNanoseconds: 500_000_000),
+        .init(id: "schedule-mode", fileName: "16-schedule-mode.png", settleNanoseconds: 900_000_000),
+        .init(id: "sidebar-collapsed", fileName: "17-sidebar-collapsed.png", settleNanoseconds: 900_000_000),
     ]
 
     static let panelScreens: Set<String> = ["quick-panel", "quick-panel-answer", "quick-panel-continue", "menubar-chats"]
@@ -161,7 +163,18 @@ enum DemoChats {
         DemoContextOverride.shared.value = nil
         seed(store)
         store.openPicker = nil
+        model.sidebarCollapsed = false
         switch id {
+        case "schedule-mode":
+            #if DEBUG
+            DemoScheduled.seed(ScheduledStore.shared)
+            ScheduledStore.shared.selectedID = DemoScheduled.briefingID
+            #endif
+            model.showPage(.scheduled)
+        case "sidebar-collapsed":
+            model.clickSession(SessionRef(alias: "globex-devmachine", name: "claude"))
+            model.contextTab = .context
+            model.sidebarCollapsed = true
         case "chat-main":
             model.showChats(select: selectedID, store: store)
         case "chat-new":
@@ -204,6 +217,7 @@ enum DemoChats {
     static func reset(_ store: ChatStore = .shared) {
         DemoContextOverride.shared.value = nil
         store.openPicker = nil
+        AppModel.shared?.sidebarCollapsed = false
     }
 
     private static func askContext(claude: Bool) -> ContextState {

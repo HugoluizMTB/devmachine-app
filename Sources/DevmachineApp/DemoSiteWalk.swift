@@ -379,8 +379,9 @@ enum DemoSiteWalk {
                 TerminalRegistry.shared.replayDemoTranscripts()
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 window.displayIfNeeded()
-                guard let content = window.contentView,
-                      let shot = DemoSnapshots.bitmap(of: content, scale: captureScale)
+                SnapshotChrome.measure(window)
+                let content = SnapshotChrome.capturedView(window)
+                guard let shot = DemoSnapshots.bitmap(of: content, scale: captureScale)
                 else { continue }
                 scale = CGFloat(shot.pixelsWide) / content.bounds.width
                 var state = Overlay(image: DemoSnapshots.flattenTransparency(shot))

@@ -735,6 +735,16 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   and 127 is how a host without tmux is told apart. Without a process table
   the pane's own command still counts.
 
+## Window toolbar
+- The main window has a unified toolbar (`.windowToolbarStyle(.unified(showsTitle: false))`)
+  whose one item is the sidebar toggle (`SidebarToggleButton`, ⌘B), so the
+  title bar is the taller one and macOS places the window buttons itself.
+  Never move them by hand. The terminal pane runs under the bar only while
+  the sidebar is open; closed, it starts below it.
+- Demo frames capture the window's frame view (`SnapshotChrome.capturedView`),
+  so the toolbar shows; the window buttons come out grey (the window is never
+  key) and are painted again where the window put them (`SnapshotChrome.measure`).
+
 ## Chats
 - **The engine is `devmachine chat`; the app only draws.** One process per
   message (`chat send`, `chat ask`), NDJSON `started/text/tool/denied/done/error`

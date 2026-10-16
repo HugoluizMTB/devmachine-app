@@ -1,9 +1,9 @@
 import SwiftUI
 import DevmachineCore
 
-/// The sidebar's first row in both modes: "CODE WORKSPACES ▾" or "CHAT
-/// WORKSPACES ▾", which opens the Code / Chats menu, then refresh and
-/// close at the right. In Chats, a dot by the title says a session in Code
+/// The sidebar's first row in every mode: "CODE WORKSPACES ▾", "CHAT
+/// WORKSPACES ▾" or "SCHEDULE ▾", which opens the mode menu, then refresh at
+/// the right. In Chats, a dot by the title says a session in Code
 /// waits for the person.
 struct SidebarModeHeader: View {
     let refresh: () -> Void
@@ -61,12 +61,6 @@ struct SidebarModeHeader: View {
             DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, action: refresh)
                 .help("Refresh")
                 .accessibilityLabel("Refresh")
-            DMIconButton(systemImage: "sidebar.left", size: DMMetrics.baseFontSize) {
-                withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed = true }
-            }
-            .help("Close sidebar (⌘B)")
-            .accessibilityLabel("Close sidebar")
-            .demoClickTarget("footer:close-sidebar")
         }
         .padding(.horizontal, m.pt(12))
     }
@@ -164,5 +158,24 @@ struct SidebarModeMenuOverlay: ViewModifier {
             ]
         }
         return items
+    }
+}
+
+/// Shows or hides the sidebar, in the window's toolbar right after the
+/// window buttons.
+struct SidebarToggleButton: View {
+    @EnvironmentObject private var model: AppModel
+
+    static func label(collapsed: Bool) -> String { collapsed ? "Show sidebar" : "Hide sidebar" }
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) { model.sidebarCollapsed.toggle() }
+        } label: {
+            Image(systemName: "sidebar.left")
+        }
+        .help(Self.label(collapsed: model.sidebarCollapsed) + " (⌘B)")
+        .accessibilityLabel(Self.label(collapsed: model.sidebarCollapsed))
+        .demoClickTarget("footer:close-sidebar")
     }
 }
