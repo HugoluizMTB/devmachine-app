@@ -156,4 +156,18 @@ final class QuickChatModelTests: XCTestCase {
         XCTAssertNil(model.question)
         XCTAssertFalse(model.isContinuing)
     }
+
+    func testEachOpenAsksTheFieldForTheKeyboardAgain() {
+        let model = QuickChatModel(store: ChatStore(runner: FakeChatRunner(streams: [])))
+        model.requestFocus()
+        model.prepareForShow()
+        model.requestFocus()
+        XCTAssertEqual(model.focusRequests, 2)
+    }
+
+    func testEscapeGivesTheKeyboardBackOnlyToAnotherApp() {
+        XCTAssertTrue(QuickChatPanelController.returnsFocus(toPID: 42, ownPID: 7))
+        XCTAssertFalse(QuickChatPanelController.returnsFocus(toPID: 7, ownPID: 7))
+        XCTAssertFalse(QuickChatPanelController.returnsFocus(toPID: nil, ownPID: 7))
+    }
 }

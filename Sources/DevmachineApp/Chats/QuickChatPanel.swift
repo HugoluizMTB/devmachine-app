@@ -14,6 +14,9 @@ final class QuickChatModel: ObservableObject {
     @Published var place: ChatPlace?
     @Published var showsChooser = false
     @Published private(set) var question: String?
+    /// Goes up each time the panel opens, so its field takes the keyboard
+    /// again, not only the first time the view appears.
+    @Published private(set) var focusRequests = 0
 
     let store: ChatStore
     var openInApp: (String?) -> Void = { _ in }
@@ -52,6 +55,10 @@ final class QuickChatModel: ObservableObject {
         question = nil
         showsChooser = false
         store.openPicker = nil
+    }
+
+    func requestFocus() {
+        focusRequests += 1
     }
 
     func send() {
@@ -116,6 +123,8 @@ final class QuickChatPanelController: NSObject, NSWindowDelegate {
 
     let model = QuickChatModel(store: .shared)
     private var panel: QuickChatWindow?
+    /// The app that was in front when the shortcut opened the panel.
+    private var returnTo: NSRunningApplication?
     private var hotkeys: QuickChatHotkeyController?
     private var settings: AnyCancellable?
 
@@ -123,7 +132,7 @@ final class QuickChatPanelController: NSObject, NSWindowDelegate {
         guard hotkeys == nil else { return }
         let controller = QuickChatHotkeyController(registrar: registrar) { [weak self] in self?.toggle() }
         hotkeys = controller
-        model.close = { [weak self] in self?.hide() }
+        model.close = { [weak self] in self?.dismiss() }
         model.openInApp = { [weak self] id in self?.openInApp(id) }
         settings = SettingsStore.shared.$settings.sink { settings in
             let chats = settings?.chats ?? .default
@@ -148,17 +157,57 @@ final class QuickChatPanelController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        let front = NSWorkspace.shared.frontmostApplication
+        returnTo = Self.returnsFocus(toPID: front?.processIdentifier) ? front : nil
         model.prepareForShow()
         let panel = self.panel ?? makePanel()
         self.panel = panel
         Task { await ChatStore.shared.refresh() }
         position(panel, height: panel.frame.height)
         panel.makeKeyAndOrderFront(nil)
+        focusField(in: panel)
     }
 
     func hide() {
         model.showsChooser = false
         panel?.orderOut(nil)
+    }
+
+    /// Esc: the panel goes away and the app that was in front gets the
+    /// keyboard back.
+    func dismiss() {
+        hide()
+        returnTo?.activate()
+        returnTo = nil
+    }
+
+    /// Only another app gets the keyboard back; Devmachine in front keeps it.
+    nonisolated static func returnsFocus(
+        toPID pid: pid_t?, ownPID: pid_t = ProcessInfo.processInfo.processIdentifier
+    ) -> Bool {
+        guard let pid else { return false }
+        return pid != ownPID
+    }
+
+    /// SwiftUI's focus binding runs before the panel is key the first time
+    /// and never again for a reused panel; the field is made first responder
+    /// once the panel is key, on every open.
+    private func focusField(in panel: QuickChatWindow) {
+        model.requestFocus()
+        DispatchQueue.main.async { [weak panel] in
+            guard let panel, panel.isKeyWindow, !(panel.firstResponder is NSText) else { return }
+            if let field = panel.contentView.flatMap(Self.firstTextField) {
+                panel.makeFirstResponder(field)
+            }
+        }
+    }
+
+    private static func firstTextField(in view: NSView) -> NSTextField? {
+        if let field = view as? NSTextField, field.isEditable { return field }
+        for subview in view.subviews {
+            if let field = firstTextField(in: subview) { return field }
+        }
+        return nil
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -238,6 +287,7 @@ struct QuickChatPanelView: View {
             .frame(width: QuickChatPanelController.width, alignment: .top)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resize($0) }
             .onAppear { focused = true }
+            .onChange(of: model.focusRequests) { _, _ in focused = true }
             .onKeyPress(.escape) {
                 if model.showsChooser || store.openPicker != nil {
                     model.showsChooser = false
