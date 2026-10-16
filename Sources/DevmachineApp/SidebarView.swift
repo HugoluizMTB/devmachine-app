@@ -56,7 +56,7 @@ struct SidebarView: View {
             }
             .help("A new session, like the one in front of you, or pick where")
         }
-        .padding(.bottom, m.pt(14))
+        .padding(.bottom, m.pt(SidebarHeaderSpacing.blockGap))
         .modifier(SidebarHeaderTop())
     }
 }

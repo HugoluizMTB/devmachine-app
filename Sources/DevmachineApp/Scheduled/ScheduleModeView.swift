@@ -51,7 +51,7 @@ struct ScheduleSidebar: View {
                 SidebarNewRow(title: "New task", systemImage: "plus", shortcut: "⌘N") { store.requestNewTask() }
                     .disabled(store.workspaces.isEmpty)
             }
-            .padding(.bottom, m.pt(14))
+            .padding(.bottom, m.pt(SidebarHeaderSpacing.blockGap))
             .modifier(SidebarHeaderTop())
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {

@@ -141,7 +141,9 @@ final class SidebarTogglePlacementTests: XCTestCase {
     }
 
     func testTheHeaderSitsCloseUnderTheButtons() {
-        XCTAssertEqual(SidebarHeaderSpacing.top(buttons: buttons), buttons.maxY + 4)
-        XCTAssertEqual(SidebarHeaderSpacing.top(buttons: .zero), 40)
+        XCTAssertEqual(
+            SidebarHeaderSpacing.top(buttons: buttons),
+            buttons.maxY + SidebarHeaderSpacing.blockGap + SidebarHeaderSpacing.textAlignment)
+        XCTAssertEqual(SidebarHeaderSpacing.top(buttons: .zero), SidebarHeaderSpacing.fallback)
     }
 }

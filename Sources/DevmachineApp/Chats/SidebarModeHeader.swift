@@ -264,13 +264,18 @@ extension EnvironmentValues {
     }
 }
 
-/// The sidebar header sits this far under the window buttons' bottom edge.
+/// The sidebar's top block (title, then the New row) keeps the same space
+/// above it, under the window buttons, as below it, before the list.
 enum SidebarHeaderSpacing {
-    static let belowButtons: CGFloat = 4
-    static let fallback: CGFloat = 40
+    /// Under the New row, before the list.
+    static let blockGap: CGFloat = 14
+    /// The list's first group header has more room above its text than the
+    /// title row has; this evens the two, so the gaps read the same.
+    static let textAlignment: CGFloat = 9.5
+    static let fallback: CGFloat = 52
 
     static func top(buttons: CGRect) -> CGFloat {
-        buttons == .zero ? fallback : buttons.maxY + belowButtons
+        buttons == .zero ? fallback : buttons.maxY + blockGap + textAlignment
     }
 }
 

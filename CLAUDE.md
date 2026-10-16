@@ -746,8 +746,9 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   (`WindowButtonsReader`): at the sidebar's right edge while it is open, right
   after the buttons while it is closed (`SidebarTogglePlacement`). A toolbar
   item cannot follow the sidebar's edge.
-- The sidebars run under the band and their header starts just below the
-  buttons (`SidebarHeaderSpacing`). The `.clipped()` sidebar takes
+- The sidebars run under the band. Their title row keeps the same space under
+  the window buttons as the New row keeps before the list
+  (`SidebarHeaderSpacing.blockGap`; change that one constant and both move). The `.clipped()` sidebar takes
   `SidebarUnderTitlebar` outside the clip, or the header is cut off. A
   terminal starts below the band only while the sidebar is closed; Home always
   runs under it.
