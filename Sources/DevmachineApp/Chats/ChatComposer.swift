@@ -82,6 +82,7 @@ struct ChatPickerOverlay: ViewModifier {
     @ObservedObject var store: ChatStore
     let harness: HarnessID
     let place: ChatPlace
+    var opensBelow = false
     let pickHarness: (HarnessID) -> Void
     let pickPlace: (ChatPlace) -> Void
     @Environment(\.dmMetrics) private var m
@@ -95,9 +96,14 @@ struct ChatPickerOverlay: ViewModifier {
                     ZStack(alignment: .topLeading) {
                         Color.black.opacity(0.001)
                             .onTapGesture { store.openPicker = nil }
-                        ChatMenuCard(items: items(picker), width: 230, highlighted: highlighted(picker))
-                            .frame(height: max(0, rect.minY - m.pt(6)), alignment: .bottom)
-                            .offset(x: rect.minX - m.pt(6))
+                        if opensBelow {
+                            ChatMenuCard(items: items(picker), width: 230, highlighted: highlighted(picker))
+                                .offset(x: rect.minX - m.pt(6), y: rect.maxY + m.pt(6))
+                        } else {
+                            ChatMenuCard(items: items(picker), width: 230, highlighted: highlighted(picker))
+                                .frame(height: max(0, rect.minY - m.pt(6)), alignment: .bottom)
+                                .offset(x: rect.minX - m.pt(6))
+                        }
                     }
                 }
             }

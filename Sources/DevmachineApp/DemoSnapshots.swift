@@ -87,6 +87,8 @@ enum DemoSnapshots {
             return .panel
         case _ where DemoHostKey.handles(screenID):
             return .panel
+        case _ where DemoChats.panelScreens.contains(screenID):
+            return .panel
         default:
             return .window
         }
@@ -410,6 +412,7 @@ enum DemoSnapshots {
         case "workspaces": return DemoWorkspaces.screens
         case "site": return DemoSiteWalk.screens
         #endif
+        case "chats": return DemoChats.screens
         default: return screens
         }
     }
@@ -527,6 +530,8 @@ enum DemoSnapshots {
                 view = await fileTransferTree(model: environment.model)
             case "file-transfer-saved", "file-transfer-failed":
                 view = fileTransferNotice(failed: screen.id == "file-transfer-failed")
+            case _ where DemoChats.panelScreens.contains(screen.id):
+                view = DemoChats.standaloneView(screen.id, environment: environment)
             #if DEBUG
             case "update-toast", "update-toast-large-text", "update-toast-relaunching", "update-toast-installed":
                 view = await updateToastView(screen.id, model: environment.model)
@@ -559,6 +564,7 @@ enum DemoSnapshots {
         PaneUploadStore.shared.dropTarget = nil
         DemoData.typedAtPrompt = [:]
         PreviewStore.shared.closeAll()
+        DemoChats.reset()
         #if DEBUG
         DemoDNSWalk.reset()
         DemoPackages.reset()
@@ -612,6 +618,10 @@ enum DemoSnapshots {
             return
         }
         #endif
+        if DemoChats.handles(screen.id) {
+            await DemoChats.prepare(screen.id, model: model)
+            return
+        }
         switch screen.id {
         case "sessions":
             model.openSessionGrid(acmeAlias)
@@ -745,7 +755,7 @@ enum DemoSnapshots {
 
     // MARK: - Standalone screens
 
-    private static func prPanel(
+    static func prPanel(
         _ environment: Environment, tab: MenuBarTab = .pullRequests, height: CGFloat? = nil
     ) -> some View {
         MenuBarPanel(initialTab: tab, height: height)

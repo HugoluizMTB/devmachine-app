@@ -1,0 +1,412 @@
+import AppKit
+import Combine
+import SwiftUI
+import DevmachineCore
+
+/// What the quick panel shows: one question, its streamed answer, and
+/// where it goes (a new chat, or a recent one picked under "New chat ▾").
+@MainActor
+final class QuickChatModel: ObservableObject {
+    @Published var text = ""
+    @Published private(set) var chatKey: String?
+    @Published var continuing: String?
+    @Published var harness: HarnessID?
+    @Published var place: ChatPlace?
+    @Published var showsChooser = false
+    @Published private(set) var question: String?
+
+    let store: ChatStore
+    var openInApp: (String?) -> Void = { _ in }
+    var close: () -> Void = {}
+
+    init(store: ChatStore) {
+        self.store = store
+    }
+
+    var chatID: String? { chatKey.map(store.current) }
+
+    var conversation: ChatConversation? { chatID.map(store.conversation) }
+
+    var isStreaming: Bool { chatID.map(store.isAnswering) ?? false }
+
+    var isContinuing: Bool { continuing != nil || chatKey != nil }
+
+    var shownHarness: HarnessID {
+        if let id = chatID ?? continuing, let record = store.record(id) { return record.harness }
+        return harness.flatMap { store.settings.harnesses.contains($0) ? $0 : nil } ?? store.settings.harnesses[0]
+    }
+
+    var shownPlace: ChatPlace {
+        if let id = chatID ?? continuing, let record = store.record(id) { return record.place }
+        return place ?? store.defaultPlace
+    }
+
+    var recentChats: [ChatRecord] { Array(store.visibleChats.prefix(4)) }
+
+    /// A fresh panel, unless an answer is still coming into it.
+    func prepareForShow() {
+        guard !isStreaming else { return }
+        text = ""
+        chatKey = nil
+        continuing = nil
+        question = nil
+        showsChooser = false
+        store.openPicker = nil
+    }
+
+    func send() {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty, !isStreaming else { return }
+        let key: String?
+        if let target = chatID ?? continuing {
+            key = store.send(body, toChat: target)
+        } else {
+            key = store.send(body, harness: shownHarness, place: shownPlace, selects: false)
+        }
+        guard let key else { return }
+        chatKey = key
+        continuing = nil
+        question = body
+        text = ""
+        showsChooser = false
+    }
+
+    func stop() {
+        if let chatID { store.stop(chatID) }
+    }
+
+    func startNew() {
+        continuing = nil
+        chatKey = nil
+        question = nil
+        showsChooser = false
+    }
+
+    func continueChat(_ id: String) {
+        continuing = id
+        chatKey = nil
+        question = nil
+        showsChooser = false
+        store.loadIfNeeded(id)
+    }
+
+    func openCurrentInApp() {
+        openInApp(chatID ?? continuing)
+    }
+
+    func seedDemo(chatKey: String?, question: String?, showsChooser: Bool = false) {
+        self.chatKey = chatKey
+        self.question = question
+        self.showsChooser = showsChooser
+        continuing = nil
+    }
+}
+
+final class QuickChatWindow: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+/// The floating panel the global shortcut opens over any app. It never
+/// activates Devmachine, so the app in front keeps its place.
+@MainActor
+final class QuickChatPanelController: NSObject, NSWindowDelegate {
+    static let shared = QuickChatPanelController()
+    static let width: CGFloat = 760
+
+    let model = QuickChatModel(store: .shared)
+    private var panel: QuickChatWindow?
+    private var hotkeys: QuickChatHotkeyController?
+    private var settings: AnyCancellable?
+
+    func start(registrar: any HotkeyRegistering = CarbonHotkeyRegistrar()) {
+        guard hotkeys == nil else { return }
+        let controller = QuickChatHotkeyController(registrar: registrar) { [weak self] in self?.toggle() }
+        hotkeys = controller
+        model.close = { [weak self] in self?.hide() }
+        model.openInApp = { [weak self] id in self?.openInApp(id) }
+        settings = SettingsStore.shared.$settings.sink { settings in
+            let chats = settings?.chats ?? .default
+            ChatStore.shared.settings = chats
+            controller.apply(chats)
+        }
+    }
+
+    var isShown: Bool { panel?.isVisible == true }
+
+    func toggle() {
+        if isShown, panel?.isKeyWindow == true { hide() } else { show() }
+    }
+
+    func show() {
+        model.prepareForShow()
+        let panel = self.panel ?? makePanel()
+        self.panel = panel
+        Task { await ChatStore.shared.refresh() }
+        position(panel, height: panel.frame.height)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    func hide() {
+        model.showsChooser = false
+        panel?.orderOut(nil)
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        hide()
+    }
+
+    private func makePanel() -> QuickChatWindow {
+        let panel = QuickChatWindow(
+            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 120),
+            styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView], backing: .buffered, defer: false)
+        panel.level = .floating
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.isMovableByWindowBackground = true
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.delegate = self
+        let root = QuickChatPanelView(model: model) { [weak self] height in self?.resize(to: height) }
+        let metrics = DMMetrics(scale: SettingsStore.shared.effectiveUIFontScale)
+        panel.contentView = NSHostingView(rootView: root.environment(\.dmMetrics, metrics))
+        return panel
+    }
+
+    /// The panel sits in the upper third of the screen with the pointer and
+    /// grows downward as the answer arrives.
+    private func position(_ panel: NSPanel, height: CGFloat) {
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+        guard let visible = screen?.visibleFrame else { return }
+        let top = visible.maxY - visible.height * 0.22
+        panel.setFrame(
+            NSRect(x: visible.midX - Self.width / 2, y: top - height, width: Self.width, height: height), display: true)
+    }
+
+    private func resize(to height: CGFloat) {
+        guard let panel, abs(panel.frame.height - height) > 0.5 else { return }
+        let top = panel.frame.maxY
+        panel.setFrame(NSRect(x: panel.frame.minX, y: top - height, width: Self.width, height: height), display: true)
+    }
+
+    private func openInApp(_ id: String?) {
+        hide()
+        NSApp.activate(ignoringOtherApps: true)
+        MainWindowOpener.open()
+        if let id { AppModel.shared?.showChats(select: id) } else { AppModel.shared?.showNewChat() }
+    }
+}
+
+/// Brings the main window back, reopening it when it was closed.
+@MainActor
+enum MainWindowOpener {
+    static var openWindow: (() -> Void)?
+
+    static func open() {
+        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            openWindow?()
+        }
+    }
+}
+
+struct QuickChatPanelView: View {
+    @ObservedObject var model: QuickChatModel
+    @ObservedObject private var store = ChatStore.shared
+    let resize: (CGFloat) -> Void
+    @Environment(\.dmMetrics) private var m
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        QuickChatCard(model: model, focused: $focused)
+            .padding(m.pt(24))
+            .padding(.bottom, model.showsChooser || store.openPicker != nil ? m.pt(190) : 0)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: QuickChatPanelController.width, alignment: .top)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resize($0) }
+            .onAppear { focused = true }
+            .onKeyPress(.escape) {
+                if model.showsChooser || store.openPicker != nil {
+                    model.showsChooser = false
+                    store.openPicker = nil
+                } else {
+                    model.close()
+                }
+                return .handled
+            }
+            .environment(\.colorScheme, .dark)
+    }
+}
+
+/// The panel itself, apart from its window, so the demo can draw it.
+struct QuickChatCard: View {
+    @ObservedObject var model: QuickChatModel
+    var focused: FocusState<Bool>.Binding?
+    @ObservedObject private var store = ChatStore.shared
+    @Environment(\.dmMetrics) private var m
+
+    private var hotkey: String { store.settings.hotkey?.display ?? "" }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            inputRow
+            if let conversation = model.conversation, model.question != nil {
+                answer(conversation)
+            }
+            chipsRow
+        }
+        .frame(width: m.pt(680))
+        .background(Color(hex: 0x1A2027).opacity(0.97), in: RoundedRectangle(cornerRadius: m.pt(DMRadius.bubble)))
+        .overlay(RoundedRectangle(cornerRadius: m.pt(DMRadius.bubble)).stroke(Color.white.opacity(0.14), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.55), radius: m.pt(30), y: m.pt(14))
+        .overlay(alignment: .topTrailing) {
+            if model.showsChooser {
+                ChatMenuCard(items: chooserItems, width: 320, highlighted: model.continuing ?? model.recentChats.first?.id)
+                    .offset(x: -m.pt(52), y: m.pt(52))
+            }
+        }
+        .modifier(ChatPickerOverlay(
+            store: store, harness: model.shownHarness, place: model.shownPlace, opensBelow: true,
+            pickHarness: { model.harness = $0 }, pickPlace: { model.place = $0 }))
+    }
+
+    private var chooserItems: [ChatMenuItem] {
+        var items: [ChatMenuItem] = [
+            ChatMenuItem(
+                id: "new", title: "New chat", systemImage: "square.and.pencil", checked: !model.isContinuing,
+                shortcut: "⌘N", action: { model.startNew() }),
+        ]
+        let recent = model.recentChats
+        if !recent.isEmpty {
+            items += [.separator("sep"), .header("Continue")]
+            items += recent.map { chat in
+                ChatMenuItem(
+                    id: chat.id, title: chat.title, detail: ChatGrouping.age(of: chat.updatedAt, now: Date()),
+                    harness: chat.harness, checked: model.continuing == chat.id,
+                    action: { model.continueChat(chat.id) })
+            }
+        }
+        return items
+    }
+
+    private var inputRow: some View {
+        HStack(spacing: m.pt(12)) {
+            Image(systemName: "chevron.left.forwardslash.chevron.right")
+                .font(.dm(13, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: m.pt(30), height: m.pt(30))
+                .background(Color.accentColor.opacity(0.85), in: RoundedRectangle(cornerRadius: m.pt(DMRadius.control)))
+            if model.isStreaming, let question = model.question {
+                Text(verbatim: question)
+                    .font(.dm(16))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                field
+            }
+            Button { model.showsChooser.toggle() } label: {
+                ChatChip(
+                    systemImage: model.isContinuing ? "bubble.left" : "square.and.pencil",
+                    title: model.isContinuing ? "Continuing" : "New chat", menu: true, open: model.showsChooser,
+                    height: 28, fontSize: 12.5)
+            }
+            .buttonStyle(.plain)
+            ChatSendButton(
+                size: 30, stops: model.isStreaming, tint: Color(hex: 0xD97757)
+            ) {
+                if model.isStreaming { model.stop() } else { model.send() }
+            }
+        }
+        .padding(.horizontal, m.pt(14))
+        .padding(.vertical, m.pt(12))
+    }
+
+    @ViewBuilder
+    private var field: some View {
+        let prompt = model.question == nil ? "Ask anything…" : "Ask a follow-up…"
+        if let focused {
+            TextField(prompt, text: $model.text)
+                .textFieldStyle(.plain)
+                .font(.dm(16))
+                .focused(focused)
+                .onSubmit { model.send() }
+                .onKeyPress(.return, phases: .down) { press in
+                    if press.modifiers.contains(.command) {
+                        model.openCurrentInApp()
+                        return .handled
+                    }
+                    return .ignored
+                }
+        } else {
+            Text(verbatim: model.text.isEmpty ? prompt : model.text)
+                .font(.dm(16))
+                .foregroundStyle(model.text.isEmpty ? Color.dmMuted : .white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func answer(_ conversation: ChatConversation) -> some View {
+        let last = conversation.messages.last { $0.role == .assistant } ?? ChatMessage(role: .assistant, text: "")
+        let answering = conversation.messages.last?.role == .assistant ? last : ChatMessage(role: .assistant, text: "")
+        return VStack(alignment: .leading, spacing: m.pt(10)) {
+            Rectangle().fill(Color.dmDivider).frame(height: 1)
+            HStack(spacing: m.pt(6)) {
+                ChatHarnessGlyph(harness: model.shownHarness, size: 13)
+                Text(verbatim: "\(ChatHarness.title(model.shownHarness)) on \(ChatPlaceLabel.title(model.shownPlace))")
+                    .font(.dm(11, weight: .medium)).foregroundStyle(Color.dmMuted)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: m.pt(10)) {
+                    ChatAnswerView(message: answering, streaming: conversation.isStreaming)
+                    if let failure = conversation.failure, let id = model.chatID {
+                        ChatErrorCard(
+                            failure: failure, chatID: id, harness: model.shownHarness, place: model.shownPlace,
+                            compact: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: m.pt(420))
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, m.pt(18))
+        .padding(.bottom, m.pt(14))
+    }
+
+    private var chipsRow: some View {
+        HStack(spacing: m.pt(6)) {
+            let locked = model.isContinuing
+            Button { if !locked { store.openPicker = store.openPicker == .harness ? nil : .harness } } label: {
+                ChatChip(harness: model.shownHarness, title: ChatHarness.title(model.shownHarness), menu: !locked,
+                         open: store.openPicker == .harness, height: 28, fontSize: 12.5)
+            }
+            .buttonStyle(.plain)
+            .anchorPreference(key: ChatAnchorKey.self, value: .bounds) { ["harness": $0] }
+            Button { if !locked { store.openPicker = store.openPicker == .workspace ? nil : .workspace } } label: {
+                ChatChip(systemImage: ChatPlaceLabel.symbol(model.shownPlace), title: ChatPlaceLabel.title(model.shownPlace),
+                         menu: !locked, open: store.openPicker == .workspace, height: 28, fontSize: 12.5)
+            }
+            .buttonStyle(.plain)
+            .anchorPreference(key: ChatAnchorKey.self, value: .bounds) { ["workspace": $0] }
+            Spacer()
+            if model.question != nil {
+                Text(verbatim: "Open in Devmachine ⌘↩  ·  Esc to close")
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                    .onTapGesture { model.openCurrentInApp() }
+            } else if !hotkey.isEmpty {
+                Text(verbatim: hotkey).font(.dm(11, design: .monospaced)).foregroundStyle(Color.dmMuted)
+            }
+        }
+        .padding(.horizontal, m.pt(14))
+        .padding(.vertical, m.pt(9))
+        .background(Color.black.opacity(0.14))
+        .clipShape(UnevenRoundedRectangle(
+            bottomLeadingRadius: m.pt(DMRadius.bubble), bottomTrailingRadius: m.pt(DMRadius.bubble)))
+    }
+}

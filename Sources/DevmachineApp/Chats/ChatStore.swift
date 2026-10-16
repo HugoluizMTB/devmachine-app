@@ -107,9 +107,11 @@ enum ChatPicker: Equatable {
 final class ChatStore: ObservableObject {
     static let shared: ChatStore = {
         let live = NSClassFromString("XCTestCase") == nil && !DemoMode.isActive
-        return ChatStore(
+        let store = ChatStore(
             runner: live ? ProcessChatCommandRunner() : UnavailableChatRunner(),
             defaults: live ? .standard : nil)
+        if DemoMode.isActive { DemoChats.seed(store) }
+        return store
     }()
 
     static let pendingPrefix = "pending-"
@@ -135,6 +137,7 @@ final class ChatStore: ObservableObject {
     private let now: () -> Date
     private var tasks: [String: Task<Void, Never>] = [:]
     private var movedKeys: [String: String] = [:]
+    private var isDemo = false
 
     init(runner: any ChatCommandRunning, defaults: UserDefaults? = nil, now: @escaping () -> Date = Date.init) {
         self.runner = runner
@@ -172,6 +175,7 @@ final class ChatStore: ObservableObject {
     var draftPlace: ChatPlace { draft.place ?? defaultPlace }
 
     func refresh() async {
+        guard !isDemo else { return }
         do {
             let output = try await runner.run(ChatCommand.list())
             guard output.exitCode == 0 else {
@@ -197,7 +201,7 @@ final class ChatStore: ObservableObject {
     /// Reads a chat's messages from the CLI's local copy, unless an answer
     /// is streaming into it right now.
     func load(_ id: String) async {
-        guard !id.hasPrefix(Self.pendingPrefix), conversations[id]?.isStreaming != true else { return }
+        guard !isDemo, !id.hasPrefix(Self.pendingPrefix), conversations[id]?.isStreaming != true else { return }
         do {
             let output = try await runner.run(ChatCommand.show(id: id))
             guard output.exitCode == 0 else { return }
@@ -217,7 +221,11 @@ final class ChatStore: ObservableObject {
     func select(_ id: String?) {
         openPicker = nil
         selectedID = id
-        guard let id, conversations[id] == nil else { return }
+        if let id { loadIfNeeded(id) }
+    }
+
+    func loadIfNeeded(_ id: String) {
+        guard conversations[id] == nil else { return }
         Task { await load(id) }
     }
 
@@ -250,7 +258,7 @@ final class ChatStore: ObservableObject {
     }
 
     @discardableResult
-    func send(_ text: String, harness: HarnessID, place: ChatPlace) -> String? {
+    func send(_ text: String, harness: HarnessID, place: ChatPlace, selects: Bool = true) -> String? {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return nil }
         let key = Self.pendingPrefix + UUID().uuidString
@@ -260,7 +268,7 @@ final class ChatStore: ObservableObject {
             createdAt: now(), updatedAt: now())
         records.append(placeholder)
         conversations[key] = ChatConversation(record: placeholder)
-        selectedID = key
+        if selects { selectedID = key }
         openPicker = nil
         launch(
             key: key, text: body,
@@ -475,6 +483,7 @@ final class ChatStore: ObservableObject {
     // MARK: - Demo
 
     func seedDemo(records: [ChatRecord], conversations: [String: ChatConversation]) {
+        isDemo = true
         self.records = records
         self.conversations = conversations
         hasLoaded = true

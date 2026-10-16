@@ -61,6 +61,9 @@ struct DevmachineApp: App {
         let usage = HarnessUsageStore(providers: providers)
         _usageStore = StateObject(wrappedValue: usage)
         MenubarController.shared.start(prs: prs, providers: AppWidgetProviders(usage: usage, stats: stats, prs: prs))
+        if !DemoMode.isActive, NSClassFromString("XCTestCase") == nil {
+            QuickChatPanelController.shared.start()
+        }
     }
 
     private var metrics: DMMetrics {

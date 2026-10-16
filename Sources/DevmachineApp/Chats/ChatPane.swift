@@ -14,20 +14,34 @@ struct ChatPane: View {
     private var record: ChatRecord? { store.record(chatID) }
     private var harness: HarnessID { record?.harness ?? store.draftHarness }
     private var place: ChatPlace { record?.place ?? store.draftPlace }
+    private static let bottom = "chat-bottom"
+
+    /// Grows with every message, delta and failure, so the thread follows
+    /// the answer as it arrives.
+    private var progress: Int {
+        conversation.messages.count * 1_000_000 + (conversation.messages.last?.text.count ?? 0)
+            + (conversation.failure == nil ? 0 : 1)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                ChatThreadView(conversation: conversation) { failure in
-                    AnyView(ChatErrorCard(failure: failure, chatID: chatID, harness: harness, place: place))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ChatThreadView(conversation: conversation) { failure in
+                            AnyView(ChatErrorCard(failure: failure, chatID: chatID, harness: harness, place: place))
+                        }
+                        .frame(maxWidth: m.pt(760), alignment: .leading)
+                        .padding(.horizontal, m.pt(32))
+                        .padding(.vertical, m.pt(24))
+                        .frame(maxWidth: .infinity)
+                        Color.clear.frame(height: 1).id(Self.bottom)
+                    }
                 }
-                .frame(maxWidth: m.pt(760), alignment: .leading)
-                .padding(.horizontal, m.pt(32))
-                .padding(.vertical, m.pt(24))
-                .frame(maxWidth: .infinity)
+                .onAppear { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                .onChange(of: progress) { _, _ in proxy.scrollTo(Self.bottom, anchor: .bottom) }
             }
-            .defaultScrollAnchor(.bottom)
             ChatComposer(
                 text: $reply, harness: harness, place: place, locked: true, streaming: conversation.isStreaming,
                 send: {
@@ -137,7 +151,7 @@ struct NewChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.dmContentBg)
         .modifier(ChatPickerOverlay(
-            store: store, harness: store.draftHarness, place: store.draftPlace,
+            store: store, harness: store.draftHarness, place: store.draftPlace, opensBelow: true,
             pickHarness: { store.draft.harness = $0 }, pickPlace: { store.draft.place = $0 }))
     }
 

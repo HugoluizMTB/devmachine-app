@@ -9,7 +9,6 @@ struct ChatErrorCard: View {
     let harness: HarnessID
     let place: ChatPlace
     var compact = false
-    @EnvironmentObject private var model: AppModel
     @ObservedObject private var store = ChatStore.shared
     @Environment(\.dmMetrics) private var m
     @Environment(\.dmOpenCLIUpdate) private var openCLIUpdate
@@ -93,24 +92,24 @@ struct ChatErrorCard: View {
             DMButton("Log in \(place.workspaceName.map { "on \($0)" } ?? "on this Mac")",
                      systemImage: "person.badge.key", variant: variant, size: size) {
                 store.awaitLogin(chatID)
-                model.openHarnessLogin(harness, place: place)
+                AppModel.shared?.openHarnessLogin(harness, place: place)
             }
         case .chooseAnotherWorkspace:
             DMButton("Choose another workspace", variant: variant, size: size) {
                 store.askElsewhere(chatID)
-                model.showChats()
+                AppModel.shared?.showChats()
             }
         case .openPackages:
             DMButton("Open packages", systemImage: "shippingbox", variant: variant, size: size) {
-                if let workspace = place.workspaceName { model.openPackages(workspace: workspace) }
+                if let workspace = place.workspaceName { AppModel.shared?.openPackages(workspace: workspace) }
             }
         case .openMachines:
             DMButton("Open Machines", systemImage: "server.rack", variant: variant, size: size) {
-                model.openSettings(.machines)
+                AppModel.shared?.openSettings(.machines)
             }
         case .updateCLI:
             DMButton("Update the CLI", systemImage: "arrow.down.circle", variant: variant, size: size) {
-                if let openCLIUpdate { openCLIUpdate() } else { model.openSettings(.about) }
+                if let openCLIUpdate { openCLIUpdate() } else { AppModel.shared?.openSettings(.about) }
             }
         case .tryAgain:
             DMButton("Try again", systemImage: "arrow.clockwise", variant: variant, size: size) {

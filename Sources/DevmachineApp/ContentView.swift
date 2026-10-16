@@ -22,6 +22,7 @@ struct ContentView: View {
     @ObservedObject private var compat = WidgetCompatibilityStore.shared
     @State private var sidebarButtonFrame: CGRect?
     @ObservedObject private var chats = ChatStore.shared
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -121,6 +122,8 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.2), value: jobs.jobs.map(\.phase))
         }
         .onAppear {
+            let open = openWindow
+            MainWindowOpener.openWindow = { open(id: "main") }
             model.settings = settingsStore.settings
             model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
             Task { await compat.check() }
@@ -128,9 +131,10 @@ struct ContentView: View {
         }
         .onReceive(settingsStore.$settings) {
             model.settings = $0
-            chats.settings = $0?.chats ?? .default
+            if !DemoMode.isActive { chats.settings = $0?.chats ?? .default }
         }
         .onReceive(model.$workspaces) { _ in
+            guard !DemoMode.isActive else { return }
             let names = model.visibleWorkspaces.map(\.name)
             if chats.workspaces != names { chats.workspaces = names }
         }
