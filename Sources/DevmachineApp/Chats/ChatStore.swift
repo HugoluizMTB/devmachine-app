@@ -663,6 +663,7 @@ final class ChatStore: ObservableObject {
         live.fallback = fallback
         live.output = []
         if !sessions.asks.values.contains(where: { $0 === live }) { sessions.chats[key] = live }
+        conversations[key]?.status = live.isReady ? Self.thinking(record(key)?.harness ?? live.spec?.harness) : live.status
         live.channel.write(ChatSessionInput.send(text))
     }
 
@@ -672,6 +673,7 @@ final class ChatStore: ObservableObject {
             live.output.append(line)
         case .ready?:
             live.isReady = true
+            live.status = nil
         case .closed?:
             live.hasEnded = true
         case let .event(event)?:
@@ -682,6 +684,7 @@ final class ChatStore: ObservableObject {
                 }
                 return
             }
+            if case let .status(update) = event, !live.isReady { live.status = update.message }
             guard let key = live.key, let turn = live.turn else { return }
             receive(line, key: key, turn: turn)
             let now = current(key)
@@ -694,6 +697,11 @@ final class ChatStore: ObservableObject {
                 break
             }
         }
+    }
+
+    /// What a ready session shows until the CLI's own `waiting` arrives.
+    static func thinking(_ harness: HarnessID?) -> String? {
+        harness.map { "\(ChatHarness.title($0)) is thinking…" }
     }
 
     /// The process ended. A turn still open fails with what it printed; on a

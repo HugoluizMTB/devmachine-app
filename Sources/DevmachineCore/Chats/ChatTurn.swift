@@ -8,16 +8,19 @@ public struct ChatConversation: Equatable, Sendable {
     public var isStreaming: Bool
     public var failure: ChatFailure?
     public var wasStopped: Bool
+    /// The CLI's latest status while no part of the answer has come yet.
+    public var status: String?
 
     public init(
         record: ChatRecord? = nil, messages: [ChatMessage] = [], isStreaming: Bool = false,
-        failure: ChatFailure? = nil, wasStopped: Bool = false
+        failure: ChatFailure? = nil, wasStopped: Bool = false, status: String? = nil
     ) {
         self.record = record
         self.messages = messages
         self.isStreaming = isStreaming
         self.failure = failure
         self.wasStopped = wasStopped
+        self.status = status
     }
 
     public var lastUserText: String? {
@@ -29,10 +32,19 @@ public struct ChatConversation: Equatable, Sendable {
         isStreaming = true
         failure = nil
         wasStopped = false
+        status = nil
     }
 
     public mutating func apply(_ event: ChatEvent) {
         switch event {
+        case .text, .tool, .denied, .done, .error:
+            status = nil
+        case .status, .started:
+            break
+        }
+        switch event {
+        case let .status(update):
+            if isStreaming { status = update.message }
         case let .started(chat):
             record = chat
         case let .text(delta):
@@ -59,12 +71,14 @@ public struct ChatConversation: Equatable, Sendable {
     public mutating func processEnded(status: Int32, output: String) {
         guard isStreaming else { return }
         isStreaming = false
+        self.status = nil
         failure = ChatFailure.fromExit(status: status, output: output)
     }
 
     public mutating func stop() {
         guard isStreaming else { return }
         isStreaming = false
+        status = nil
         wasStopped = true
     }
 

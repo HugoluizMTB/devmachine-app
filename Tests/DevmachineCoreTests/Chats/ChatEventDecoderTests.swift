@@ -112,6 +112,16 @@ final class ChatEventDecoderTests: XCTestCase {
             "No workspace named \"nope\", and none is configured")
     }
 
+    func testAStatusLineIsDecoded() {
+        XCTAssertEqual(
+            ChatEventDecoder.decode(#"{"type":"status","stage":"connecting","message":"Connecting to main…"}"#),
+            .status(ChatStatus(stage: "connecting", message: "Connecting to main…")))
+        XCTAssertEqual(
+            ChatSessionLine.decode(#"{"type":"status","stage":"waiting","message":"Claude is thinking…"}"#),
+            .event(.status(ChatStatus(stage: "waiting", message: "Claude is thinking…"))))
+        XCTAssertNil(ChatEventDecoder.decode(#"{"type":"status","stage":"waiting"}"#))
+    }
+
     func testARecordSaysWhetherItLoadsMCPServers() throws {
         let on = try JSONDecoder().decode(ChatRecord.self, from: Data(#"{"id":"c_1","mcp":true}"#.utf8))
         XCTAssertTrue(on.mcp)

@@ -170,6 +170,7 @@ enum DemoChats {
         .init(id: "schedule-collapsed", fileName: "19-schedule-collapsed.png", settleNanoseconds: 900_000_000),
         .init(id: "home-open", fileName: "20-home-open.png", settleNanoseconds: 900_000_000),
         .init(id: "home-collapsed", fileName: "21-home-collapsed.png", settleNanoseconds: 900_000_000),
+        .init(id: "chat-connecting", fileName: "22-chat-connecting.png", settleNanoseconds: 600_000_000),
     ]
 
     static let panelScreens: Set<String> = ["quick-panel", "quick-panel-answer", "quick-panel-continue", "menubar-chats"]
@@ -224,6 +225,12 @@ enum DemoChats {
                 failure: ChatFailure(
                     kind: .harnessLoggedOut,
                     message: "Invalid API key · Please run /login")))
+            model.showChats(select: selectedID, store: store)
+        case "chat-connecting":
+            store.seedDemoConversation(selectedID, ChatConversation(
+                record: store.record(selectedID),
+                messages: [ChatMessage(role: .user, text: "what does the retry loop in build.go do?")],
+                isStreaming: true, status: "Connecting to main…"))
             model.showChats(select: selectedID, store: store)
         case "chat-mode-menu":
             model.showChats(select: selectedID, store: store)

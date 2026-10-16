@@ -170,4 +170,40 @@ final class ChatSessionStoreTests: XCTestCase {
         store.closeAllSessions()
         XCTAssertTrue(runner.channels.allSatisfy(\.closed))
     }
+
+    func testASendWhileTheWarmSessionStartsShowsItsStatusThenTheTurns() async {
+        let runner = FakeSessionRunner()
+        let store = ChatStore(runner: runner)
+        store.prewarm(spec)
+        let warm = runner.channels[0]
+        warm.emit(#"{"type":"status","stage":"connecting","message":"Connecting to main…"}"#)
+        await waitForChat { store.sessions.warm?.status != nil }
+        let key = store.send("hi", harness: .claude, place: .local)!
+        XCTAssertEqual(store.conversation(key).status, "Connecting to main…")
+        warm.emit(#"{"type":"status","stage":"starting","message":"Starting Claude…"}"#)
+        await waitForChat { store.conversation(key).status == "Starting Claude…" }
+        warm.emit(
+            #"{"type":"ready","chat":null}"#, #"{"type":"status","stage":"waiting","message":"Claude is thinking…"}"#)
+        await waitForChat { store.conversation(key).status == "Claude is thinking…" }
+        warm.emit(ChatFixtures.started("c1"), ChatFixtures.text("Hi"))
+        await waitForChat { store.conversation("c1").messages.last?.text == "Hi" }
+        XCTAssertNil(store.conversation("c1").status)
+    }
+
+    func testAReadySessionSaysTheHarnessIsThinkingAtOnce() async {
+        let runner = FakeSessionRunner()
+        let store = ChatStore(runner: runner)
+        store.prewarm(spec)
+        runner.channels[0].emit(#"{"type":"ready","chat":null}"#)
+        await waitForChat { store.sessions.warm?.isReady == true }
+        let key = store.send("hi", harness: .claude, place: .local)!
+        XCTAssertEqual(store.conversation(key).status, "Claude is thinking…")
+    }
+
+    func testWithoutSessionsNoStatusIsMadeUp() {
+        let store = ChatStore(runner: FakeChatRunner(streams: [.init(lines: [], waitsForCancel: true)]))
+        let key = store.send("hi", harness: .claude, place: .local)!
+        XCTAssertNil(store.conversation(key).status)
+        store.stop(key)
+    }
 }

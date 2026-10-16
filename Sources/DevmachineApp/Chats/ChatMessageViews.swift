@@ -82,6 +82,8 @@ struct ChatAnswerView: View {
     let message: ChatMessage
     var streaming = false
     var fontSize: CGFloat = 13.5
+    /// What the CLI is doing before the answer starts, beside the cursor.
+    var status: String?
     @Environment(\.dmMetrics) private var m
 
     static let cursorURL = "chat-cursor:end"
@@ -100,12 +102,48 @@ struct ChatAnswerView: View {
             }
             if streaming, !DemoMode.isActive {
                 TimelineView(.periodic(from: .now, by: Self.blink)) { context in
-                    text(cursor: ChatCursor.isOn(at: context.date, period: Self.blink))
+                    answer(cursor: ChatCursor.isOn(at: context.date, period: Self.blink))
                 }
             } else if !message.text.isEmpty || streaming {
-                text(cursor: streaming ? true : nil)
+                answer(cursor: streaming ? true : nil)
             }
         }
+        .onAppear { announce(shownStatus) }
+        .onChange(of: shownStatus) { _, status in announce(status) }
+    }
+
+    private var shownStatus: String? { streaming ? status : nil }
+
+    @ViewBuilder
+    private func answer(cursor: Bool?) -> some View {
+        if let status = shownStatus, message.text.isEmpty {
+            HStack(alignment: .firstTextBaseline, spacing: m.pt(6)) {
+                Text(verbatim: cursor == true ? "▍" : "\u{2007}")
+                    .font(.dm(fontSize))
+                    .foregroundStyle(ChatMarkdown.link)
+                    .accessibilityHidden(true)
+                statusText(status)
+            }
+        } else {
+            text(cursor: cursor)
+            if let status = shownStatus { statusText(status) }
+        }
+    }
+
+    private func statusText(_ status: String) -> some View {
+        Text(verbatim: status)
+            .font(.dm(fontSize - 2))
+            .foregroundStyle(Color.dmMuted)
+            .demoClickTarget("chat:status")
+    }
+
+    /// Each new status is read out once, behind anything more urgent; the
+    /// answer's own tokens are not.
+    private func announce(_ status: String?) {
+        guard let status, !DemoMode.isActive else { return }
+        var announcement = AttributedString(status)
+        announcement.accessibilitySpeechAnnouncementPriority = .low
+        AccessibilityNotification.Announcement(announcement).post()
     }
 
     static let blink: TimeInterval = 0.55
@@ -248,11 +286,13 @@ struct ChatThreadView: View {
                     ChatAnswerView(
                         message: message,
                         streaming: conversation.isStreaming && index == conversation.messages.count - 1,
-                        fontSize: fontSize)
+                        fontSize: fontSize, status: conversation.status)
                 }
             }
             if conversation.isStreaming, conversation.messages.last?.role == .user {
-                ChatAnswerView(message: ChatMessage(role: .assistant, text: ""), streaming: true, fontSize: fontSize)
+                ChatAnswerView(
+                    message: ChatMessage(role: .assistant, text: ""), streaming: true, fontSize: fontSize,
+                    status: conversation.status)
             }
             if let failure = conversation.failure {
                 errorCard(failure)

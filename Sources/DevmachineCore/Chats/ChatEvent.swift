@@ -63,7 +63,20 @@ public struct ChatFailure: Equatable, Sendable {
 }
 
 /// One line of `devmachine chat send|ask` output.
+/// What the CLI is doing before the answer starts: connecting, reading a
+/// transcript, starting the harness, loading MCP servers, waiting for it.
+public struct ChatStatus: Equatable, Sendable {
+    public var stage: String
+    public var message: String
+
+    public init(stage: String, message: String) {
+        self.stage = stage
+        self.message = message
+    }
+}
+
 public enum ChatEvent: Equatable, Sendable {
+    case status(ChatStatus)
     case started(ChatRecord)
     case text(String)
     case tool(ChatTool)
@@ -83,6 +96,7 @@ public enum ChatEventDecoder {
         let summary: String?
         let kind: String?
         let message: String?
+        let stage: String?
     }
 
     /// Nil for anything that is not an event: stderr shares the stream,
@@ -92,6 +106,9 @@ public enum ChatEventDecoder {
         guard trimmed.hasPrefix("{"),
               let parsed = try? JSONDecoder().decode(Line.self, from: Data(trimmed.utf8)) else { return nil }
         switch parsed.type {
+        case "status":
+            guard let message = parsed.message, !message.isEmpty else { return nil }
+            return .status(ChatStatus(stage: parsed.stage ?? "", message: message))
         case "started": return parsed.chat.map(ChatEvent.started)
         case "text": return parsed.delta.map(ChatEvent.text)
         case "tool": return .tool(ChatTool(name: parsed.name ?? "", summary: parsed.summary ?? ""))

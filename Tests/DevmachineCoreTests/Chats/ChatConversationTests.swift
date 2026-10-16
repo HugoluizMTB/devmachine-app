@@ -8,6 +8,40 @@ final class ChatConversationTests: XCTestCase {
         ChatRecord(id: id, title: "t", harness: .claude, workspace: "main", createdAt: start, updatedAt: start)
     }
 
+    func testTheLatestStatusShowsUntilTheAnswerStarts() {
+        var conversation = ChatConversation()
+        conversation.begin(userText: "hi", at: start)
+        conversation.apply(.status(ChatStatus(stage: "connecting", message: "Connecting to main…")))
+        XCTAssertEqual(conversation.status, "Connecting to main…")
+        conversation.apply(.status(ChatStatus(stage: "starting", message: "Starting Claude…")))
+        XCTAssertEqual(conversation.status, "Starting Claude…")
+        conversation.apply(.text("Hel"))
+        XCTAssertNil(conversation.status)
+        conversation.apply(.done(record()))
+        XCTAssertNil(conversation.status)
+    }
+
+    func testAToolDeniedErrorStopOrExitClearsTheStatus() {
+        let waiting = ChatEvent.status(ChatStatus(stage: "waiting", message: "Claude is thinking…"))
+        let enders: [(inout ChatConversation) -> Void] = [
+            { $0.apply(.tool(ChatTool(name: "Read", summary: "a.go"))) },
+            { $0.apply(.denied(ChatTool(name: "Bash", summary: "ls"))) },
+            { $0.apply(.error(ChatFailure(kind: .harnessFailed, message: "no"))) },
+            { $0.stop() },
+            { $0.processEnded(status: 1, output: "") },
+        ]
+        for end in enders {
+            var conversation = ChatConversation()
+            conversation.begin(userText: "hi", at: start)
+            conversation.apply(waiting)
+            end(&conversation)
+            XCTAssertNil(conversation.status)
+        }
+        var idle = ChatConversation()
+        idle.apply(waiting)
+        XCTAssertNil(idle.status)
+    }
+
     func testDeltasBuildOneAnswerAndToolsJoinIt() {
         var conversation = ChatConversation()
         conversation.begin(userText: "how?", at: start)

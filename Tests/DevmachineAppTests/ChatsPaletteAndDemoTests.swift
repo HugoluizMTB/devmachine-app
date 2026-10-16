@@ -93,6 +93,7 @@ final class ChatsPaletteAndDemoTests: XCTestCase {
             "13-chat-error-logged-out.png", "14-settings-chats.png", "15-chat-mode-menu.png",
             "16-schedule-mode.png", "17-sidebar-collapsed.png", "18-chats-collapsed.png",
             "19-schedule-collapsed.png", "20-home-open.png", "21-home-collapsed.png",
+            "22-chat-connecting.png",
         ])
     }
 

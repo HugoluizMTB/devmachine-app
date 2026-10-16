@@ -449,7 +449,7 @@ struct QuickChatCard: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: m.pt(10)) {
-                    ChatAnswerView(message: answering, streaming: conversation.isStreaming)
+                    ChatAnswerView(message: answering, streaming: conversation.isStreaming, status: conversation.status)
                     if let failure = conversation.failure, let id = model.chatID {
                         ChatErrorCard(
                             failure: failure, chatID: id, harness: model.shownHarness, place: model.shownPlace,

@@ -87,6 +87,8 @@ final class ChatSessionPool {
         /// lines are dropped so they cannot end the next turn.
         var draining = 0
         var isReady = false
+        /// The CLI's latest status while the session starts, before `ready`.
+        var status: String?
         var hasEnded = false
         var output: [String] = []
 

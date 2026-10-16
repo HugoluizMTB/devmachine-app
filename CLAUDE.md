@@ -798,6 +798,14 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   refuses the command or a flag before `ready` is older: the turn goes out
   again with `chat send` and sessions stay off until relaunch. Tests and demo
   never start one (`ChatCommandRunning.openSession` throws by default).
+- **Status.** `{"type":"status","stage","message"}` lines (connecting,
+  reading the transcript, starting, loading MCP, waiting) set
+  `ChatConversation.status`, drawn muted beside the cursor in the pane, the
+  quick panel and Ask; the first `text`/`tool`/`denied`, `done`, `error`, a
+  stop or the exit clear it. A send into a warm session that is still starting
+  shows that session's latest start-up status; into a ready one, "<Harness> is
+  thinking…" until the CLI's `waiting`. An older CLI sends none and nothing is
+  made up. VoiceOver hears each status once, as a low-priority announcement.
 - **MCP.** Chats start without MCP servers, hooks and plugins (`chat.mcp`
   off); the chip (`ChatMCPChip`) is kept per chat as the record's `mcp`, and
   `--mcp`/`--mcp=false` goes out only when it differs (`ChatMCP.flag`).
