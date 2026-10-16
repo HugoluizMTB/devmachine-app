@@ -160,7 +160,8 @@ struct ChatMenuCard: View {
     }
 
     private func row(_ item: ChatMenuItem) -> some View {
-        let lit = !item.disabled && (hovered == item.id || (hovered == nil && highlighted == item.id))
+        let pointer = hovered ?? (DemoMode.isActive ? highlighted : nil)
+        let lit = !item.disabled && pointer == item.id
         return HStack(spacing: m.pt(8)) {
             Image(systemName: "checkmark")
                 .font(.dm(10, weight: .bold))
