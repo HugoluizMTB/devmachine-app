@@ -756,6 +756,12 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   `SidebarUnderTitlebar` outside the clip, or the header is cut off. A
   terminal starts below the band only while the sidebar is closed; Home always
   runs under it.
+- The window server drags the window from any part of the band that no view
+  claims, before the app sees the click, so a terminal line under the band
+  moved the window instead of selecting. `SelectingTerminalView` claims its
+  bounds through AppKit's private `_opaqueRectForWindowMoveWhenInTitlebar`
+  (NSButton does the same; there is no public API). Moving the terminal
+  below the band instead left an empty strip and was rejected.
 - **Full screen hides the toolbar** (`WindowButtonsReader`, on will-enter;
   shown again on will-exit). A visible toolbar stays on screen there as an
   opaque grey band that pushes every column down. The window buttons then live
