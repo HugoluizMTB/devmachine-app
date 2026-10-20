@@ -516,6 +516,24 @@ final class PollPauseTests: XCTestCase {
             "The server may be blocking this Mac after failed logins. Wait about 10 minutes, then Retry.")
     }
 
+    func testARetryWithNothingToAskLeavesTheHoldAndAnotherRetryPossible() async throws {
+        let source = ScriptedSessionSource()
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        var asked: [String] = []
+        model.attemptWithoutWorkspace = { asked.append($0); return false }
+        model.noteSSHFailure(alias: acme.alias, .authDenied)
+        model.applySyncLock(PackagesLock(machines: [:], workspaces: ["gamma": []]))
+
+        model.retry(alias: acme.alias)
+        model.retry(alias: beta.alias)
+        try await settle()
+
+        XCTAssertEqual(asked, ["main", "main"], "each Retry gets its own attempt")
+        XCTAssertFalse(model.loginHolds.holds.isRetrying("main"))
+        XCTAssertTrue(model.isPollingPaused(alias: acme.alias))
+        XCTAssertEqual(source.calls(acme.alias) + source.calls(beta.alias), 0)
+    }
+
     func testAChangedMachineEntryEndsTheHoldAndAsksAtOnce() async throws {
         let source = ScriptedSessionSource()
         source.fail(acme.alias, with: .authDenied)

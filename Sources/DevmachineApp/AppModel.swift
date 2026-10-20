@@ -2311,23 +2311,25 @@ final class AppModel: ObservableObject {
         refreshAll()
     }
 
-    func refresh(alias: String, bypassingLoginHold: Bool = false) {
+    /// True when it started a read of the workspace's sessions.
+    @discardableResult
+    func refresh(alias: String, bypassingLoginHold: Bool = false) -> Bool {
         guard !DemoMode.isActive, bypassingLoginHold ? !isPausedForTime(alias: alias) : !isPollingPaused(alias: alias),
-              let ws = visibleWorkspaces.first(where: { $0.alias == alias }) else { return }
+              let ws = visibleWorkspaces.first(where: { $0.alias == alias }) else { return false }
         // A refused host key fails the same way until someone reviews it: the
         // 5s poll of the selected workspace leaves it to the sweep instead of
         // a handshake every tick. Retry and a trust clear the problem first.
-        guard sessionProblems[alias]?.isHostKeyRejected != true else { return }
+        guard sessionProblems[alias]?.isHostKeyRejected != true else { return false }
         // Each try before the sync is one more denied login toward a ban:
         // only a configuration change or Try again asks again.
-        guard sessionProblems[alias]?.isAwaitingSync != true else { return }
+        guard sessionProblems[alias]?.isAwaitingSync != true else { return false }
         // A tick that arrives while the previous ssh for this alias is still
         // running waits for it and runs once after: a slow host would
         // otherwise stack one blocked process per 5s tick, and dropping it
         // would lose the read a delete or rename asked for.
         guard !refreshingAliases.contains(alias) else {
             refreshAgainAliases.insert(alias)
-            return
+            return false
         }
         refreshingAliases.insert(alias)
         let source = services.sessionSource
@@ -2342,6 +2344,7 @@ final class AppModel: ObservableObject {
                 self.refreshAgainIfAsked(alias)
             }
         }
+        return true
     }
 
     private func refreshAgainIfAsked(_ alias: String) {
@@ -2523,8 +2526,8 @@ final class AppModel: ObservableObject {
             !awaitsFirstSync(alias: $0.alias) && sessionProblems[$0.alias]?.isAwaitingSync != true
         }
         if let workspace = candidates.first(where: { loggedInAliases.contains($0.alias) }) ?? candidates.first {
-            refresh(alias: workspace.alias, bypassingLoginHold: true)
-            return true
+            pollPauses[workspace.alias] = nil
+            return refresh(alias: workspace.alias, bypassingLoginHold: true)
         }
         return attemptWithoutWorkspace?(machine) ?? false
     }
