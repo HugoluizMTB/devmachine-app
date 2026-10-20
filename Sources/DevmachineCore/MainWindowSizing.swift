@@ -5,13 +5,18 @@ import CoreGraphics
 /// then opened barely larger than Settings, on every later launch too.
 public enum MainWindowSizing {
     public static let minimum = CGSize(width: 900, height: 560)
+    /// Room for the sidebar and Home's default board side by side.
+    public static let preferred = CGSize(width: 1280, height: 800)
     public static let screenFraction: CGFloat = 0.8
 
-    /// 80% of the screen's visible frame, never below `minimum` and never
-    /// larger than the screen itself, centered.
+    /// 80% of the screen's visible frame, at least `preferred` and
+    /// `minimum`, but never larger than the screen itself, centered.
     public static func defaultFrame(visible: CGRect) -> CGRect {
-        let width = min(max((visible.width * screenFraction).rounded(), minimum.width), visible.width)
-        let height = min(max((visible.height * screenFraction).rounded(), minimum.height), visible.height)
+        func fitted(_ side: CGFloat, preferred: CGFloat, minimum: CGFloat) -> CGFloat {
+            min(max((side * screenFraction).rounded(), preferred, minimum), side)
+        }
+        let width = fitted(visible.width, preferred: preferred.width, minimum: minimum.width)
+        let height = fitted(visible.height, preferred: preferred.height, minimum: minimum.height)
         return CGRect(
             x: (visible.midX - width / 2).rounded(), y: (visible.midY - height / 2).rounded(),
             width: width, height: height)

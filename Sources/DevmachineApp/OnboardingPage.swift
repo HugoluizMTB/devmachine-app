@@ -51,7 +51,7 @@ struct OnboardingPage: View {
     }
 
     private var isWide: Bool {
-        flow.screen == .preparing || flow.screen == .wizard
+        flow.screen == .preparing || flow.screen == .wizard || (flow.screen == .complete && !runner.isAllSet)
     }
 
     @ViewBuilder
@@ -61,7 +61,8 @@ struct OnboardingPage: View {
         case .preparing: preparing
         case .cliTooOld: cliTooOld
         case .wizard: wizard
-        case .complete: successCard
+        case .complete:
+            if runner.isAllSet { successCard } else { preparing }
         }
     }
 
@@ -69,7 +70,7 @@ struct OnboardingPage: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: m.pt(10)) {
-            Text(flow.screen == .complete ? "You are all set" : "Set up devmachine")
+            Text(runner.isAllSet ? "You are all set" : "Set up devmachine")
                 .font(.dm(20, weight: .semibold))
                 .foregroundStyle(.white)
             Text("This Mac needs the devmachine CLI and one machine: a server you have, or a virtual machine "
@@ -77,13 +78,13 @@ struct OnboardingPage: View {
                 .font(.dm(12.5))
                 .foregroundStyle(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
-            DMProgressBar(done: stagesDone, total: 3, fillColor: .green)
+            DMProgressBar(done: stagesDone, total: 4, fillColor: .green)
                 .frame(maxWidth: m.pt(360))
         }
     }
 
     private var stagesDone: Int {
-        guard flow.screen != .complete else { return 3 }
+        guard !runner.isAllSet else { return 4 }
         let detection = flow.detection
         return [detection.cliFound, detection.adminMachine != nil, detection.isComplete].filter { $0 }.count
     }
@@ -184,7 +185,6 @@ struct OnboardingPage: View {
                 .font(.dm(12.5))
                 .foregroundStyle(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
-            OnboardingSkillsWarning(wizard: runner.wizard, runner: runner.wizard.runner)
             DMButton("Start using Devmachine", systemImage: "arrow.right", size: .large) {
                 runner.leave()
                 onStart()
@@ -208,7 +208,8 @@ enum OnboardingContent {
     static func ready(_ machine: String?, workspace: String? = nil) -> String {
         let server = machine.map { "the machine \($0)" } ?? "your machine"
         let sidebar = workspace.map { " Your workspace \($0) is in the sidebar: start a session there." } ?? ""
-        return "The CLI is installed, and \(server) has devmachine-app." + sidebar
+        return "The CLI is installed, the packages release is downloaded, and \(server) answers with "
+            + "devmachine-app." + sidebar
             + " Settings are filled in from the CLI, so there is nothing to type."
     }
 }
@@ -245,20 +246,6 @@ private struct OnboardingPrepareView: View {
                     runner.back()
                 }
             }
-        }
-    }
-}
-
-/// Only the skills failed: the machine is ready, and Retry installs them.
-private struct OnboardingSkillsWarning: View {
-    @ObservedObject var wizard: AddMachineModel
-    @ObservedObject var runner: MachineStepRunner
-
-    var body: some View {
-        if wizard.onlySkillsFailed {
-            SetupFailurePanel(
-                step: wizard.failedStep, lines: runner.lines, problem: runner.problem, exitCode: runner.exitCode,
-                onRetry: { Task { await wizard.retry() } })
         }
     }
 }

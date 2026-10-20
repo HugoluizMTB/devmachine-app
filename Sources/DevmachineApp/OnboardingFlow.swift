@@ -34,19 +34,31 @@ struct OnboardingFlow: Equatable, Sendable {
     private(set) var plan: [MachinePlanStep] = []
     /// It finished, yet the Mac reads the same: what to tell the person.
     private(set) var unresolved: String?
+    /// The finishing steps (`OnboardingPlan.finishSteps`) all succeeded
+    /// and the Mac read complete after them.
+    private(set) var finished = false
     private var checking = false
 
     var isReady: Bool { detection.isComplete }
+
+    /// "You are all set" shows only here: the Mac reads complete and every
+    /// finishing step ran.
+    var isAllSet: Bool { screen == .complete && finished && isReady }
 
     mutating func receive(_ next: OnboardingDetection) -> OnboardingEffect? {
         detection = next
         hasDetected = true
         guard checking else {
-            if screen == .start, isReady { screen = .complete }
+            if screen == .start, isReady { return run(OnboardingPlan.finishSteps(for: detection)) }
             if screen == .cliTooOld, detection.addsWithoutTerminal { return advance() }
             return nil
         }
         checking = false
+        if screen == .preparing, Self.isFinishing(plan), isReady {
+            finished = true
+            screen = .complete
+            return nil
+        }
         if screen == .preparing, OnboardingPlan.prepareSteps(for: detection) == plan, !isReady {
             unresolved = Self.unresolvedMessage(plan)
             return nil
@@ -98,12 +110,14 @@ struct OnboardingFlow: Equatable, Sendable {
         plan = []
         unresolved = nil
         checking = false
+        finished = false
         return .stop
     }
 
     private mutating func advance() -> OnboardingEffect? {
         unresolved = nil
         if isReady {
+            guard finished else { return run(OnboardingPlan.finishSteps(for: detection)) }
             screen = .complete
             return nil
         }
@@ -126,6 +140,10 @@ struct OnboardingFlow: Equatable, Sendable {
         return .run(steps)
     }
 
+    private static func isFinishing(_ plan: [MachinePlanStep]) -> Bool {
+        plan.contains { $0.kind == .fetchPackages }
+    }
+
     private static func unresolvedMessage(_ plan: [MachinePlanStep]) -> String {
         if plan.first?.kind == .installCLI {
             return "The installer finished, but the app still cannot find the devmachine CLI in ~/.local/bin, "
@@ -143,8 +161,9 @@ struct OnboardingFlow: Equatable, Sendable {
         flow.detection = detection
         flow.hasDetected = true
         flow.screen = screen
-        flow.plan = plan
+        flow.plan = screen == .complete ? OnboardingPlan.finishSteps(for: detection) : plan
         flow.unresolved = unresolved
+        flow.finished = screen == .complete
         return flow
     }
 }

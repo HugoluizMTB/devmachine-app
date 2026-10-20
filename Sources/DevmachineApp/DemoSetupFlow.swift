@@ -68,6 +68,10 @@ enum DemoSetupFlow {
             #endif
         case "setup-ready":
             runner.seedDemo(.demo(detection: ready, screen: .complete))
+            #if DEBUG
+            let done = OnboardingPlan.finishSteps(for: ready).map { ($0.id, MachineStepRunner.StepStatus.done) }
+            runner.prepare.seedDemo(statuses: Dictionary(uniqueKeysWithValues: done), phase: .succeeded)
+            #endif
         case "setup-cli-old":
             runner.seedDemo(.demo(detection: oldCLI, screen: .cliTooOld))
         case "setup-choice", "setup-server", "setup-local", "setup-packages", "setup-review", "setup-running",

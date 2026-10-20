@@ -23,7 +23,12 @@ private final class FakeProcesses {
     var cliInstalls = 0
     var limaInstalls = 0
     var failing: [String: Int] = [:]
+    var failureLine = "error: refused"
     var onRun: ([String]) -> Void = { _ in }
+    var fetches = 0
+    var waits: [TimeInterval] = []
+    let catalog = WidgetCatalog(engine: "1.7", packagesRelease: "v54", widgets: [])
+    var configDirectory: String?
 
     func fails(_ word: String, times: Int = 1) { failing[word] = times }
 
@@ -43,7 +48,7 @@ private final class FakeProcesses {
                 self.ran.append(arguments)
                 self.onRun(arguments)
                 let status = self.status(for: arguments)
-                output(status == 0 ? "ok" : "error: \(arguments[0]) refused")
+                output(status == 0 ? "ok" : self.failureLine)
                 return status
             },
             beginTask: { _, _ in nil }, setTask: { _, _ in }, endTask: { _, _ in },
@@ -57,7 +62,17 @@ private final class FakeProcesses {
                 output(status == 0 ? "Installed devmachine" : "curl: (6) Could not resolve host: mydevmachine.sh")
                 if status == 0 { self.onRun(["install-cli"]) }
                 return status
-            })
+            },
+            fetchPackages: { output in
+                self.fetches += 1
+                guard self.status(for: ["fetch-packages"]) == 0 else {
+                    output(self.failureLine)
+                    throw DevmachineCLIError.commandFailed(self.failureLine)
+                }
+                output("Packages release v54: 0 widgets ready")
+                return PackagesFetch(catalog: self.catalog, configDirectory: self.configDirectory)
+            },
+            sleep: { delay in await MainActor.run { self.waits.append(delay) } })
     }
 }
 
@@ -65,7 +80,9 @@ private final class FakeProcesses {
 final class OnboardingRunnerTests: XCTestCase {
     private let newCLI = MachineUnattendedAdd.minimumCLIVersion
 
-    private func makeRunner(_ mac: FakeMac, _ processes: FakeProcesses) -> OnboardingRunner {
+    private func makeRunner(
+        _ mac: FakeMac, _ processes: FakeProcesses, handOff: @escaping @MainActor (PackagesFetch) -> Void = { _ in }
+    ) -> OnboardingRunner {
         let snapshot = MachinesSnapshot(hasConfiguration: false, machines: [], packages: [], cliVersion: newCLI)
         let wizard = AddMachineModel(
             machines: MachinesStore(read: { snapshot }, remove: { _ in }),
@@ -74,7 +91,7 @@ final class OnboardingRunnerTests: XCTestCase {
             skillAgents: { $0.filter { $0.harness == .claude } }, firstRun: true)
         return OnboardingRunner(
             detect: { mac.detection }, wizard: wizard,
-            prepare: MachineStepRunner(hooks: processes.hooks, pollInterval: 1_000_000))
+            prepare: MachineStepRunner(hooks: processes.hooks, pollInterval: 1_000_000), handOff: handOff)
     }
 
     func testAFreshMacGetsTheCLIThenItsFirstMachineOnThisMacWithEveryLogShown() async throws {
@@ -106,14 +123,17 @@ final class OnboardingRunnerTests: XCTestCase {
         runner.wizard.wizard.next()
         await runner.wizard.create()
 
+        try await waitFor { runner.isAllSet }
         XCTAssertEqual(processes.limaInstalls, 1)
+        XCTAssertEqual(processes.fetches, 1)
         XCTAssertEqual(processes.ran, [
             ["machines", "create-local", "lab", "--add"],
             ["packages", "add", "devmachine-app", "--machine", "lab", "--yes"],
             ["sync", "--machine", "lab", "--yes"],
             ["skills", "add", "--agent", "claude", "--yes"],
+            ["run", "--machine", "lab", "--", "true"],
         ])
-        try await waitFor { runner.flow.screen == .complete }
+        XCTAssertEqual(runner.flow.plan.map(\.title), ["Download the packages release", "Check that lab answers"])
     }
 
     func testRetryResumesFromTheFailedStepAndSkipsWhatIsDone() async throws {
@@ -135,14 +155,14 @@ final class OnboardingRunnerTests: XCTestCase {
             }
         }
         runner.retry()
-        try await waitFor { runner.flow.screen == .complete }
-        XCTAssertEqual(processes.ran.map { $0[0] }, ["packages", "sync", "sync"])
+        try await waitFor { runner.isAllSet }
+        XCTAssertEqual(processes.ran.map { $0[0] }, ["packages", "sync", "sync", "run"])
     }
 
     func testAFailedInstallSaysWhyAndBackForgetsTheRun() async throws {
         let mac = FakeMac(.empty)
         let processes = FakeProcesses()
-        processes.fails("install-cli")
+        processes.fails("install-cli", times: 3)
         let runner = makeRunner(mac, processes)
         await runner.refresh()
 
@@ -156,7 +176,7 @@ final class OnboardingRunnerTests: XCTestCase {
         XCTAssertEqual(runner.prepare.phase, .idle)
     }
 
-    func testAFailedSkillsInstallIsAWarningAndTheSetupStillCompletes() async throws {
+    func testAFailedSkillsInstallBlocksTheFirstRunUntilRetryInstallsThem() async throws {
         let mac = FakeMac(OnboardingDetection(
             cliFound: true, adminMachine: nil, missingPackageMachines: [], cliVersion: newCLI))
         let processes = FakeProcesses()
@@ -179,13 +199,117 @@ final class OnboardingRunnerTests: XCTestCase {
 
         await runner.wizard.create()
 
-        XCTAssertTrue(runner.wizard.onlySkillsFailed)
-        try await waitFor { runner.flow.screen == .complete }
+        XCTAssertFalse(runner.wizard.onlySkillsFailed)
+        XCTAssertEqual(runner.wizard.failedStep?.kind, .skills)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(runner.flow.screen, .wizard)
+        XCTAssertFalse(runner.isAllSet)
 
         await runner.wizard.retry()
+        try await waitFor { runner.isAllSet }
         XCTAssertEqual(processes.ran.filter { $0[0] == "skills" }.count, 2)
         XCTAssertEqual(processes.ran.filter { $0[0] == "machines" }.count, 1)
-        XCTAssertFalse(runner.wizard.onlySkillsFailed)
+    }
+
+    func testANetworkFailureIsTriedThreeTimesThenFailsWithTheRealMessage() async throws {
+        let mac = FakeMac(OnboardingDetection(
+            cliFound: true, adminMachine: "acme", missingPackageMachines: [], cliVersion: newCLI))
+        let processes = FakeProcesses()
+        processes.failureLine = "fetching https://github.com/x: dial tcp: lookup github.com: no such host"
+        processes.fails("fetch-packages", times: 5)
+        let runner = makeRunner(mac, processes)
+        await runner.refresh()
+
+        try await waitFor { runner.prepare.phase == .failed(step: MachinePlanStep.fetchPackages.id) }
+        XCTAssertEqual(processes.fetches, 3)
+        XCTAssertEqual(processes.waits, [2, 5])
+        XCTAssertEqual(runner.prepare.attemptLabel(of: .fetchPackages), "Attempt 3 of 3")
+        XCTAssertEqual(runner.prepare.problem, "Tried 3 times. " + processes.failureLine)
+        XCTAssertEqual(runner.prepare.lines.filter { $0 == processes.failureLine }.count, 3)
+        XCTAssertFalse(runner.isAllSet)
+
+        runner.retry()
+        try await waitFor { runner.isAllSet }
+        XCTAssertEqual(processes.fetches, 6)
+    }
+
+    func testANetworkFailureThatClearsOnTheSecondAttemptSucceeds() async throws {
+        let mac = FakeMac(OnboardingDetection(
+            cliFound: true, adminMachine: "acme", missingPackageMachines: [], cliVersion: newCLI))
+        let processes = FakeProcesses()
+        processes.failureLine = "ssh: connect to host 203.0.113.10 port 22: Operation timed out"
+        processes.fails("run --machine", times: 1)
+        let runner = makeRunner(mac, processes)
+        await runner.refresh()
+
+        try await waitFor { runner.isAllSet }
+        XCTAssertEqual(processes.ran.filter { $0[0] == "run" }.count, 2)
+        XCTAssertEqual(processes.waits, [2])
+    }
+
+    func testAFailureThatIsNotTheNetworksIsNotTriedAgain() async throws {
+        let mac = FakeMac(OnboardingDetection(
+            cliFound: true, adminMachine: "acme", missingPackageMachines: [], cliVersion: newCLI))
+        let processes = FakeProcesses()
+        processes.failureLine = "alice@203.0.113.10: Permission denied (publickey)."
+        processes.fails("run --machine", times: 3)
+        let runner = makeRunner(mac, processes)
+        await runner.refresh()
+
+        try await waitFor { runner.prepare.phase == .failed(step: MachinePlanStep.checkReady("acme").id) }
+        XCTAssertEqual(processes.ran.filter { $0[0] == "run" }.count, 1)
+        XCTAssertEqual(processes.waits, [])
+        XCTAssertNil(runner.prepare.attemptLabel(of: .checkReady("acme")))
+        XCTAssertFalse(runner.isAllSet)
+    }
+
+    func testAfterOnboardingHomeHoldsTheCatalogAndOpensItsBoardAtOnce() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OnboardingHandOff-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("config"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalogStore = WidgetCatalogStore(read: { throw DevmachineCLIError.commandFailed("not read in this test") })
+        let home = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
+            catalog: catalogStore, configPath: { nil })
+        let mac = FakeMac(OnboardingDetection(
+            cliFound: true, adminMachine: "acme", missingPackageMachines: [], cliVersion: newCLI))
+        let processes = FakeProcesses()
+        processes.configDirectory = root.appendingPathComponent("config").path
+        let runner = makeRunner(mac, processes, handOff: { home.handOff($0) })
+        await runner.refresh()
+
+        try await waitFor { runner.isAllSet }
+        XCTAssertEqual(catalogStore.catalog, processes.catalog)
+        XCTAssertEqual(catalogStore.state, .loaded)
+
+        home.start()
+        XCTAssertNotNil(home.store)
+        XCTAssertEqual(catalogStore.state, .loaded)
+        XCTAssertEqual(HomeCatalogNotice.of(catalog: catalogStore.catalog, state: catalogStore.state), .none)
+    }
+
+    func testAllSetNeedsEveryFinishingStepDoneNotOnlyACompleteScreen() {
+        let ready = OnboardingDetection(
+            cliFound: true, adminMachine: "acme", missingPackageMachines: [], cliVersion: newCLI)
+        let steps = OnboardingPlan.finishSteps(for: ready)
+        let runner = makeRunner(FakeMac(ready), FakeProcesses())
+        runner.seedDemo(.demo(detection: ready, screen: .complete))
+
+        for statuses: [MachineStepRunner.StepStatus] in [[.waiting, .waiting], [.done, .waiting], [.done, .failed],
+                                                          [.running, .waiting], [.failed, .waiting]] {
+            runner.prepare.seedDemo(
+                statuses: Dictionary(uniqueKeysWithValues: zip(steps.map(\.id), statuses)), phase: .running)
+            XCTAssertFalse(runner.isAllSet, "\(statuses)")
+        }
+        runner.prepare.seedDemo(
+            statuses: Dictionary(uniqueKeysWithValues: steps.map { ($0.id, .done) }), phase: .succeeded)
+        XCTAssertTrue(runner.isAllSet)
+
+        var incomplete = ready
+        incomplete.missingPackageMachines = ["acme"]
+        runner.seedDemo(.demo(detection: incomplete, screen: .complete))
+        XCTAssertFalse(runner.isAllSet)
     }
 
     private func waitFor(_ condition: () -> Bool) async throws {

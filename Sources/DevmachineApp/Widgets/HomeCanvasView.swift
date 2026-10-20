@@ -48,7 +48,7 @@ struct HomeCanvasView: View {
                         referenceWidth: referenceWidth(size.width), clockRect: $clockRect, editing: $editing)
                         .offset(y: topInset)
                 }
-                catalogFailure
+                catalogNotice
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .onChange(of: proxy.size, initial: true) { _, next in
@@ -133,8 +133,16 @@ struct HomeCanvasView: View {
     }
 
     @ViewBuilder
-    private var catalogFailure: some View {
-        if catalog.catalog == nil, case let .failed(message) = catalog.state {
+    private var catalogNotice: some View {
+        switch HomeCatalogNotice.of(catalog: catalog.catalog, state: catalog.state) {
+        case .none:
+            EmptyView()
+        case .loading:
+            DMStatusView(kind: .loading(HomeCatalogNotice.loadingText), fillsHeight: false)
+                .frame(width: m.card.sheet)
+                .dmGlass(radius: DMRadius.card)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case let .failed(message):
             DMErrorStateView(
                 state: DMErrorState(title: "Could not fetch packages", message: message),
                 retry: { catalog.reloadSoon() })
@@ -157,6 +165,25 @@ struct HomeCanvasView: View {
             return .area(
                 CGRect(origin: .zero, size: canvasSize).insetBy(dx: padding, dy: padding),
                 centreX: clock.map { Double($0.midX) })
+        }
+    }
+}
+
+/// What Home says about its catalog while it has none: it is being
+/// fetched (never a blank Home), or it could not be, with Retry.
+enum HomeCatalogNotice: Equatable {
+    case none
+    case loading
+    case failed(String)
+
+    static let loadingText = "Fetching the packages release…"
+
+    static func of(catalog: WidgetCatalog?, state: WidgetCatalogStore.State) -> HomeCatalogNotice {
+        guard catalog == nil else { return .none }
+        switch state {
+        case .loading: return .loading
+        case let .failed(message): return .failed(message)
+        case .idle, .loaded: return .none
         }
     }
 }

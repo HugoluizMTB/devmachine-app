@@ -17,6 +17,11 @@ public struct MachinePlanStep: Equatable, Sendable, Identifiable {
         case forgetWorkspace
         case destroyWorkspace
         case sync
+        /// `widgets list`, which downloads the pinned packages release
+        /// into the CLI's cache on first use.
+        case fetchPackages
+        /// A command on the machine, to see that it answers.
+        case checkReady
     }
 
     public let kind: Kind
@@ -63,6 +68,15 @@ public struct MachinePlanStep: Equatable, Sendable, Identifiable {
     /// A failed skills install is a warning: the machine is set up without it.
     public var blocksSetup: Bool { kind != .skills }
 
+    /// The step downloads or reaches a machine, so a network failure is
+    /// tried again (`RetryPolicy.downloads`) before it fails.
+    public var retriesOnNetworkFailure: Bool {
+        switch kind {
+        case .installCLI, .installLima, .fetchPackages, .checkReady, .skills, .sync, .addPackage: return true
+        default: return false
+        }
+    }
+
     public var displayLine: String {
         switch kind {
         case .installLima: return "Install Lima from \(LimaInstall.releasePage) into ~/.local, checking its SHA-256"
@@ -73,6 +87,16 @@ public struct MachinePlanStep: Equatable, Sendable, Identifiable {
 
     public static let installCLI = MachinePlanStep(
         kind: .installCLI, title: "Install the devmachine CLI", arguments: [], asksInTerminal: false)
+
+    public static let fetchPackages = MachinePlanStep(
+        kind: .fetchPackages, title: "Download the packages release",
+        arguments: ["widgets", "list", "--format", "json"], asksInTerminal: false)
+
+    public static func checkReady(_ machine: String) -> MachinePlanStep {
+        MachinePlanStep(
+            kind: .checkReady, title: "Check that \(machine) answers",
+            arguments: ["run", "--machine", machine, "--", "true"], asksInTerminal: false)
+    }
 }
 
 /// The commands that turn a wizard's answers into a machine. Nothing here

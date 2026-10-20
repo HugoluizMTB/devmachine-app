@@ -124,7 +124,7 @@ final class AddMachineLimaTests: XCTestCase {
     func testALocalMachineWithoutLimaInstallsItFirstAndOffersHomebrewWhenTheDownloadFails() async {
         var methods: [LimaInstall.Method] = []
         var ran: [[String]] = []
-        var fail = true
+        var failures = RetryPolicy.downloads.maxAttempts
         let hooks = MachineStepRunner.Hooks(
             executable: { "/opt/homebrew/bin/devmachine" }, isReady: { _ in true }, type: { _, _ in },
             matchCount: { _, _ in 0 }, writeScript: { _, _ in "/tmp/x.sh" }, isAtPrompt: { _ in nil },
@@ -135,12 +135,13 @@ final class AddMachineLimaTests: XCTestCase {
             beginTask: { _, _ in nil }, setTask: { _, _ in }, endTask: { _, _ in },
             installLima: { method, output in
                 methods.append(method)
-                if fail {
-                    fail = false
+                if case .release = method, failures > 0 {
+                    failures -= 1
                     output("The Internet connection appears to be offline.")
                     throw LimaInstallError(message: "The Internet connection appears to be offline.")
                 }
-            })
+            },
+            sleep: { _ in })
         let snapshot = MachinesSnapshot(
             hasConfiguration: true, machines: [], packages: [], cliVersion: MachineUnattendedAdd.minimumCLIVersion)
         let model = AddMachineModel(
@@ -163,7 +164,7 @@ final class AddMachineLimaTests: XCTestCase {
 
         await model.retryLimaWithHomebrew()
 
-        XCTAssertEqual(methods, [.release, .homebrew(brew: "/opt/homebrew/bin/brew")])
+        XCTAssertEqual(methods, [.release, .release, .release, .homebrew(brew: "/opt/homebrew/bin/brew")])
         XCTAssertEqual(ran, [["machines", "create-local", "lab", "--add"]])
         XCTAssertEqual(model.runner.phase, .succeeded)
     }

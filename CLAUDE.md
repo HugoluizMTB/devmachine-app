@@ -1025,9 +1025,29 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   CLI, antigravity, kimi and cline on 0.7.28+ (an older CLI refuses the
   whole command on an unknown agent). A new harness is offered once it is
   in `SkillAgent.cliAgents`. Preselected: Settings → Coding agents plus the
-  harness folders this Mac has (`AddMachineModel.harnessesInUse`). A failed skills step is a warning
-  with Retry (`MachinePlanStep.blocksSetup`), never a blocker for "Start
-  using Devmachine".
+  harness folders this Mac has (`AddMachineModel.harnessesInUse`). In the
+  first run a failed skills step is a failure like any other, with Retry:
+  "You are all set" waits for it. Add machine from Settings keeps it a
+  warning (`MachinePlanStep.blocksSetup`, `AddMachineModel.onlySkillsFailed`).
+- **Everything the app downloads on first run happens before "You are all
+  set"** (`OnboardingPlan.finishSteps`): once the Mac reads complete, the
+  flow runs `widgets list --format json` (the pinned packages release lands
+  in the CLI's cache) and `run --machine <m> -- true` (the machine answers),
+  then reads the Mac again. The success card shows only when the flow is
+  complete and every finishing step is done (`OnboardingRunner.isAllSet`).
+  The catalog and the config folder that step read are handed to Home
+  (`HomeBoardController.handOff`), so Home is whole on its first frame
+  instead of waiting minutes for a first `widgets list` with nothing drawn.
+  A Mac already set up runs only these steps, without a click.
+- **A step that downloads tries again on a network failure**
+  (`RetryPolicy.downloads`, Core: 3 attempts, 2 s then 5 s, "Attempt 2 of 3"
+  under the step, every attempt's output in the log). `NetworkFailure`
+  decides from the output, and a refused login, a changed host key, a bad
+  checksum or an unknown flag is never tried again. Which steps:
+  `MachinePlanStep.retriesOnNetworkFailure` (CLI and Lima installs, the
+  packages release, the readiness check, skills, `packages add`, sync).
+  After the last attempt the step fails with the real error and the usual
+  failure panel.
 - **A machine on this Mac installs Lima when it is missing**
   (`LimaInstall`, `LimaInstaller`): GitHub's latest release tarball for
   the Mac's processor, checked against the release's `SHA256SUMS` before
@@ -1065,8 +1085,10 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   folder watcher is made again on any check while the folder it watches
   did not exist when it was made (`isWatchingConfiguration`).
 - The main window opens at 80% of the screen when AppKit has no saved frame
-  for it (`MainWindowSizing`, read before any window exists); a saved frame
-  always wins. Demo walk: `DEVMACHINE_DEMO_WALK=setup-flow`.
+  for it (`MainWindowSizing`, read before any window exists), never smaller
+  than 1280x800 and never larger than the screen's visible frame; the scene
+  also has `.defaultSize(MainWindowSizing.preferred)`. A saved frame always
+  wins. Demo walk: `DEVMACHINE_DEMO_WALK=setup-flow`.
 
 ## Machine readiness
 - **A machine missing `devmachine-app` gets a card, never a gate over the
@@ -1191,6 +1213,13 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   - `ImageRenderer` does not lay out a `ScrollView`, so the natural-height
     tests (`WidgetAutoHeightFitTests`, `DMFitCheck`) draw the `hugs: true`
     views, which have none.
+- **Home is never blank while it has no catalog** (`HomeCatalogNotice`): a
+  first read shows "Fetching the packages release…" (`DMStatusView`), and a
+  network failure is read again on `RetryPolicy.downloads` while it stays
+  `.loading`, even when no board waits for the catalog. Only then the
+  "Could not fetch packages" card with Retry. A failure that is not the
+  network's (no CLI) shows the card at once and is not retried, so an app
+  without the CLI stays quiet.
 - **A widget's meaning comes from the CLI catalog** (`widgets list --format
   json`, `WidgetCatalogStore`). The app ships no `widget.yml`. An entry the
   catalog cannot resolve keeps its place as a placeholder, so a missing
