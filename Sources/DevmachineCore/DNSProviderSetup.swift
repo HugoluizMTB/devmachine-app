@@ -31,6 +31,7 @@ public enum DNSSetupStep: Equatable, Sendable {
     case saveZones
     case saveToken
     case sync
+    case remove
 }
 
 /// What the person started from the card. `finished` keeps nothing on
@@ -64,6 +65,37 @@ public enum DNSSetupState: Equatable, Sendable {
 
     public var showsCard: Bool {
         self != .unknown && self != .ready
+    }
+}
+
+/// Where one DNS provider package stands on a machine, apart from the
+/// others on it.
+public enum DNSProviderState: Equatable, Sendable {
+    case notInstalled
+    case tokenMissing(error: String)
+    case notSynced
+    case noZones
+    case ready
+    case working(DNSSetupStep)
+    case failed(DNSSetupStep, cause: String, details: String)
+
+    public var label: String {
+        switch self {
+        case .notInstalled: "Not installed"
+        case .tokenMissing: "Token missing"
+        case .notSynced: "Not synced"
+        case .noZones: "No zones"
+        case .ready: "Ready"
+        case .working: "Working…"
+        case .failed: "Failed"
+        }
+    }
+
+    public var isInstalled: Bool {
+        switch self {
+        case .notInstalled, .working, .failed: false
+        case .tokenMissing, .notSynced, .noZones, .ready: true
+        }
     }
 }
 
@@ -128,6 +160,21 @@ public enum DNSProviderSetup {
         }
         if let error = answer.error { return .notSynced(provider: provider, problem: .providerError(error)) }
         return .notSynced(provider: provider, problem: .noZones)
+    }
+
+    /// The state of one package. `job` is the job running for this package
+    /// only, never one that runs for another.
+    public static func evaluate(
+        package: String, declared: [String]?, answers: [DNSProviderAnswer]?, job: DNSSetupJob?
+    ) -> DNSProviderState {
+        if case .running(let step) = job { return .working(step) }
+        if case let .failed(step, cause, details) = job { return .failed(step, cause: cause, details: details) }
+        if let answer = answers?.first(where: { $0.name == package }) {
+            if !answer.zones.isEmpty { return .ready }
+            if let error = answer.error { return .tokenMissing(error: error) }
+            return .noZones
+        }
+        return declared?.contains(package) == true ? .notSynced : .notInstalled
     }
 
     /// Edits the configuration on this Mac only; no machine is touched.

@@ -25,6 +25,8 @@ enum DNSSetupContent {
             return "Saving the \(name) token…"
         case .working(.sync):
             return "Syncing \(name) on \(machine)…"
+        case .working(.remove):
+            return "Removing \(name) from \(machine)…"
         case .failed(.install, _, _):
             return "\(name) was not added"
         case .failed(.saveZones, _, _):
@@ -33,6 +35,8 @@ enum DNSSetupContent {
             return "The \(name) token was not saved"
         case .failed(.sync, _, _):
             return "The sync of \(name) failed"
+        case .failed(.remove, _, _):
+            return "\(name) was not removed"
         }
     }
 

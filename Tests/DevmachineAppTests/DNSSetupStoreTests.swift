@@ -146,6 +146,21 @@ final class DNSSetupStoreTests: XCTestCase {
         return store
     }
 
+    func testAJobOnOnePackageLeavesTheOtherAlone() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["cloudflare"]
+        cli.providers = #"{"providers":[{"name":"cloudflare","zones":["example.com"]}]}"#
+        let store = try await loadedStore(cli)
+        XCTAssertEqual(store.dnsSetup.stateOf("cloudflare"), .ready)
+        XCTAssertEqual(store.dnsSetup.stateOf("hostinger"), .notInstalled)
+
+        await store.dnsSetup.install("hostinger", token: "tok-1")
+
+        XCTAssertEqual(store.dnsSetup.stateOf("hostinger"), .notSynced)
+        XCTAssertEqual(store.dnsSetup.stateOf("cloudflare"), .ready)
+        XCTAssertEqual(store.dnsSetup.state, .ready)
+    }
+
     func testAServerWithNoProviderShowsTheProvidersOnOffer() async throws {
         let store = try await loadedStore(DNSSetupCLIRunner())
 

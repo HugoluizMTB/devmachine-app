@@ -38,6 +38,7 @@ final class DNSSetupStore: ObservableObject {
     private let service: CaddyService
     private var center: @MainActor () -> MachineJobCenter?
     private var runs: [String: UUID] = [:]
+    private var jobPackage: [String: String] = [:]
     private var jobsWatch: AnyCancellable?
     private weak var watchedCenter: MachineJobCenter?
     /// Packages this store added that `packages list` has not shown yet.
@@ -60,6 +61,11 @@ final class DNSSetupStore: ObservableObject {
     var state: DNSSetupState {
         guard let machine else { return .unknown }
         return DNSProviderSetup.evaluate(declared: declared, answers: answers, job: jobs[machine])
+    }
+
+    func stateOf(_ package: String) -> DNSProviderState {
+        let job = machine.flatMap { jobPackage[$0] == package ? jobs[$0] : nil }
+        return DNSProviderSetup.evaluate(package: package, declared: declared, answers: answers, job: job)
     }
 
     /// The provider the card is about once one is in the configuration, or
@@ -112,7 +118,7 @@ final class DNSSetupStore: ObservableObject {
         let zoneList = zonesToSet(package, zones)
         guard zoneList != nil || zones.trimmingCharacters(in: .whitespaces).isEmpty || !canEditMachineSettings()
         else { return }
-        let run = begin(machine, .install)
+        let run = begin(machine, .install, package: package)
         if DemoMode.isActive { return fail(machine, run: run, step: .install, error: Self.demoRefusal) }
         let service = self.service
         let secret = secretName(package)
@@ -145,7 +151,7 @@ final class DNSSetupStore: ObservableObject {
         guard let machine, !isRunning(machine), canEditMachineSettings(),
               let setting = DNSProviderCatalog.zonesSetting(for: package),
               let zoneList = zonesToSet(package, zones) else { return }
-        let run = begin(machine, .saveZones)
+        let run = begin(machine, .saveZones, package: package)
         if DemoMode.isActive { return fail(machine, run: run, step: .saveZones, error: Self.demoRefusal) }
         let service = self.service
         if let failure = await perform({ try service.setZones(setting: setting, machine: machine, zones: zoneList) }) {
@@ -159,7 +165,7 @@ final class DNSSetupStore: ObservableObject {
 
     func saveToken(_ package: String, token: String) async {
         guard let machine, !isRunning(machine) else { return }
-        let run = begin(machine, .saveToken)
+        let run = begin(machine, .saveToken, package: package)
         if DemoMode.isActive { return fail(machine, run: run, step: .saveToken, error: Self.demoRefusal) }
         let service = self.service
         let secret = secretName(package)
@@ -177,7 +183,7 @@ final class DNSSetupStore: ObservableObject {
     func sync(_ package: String) -> UUID? {
         guard let machine, canRunSync(), !isRunning(machine), let center = center() else { return nil }
         if let previous = syncing[machine] { center.dismiss(previous) }
-        let run = begin(machine, .sync)
+        let run = begin(machine, .sync, package: package)
         let plan = MachineJobPlan(
             machine: machine, title: "Sync \(package) on \(machine)",
             steps: DNSProviderSetup.syncSteps(package: package, machine: machine))
@@ -273,9 +279,10 @@ final class DNSSetupStore: ObservableObject {
         return false
     }
 
-    private func begin(_ machine: String, _ step: DNSSetupStep) -> UUID {
+    private func begin(_ machine: String, _ step: DNSSetupStep, package: String) -> UUID {
         let run = UUID()
         runs[machine] = run
+        jobPackage[machine] = package
         jobs[machine] = .running(step)
         savedToken = nil
         savedZones = nil
