@@ -12,6 +12,7 @@ public struct SetupFailureAdvice: Equatable, Sendable {
         case limaChecksum
         case limaMissing
         case hostKeyMismatch
+        case keyNeedsPassword
         case loginRefused
         case unreachable
     }
@@ -30,6 +31,7 @@ public struct SetupFailureAdvice: Equatable, Sendable {
         case .limaChecksum: return "Lima's download did not check out"
         case .limaMissing: return "Lima is not installed"
         case .hostKeyMismatch: return "The server's key is not the one you confirmed"
+        case .keyNeedsPassword: return "The key does not log in yet"
         case .loginRefused: return "The server refused the login"
         case .unreachable: return "The server could not be reached"
         }
@@ -38,25 +40,21 @@ public struct SetupFailureAdvice: Equatable, Sendable {
     public var whatToDo: String {
         switch cause {
         case .outdatedXcode:
-            return "Homebrew refuses to work while Xcode or its Command Line Tools are behind. Update them in "
-                + "System Settings → General → Software Update, then Retry. The devmachine CLI itself installs "
-                + "without Homebrew, so only a step that uses Homebrew needs this."
+            return "Update Xcode or its Command Line Tools in Software Update, then Retry."
         case .cliDownload:
-            return "Check that this Mac is online and can reach mydevmachine.sh and github.com, then Retry. "
-                + "Nothing was installed."
+            return "Check that this Mac is online and can reach mydevmachine.sh and github.com, then Retry."
         case .limaDownload:
-            return "Check that this Mac is online and can reach github.com, then Retry. Nothing was installed."
+            return "Check that this Mac is online and can reach github.com, then Retry."
         case .limaChecksum:
-            return "The file from GitHub does not match Lima's published checksum, so it was not installed. "
-                + "Retry downloads it again; if it keeps failing, something between this Mac and GitHub changes it."
+            return "The download did not match Lima's published checksum, so nothing was installed."
         case .limaMissing:
-            return "The machine on this Mac needs Lima. Go Back and start again: the setup installs it first."
+            return "Go Back and start again: the setup installs Lima first."
         case .hostKeyMismatch:
-            return "The server answered with a different key than the one you checked in your provider's console. "
-                + "Go Back, read the key again and compare it with the console. Do not go on if they differ."
+            return "Do not go on: the server answered with a different key than the one read before."
+        case .keyNeedsPassword:
+            return "Type the server's password once to put the key on it."
         case .loginRefused:
-            return "The key or the password was not accepted. Go Back and check the login, the key and the "
-                + "password your provider gave you, then Retry."
+            return "Check the login, the key and the password, then Retry."
         case .unreachable:
             return "Check the address and the SSH port, and that the server is running, then Retry."
         }
@@ -94,6 +92,7 @@ public struct SetupFailureAdvice: Equatable, Sendable {
             || (mentions(["fingerprint", "host key"]) && mentions(["does not match", "mismatch", "changed"])) {
             return .hostKeyMismatch
         }
+        if lowered.contains(MachineRetryField.keyNeedsPassword) { return .keyNeedsPassword }
         if FailureCause.isSSHLoginRefused(line) { return .loginRefused }
         if mentions(["connection refused", "no route to host", "could not resolve", "operation timed out",
                      "connection timed out", "network is unreachable", "host is down"]) {
@@ -126,9 +125,7 @@ public struct SetupFailureHelp: Equatable, Sendable {
         guard let advice = SetupFailureAdvice.advice(for: step.kind, lines: lines) else {
             return SetupFailureHelp(
                 title: "\(step.title) did not finish",
-                whatToDo: "This step ran: \(step.displayLine)\nThe last lines of the log below say why it stopped. "
-                    + "Retry runs it again, and only it: the steps already done are skipped. If your answers "
-                    + "were wrong, change them and run again. If it keeps failing, copy the log or report a bug.",
+                whatToDo: "Retry runs it again; the log shows why it stopped.",
                 actions: [.retry, .editAnswers("Change answers")], cause: nil)
         }
         let actions: [Action]
@@ -141,9 +138,19 @@ public struct SetupFailureHelp: Equatable, Sendable {
             actions = [.editAnswers("Back")]
         case .hostKeyMismatch:
             actions = [.editAnswers("Read the key again")]
+        case .keyNeedsPassword:
+            actions = [.editAnswers("Change answers")]
         case .loginRefused, .unreachable:
             actions = [.editAnswers("Check the answers"), .retry]
         }
         return SetupFailureHelp(title: advice.title, whatToDo: advice.whatToDo, actions: actions, cause: advice.cause)
+    }
+
+    /// What "Show details" holds: the exact command, then the last lines it printed.
+    public static func details(for step: MachinePlanStep?, lines: [String], problem: String?) -> String {
+        let tail = Array(lines.suffix(30))
+        let command = step.map { "$ " + $0.displayLine }.flatMap { tail.contains($0) ? nil : [$0] } ?? []
+        let body = tail.isEmpty ? [problem].compactMap { $0 } : tail
+        return (command + body).joined(separator: "\n")
     }
 }

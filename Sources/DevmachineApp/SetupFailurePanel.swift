@@ -42,15 +42,14 @@ struct SetupFailurePanel: View {
         }
     }
 
+    /// One sentence: the recognised cause's, else the CLI's own words.
     private var cause: String {
-        var text = help?.whatToDo ?? "Retry runs it again. Steps already done are skipped."
-        if help?.cause == nil, let problem, !problem.isEmpty { text = problem + "\n\n" + text }
-        return text
+        if help?.cause == nil, let problem, !problem.isEmpty { return problem }
+        return help?.whatToDo ?? "Retry runs it again."
     }
 
     private var details: String {
-        let tail = lines.suffix(30).joined(separator: "\n")
-        return tail.isEmpty ? (step?.displayLine ?? problem ?? "") : tail
+        SetupFailureHelp.details(for: step, lines: lines, problem: problem)
     }
 
     private var offersRetry: Bool {

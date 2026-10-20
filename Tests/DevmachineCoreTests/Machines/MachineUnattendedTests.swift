@@ -165,14 +165,52 @@ final class MachinePlanUnattendedTests: XCTestCase {
         XCTAssertEqual(steps.first?.kind, .createLocal)
     }
 
-    func testAConfirmedScanIsTheFingerprintTrusted() {
+    func testTheScannedKeyIsTrustedWithNoQuestion() {
         var draft = server
         draft.fingerprint = ""
         draft.scan = scan(scanned)
-        XCTAssertNil(draft.fingerprintToTrust)
-        draft.scanConfirmed = true
         XCTAssertEqual(draft.fingerprintToTrust, scanned)
         XCTAssertEqual(MachinePlan.steps(for: draft, unattended: true)[0].arguments[7], scanned)
+    }
+
+    func testWithNoKeyReadYetTheAddCarriesNoFingerprintFlagAndCanStillBeReached() {
+        var draft = server
+        draft.fingerprint = ""
+        XCTAssertNil(draft.fingerprintToTrust)
+        XCTAssertEqual(draft.problems(existingMachines: [], unattended: true), [])
+        XCTAssertEqual(MachinePlan.steps(for: draft, unattended: true)[0].arguments, [
+            "machines", "add", "--name", "backup", "--address", "203.0.113.20",
+            "--key", "~/.ssh/id_ed25519", "--yes",
+        ])
+    }
+
+    func testAKeyWithAPasswordSendsThePasswordOnStdinToPutTheKeyOnTheServer() {
+        var draft = server
+        let withoutPassword = MachinePlan.steps(for: draft, unattended: true)[0]
+        XCTAssertNil(withoutPassword.input)
+        draft.password = SecretText("hunter2")
+        let add = MachinePlan.steps(for: draft, unattended: true)[0]
+        XCTAssertEqual(add.arguments, [
+            "machines", "add", "--name", "backup", "--address", "203.0.113.20",
+            "--fingerprint", fingerprint, "--key", "~/.ssh/id_ed25519", "--password-stdin", "--yes",
+        ])
+        XCTAssertEqual(add.input, .password)
+        XCTAssertEqual(add.id, withoutPassword.id, "the same step, whether or not a password goes with it")
+        XCTAssertFalse(add.displayLine.contains("hunter2"))
+    }
+
+    func testAnAgentKeyWithAPasswordSendsBoth() {
+        var draft = server
+        draft.keySource = .agent
+        draft.agentKey = scanned
+        draft.password = SecretText("hunter2")
+        let add = MachinePlan.steps(for: draft, unattended: true)[0]
+        XCTAssertEqual(add.arguments.suffix(4), ["--key", "agent:\(scanned)", "--password-stdin", "--yes"])
+        XCTAssertEqual(add.input, .password)
+    }
+
+    func testAKeyNeedsNoPassword() {
+        XCTAssertEqual(server.problems(existingMachines: [], unattended: true), [])
     }
 
     func testPastedConsoleOutputHoldingTheScannedKeyConfirmsIt() {
@@ -185,7 +223,6 @@ final class MachinePlanUnattendedTests: XCTestCase {
     func testAConsoleThatDisagreesWithTheScanTrustsNothing() {
         var draft = server
         draft.scan = scan(scanned)
-        draft.scanConfirmed = true
         XCTAssertNil(draft.fingerprintToTrust)
         XCTAssertTrue(draft.problems(existingMachines: [], unattended: true).contains {
             $0.field == .fingerprint && $0.message.contains("different key")
@@ -196,7 +233,6 @@ final class MachinePlanUnattendedTests: XCTestCase {
         var draft = server
         draft.fingerprint = ""
         draft.scan = scan(scanned)
-        draft.scanConfirmed = true
         draft.port = "2222"
         XCTAssertNil(draft.currentScan)
         XCTAssertNil(draft.fingerprintToTrust)
@@ -205,17 +241,14 @@ final class MachinePlanUnattendedTests: XCTestCase {
         XCTAssertNil(draft.currentScan)
     }
 
-    func testAPasswordLoginNeedsThePasswordAndAFingerprint() {
+    func testAPasswordLoginNeedsThePasswordButNoFingerprint() {
         var draft = server
         draft.login = .password
         draft.fingerprint = ""
         let problems = draft.problems(existingMachines: [], unattended: true)
-        XCTAssertTrue(problems.contains { $0.field == .password })
-        XCTAssertTrue(problems.contains { $0.field == .fingerprint })
-        XCTAssertFalse(problems.contains { $0.field == .keyFile })
+        XCTAssertEqual(problems.map(\.field), [.password])
 
         draft.password = SecretText("hunter2")
-        draft.fingerprint = fingerprint
         XCTAssertEqual(draft.problems(existingMachines: [], unattended: true), [])
     }
 

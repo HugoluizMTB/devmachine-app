@@ -89,9 +89,8 @@ public struct MachineDraft: Equatable, Sendable {
     public var domain = ""
     /// What `machines scan` reported, for the address and port it read.
     public var scan: MachineScan?
-    /// The person said the scanned key is the one the console printed.
-    public var scanConfirmed = false
-    /// What the provider's console printed; the fingerprint is read out of it.
+    /// What the provider's console printed, pasted only by whoever wants to
+    /// check the key there; the fingerprint is read out of it.
     public var fingerprint = ""
     /// A first workspace to create on the machine; empty creates none.
     public var workspace = ""
@@ -182,13 +181,14 @@ public struct MachineDraft: Equatable, Sendable {
     }
 
     /// What `machines add --fingerprint` is given: what the console printed,
-    /// or the scanned key once the person said it matches the console. A
-    /// console and a scan that disagree trust nothing.
+    /// else the key the wizard read from this address. The add then refuses a
+    /// server that presents any other key, so a fake one between the scan and
+    /// the add never gets the password. A console and a scan that disagree
+    /// trust nothing.
     public var fingerprintToTrust: String? {
         if consoleDisagreesWithScan { return nil }
         if let expected = expectedFingerprint { return expected }
-        guard let scan = currentScan, scanConfirmed else { return nil }
-        return scan.fingerprint
+        return currentScan?.fingerprint
     }
 
     /// A SHA-256 digest is 32 bytes: 43 base64 characters without padding.
@@ -201,7 +201,7 @@ public struct MachineDraft: Equatable, Sendable {
     /// command runs: `create-local`'s name rule applies to every machine.
     /// `unattended` is a CLI that takes every answer as a flag
     /// (`MachineUnattendedAdd`): then a password or an agent key is asked
-    /// here, and every server needs a fingerprint to trust.
+    /// here. A key not read yet blocks nothing: the add reads it again.
     public func problems(
         existingMachines: [String], unattended: Bool = false, existingWorkspaces: [String] = []
     ) -> [MachineDraftProblem] {
@@ -296,10 +296,6 @@ public struct MachineDraft: Equatable, Sendable {
             problems.append(.init(
                 field: .fingerprint,
                 message: "The console printed a different key than the server presented. Do not add this server."))
-        } else if fingerprintToTrust == nil {
-            problems.append(.init(
-                field: .fingerprint,
-                message: "Read the server's fingerprint and check it against your provider's console."))
         }
         if !hasConfiguration, !trimmedDomain.isEmpty, !Self.matches(trimmedDomain.lowercased(), Self.domainPattern) {
             problems.append(.init(field: .domain, message: "Type a domain like example.com, or leave it empty."))

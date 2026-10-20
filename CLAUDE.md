@@ -1881,13 +1881,31 @@ once may fail there.
   when a run starts, whatever the outcome, when the page goes away, and
   when the context is read again; a Try again that needs it opens the
   answers instead.
-- **The fingerprint is read before anything trusts it** (`machines scan
-  --format json`, logs in nowhere, writes nothing): the wizard shows the
-  presented key beside the CLI's `verify` command for the provider's
-  console. `--fingerprint` is the console output pasted, or the scan once
-  the person ticks that the console shows the same key; a paste that
-  disagrees with the scan trusts nothing. A scan of another address or
-  port counts for nothing.
+- **The host key is read by itself, never by a button** (`machines scan
+  --format json`, logs in nowhere, writes nothing). Once the address and
+  port could name a server, the details page reads it after typing pauses
+  (`MachineScanSchedule`, `.task(id:)` cancels on the next keystroke) and
+  again only when they change; it shows one line, "Server key: ED25519
+  SHA256:…". `--fingerprint` is that scan, so the add refuses a server that
+  presents another key and a fake one never gets the password. The
+  provider-console check (verify command, paste, mismatch warning) is a
+  collapsed "Check it against the provider console (optional)"; a paste
+  wins over the scan, and one that disagrees trusts nothing. A failed scan
+  says it in plain words (`MachineScanFailure`: refused, no answer, name
+  does not resolve) with the CLI's error under Show details, and blocks
+  nothing: Create reads the key again first, and with none the add goes
+  without `--fingerprint` and the CLI refuses on its own. A scan of another
+  address or port counts for nothing.
+- **Log in with Password or SSH key** (agent keys, 1Password included,
+  or a key file from `~/.ssh`). The password field shows for both: with a
+  key it is optional and goes on stdin only when typed, to put the key on
+  the server once. An add whose key does not log in yet and had no
+  password (the CLI's "the key does not log in yet and no password was
+  given") fails with the password field and "Try again with this
+  password" on the failure itself (`MachineRetryField`), which runs that
+  step again with it on stdin; a password login's failure asks the same
+  way. An add's step id ignores `--password-stdin`, so a retry with or
+  without the password finds the same step.
 - **An older CLI keeps the terminal flow.** A server whose key already
   logs in is added unattended; a password-only server, a Lima machine
   (`create-local`, then `machines add`) and the very first machine (`setup`)

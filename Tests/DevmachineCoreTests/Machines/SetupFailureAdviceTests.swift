@@ -9,7 +9,6 @@ final class SetupFailureAdviceTests: XCTestCase {
                     "Please update to Xcode 16.0 (or delete it)."])
         XCTAssertEqual(advice?.cause, .outdatedXcode)
         XCTAssertTrue(advice?.whatToDo.contains("Software Update") == true)
-        XCTAssertTrue(advice?.whatToDo.contains("without Homebrew") == true)
     }
 
     func testOutdatedCommandLineToolsAreTheSameCause() {
@@ -91,8 +90,21 @@ final class SetupFailureHelpTests: XCTestCase {
         let help = SetupFailureHelp.help(for: sync, lines: ["TASK [base] failed"])
         XCTAssertNil(help.cause)
         XCTAssertTrue(help.title.contains("Install everything on main"))
-        XCTAssertTrue(help.whatToDo.contains("devmachine sync --machine main --yes"))
+        XCTAssertEqual(help.whatToDo, "Retry runs it again; the log shows why it stopped.")
         XCTAssertEqual(help.actions, [.retry, .editAnswers("Change answers")])
+    }
+
+    func testTheDetailsKeepTheExactCommandAndTheLastLines() {
+        XCTAssertEqual(
+            SetupFailureHelp.details(for: sync, lines: ["TASK [base] failed"], problem: nil),
+            "$ devmachine sync --machine main --yes\nTASK [base] failed")
+        XCTAssertEqual(
+            SetupFailureHelp.details(
+                for: sync, lines: ["$ devmachine sync --machine main --yes", "TASK [base] failed"], problem: nil),
+            "$ devmachine sync --machine main --yes\nTASK [base] failed")
+        XCTAssertEqual(
+            SetupFailureHelp.details(for: sync, lines: [], problem: "Stopped."),
+            "$ devmachine sync --machine main --yes\nStopped.")
     }
 
     func testAnOutdatedXcodeOffersSoftwareUpdateAndTheDownloads() {
