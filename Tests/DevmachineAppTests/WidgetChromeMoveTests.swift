@@ -63,6 +63,7 @@ final class WidgetChromeMoveTests: XCTestCase {
         drag(in: window, fromTop: 20)
         XCTAssertFalse(moves.translations.isEmpty)
         XCTAssertEqual(moves.translations.last?.width ?? 0, 30, accuracy: 1)
+        XCTAssertEqual(moves.ended, 1)
     }
 
     func testADragBelowTheStripDoesNotMoveTheCard() {
@@ -70,5 +71,6 @@ final class WidgetChromeMoveTests: XCTestCase {
         let window = host(resolution: .notFound(type: "acme/missing"), moves: moves)
         drag(in: window, fromTop: 120)
         XCTAssertTrue(moves.translations.isEmpty)
+        XCTAssertEqual(moves.ended, 0)
     }
 }

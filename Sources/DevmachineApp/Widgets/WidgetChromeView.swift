@@ -83,6 +83,7 @@ struct WidgetChromeView: View {
     /// stay while their drag is held, even when the pointer runs ahead of
     /// the card and its hover ends.
     @GestureState private var moving = false
+    @GestureState private var stripHeld = false
     @GestureState private var resizing = false
     @Environment(\.dmMetrics) private var m
 
@@ -94,10 +95,11 @@ struct WidgetChromeView: View {
                 card
             }
         }
-        .onChange(of: moving) { _, held in
+        .onChange(of: moving) { _, held in if !held { onMoveEnded() } }
+        .onChange(of: stripHeld) { _, held in
             guard !held else { return }
+            if stripDrag == true { onMoveEnded() }
             stripDrag = nil
-            onMoveEnded()
         }
         .onChange(of: resizing) { _, held in if !held { onResizeEnded() } }
     }
@@ -121,7 +123,7 @@ struct WidgetChromeView: View {
 
     private var stripMoveGesture: some Gesture {
         DragGesture(minimumDistance: 2, coordinateSpace: .global)
-            .updating($moving) { _, held, _ in held = true }
+            .updating($stripHeld) { _, held, _ in held = true }
             .onChanged { value in
                 if stripDrag == nil {
                     stripDrag = WidgetChromeLayout.startsMove(
