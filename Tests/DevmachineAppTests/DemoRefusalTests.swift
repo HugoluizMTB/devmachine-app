@@ -118,4 +118,26 @@ final class DemoRefusalTests: XCTestCase {
         XCTAssertEqual(setup.state, .failed(.sync, cause: "Demo mode never runs a devmachine command.",
                                             details: "$ devmachine sync --machine main --tags hostinger --yes"))
     }
+
+    func testRemovingADNSProviderIsRefusedWithoutCallingTheCLI() async {
+        let center = MachineJobCenter(runner: ProcessJobRunner(cli: {
+            XCTFail("demo mode resolved the CLI to remove a DNS provider")
+            throw DevmachineCLIError.commandFailed("no")
+        }))
+        let setup = DNSSetupStore(
+            service: CaddyService(cli: DevmachineCLI(executable: "/fake", runner: DemoMode.runner)),
+            center: { center }, canRunSync: { true })
+        setup.update(
+            machine: "main",
+            packages: [CLIPackage(name: "hostinger", scope: "machine", installedOn: ["machine main"],
+                                  summary: "DNS zones on Hostinger.")],
+            answers: [])
+
+        await setup.remove("hostinger")
+
+        guard case let .failed(step, _, details) = setup.stateOf("hostinger") else { return XCTFail() }
+        XCTAssertEqual(step, .remove)
+        XCTAssertEqual(details, "Demo mode never changes a configuration or a secret.")
+        XCTAssertTrue(center.jobs.isEmpty)
+    }
 }

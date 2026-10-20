@@ -222,4 +222,12 @@ final class DNSProviderSetupTests: XCTestCase {
         XCTAssertEqual(DNSProviderState.ready.label, "Ready")
         XCTAssertEqual(DNSProviderState.working(.sync).label, "Working…")
     }
+
+    func testRemoveNamesTheMachineThenSyncsEverythingThenForgetsTheSecret() {
+        XCTAssertEqual(
+            DNSProviderSetup.removeArguments(package: "godaddy", machine: "main"),
+            ["packages", "rm", "godaddy", "--machine", "main", "--yes"])
+        XCTAssertEqual(DNSProviderSetup.fullSyncSteps(machine: "main"), [["sync", "--machine", "main", "--yes"]])
+        XCTAssertEqual(DNSProviderSetup.secretRemoveArguments(credential: "godaddy"), ["secrets", "rm", "godaddy"])
+    }
 }

@@ -39,6 +39,7 @@ final class DNSSetupStore: ObservableObject {
     private var center: @MainActor () -> MachineJobCenter?
     private var runs: [String: UUID] = [:]
     private var jobPackage: [String: String] = [:]
+    private var removing: [String: String] = [:]
     private var jobsWatch: AnyCancellable?
     private weak var watchedCenter: MachineJobCenter?
     /// Packages this store added that `packages list` has not shown yet.
@@ -198,6 +199,37 @@ final class DNSSetupStore: ObservableObject {
         return id
     }
 
+    /// Drops `package` from the machine's configuration, then runs a full
+    /// sync as a corner job, then forgets its token. Only a full sync
+    /// rewrites the lock `dns providers` reads, so the provider stops
+    /// answering only after it.
+    func remove(_ package: String) async {
+        guard let machine, !isRunning(machine), canRunSync(), let center = center() else { return }
+        let run = begin(machine, .remove, package: package)
+        if DemoMode.isActive { return fail(machine, run: run, step: .remove, error: Self.demoRefusal) }
+        let service = self.service
+        if let failure = await perform({ try service.removePackage(package, machine: machine) }) {
+            return fail(machine, run: run, step: .remove, error: failure)
+        }
+        guard runs[machine] == run else { return }
+        declared = (declared ?? []).filter { $0 != package }
+        added[machine]?.remove(package)
+        if let previous = syncing[machine] { center.dismiss(previous) }
+        jobs[machine] = .running(.sync)
+        removing[machine] = package
+        let plan = MachineJobPlan(
+            machine: machine, title: "Remove \(package) from \(machine)",
+            steps: DNSProviderSetup.fullSyncSteps(machine: machine))
+        watch(center)
+        var started: UUID?
+        let id = center.run(plan) { [weak self] outcome in
+            guard let started else { return }
+            self?.syncFinished(machine, run: run, job: started, outcome: outcome)
+        }
+        started = id
+        syncing[machine] = id
+    }
+
     /// A failed sync runs again in place, in the same corner job; false
     /// when that job is gone.
     @discardableResult
@@ -220,8 +252,15 @@ final class DNSSetupStore: ObservableObject {
 
     private func syncFinished(_ machine: String, run: UUID, job: UUID, outcome: MachineJobOutcome) {
         guard runs[machine] == run else { return }
+        let removed = removing[machine]
+        if outcome != .succeeded { removing[machine] = nil }
         switch outcome {
         case .succeeded:
+            if let removed {
+                forgetSecret(of: removed, machine: machine, run: run)
+                onSyncEnded(machine)
+                return
+            }
             jobs[machine] = .finished
         case .failed:
             let lines = center()?.job(job)?.log.lines ?? []
@@ -233,6 +272,21 @@ final class DNSSetupStore: ObservableObject {
             syncing[machine] = nil
         }
         onSyncEnded(machine)
+    }
+
+    private func forgetSecret(of package: String, machine: String, run: UUID) {
+        jobs[machine] = .running(.remove)
+        let service = self.service
+        let secret = secretName(package)
+        Task { [weak self] in
+            guard let self else { return }
+            let failure = await self.perform({ try service.removeSecret(secret) })
+            self.removing[machine] = nil
+            if let failure { return self.fail(machine, run: run, step: .remove, error: failure) }
+            guard self.runs[machine] == run else { return }
+            self.jobs[machine] = .finished
+            self.onConfigurationChanged()
+        }
     }
 
     private func watch(_ center: MachineJobCenter) {

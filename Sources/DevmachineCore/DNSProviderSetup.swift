@@ -206,6 +206,20 @@ public enum DNSProviderSetup {
         ]
     }
 
+    public static func removeArguments(package: String, machine: String) -> [String] {
+        ["packages", "rm", package, "--machine", machine, "--yes"]
+    }
+
+    /// No `--tags`: only a full sync rewrites the machine's lock, which is
+    /// what `dns providers` reads, so a removed provider stops answering.
+    public static func fullSyncSteps(machine: String) -> [[String]] {
+        [["sync", "--machine", machine, "--yes"]]
+    }
+
+    public static func secretRemoveArguments(credential: String) -> [String] {
+        ["secrets", "rm", credential]
+    }
+
     /// The same steps for a terminal, for a CLI too old to run them from here.
     /// A plain sync shows its plan and asks before it applies anything.
     public static func manualCommands(package: String, credential: String, machine: String, declared: Bool) -> [String] {
