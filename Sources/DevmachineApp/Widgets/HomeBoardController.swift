@@ -36,6 +36,9 @@ final class HomeBoardController: ObservableObject {
     private var configObserver: NSObjectProtocol?
     private var started = false
     private var openingFromConfiguration = false
+    /// The configuration folder onboarding already read, so Home opens its
+    /// board at once instead of asking the CLI again.
+    private var handedConfigDirectory: String?
     private let configPath: @Sendable () async -> String?
     private var injectedSources: WidgetSourceController?
     private static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
@@ -88,12 +91,27 @@ final class HomeBoardController: ObservableObject {
     /// no board is open, so a CLI installed after launch is picked up.
     func openFromConfiguration() {
         guard store == nil, !openingFromConfiguration else { return }
+        if let handed = handedConfigDirectory {
+            handedConfigDirectory = nil
+            return open(configDirectory: handed)
+        }
         openingFromConfiguration = true
         Task {
             let path = await configPath()
             openingFromConfiguration = false
             if let path, store == nil { open(configDirectory: path) }
         }
+    }
+
+    /// Onboarding's packages release step read the catalog and the
+    /// configuration folder: Home starts from both, so it is drawn whole on
+    /// its first frame. The board itself still opens once the canvas has a
+    /// width (`HomeCanvasView`), unless Home is already on screen.
+    func handOff(_ fetched: PackagesFetch) {
+        catalog.seed(fetched.catalog)
+        guard store == nil, let directory = fetched.configDirectory else { return }
+        handedConfigDirectory = directory
+        if started { openFromConfiguration() }
     }
 
     func open(configDirectory: String) {

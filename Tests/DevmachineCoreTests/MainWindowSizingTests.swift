@@ -18,10 +18,22 @@ final class MainWindowSizingTests: XCTestCase {
         XCTAssertEqual(frame.midY, desktop.midY, accuracy: 0.5)
     }
 
-    func testASmallScreenStillGetsTheMinimumSize() {
+    func testASmallScreenGetsAWindowAsLargeAsItsVisibleFrame() {
         let small = CGRect(x: 0, y: 0, width: 1024, height: 640)
         let frame = MainWindowSizing.defaultFrame(visible: small)
-        XCTAssertEqual(frame.size, MainWindowSizing.minimum)
+        XCTAssertEqual(frame, small)
+    }
+
+    func testALaptopScreenGetsAtLeast1280By800() {
+        let frame = MainWindowSizing.defaultFrame(visible: CGRect(x: 0, y: 0, width: 1440, height: 875))
+        XCTAssertEqual(frame.size, CGSize(width: 1280, height: 800))
+        XCTAssertEqual(MainWindowSizing.preferred, CGSize(width: 1280, height: 800))
+    }
+
+    func testAScreenShorterThan800FitsTheHeightAndKeepsThePreferredWidth() {
+        let short = CGRect(x: 0, y: 0, width: 1366, height: 743)
+        let frame = MainWindowSizing.defaultFrame(visible: short)
+        XCTAssertEqual(frame.size, CGSize(width: 1280, height: 743))
     }
 
     func testTheMinimumNeverOutgrowsTheScreen() {

@@ -142,9 +142,9 @@ final class AddMachineModel: ObservableObject {
     }
 
     /// Only the skills step failed: the machine is set up, and a Retry
-    /// installs them.
+    /// installs them. The first run needs them too, so there it is a failure.
     var onlySkillsFailed: Bool {
-        guard case .failed = runner.phase,
+        guard !firstRun, case .failed = runner.phase,
               let failed = wizard.plan.first(where: { runner.status(of: $0) == .failed })
         else { return false }
         return !failed.blocksSetup

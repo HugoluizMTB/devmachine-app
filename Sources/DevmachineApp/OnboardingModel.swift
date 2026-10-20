@@ -61,4 +61,11 @@ enum OnboardingPlan {
             ]
         }
     }
+
+    /// What runs once the Mac is set up, before "You are all set": the
+    /// packages release Home's widgets come from, then the machine answering.
+    /// Home opens complete only after both.
+    static func finishSteps(for detection: OnboardingDetection) -> [MachinePlanStep] {
+        [.fetchPackages] + (detection.adminMachine.map { [.checkReady($0)] } ?? [])
+    }
 }

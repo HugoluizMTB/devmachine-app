@@ -814,6 +814,11 @@ struct MachineRunLayout<Outcome: View>: View {
                             .foregroundStyle(Color.dmMuted)
                             .lineLimit(2)
                             .truncationMode(.middle)
+                        if let attempt = runner.attemptLabel(of: step) {
+                            Text(verbatim: attempt)
+                                .font(.dm(10.5))
+                                .foregroundStyle(Color.dmMuted)
+                        }
                         if step.asksInTerminal {
                             Text(verbatim: "Asks in the terminal")
                                 .font(.dm(10.5))

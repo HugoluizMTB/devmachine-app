@@ -35,8 +35,14 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertEqual(flow.screen, .wizard)
 
         XCTAssertEqual(flow.wizardFinished(), .refreshDetection)
+        XCTAssertEqual(flow.receive(ready), .run(OnboardingPlan.finishSteps(for: ready)))
+        XCTAssertEqual(flow.screen, .preparing)
+        XCTAssertFalse(flow.isAllSet)
+
+        XCTAssertEqual(flow.runFinished(succeeded: true), .refreshDetection)
         XCTAssertNil(flow.receive(ready))
         XCTAssertEqual(flow.screen, .complete)
+        XCTAssertTrue(flow.isAllSet)
     }
 
     func testAFailedRunWaitsOnScreenForRetryOrBack() {
@@ -76,6 +82,8 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertEqual(flow.plan.map(\.kind), [.addPackage(MachinePackageCatalog.appPackage), .sync])
 
         _ = flow.runFinished(succeeded: true)
+        XCTAssertEqual(flow.receive(ready), .run(OnboardingPlan.finishSteps(for: ready)))
+        _ = flow.runFinished(succeeded: true)
         XCTAssertNil(flow.receive(ready))
         XCTAssertEqual(flow.screen, .complete)
     }
@@ -111,10 +119,44 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertNotNil(flow.unresolved)
     }
 
-    func testAMacAlreadySetUpIsCompleteAtOnce() {
+    func testAMacAlreadySetUpRunsOnlyTheFinishingStepsBeforeItIsAllSet() {
         var flow = OnboardingFlow()
+        XCTAssertEqual(flow.receive(ready), .run(OnboardingPlan.finishSteps(for: ready)))
+        XCTAssertEqual(flow.screen, .preparing)
+        XCTAssertEqual(flow.runFinished(succeeded: true), .refreshDetection)
         XCTAssertNil(flow.receive(ready))
-        XCTAssertEqual(flow.screen, .complete)
+        XCTAssertTrue(flow.isAllSet)
+    }
+
+    func testTheFinishingStepsFetchThePackagesReleaseThenCheckTheMachineAnswers() {
+        let steps = OnboardingPlan.finishSteps(for: ready)
+        XCTAssertEqual(steps.map(\.kind), [.fetchPackages, .checkReady])
+        XCTAssertEqual(steps.map(\.arguments), [
+            ["widgets", "list", "--format", "json"],
+            ["run", "--machine", "acme", "--", "true"],
+        ])
+    }
+
+    func testAFailedFinishingStepNeverReachesAllSet() {
+        var flow = OnboardingFlow()
+        _ = flow.receive(ready)
+        XCTAssertNil(flow.runFinished(succeeded: false))
+        XCTAssertEqual(flow.screen, .preparing)
+        XCTAssertFalse(flow.isAllSet)
+
+        XCTAssertEqual(flow.back(), .stop)
+        XCTAssertFalse(flow.isAllSet)
+        XCTAssertEqual(flow.start(), .run(OnboardingPlan.finishSteps(for: ready)))
+        XCTAssertFalse(flow.isAllSet)
+    }
+
+    func testAPackageGoneMissingAfterTheFinishingStepsAddsItBeforeAllSet() {
+        var flow = OnboardingFlow()
+        _ = flow.receive(ready)
+        _ = flow.runFinished(succeeded: true)
+        let missing = detection(adminMachine: "acme", missingPackageMachines: ["acme"])
+        XCTAssertEqual(flow.receive(missing), .run(OnboardingPlan.prepareSteps(for: missing)))
+        XCTAssertFalse(flow.isAllSet)
     }
 
     func testAReadWhileARunGoesOnChangesNothing() {

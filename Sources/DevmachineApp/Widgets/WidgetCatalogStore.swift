@@ -3,7 +3,9 @@ import DevmachineCore
 
 /// The widget catalog as the CLI resolves it. A failed read keeps the last
 /// good catalog, marked stale, and reads again on `CatalogRetrySchedule`
-/// until one works; with none, Home says it could not fetch packages.
+/// until one works. With none yet, a network failure is read again on
+/// `RetryPolicy.downloads` while the state stays `.loading`, whether or not
+/// a board waits; only then does Home say it could not fetch packages.
 @MainActor
 final class WidgetCatalogStore: ObservableObject {
     static let shared = WidgetCatalogStore()
@@ -25,6 +27,9 @@ final class WidgetCatalogStore: ObservableObject {
     private let sleep: @Sendable (TimeInterval) async -> Void
     private nonisolated(unsafe) var retry: Task<Void, Never>?
     private var retryFailures = 0
+    private nonisolated(unsafe) var quickRetry: Task<Void, Never>?
+    /// Failed reads in a row while there is no catalog yet.
+    private var firstReadFailures = 0
     private var catalogWaiters: Set<String> = []
     private nonisolated(unsafe) var quitObserver: NSObjectProtocol?
     private var quitting = false
@@ -44,6 +49,7 @@ final class WidgetCatalogStore: ObservableObject {
 
     deinit {
         retry?.cancel()
+        quickRetry?.cancel()
         if let quitObserver { NotificationCenter.default.removeObserver(quitObserver) }
     }
 
@@ -66,7 +72,9 @@ final class WidgetCatalogStore: ObservableObject {
         }
     }
 
+    /// Retry, a board change, the gallery opening: a fresh set of attempts.
     func reloadSoon() {
+        if quickRetry == nil { firstReadFailures = 0 }
         Task { await reload() }
     }
 
@@ -95,14 +103,38 @@ final class WidgetCatalogStore: ObservableObject {
             state = .loaded
             stopRetrying()
         case let .failure(error):
+            let message = error.localizedDescription
+            if catalog == nil, retryQuickly(after: message) { break }
             if let current = catalog, !current.isStale { catalog = current.stale() }
-            state = .failed(error.localizedDescription)
+            state = .failed(message)
             scheduleRetry()
         }
         if again {
             again = false
             await reload()
         }
+    }
+
+    /// No catalog yet and the network failed: read again soon, up to
+    /// `RetryPolicy.downloads.maxAttempts` reads, still `.loading`.
+    private func retryQuickly(after message: String) -> Bool {
+        guard !quitting else { return false }
+        if quickRetry != nil {
+            state = .loading
+            return true
+        }
+        firstReadFailures += 1
+        guard let delay = RetryPolicy.downloads.delay(afterFailedAttempts: firstReadFailures, output: [message])
+        else { return false }
+        state = .loading
+        let sleep = self.sleep
+        quickRetry = Task { [weak self] in
+            await sleep(delay)
+            guard !Task.isCancelled, let self else { return }
+            self.quickRetry = nil
+            await self.reload()
+        }
+        return true
     }
 
     /// A stale catalog is always read again; with none yet, only while a
@@ -115,7 +147,7 @@ final class WidgetCatalogStore: ObservableObject {
     func setWaitsForCatalog(_ waits: Bool, board: String) {
         if waits { catalogWaiters.insert(board) } else { catalogWaiters.remove(board) }
         if !needsRetry {
-            stopRetrying()
+            stopSlowRetry()
         } else if catalog == nil, case .failed = state {
             scheduleRetry()
         }
@@ -140,6 +172,13 @@ final class WidgetCatalogStore: ObservableObject {
     }
 
     func stopRetrying() {
+        stopSlowRetry()
+        quickRetry?.cancel()
+        quickRetry = nil
+        firstReadFailures = 0
+    }
+
+    private func stopSlowRetry() {
         retry?.cancel()
         retry = nil
         retryFailures = 0

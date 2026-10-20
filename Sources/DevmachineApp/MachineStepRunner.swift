@@ -51,6 +51,12 @@ final class MachineStepRunner: ObservableObject {
         var installCLI: (@escaping @Sendable (String) -> Void) async throws -> Int32 = { _ in
             throw LimaInstallError(message: "Installing the CLI is not available here.")
         }
+        /// The plan's packages release step: `widgets list`, read whole.
+        var fetchPackages: (@escaping @Sendable (String) -> Void) async throws -> PackagesFetch = { _ in
+            throw LimaInstallError(message: "Downloading the packages release is not available here.")
+        }
+        /// The wait between two attempts of a step (`RetryPolicy`).
+        var sleep: @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }
     }
 
     @Published private(set) var statuses: [String: StepStatus] = [:]
@@ -62,6 +68,10 @@ final class MachineStepRunner: ObservableObject {
     @Published private(set) var inBackground = false
     /// The failed step's exit status, nil for a stop or an error before it ran.
     @Published private(set) var exitCode: Int32?
+    /// Which attempt each step is on, once a network failure made it try again.
+    @Published private(set) var attempts: [String: Int] = [:]
+    /// What the packages release step read, for Home to start with.
+    @Published private(set) var fetchedPackages: PackagesFetch?
 
     nonisolated static let stopped = "Stopped before it finished. Try again runs this step again."
     nonisolated static let endedWithoutMarker = "The step ended without finishing: the terminal is back at its "
@@ -77,7 +87,7 @@ final class MachineStepRunner: ObservableObject {
     private let stepTimeout: TimeInterval
     private var runToken = UUID()
     private var activeStep: MachinePlanStep?
-    private var processTask: Task<Int32, Error>?
+    private var processTask: Task<(Int32, PackagesFetch?), Error>?
 
     /// The shell is asked whether it is back at its prompt only after a few
     /// polls (the step's `sh` needs a moment to take the foreground), then
@@ -101,6 +111,12 @@ final class MachineStepRunner: ObservableObject {
 
     func status(of step: MachinePlanStep) -> StepStatus {
         statuses[step.id] ?? .waiting
+    }
+
+    /// "Attempt 2 of 3" while a step is tried again, nil on its first try.
+    func attemptLabel(of step: MachinePlanStep) -> String? {
+        guard let attempt = attempts[step.id], attempt > 1 else { return nil }
+        return "Attempt \(attempt) of \(RetryPolicy.downloads.maxAttempts)"
     }
 
     /// Runs every step not done yet, in order, and stops at the first that
@@ -175,13 +191,54 @@ final class MachineStepRunner: ObservableObject {
         lines = []
         inBackground = false
         exitCode = nil
+        attempts = [:]
+        fetchedPackages = nil
     }
 
+    /// A step that downloads is tried again on a network failure
+    /// (`RetryPolicy.downloads`); the log keeps every attempt's output.
     private func runInBackground(
         _ step: MachinePlanStep, password: SecretText, limaMethod: LimaInstall.Method, token: UUID
     ) async -> Bool {
         activeStep = step
         statuses[step.id] = .running
+        attempts[step.id] = nil
+        var attempt = 1
+        while true {
+            let outcome = await attemptInBackground(step, password: password, limaMethod: limaMethod, token: token)
+            guard runToken == token else { return false }
+            guard let failure = outcome else {
+                statuses[step.id] = .done
+                return true
+            }
+            let policy = RetryPolicy.downloads
+            guard step.retriesOnNetworkFailure,
+                  let delay = policy.delay(afterFailedAttempts: attempt, output: failure.output)
+            else {
+                exitCode = failure.exitCode
+                let tries = attempt > 1 ? "Tried \(attempt) times. " : ""
+                fail(step, tries + failure.message)
+                return false
+            }
+            lines.append("▸ Attempt \(attempt) of \(policy.maxAttempts) failed on the network. "
+                + "Trying again in \(Int(delay)) s.")
+            await hooks.sleep(delay)
+            guard runToken == token else { return false }
+            attempt += 1
+            attempts[step.id] = attempt
+        }
+    }
+
+    private struct AttemptFailure {
+        let message: String
+        let exitCode: Int32?
+        /// What the attempt printed, with the error last: what the retry reads.
+        let output: [String]
+    }
+
+    private func attemptInBackground(
+        _ step: MachinePlanStep, password: SecretText, limaMethod: LimaInstall.Method, token: UUID
+    ) async -> AttemptFailure? {
         let before = lines + [(step.isCommand ? "$ " : "▸ ") + step.displayLine]
         lines = before
         let sink = ProcessOutputSink { [weak self] output in
@@ -192,38 +249,41 @@ final class MachineStepRunner: ObservableObject {
         let runProcess = hooks.runProcess
         let installLima = hooks.installLima
         let installCLI = hooks.installCLI
+        let fetchPackages = hooks.fetchPackages
         let arguments = step.arguments
         let kind = step.kind
-        let work = Task { () async throws -> Int32 in
+        let work = Task { () async throws -> (Int32, PackagesFetch?) in
             switch kind {
             case .installLima:
                 try await installLima(limaMethod, sink.receive)
-                return 0
+                return (0, nil)
             case .installCLI:
-                return try await installCLI(sink.receive)
+                return (try await installCLI(sink.receive), nil)
+            case .fetchPackages:
+                return (0, try await fetchPackages(sink.receive))
             default:
-                return try await runProcess(arguments, input, sink.receive)
+                return (try await runProcess(arguments, input, sink.receive), nil)
             }
         }
         processTask = work
         let status: Int32
         do {
-            status = try await work.value
+            let (code, fetched) = try await work.value
+            status = code
+            guard runToken == token else { return nil }
+            if let fetched { fetchedPackages = fetched }
         } catch {
-            guard runToken == token else { return false }
+            guard runToken == token else { return nil }
             lines = before + sink.snapshot
-            fail(step, error.localizedDescription)
-            return false
+            let message = error.localizedDescription
+            return AttemptFailure(message: message, exitCode: nil, output: sink.snapshot + [message])
         }
-        guard runToken == token else { return false }
         lines = before + sink.snapshot
         guard status == 0 else {
-            exitCode = status
-            fail(step, MachinePrepare.failureCause(sink.snapshot) ?? "The log shows what it said.")
-            return false
+            let message = MachinePrepare.failureCause(sink.snapshot) ?? "The log shows what it said."
+            return AttemptFailure(message: message, exitCode: status, output: sink.snapshot)
         }
-        statuses[step.id] = .done
-        return true
+        return nil
     }
 
     private func runOne(_ step: MachinePlanStep, executable: String, token: UUID) async -> Bool {
@@ -304,6 +364,13 @@ final class MachineStepRunner: ObservableObject {
     #endif
 }
 
+/// What the packages release step read: the catalog Home starts with, and
+/// the configuration folder its board lives in.
+struct PackagesFetch: Equatable, Sendable {
+    let catalog: WidgetCatalog
+    let configDirectory: String?
+}
+
 extension MachineStepRunner.Hooks {
     /// The scripts live in the app's own temporary folder, readable only by
     /// this account, and hold nothing but the commands the review showed.
@@ -346,6 +413,23 @@ extension MachineStepRunner.Hooks {
             return try await StreamingProcess.run(
                 executable: "/bin/zsh", arguments: ["-l", "-c", "setopt pipefail; " + CLIInstallPlan.noHomebrewCommand],
                 environment: CLISelfUpdate.environment(base: ProcessInfo.processInfo.environment), output: output)
+        },
+        fetchPackages: { output in
+            guard !DemoMode.isActive else {
+                throw DevmachineCLIError.commandFailed("Demo mode never downloads the packages release.")
+            }
+            let fetched = try await Task.detached { () throws -> PackagesFetch in
+                do {
+                    let catalog = try WidgetCatalogStore.liveRead()
+                    let directory = try? DevmachineCLI.resolve().configPath().path
+                    return PackagesFetch(catalog: catalog, configDirectory: directory)
+                } catch {
+                    error.localizedDescription.split(separator: "\n").forEach { output(String($0)) }
+                    throw error
+                }
+            }.value
+            output("Packages release \(fetched.catalog.packagesRelease): \(fetched.catalog.widgets.count) widgets ready")
+            return fetched
         })
     }
 }

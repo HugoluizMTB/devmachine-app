@@ -24,7 +24,13 @@ private final class WidgetsRunner: CommandRunner, @unchecked Sendable {
 
 private enum ReadError: LocalizedError {
     case offline
-    var errorDescription: String? { "could not fetch packages: offline" }
+    case noCLI
+    var errorDescription: String? {
+        switch self {
+        case .offline: "could not fetch packages: offline"
+        case .noCLI: "The devmachine CLI was not found on this Mac."
+        }
+    }
 }
 
 private final class ReadBox: @unchecked Sendable {
@@ -121,16 +127,52 @@ final class WidgetCatalogStoreTests: XCTestCase {
         XCTAssertEqual(sleeps.delays, [30])
     }
 
-    func testNoCatalogYetAndNothingWaitingForItMeansNoRetry() async {
-        let store = retryingStore(ReadBox(.failure(ReadError.offline)))
+    func testNoCatalogYetAndAFailureThatIsNotTheNetworksMeansNoRetry() async {
+        let store = retryingStore(ReadBox(.failure(ReadError.noCLI)))
         await store.reload()
         try? await Task.sleep(for: .milliseconds(30))
         XCTAssertEqual(sleeps.delays, [])
+        XCTAssertEqual(store.state, .failed(ReadError.noCLI.localizedDescription))
+    }
+
+    func testAFirstRunWithNothingWaitingStillRetriesTheNetworkThreeTimesThenFails() async {
+        let reads = ReadCounter()
+        let store = retryingStore(ReadBox(.failure(ReadError.offline)), reads: reads)
+        await store.reload()
+        XCTAssertEqual(store.state, .loading)
+        XCTAssertEqual(HomeCatalogNotice.of(catalog: store.catalog, state: store.state), .loading)
+        await waitUntil { self.sleeps.delays == [2] && self.sleeps.waiting == 1 }
+        store.setWaitsForCatalog(false, board: "home")
+        sleeps.releaseNext()
+        await waitUntil { self.sleeps.delays == [2, 5] && self.sleeps.waiting == 1 }
+        XCTAssertEqual(store.state, .loading)
+        sleeps.releaseNext()
+        await waitUntil { reads.value == 3 && store.state != .loading }
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(reads.value, 3)
+        XCTAssertEqual(sleeps.delays, [2, 5])
+        XCTAssertEqual(store.state, .failed("could not fetch packages: offline"))
+        XCTAssertEqual(
+            HomeCatalogNotice.of(catalog: store.catalog, state: store.state),
+            .failed("could not fetch packages: offline"))
+    }
+
+    func testAFirstRunRetryThatWorksLoadsTheCatalog() async {
+        let box = ReadBox(.failure(ReadError.offline))
+        let store = retryingStore(box)
+        await store.reload()
+        await waitUntil { self.sleeps.waiting == 1 }
+        let good = WidgetCatalog(engine: "1.7", packagesRelease: "v54", widgets: [])
+        box.set(.success(good))
+        sleeps.releaseNext()
+        await waitUntil { store.state == .loaded }
+        XCTAssertEqual(store.catalog, good)
+        XCTAssertEqual(HomeCatalogNotice.of(catalog: store.catalog, state: store.state), .none)
     }
 
     func testAFailedFirstReadIsRetriedOnlyWhileABoardWaitsForTheCatalog() async {
         let reads = ReadCounter()
-        let box = ReadBox(.failure(ReadError.offline))
+        let box = ReadBox(.failure(ReadError.noCLI))
         let store = retryingStore(box, reads: reads)
         await store.reload()
         store.setWaitsForCatalog(true, board: "home")
@@ -187,7 +229,7 @@ final class WidgetCatalogStoreTests: XCTestCase {
     }
 
     func testABoardWaitingBeforeTheFirstReadFailsGetsTheRetryWhenItFails() async {
-        let store = retryingStore(ReadBox(.failure(ReadError.offline)))
+        let store = retryingStore(ReadBox(.failure(ReadError.noCLI)))
         store.setWaitsForCatalog(true, board: "home")
         XCTAssertEqual(sleeps.delays, [])
         await store.reload()
@@ -250,10 +292,18 @@ final class WidgetCatalogStoreTests: XCTestCase {
     }
 
     func testAFirstFailureLeavesNoCatalog() async {
-        let store = WidgetCatalogStore(read: { throw ReadError.offline })
+        let store = WidgetCatalogStore(read: { throw ReadError.noCLI })
         await store.reload()
         XCTAssertNil(store.catalog)
-        XCTAssertEqual(store.state, .failed("could not fetch packages: offline"))
+        XCTAssertEqual(store.state, .failed(ReadError.noCLI.localizedDescription))
+    }
+
+    func testHomeIsNeverBlankWhileTheFirstCatalogLoads() {
+        XCTAssertEqual(HomeCatalogNotice.of(catalog: nil, state: .loading), .loading)
+        XCTAssertEqual(HomeCatalogNotice.of(catalog: nil, state: .failed("offline")), .failed("offline"))
+        let stale = WidgetCatalog(engine: "1.7", packagesRelease: "v54", widgets: []).stale()
+        XCTAssertEqual(HomeCatalogNotice.of(catalog: stale, state: .failed("offline")), .none)
+        XCTAssertEqual(HomeCatalogNotice.of(catalog: stale, state: .loading), .none)
     }
 
     func testAPinnedCatalogNeverReadsTheCLI() async {

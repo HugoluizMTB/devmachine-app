@@ -11,17 +11,20 @@ final class OnboardingRunner: ObservableObject {
     let prepare: MachineStepRunner
 
     private let detect: @Sendable () async -> OnboardingDetection
+    private let handOff: @MainActor (PackagesFetch) -> Void
     private var detecting = false
     private var detectAgain = false
 
     init(
         detect: (@Sendable () async -> OnboardingDetection)? = nil,
         wizard: AddMachineModel? = nil,
-        prepare: MachineStepRunner? = nil
+        prepare: MachineStepRunner? = nil,
+        handOff: @escaping @MainActor (PackagesFetch) -> Void = { HomeBoardController.shared.handOff($0) }
     ) {
         self.wizard = wizard ?? AddMachineModel.forOnboarding()
         self.prepare = prepare ?? MachineStepRunner()
         self.detect = detect ?? Self.liveDetect
+        self.handOff = handOff
         self.wizard.onAdded = { [weak self] in self?.wizardFinished() }
     }
 
@@ -34,6 +37,12 @@ final class OnboardingRunner: ObservableObject {
     /// Demo screenshots: a flow in any state, with nothing behind it.
     func seedDemo(_ flow: OnboardingFlow) {
         self.flow = flow
+    }
+
+    /// "You are all set" needs the flow complete and every finishing step
+    /// done in this run, never only one of them.
+    var isAllSet: Bool {
+        flow.isAllSet && !flow.plan.isEmpty && flow.plan.allSatisfy { prepare.status(of: $0) == .done }
     }
 
     func start() { perform(flow.start()) }
@@ -97,6 +106,7 @@ final class OnboardingRunner: ObservableObject {
     private func runPrepare(_ steps: [MachinePlanStep]) async {
         await prepare.run(steps, inTerminal: false, label: "Setting up devmachine…")
         guard flow.plan == steps else { return }
+        if prepare.phase == .succeeded, let fetched = prepare.fetchedPackages { handOff(fetched) }
         perform(flow.runFinished(succeeded: prepare.phase == .succeeded))
     }
 }
