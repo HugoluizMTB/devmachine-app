@@ -87,6 +87,18 @@ final class ReadinessReaderTests: XCTestCase {
         XCTAssertNil(snapshot.sshAliasesWritten)
     }
 
+    func testEachMachineCarriesItsLoginEntry() throws {
+        let runner = ReadinessRunner()
+        runner.config = #"{"machines":[{"name":"main","hosts":["203.0.113.7"],"admin_user":"alice","port":22,"#
+            + #""key":"/Users/alice/.ssh/main"},{"name":"beta","hosts":["100.64.0.2"],"admin_user":"bob","port":2222}],"#
+            + #""workspaces":[],"domain":"example.com"}"#
+        let snapshot = try XCTUnwrap(read(runner))
+        XCTAssertEqual(snapshot.machineLogins, [
+            "main": "203.0.113.7|alice|22|/Users/alice/.ssh/main|",
+            "beta": "100.64.0.2|bob|2222||",
+        ])
+    }
+
     func testNoCLIIsNoSnapshot() {
         XCTAssertNil(ReadinessReader.read(cli: { throw DevmachineCLIError.executableNotFound([]) }))
     }

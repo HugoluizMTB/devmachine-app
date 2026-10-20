@@ -50,6 +50,28 @@ private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async
 
 @MainActor
 final class HealthCheckStoreTests: XCTestCase {
+    func testARefusedDoctorHoldsTheMachineAndTheNextRunDoesNotAskIt() async throws {
+        let runner = ScriptedRunner(
+            machines: #"[{"name":"box"},{"name":"edge"}]"#,
+            results: [
+                "box": ("", "alice@203.0.113.7: Permission denied (publickey).", 255),
+                "edge": (#"{"checks":[],"ok":true}"#, "", 0),
+            ])
+        let holds = LoginHoldCenter()
+        let store = HealthCheckStore(cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }, loginHolds: holds)
+
+        store.run()
+        try await waitUntil { !store.isRunning && store.results.count == 2 }
+        XCTAssertTrue(holds.isHeld(machine: "box"))
+
+        store.run()
+        try await waitUntil { !store.isRunning && runner.calls.filter { $0.contains("edge") }.count == 2 }
+
+        XCTAssertEqual(runner.calls.filter { $0.contains("box") }.count, 1)
+        let box = try XCTUnwrap(store.results.first { $0.machineName == "box" })
+        XCTAssertTrue(box.errorText?.hasPrefix("The server refused the login.") == true)
+    }
+
     func testRunChecksEveryConfiguredMachineGroupedByName() async throws {
         let runner = ScriptedRunner(
             machines: #"[{"name":"mac","self":true},{"name":"box"}]"#,

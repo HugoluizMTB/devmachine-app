@@ -106,6 +106,8 @@ final class CaddyStore: ObservableObject {
     /// How long a finished card stays before it leaves on its own. Saved
     /// and failed cards stay until dismissed: they ask for something.
     var liveCardLifetime: TimeInterval = 20
+    /// Machines whose server refused this Mac's login are not asked.
+    var loginHolds: LoginHoldCenter = .live()
     var removedCardLifetime: TimeInterval = 6
 
     private var context = SitesContext()
@@ -349,6 +351,14 @@ final class CaddyStore: ObservableObject {
             }
             return
         }
+        if let hold = loginHolds.hold(for: name) {
+            update(name) { state in
+                state.isLoading = false
+                state.hasLoaded = true
+                state.errorText = "\(hold.title). \(hold.message)"
+            }
+            return
+        }
         let key = MachineDataKeys.sites(name)
         let service = self.service
         let cached = cache.revalidate(key, force: force, fetch: {
@@ -360,6 +370,7 @@ final class CaddyStore: ObservableObject {
         }, onError: { [weak self] error in
             guard let self else { return }
             let message = PackageGateMessage.friendly(for: error)
+            self.loginHolds.record(message: message, machine: name)
             self.update(name) { state in
                 state.isLoading = false
                 state.hasLoaded = true

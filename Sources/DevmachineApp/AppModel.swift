@@ -539,7 +539,7 @@ final class AppModel: ObservableObject {
     /// first read answers. A paused workspace will not be read soon, so it
     /// shows as it is instead, under its pause card.
     func showsSessionSkeleton(alias: String) -> Bool {
-        !answeredAliases.contains(alias) && pollPauses[alias] == nil
+        !answeredAliases.contains(alias) && pollPauses[alias] == nil && loginHold(alias: alias) == nil
     }
 
     private func markAnswered(_ alias: String) {
@@ -748,6 +748,7 @@ final class AppModel: ObservableObject {
     private var syncLock: PackagesLock?
     private var syncLockWatch: AnyCancellable?
     private var jobsWatch: AnyCancellable?
+    private var loginHoldsWatch: AnyCancellable?
     // Listed their sessions at least once: the account exists, whatever the
     // lock says.
     private var loggedInAliases: Set<String> = []
@@ -802,9 +803,11 @@ final class AppModel: ObservableObject {
         },
         defaults: UserDefaults = AppModel.defaultDefaults(),
         cache: DataCache = DataCache(),
-        resolveCLI: (@Sendable () throws -> DevmachineCLI)? = nil
+        resolveCLI: (@Sendable () throws -> DevmachineCLI)? = nil,
+        loginHolds: LoginHoldCenter = .live()
     ) {
         self.cache = cache
+        self.loginHolds = loginHolds
         self.store = store
         self.defaults = defaults
         self.addedLocalSessions = AppModel.readLocalSessions(from: defaults)
@@ -830,6 +833,9 @@ final class AppModel: ObservableObject {
         self.detectSettings = detectSettings
         AppModel.shared = self
         context.holdsReads = { [weak self] target in self?.holdsAutomaticLogin(target) ?? false }
+        loginHolds.attempt = { [weak self] machine in self?.attemptLogin(machine: machine) ?? false }
+        loginHoldsWatch = loginHolds.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        loginHolds.onReleased = { [weak self] machines in self?.loginHoldsReleased(machines) }
         observeWake()
         TerminalRegistry.shared.onSessionEnded = { [weak self] kind in
             self?.sessionEnded(kind)
@@ -2151,6 +2157,10 @@ final class AppModel: ObservableObject {
     /// Also the paused workspace's Try again: the pause is lifted and the
     /// list read once, and a refusal pauses it again from there.
     func retry(alias: String) {
+        if let machine = machine(forAlias: alias), loginHolds.isHeld(machine: machine) {
+            loginHolds.retry(machine: machine)
+            return
+        }
         if sessionProblems[alias]?.isHostKeyRejected == true || sessionProblems[alias]?.isAwaitingSync == true {
             sessionProblems[alias] = nil
         }
@@ -2301,8 +2311,8 @@ final class AppModel: ObservableObject {
         refreshAll()
     }
 
-    func refresh(alias: String) {
-        guard !DemoMode.isActive, !isPollingPaused(alias: alias),
+    func refresh(alias: String, bypassingLoginHold: Bool = false) {
+        guard !DemoMode.isActive, bypassingLoginHold ? !isPausedForTime(alias: alias) : !isPollingPaused(alias: alias),
               let ws = visibleWorkspaces.first(where: { $0.alias == alias }) else { return }
         // A refused host key fails the same way until someone reviews it: the
         // 5s poll of the selected workspace leaves it to the sweep instead of
@@ -2366,19 +2376,38 @@ final class AppModel: ObservableObject {
                 offlineAliases.remove(alias)
             }
             if sessionProblems[alias] != nil { sessionProblems[alias] = nil }
-            if let machine = machine(forAlias: alias) { clearMachinePauses(onMachine: machine) }
+            if let machine = machine(forAlias: alias) {
+                clearMachinePauses(onMachine: machine)
+                let wasHeld = loginHolds.isHeld(machine: machine)
+                loginHolds.recordSuccess(machine: machine)
+                if wasHeld, !loginHolds.isHeld(machine: machine) {
+                    for workspace in workspaces(onMachine: machine) where workspace.alias != alias {
+                        refresh(alias: workspace.alias)
+                    }
+                }
+            }
             syncContext()
             autoConnect(aliases: [alias])
         case .failure(let error):
             let failure = (error as? SessionStoreError)?.failure
+            let machine = machine(forAlias: alias)
             // A refused login on a workspace that never logged in is its
             // missing account, not a locked agent: it pauses nothing.
             if failure == .authDenied, awaitingFirstLogin.contains(alias) || awaitsFirstSync(alias: alias) {
                 let problem = SessionProblem.awaitingSync(detail: (error as? SessionStoreError)?.stderr ?? "")
                 if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
                 offlineAliases.remove(alias)
+                if let machine { loginHolds.record(nil, detail: "", machine: machine) }
                 syncContext()
                 return
+            }
+            if let machine {
+                loginHolds.record(Self.loginFailure(error), detail: (error as? SessionStoreError)?.stderr ?? "", machine: machine)
+                if loginHolds.isHeld(machine: machine) {
+                    offlineAliases.remove(alias)
+                    syncContext()
+                    return
+                }
             }
             let problem = SessionProblem(error)
             if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
@@ -2445,8 +2474,59 @@ final class AppModel: ObservableObject {
     /// login: the sweep, the selected workspace's poll, the context and the copy mode
     /// check. Try again and opening a session still log in once.
     func isPollingPaused(alias: String) -> Bool {
+        loginHold(alias: alias) != nil || isPausedForTime(alias: alias)
+    }
+
+    private func isPausedForTime(alias: String) -> Bool {
         guard let pause = pollPauses[alias] else { return false }
         return pauseClock() < pause.until
+    }
+
+    /// The machines that refused this Mac's login; see `LoginHoldCenter`.
+    let loginHolds: LoginHoldCenter
+
+    /// Retry for a machine whose login the app holds back from, when the
+    /// sidebar or Stats offers it with no workspace to ask.
+    var attemptWithoutWorkspace: (@MainActor (String) -> Bool)?
+
+    func loginHold(alias: String) -> LoginHolds.Hold? {
+        machine(forAlias: alias).flatMap { loginHolds.hold(for: $0) }
+    }
+
+    func loginHoldNotice(_ target: CommandTarget) -> String? {
+        guard case let .remote(alias, _) = target, let hold = loginHold(alias: alias) else { return nil }
+        return "\(hold.title). \(hold.message)"
+    }
+
+    nonisolated static func loginFailure(_ error: Error) -> LoginFailure? {
+        guard let error = error as? SessionStoreError else { return nil }
+        switch error.failure {
+        case .authDenied: return .refused
+        case .unreachable: return LoginFailure(message: error.stderr)
+        case .hostKeyRejected, .loginWaiting: return nil
+        }
+    }
+
+    /// A machine released by a change to its configuration entry is asked
+    /// again at once.
+    private func loginHoldsReleased(_ machines: Set<String>) {
+        for machine in machines {
+            for workspace in workspaces(onMachine: machine) { refresh(alias: workspace.alias) }
+        }
+    }
+
+    /// Retry's one attempt for a held machine: one workspace's session list
+    /// when it has one that can log in, else whatever the app offers for the
+    /// machine alone.
+    private func attemptLogin(machine: String) -> Bool {
+        let candidates = workspaces(onMachine: machine).filter {
+            !awaitsFirstSync(alias: $0.alias) && sessionProblems[$0.alias]?.isAwaitingSync != true
+        }
+        if let workspace = candidates.first(where: { loggedInAliases.contains($0.alias) }) ?? candidates.first {
+            refresh(alias: workspace.alias, bypassingLoginHold: true)
+            return true
+        }
+        return attemptWithoutWorkspace?(machine) ?? false
     }
 
     func holdsAutomaticLogin(_ target: CommandTarget) -> Bool {
@@ -2467,6 +2547,10 @@ final class AppModel: ObservableObject {
     /// that pauses polling: the same pause applies, so nothing else logs
     /// into that workspace again at once.
     func noteSSHFailure(alias: String, _ failure: SSHFailure) {
+        if failure == .authDenied, let machine = machine(forAlias: alias) {
+            loginHolds.record(.refused, detail: "", machine: machine)
+            return
+        }
         pausePolling(alias: alias, after: failure)
     }
 
@@ -2558,10 +2642,11 @@ final class AppModel: ObservableObject {
 
     private let networkWatch = NetworkReturnWatch()
 
-    /// A refused login pauses that workspace alone: fail2ban counts each
-    /// account's failed logins against this Mac's IP, and another account's
-    /// working login adds nothing. A machine that does not answer pauses
-    /// every workspace on it; with no known machine, only this one.
+    /// A refused login reaches here only for a workspace whose machine the
+    /// configuration does not name, so it pauses that workspace alone; a known
+    /// machine is held instead (`LoginHoldCenter`). A machine that does not
+    /// answer pauses every workspace on it; with no known machine, only this
+    /// one.
     private func pausePolling(alias: String, after failure: SSHFailure, reconnecting: Bool = false) {
         let machine = machine(forAlias: alias)
         let entering = pollPauses[alias] == nil
@@ -2569,14 +2654,6 @@ final class AppModel: ObservableObject {
         case .hostKeyRejected, .loginWaiting:
             return
         case .authDenied:
-            if let machine, workspaces(onMachine: machine).contains(where: {
-                $0.alias != alias && isPollingPaused(alias: $0.alias) && pollPauses[$0.alias]?.reason != .unreachable
-            }) {
-                let pause = PollPause(.machineLoginsRefused, machine: machine, from: pauseClock())
-                for ws in workspaces(onMachine: machine) { setPause(pause, alias: ws.alias) }
-                announce(pause, alias: alias)
-                return
-            }
             let refusals = (loginRefusals[alias] ?? 0) + 1
             loginRefusals[alias] = refusals
             let pause = PollPause(.loginRefused, machine: machine, from: pauseClock(), refusals: refusals)

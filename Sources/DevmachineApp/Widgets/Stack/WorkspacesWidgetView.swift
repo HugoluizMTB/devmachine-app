@@ -62,7 +62,10 @@ struct WorkspacesWidgetView: View {
                         .padding(.horizontal, m.space.md)
                         .padding(.vertical, m.space.xs)
                 }
-                if let pause = pollPauseCard(for: ws) {
+                if let machine = loginHoldCardMachine(for: ws), let hold = model.loginHolds.hold(for: machine) {
+                    LoginHoldView(hold: hold, retry: { model.loginHolds.retry(machine: machine) })
+                        .padding(m.space.md)
+                } else if let pause = pollPauseCard(for: ws) {
                     PollPauseSidebarCard(
                         notice: pause.notice(workspace: ws.name), reason: pause.reason,
                         retry: { model.retry(alias: ws.alias) })
@@ -88,6 +91,10 @@ struct WorkspacesWidgetView: View {
                     }
                 } else if activity != nil || firstSyncMachine(for: ws) != nil {
                     EmptyView()
+                } else if model.loginHold(alias: ws.alias) != nil {
+                    ForEach(model.sessions(in: ws.alias)) { s in
+                        sessionRow(alias: ws.alias, session: s)
+                    }
                 } else if let problem = model.sessionProblems[ws.alias], model.pollPauses[ws.alias] == nil,
                           !(problem.isHostKeyRejected && hostKeyMachine(for: ws) != nil),
                           !(problem.isLoginWaiting && loginWaitingMachine(for: ws) != nil),
@@ -150,6 +157,16 @@ struct WorkspacesWidgetView: View {
             return other?.reason == pause.reason && other?.machine == machine
         }
         return first?.alias == workspace.alias ? pause : nil
+    }
+
+    /// A machine whose server refused the login gets one card, under the
+    /// first of its workspaces the sidebar shows: nothing on it is asked
+    /// until Retry.
+    private func loginHoldCardMachine(for workspace: Workspace) -> String? {
+        guard !workspace.isLocal, model.loginHold(alias: workspace.alias) != nil,
+              let machine = model.machine(forAlias: workspace.alias) else { return nil }
+        let first = model.visibleWorkspaces.first { model.machine(forAlias: $0.alias) == machine }
+        return first?.alias == workspace.alias ? machine : nil
     }
 
     /// A machine whose host key ssh refused gets one card, under the first

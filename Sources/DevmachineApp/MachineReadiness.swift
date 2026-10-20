@@ -13,6 +13,9 @@ struct ReadinessSnapshot: Equatable, Sendable {
     var cliVersion: SemanticVersion?
     var sshAliasesWritten: Bool?
     var configDirectory: String?
+    /// Each machine's login entry (`LoginHolds.entry`): a change ends its
+    /// refused-login hold.
+    var machineLogins: [String: String]?
 
     func applied(_ machine: String) -> Bool? {
         lock.map { $0.has(MachinePrepare.package, onMachine: machine) }
@@ -43,6 +46,12 @@ enum ReadinessReader {
         guard let instance = try? cli(), let show = try? instance.configShow() else { return nil }
         var snapshot = ReadinessSnapshot()
         snapshot.machines = show.machines.filter { !$0.isSelf }.map(\.name)
+        snapshot.machineLogins = Dictionary(
+            show.machines.map {
+                ($0.name, LoginHolds.entry(
+                    hosts: $0.hosts, user: $0.adminUser, port: $0.port, key: $0.key, agentKey: $0.agentKey))
+            },
+            uniquingKeysWith: { first, _ in first })
         snapshot.workspaceMachines = Dictionary(
             show.workspaces.map { ($0.name, $0.machine) }, uniquingKeysWith: { first, _ in first })
         if let packages = try? instance.packages() {

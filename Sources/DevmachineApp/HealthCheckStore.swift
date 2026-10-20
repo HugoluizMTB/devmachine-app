@@ -24,10 +24,15 @@ final class HealthCheckStore: ObservableObject {
     @Published var commandErrorText: String?
 
     private let cli: @Sendable () throws -> DevmachineCLI
+    private let loginHolds: LoginHoldCenter
     private nonisolated(unsafe) var runTask: Task<Void, Never>?
 
-    init(cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() }) {
+    init(
+        cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
+        loginHolds: LoginHoldCenter = .live()
+    ) {
         self.cli = cli
+        self.loginHolds = loginHolds
     }
 
     deinit {
@@ -55,7 +60,23 @@ final class HealthCheckStore: ObservableObject {
                 var health: [MachineHealth] = []
                 for machine in machines {
                     guard !Task.isCancelled else { return }
-                    health.append(await Self.check(machine: machine, cli: cli))
+                    // A held machine is not asked: doctor logs in, and the
+                    // server already refused this Mac.
+                    if !machine.isSelf, let hold = self.loginHolds.hold(for: machine.name) {
+                        health.append(MachineHealth(
+                            id: machine.name, machineName: machine.name, isSelf: false,
+                            errorText: "\(hold.title). \(hold.message)"))
+                        continue
+                    }
+                    let result = await Self.check(machine: machine, cli: cli)
+                    if !machine.isSelf {
+                        if let error = result.errorText {
+                            self.loginHolds.record(message: error, machine: machine.name)
+                        } else {
+                            self.loginHolds.recordSuccess(machine: machine.name)
+                        }
+                    }
+                    health.append(result)
                 }
                 self.results = health
                 self.lastRunAt = Date()

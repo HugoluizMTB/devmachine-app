@@ -61,10 +61,14 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
     /// `linux` or `macos`, as a command last read it; nil from an older CLI
     /// or for a machine nothing has read yet.
     var platform: String?
+    /// The key file and the agent key it logs in with, when set.
+    var key: String?
+    var agentKey: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, hosts, workspaces, port, packages, location, platform
+        case name, hosts, workspaces, port, packages, location, platform, key
         case adminUser = "admin_user"
+        case agentKey = "agent_key"
         case isSelf = "self"
     }
 
@@ -79,6 +83,8 @@ struct CLIConfigMachine: Decodable, Equatable, Sendable {
         packages = try c.decodeIfPresent([String].self, forKey: .packages)
         location = try c.decodeIfPresent(String.self, forKey: .location)
         platform = try c.decodeIfPresent(String.self, forKey: .platform)
+        key = try c.decodeIfPresent(String.self, forKey: .key)
+        agentKey = try c.decodeIfPresent(String.self, forKey: .agentKey)
     }
 }
 
