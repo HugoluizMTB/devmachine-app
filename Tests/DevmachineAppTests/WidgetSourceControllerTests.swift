@@ -31,7 +31,8 @@ final class WidgetSourceControllerTests: XCTestCase {
     }
 
     private func makeController(
-        isDemo: Bool = false, surface: String = "home", context: [String: String] = [:], runner: (any SourceRunner)? = nil
+        isDemo: Bool = false, surface: String = "home", context: [String: String] = [:], runner: (any SourceRunner)? = nil,
+        loginHolds: LoginHoldCenter = LoginHoldCenter()
     ) -> WidgetSourceController {
         let environment = SourceRunEnvironment(
             cli: { CLIInvocationContext(executable: "/opt/homebrew/bin/devmachine", environment: [:]) },
@@ -43,7 +44,8 @@ final class WidgetSourceControllerTests: XCTestCase {
         let made = WidgetSourceController(
             runners: runners, approvalsFile: WidgetApprovalsFile(fileURL: folder.appendingPathComponent("approvals.json")),
             historyStore: SparklineHistoryStore(directory: folder.appendingPathComponent("history")), surface: surface,
-            context: context, isDemo: isDemo, startsTimer: false, now: { [unowned self] in self.clock })
+            context: context, isDemo: isDemo, startsTimer: false, now: { [unowned self] in self.clock },
+            loginHolds: loginHolds)
         others.append(made)
         return made
     }
@@ -220,6 +222,32 @@ final class WidgetSourceControllerTests: XCTestCase {
         controller.approve("disk", hash: shown(controller, "disk"))
         await waitUntil { self.command.calls == 3 }
         XCTAssertEqual(Set(command.requests.map(\.instanceID)), ["pkg", "disk"])
+    }
+
+    func testAWidgetOnAMachineThatRefusedTheLoginStopsRunningAndOthersGoOn() async {
+        let refusal = SourceError.exited(status: 255, stderr: "alice@203.0.113.7: Permission denied (publickey).")
+        command = ScriptedSourceRunner([.failure(refusal), .success(.output(.text("ok")))])
+        let holds = LoginHoldCenter()
+        holds.machineForWorkspace = { $0 == "alice-dev" ? "acme" : nil }
+        controller = makeController(loginHolds: holds)
+        controller.start()
+        controller.update([entry("acme-disk", inline: false, target: .machine("acme"))])
+        await waitUntil { holds.isHeld(machine: "acme") }
+        controller.update([
+            entry("acme-disk", inline: false, target: .machine("acme")),
+            entry("acme-load", run: "uptime", inline: false, target: .workspace("alice-dev")),
+            entry("beta-disk", inline: false, target: .machine("beta")),
+        ])
+        for _ in 0..<5 {
+            clock = clock.addingTimeInterval(120)
+            controller.tick()
+            await waitUntil { !self.controller.state("beta-disk").isRunning }
+        }
+
+        XCTAssertEqual(command.requests.filter { $0.instanceID.hasPrefix("acme") }.count, 1)
+        XCTAssertGreaterThanOrEqual(command.requests.filter { $0.instanceID == "beta-disk" }.count, 5)
+        XCTAssertEqual(controller.state("acme-load").error?.title, SourceError.refused("").title)
+        XCTAssertTrue(controller.state("acme-load").error?.details.contains("The server refused the login on acme") == true)
     }
 
     func testManualRunsOnlyOnRunNow() async {

@@ -918,12 +918,24 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
 - Session polling is a sequential sweep, one ssh at a time: parallel auths against a
   locked agent got this Mac banned by fail2ban. Keep it that way. A failure pauses
   only what it is about (`PollPause`, `AppModel.pollPauses`), so one broken workspace
-  never stalls the others: a refused login pauses that workspace for 5 min, doubled
-  for each refusal in a row up to 30 min (fail2ban
-  counts failed logins per source IP on each machine; another account's working login
-  adds nothing); a second workspace refused on the same machine inside that pause
-  pauses the whole machine for 5 min, so a locked agent costs at most two refused
-  logins per machine per pause. An unreachable machine pauses its own workspaces for
+  never stalls the others.
+- **A refused login holds its whole machine until Retry** (`LoginHolds` in Core,
+  `LoginHoldCenter` in the app). A new user's machine whose key was not authorized
+  yet got this Mac banned: stats, doctor and sessions kept logging in with the refused
+  key. Any caller that logs into a machine (session sweep and selection poll,
+  Context, Files, Git, copy mode check, session share, Stats, doctor, Subdomains,
+  widgets with a machine or workspace target) asks the center first and reports each
+  failure. A refused login (`LoginFailure`: ssh's own words, the CLI's "does not log
+  in", the sessions JSON `login-refused`) holds the machine with no timer; a
+  `connection refused` after a refused login reads as the server probably blocking
+  this Mac. Only Retry (exactly one attempt: one workspace's session list, or Stats
+  for a machine with no workspace), a change to the machine's entry in the CLI's
+  configuration (address, user, port, key; `ReadinessSnapshot.machineLogins`), or a
+  relaunch ends it; a success from any other call does not. The sidebar shows
+  `LoginHoldView` once per machine and Stats shows it in place of the numbers.
+  The timed refused-login pause below is only for a workspace whose machine the
+  configuration does not name: 5 min, doubled for each refusal in a row up to 30
+  min. An unreachable machine pauses its own workspaces for
   1 min (only that workspace when the machine is unknown), a refused host key pauses
   nothing. A paused
   workspace gets no automatic login at all: sweep, selection poll, context, Git, copy

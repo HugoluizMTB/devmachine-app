@@ -552,6 +552,51 @@ final class StatsStoreTests: XCTestCase {
         try await waitUntil { runner.statsCalls(for: "acme") == 3 }
     }
 
+    func testARefusedLoginStopsEveryReadOfThatMachineUntilRetryOrAConfigChange() async throws {
+        let refused = ("", "error: running stats on acme: exit status 255\nalice@203.0.113.7: Permission denied (publickey).", Int32(1))
+        let runner = MultiMachineRunner(
+            machinesJSON: #"[{"name":"acme"},{"name":"beta"}]"#,
+            snapshotsByMachine: ["acme": refused, "beta": (goodSnapshot, "", 0)])
+        let holds = LoginHoldCenter()
+        let clock = self.clock!
+        let store = StatsStore(
+            cli: { DevmachineCLI(executable: "/fake/devmachine", runner: runner) }, selection: isolatedSelection,
+            cache: cache, policy: StatsPollPolicy(interval: 90, backoff: [90, 180, 300], stagger: 0),
+            tickInterval: nil, now: { clock.now }, fileExists: { _ in true }, loginHolds: holds)
+        holds.attempt = { store.attemptLogin(machine: $0) }
+        holds.configurationRead(["acme": "203.0.113.7|alice|22||", "beta": "203.0.113.8|bob|22||"])
+        store.start()
+        try await waitUntil { holds.isHeld(machine: "acme") && store.state(for: "beta")?.snapshot != nil }
+        XCTAssertEqual(store.loginHold(for: "acme")?.title, "The server refused the login")
+
+        for round in 1...5 {
+            clock.advance(1_000)
+            store.tick()
+            try await waitUntil { runner.statsCalls(for: "beta") == round + 1 && store.state(for: "beta")?.isLoading == false }
+        }
+        store.refresh()
+        _ = await store.freshSnapshot("acme", maxAge: 0)
+        try await waitUntil { runner.statsCalls(for: "beta") == 7 && store.state(for: "beta")?.isLoading == false }
+        XCTAssertEqual(runner.statsCalls(for: "acme"), 1, "no read logs into a held machine")
+
+        holds.retry(machine: "acme")
+        holds.retry(machine: "acme")
+        try await waitUntil { runner.statsCalls(for: "acme") == 2 && !holds.holds.isRetrying("acme") }
+        clock.advance(1_000)
+        store.tick()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(runner.statsCalls(for: "acme"), 2, "Retry is one attempt, and a refusal holds again")
+        XCTAssertTrue(holds.isHeld(machine: "acme"))
+
+        runner.snapshotsByMachine["acme"] = (goodSnapshot, "", 0)
+        holds.configurationRead(["acme": "203.0.113.7|alice|22|/Users/alice/.ssh/acme|", "beta": "203.0.113.8|bob|22||"])
+        XCTAssertFalse(holds.isHeld(machine: "acme"))
+        clock.advance(1_000)
+        store.tick()
+        try await waitUntil { store.state(for: "acme")?.snapshot != nil }
+        XCTAssertEqual(runner.statsCalls(for: "acme"), 3)
+    }
+
     func testOnlyOneFetchPerMachineIsInFlight() async throws {
         let runner = MultiMachineRunner(
             machinesJSON: #"[{"name":"acme"}]"#, snapshotsByMachine: ["acme": (goodSnapshot, "", 0)])

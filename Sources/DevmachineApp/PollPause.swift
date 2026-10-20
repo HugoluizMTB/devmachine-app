@@ -1,18 +1,14 @@
 import Foundation
 
 /// One workspace held back from every automatic login after ssh failed for
-/// it. A refused login pauses that workspace alone: fail2ban counts failed
-/// logins per machine and source IP, so asking again soon is what bans this
-/// Mac, while another account's working login adds nothing. A second
-/// workspace refused on the same machine inside the first one's pause pauses
-/// the whole machine, so a locked agent costs at most two refused logins per
-/// machine per pause. An unreachable machine pauses its own workspaces, since
-/// none of them can answer.
+/// it. A refused login on a known machine holds the whole machine until
+/// Retry (`LoginHoldCenter`); this timed pause is for a workspace whose
+/// machine the configuration does not name. An unreachable machine pauses
+/// its own workspaces, since none of them can answer.
 struct PollPause: Equatable {
     enum Reason: Equatable {
         case loginRefused
         case unreachable
-        case machineLoginsRefused
         /// A machine that did not answer right after a wake or a network
         /// change, or while an open terminal to it still talks: most likely
         /// the network is still coming up, so it is grey, not red, and asked
@@ -65,7 +61,6 @@ struct PollPause: Equatable {
         case .unreachable: return unreachableSeconds
         case .reconnecting: return reconnectingSeconds
         case .loginRefused: return loginRefusedSeconds(refusals: refusals)
-        case .machineLoginsRefused: return loginRefusedSeconds
         }
     }
 
@@ -77,10 +72,6 @@ struct PollPause: Equatable {
             let target = machine ?? "its machine"
             return "Login refused for \(workspace). Paused checking it for \(minutes) min "
                 + "so \(target) doesn't block this Mac's IP."
-        case .machineLoginsRefused:
-            let target = machine ?? workspace
-            return "Logins to several workspaces on \(target) were refused. Paused checking \(target) "
-                + "for \(minutes) min so it doesn't block this Mac's IP."
         case .unreachable:
             if let machine { return "Couldn't reach \(machine). Paused checking its workspaces for \(minutes) min." }
             return "Couldn't reach \(workspace). Paused checking it for \(minutes) min."

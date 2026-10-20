@@ -64,6 +64,7 @@ final class WidgetSourceController: ObservableObject {
     private let isDemo: Bool
     private let startsTimer: Bool
     private let now: () -> Date
+    private let loginHolds: LoginHoldCenter
     private nonisolated static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
     private nonisolated static let historyQueue = DispatchQueue(label: "app.devmachine.mac.widget-history", qos: .utility)
 
@@ -71,9 +72,11 @@ final class WidgetSourceController: ObservableObject {
         runners: SourceRunners, approvalsFile: WidgetApprovalsFile = WidgetApprovalsFile(),
         historyStore: SparklineHistoryStore = SparklineHistoryStore(), surface: String = DefaultBoard.surface,
         context: [String: String] = [:], isDemo: Bool = DemoMode.isActive, startsTimer: Bool = true,
-        now: @escaping () -> Date = Date.init, contract: WidgetContract = .current
+        now: @escaping () -> Date = Date.init, contract: WidgetContract = .current,
+        loginHolds: LoginHoldCenter = .live()
     ) {
         self.runners = runners
+        self.loginHolds = loginHolds
         self.approvalsFile = approvalsFile
         self.historyStore = historyStore
         self.surface = surface
@@ -292,8 +295,35 @@ final class WidgetSourceController: ObservableObject {
         SourceRunRequest(instanceID: id, source: entry.source, context: context(for: entry.source), approvals: approvals)
     }
 
+    /// The machine a source logs into, filled with this area's context.
+    private func machine(of entry: SourceWidgetEntry) -> String? {
+        guard let target = (try? entry.source.resolved(context: context(for: entry.source)))?.target else { return nil }
+        return loginHolds.machine(for: target)
+    }
+
+    /// A source on a machine whose server refused the login does not run:
+    /// each run would be one more refused login toward a ban of this Mac.
+    private func holdsLogin(_ id: String, _ entry: SourceWidgetEntry) -> Bool {
+        guard let machine = machine(of: entry), let hold = loginHolds.hold(for: machine) else { return false }
+        var state = self.state(id)
+        state.error = .refused("\(hold.title) on \(machine). \(hold.message)")
+        state.isRunning = false
+        if states[id] != state { states[id] = state }
+        return true
+    }
+
+    private func reportLogin(_ id: String, error: SourceError?) {
+        guard let entry = entries[id], let machine = machine(of: entry) else { return }
+        if let error {
+            loginHolds.record(message: error.details, machine: machine)
+        } else {
+            loginHolds.recordSuccess(machine: machine)
+        }
+    }
+
     private func run(_ id: String) {
         guard let entry = entries[id], let runner = runners.runner(for: entry.source.source) else { return }
+        guard !holdsLogin(id, entry) else { return }
         schedule.begin(id, at: now())
         var state = self.state(id)
         state.isRunning = true
@@ -338,11 +368,13 @@ final class WidgetSourceController: ObservableObject {
             state.error = nil
             state.lastSuccess = now()
             record(output, id: id, view: entry.source.view)
+            reportLogin(id, error: nil)
         case let .result(.needsApproval(approval)):
             schedule.pause(id, for: approval)
             Self.log.info("widget \(id, privacy: .public) waits for approval")
         case let .failure(error):
             state.error = error
+            reportLogin(id, error: error)
             Self.log.error("widget \(id, privacy: .public): \(error.title, privacy: .public): \(error.details, privacy: .public)")
         }
         if states[id] != state { states[id] = state }
@@ -373,6 +405,7 @@ final class WidgetSourceController: ObservableObject {
 
     private func startStream(_ id: String) {
         guard let entry = entries[id], case .command = entry.source.source else { return }
+        guard !holdsLogin(id, entry) else { return }
         let request = request(id, entry)
         let built: (command: CommandSource, invocation: ProcessInvocation, remote: Bool)
         do {
@@ -426,6 +459,7 @@ final class WidgetSourceController: ObservableObject {
         state.error = error
         states[id] = state
         if let error {
+            reportLogin(id, error: error)
             Self.log.error("widget stream \(id, privacy: .public) ended: \(error.details, privacy: .public)")
         }
     }

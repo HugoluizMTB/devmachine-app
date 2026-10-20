@@ -31,6 +31,9 @@ final class FileTreeStore: ObservableObject {
 
     private let host: HostRunner
     private var current: CommandTarget?
+    /// Why a target's machine is not logged into right now, if it is held
+    /// back after a refused login.
+    var heldNotice: @MainActor (CommandTarget) -> String? = { AppModel.shared?.loginHoldNotice($0) }
     private var inFlight: Set<String> = []
 
     init(host: HostRunner = HostRunner()) {
@@ -156,6 +159,10 @@ final class FileTreeStore: ObservableObject {
 
     private func resolveRoot(keepingExpanded: Bool) {
         guard let target = current else { return }
+        if let notice = heldNotice(target) {
+            setError(notice)
+            return
+        }
         guard !inFlight.contains(Self.rootKey) else { return }
         inFlight.insert(Self.rootKey)
         setLoading(root == nil)

@@ -111,6 +111,8 @@ struct DevmachineApp: App {
                     caddyStore.statsSnapshot = { stats.state(for: $0)?.snapshot }
                     let readiness = MachineReadinessStore.shared
                     model.followSyncLock(readiness.$snapshot.map { $0?.lock })
+                    model.loginHolds.follow(readiness.$snapshot.map { $0?.machineLogins })
+                    model.attemptWithoutWorkspace = { stats.attemptLogin(machine: $0) }
                     readiness.onConfigurationChanged = { [weak model] in
                         model?.reloadConfiguration()
                         stats.loadMachines()

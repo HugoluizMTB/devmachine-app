@@ -207,7 +207,7 @@ struct PollPauseSidebarCard: View {
         switch reason {
         case .unreachable: return "wifi.exclamationmark"
         case .reconnecting: return "arrow.triangle.2.circlepath"
-        case .loginRefused, .machineLoginsRefused: return "pause.circle"
+        case .loginRefused: return "pause.circle"
         }
     }
 }
@@ -234,6 +234,22 @@ struct LoginWaitingSidebarCard: View {
         .padding(m.space.md)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A machine whose server refused the login: what happened, that the app
+/// stopped trying, and Retry, which makes one attempt.
+struct LoginHoldView: View {
+    let hold: LoginHolds.Hold
+    let retry: () -> Void
+
+    static let retryTitle = "Retry"
+
+    var body: some View {
+        DMErrorStateView(
+            state: DMErrorState(title: hold.title, cause: hold.message, details: hold.detail),
+            retry: retry, retryTitle: Self.retryTitle)
+            .frame(maxWidth: .infinity)
     }
 }
 

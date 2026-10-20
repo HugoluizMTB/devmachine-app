@@ -9,7 +9,15 @@ private final class ScriptedSessionSource: SessionListSource, @unchecked Sendabl
     var asksAllAtOnce = false
     private let lock = NSLock()
     private var failures: [String: SSHFailure] = [:]
+    private var connectionRefused: Set<String> = []
     private var logins: [String] = []
+
+    func failConnectionRefused(_ alias: String) {
+        lock.lock()
+        failures[alias] = nil
+        connectionRefused.insert(alias)
+        lock.unlock()
+    }
 
     func fail(_ alias: String, with failure: SSHFailure?) {
         lock.lock()
@@ -27,7 +35,11 @@ private final class ScriptedSessionSource: SessionListSource, @unchecked Sendabl
         lock.lock()
         logins.append(workspace.alias)
         let failure = failures[workspace.alias]
+        let refusesConnection = connectionRefused.contains(workspace.alias)
         lock.unlock()
+        if refusesConnection {
+            throw SessionStoreError(failure: .unreachable, stderr: "ssh: connect to host 203.0.113.7 port 22: Connection refused")
+        }
         switch failure {
         case .authDenied?:
             throw SessionStoreError(failure: .authDenied, stderr: "\(workspace.name)@203.0.113.7: Permission denied (publickey).")
@@ -81,26 +93,32 @@ final class PollPauseTests: XCTestCase {
         try await Task.sleep(nanoseconds: 50_000_000)
     }
 
-    func testARefusedLoginPausesThatWorkspaceOnly() async throws {
+    func testARefusedLoginHoldsItsWholeMachineAndNoTimeEndsIt() async throws {
         let source = ScriptedSessionSource()
         source.fail(acme.alias, with: .authDenied)
         let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        var now = Date()
+        model.pauseClock = { now }
 
         try await sweep(model)
 
         XCTAssertTrue(model.isPollingPaused(alias: acme.alias))
-        XCTAssertFalse(model.isPollingPaused(alias: beta.alias), "same machine, its own login")
+        XCTAssertTrue(model.isPollingPaused(alias: beta.alias), "same machine, same server counting refusals")
         XCTAssertFalse(model.isPollingPaused(alias: gamma.alias))
-        XCTAssertEqual(source.calls(beta.alias), 1)
-        XCTAssertEqual(source.calls(gamma.alias), 1)
-        XCTAssertEqual(model.sessionsByAlias[beta.alias]?.map(\.name), ["dash"])
+        XCTAssertEqual(model.loginHold(alias: beta.alias)?.reason, .loginRefused)
+        XCTAssertEqual(source.calls(beta.alias), 0, "held before its turn in the same sweep")
         XCTAssertEqual(model.sessionsByAlias[gamma.alias]?.map(\.name), ["dash"])
+        XCTAssertFalse(model.offlineAliases.contains(acme.alias), "a refused login says nothing about the host")
+        XCTAssertFalse(model.showsSessionSkeleton(alias: beta.alias))
 
-        try await sweep(model)
+        for _ in 0..<5 {
+            now = now.addingTimeInterval(PollPause.loginRefusedMaxSeconds * 2)
+            try await sweep(model)
+        }
 
         XCTAssertEqual(source.calls(acme.alias), 1)
-        XCTAssertEqual(source.calls(beta.alias), 2)
-        XCTAssertEqual(source.calls(gamma.alias), 2)
+        XCTAssertEqual(source.calls(beta.alias), 0)
+        XCTAssertEqual(source.calls(gamma.alias), 6)
     }
 
     func testAnUnreachableMachinePausesItsWorkspacesOnly() async throws {
@@ -148,7 +166,7 @@ final class PollPauseTests: XCTestCase {
 
         XCTAssertEqual(source.calls(acme.alias), 1, "each refused login counts toward a ban")
         XCTAssertTrue(model.isPollingPaused(alias: acme.alias))
-        XCTAssertEqual(source.calls(beta.alias), 2)
+        XCTAssertEqual(source.calls(gamma.alias), 2)
     }
 
     func testAnUnreachableWorkspaceWithNoKnownMachinePausesOnlyItself() async throws {
@@ -178,7 +196,8 @@ final class PollPauseTests: XCTestCase {
         try await settle()
 
         XCTAssertEqual(source.calls(acme.alias), 1)
-        XCTAssertGreaterThan(source.calls(beta.alias), 1)
+        XCTAssertEqual(source.calls(beta.alias), 0)
+        XCTAssertGreaterThan(source.calls(gamma.alias), 1)
     }
 
     func testTryAgainPollsOnceAndARefusalPausesAgain() async throws {
@@ -192,31 +211,33 @@ final class PollPauseTests: XCTestCase {
         try await settle()
 
         XCTAssertEqual(source.calls(acme.alias), 2)
+        XCTAssertEqual(source.calls(beta.alias), 0, "Retry is one attempt for the machine")
         XCTAssertTrue(model.isPollingPaused(alias: acme.alias))
-        XCTAssertNotNil(model.pollPauses[acme.alias])
+        XCTAssertNotNil(model.loginHold(alias: acme.alias))
 
         source.fail(acme.alias, with: nil)
-        model.retry(alias: acme.alias)
+        model.retry(alias: beta.alias)
         try await waitFor { model.sessionsByAlias[self.acme.alias] != nil }
 
-        XCTAssertNil(model.pollPauses[acme.alias])
-        XCTAssertEqual(source.calls(acme.alias), 3)
+        XCTAssertNil(model.loginHold(alias: acme.alias))
+        XCTAssertEqual(source.calls(acme.alias), 3, "the first workspace on the machine is the one asked")
         XCTAssertFalse(model.isPollingPaused(alias: acme.alias))
         XCTAssertEqual(model.sessionsByAlias[acme.alias]?.map(\.name), ["dash"])
+        try await waitFor { model.sessionsByAlias[self.beta.alias] != nil }
     }
 
-    func testTheNoticeAppearsWhilePausedAndClearsWhenAPollSucceeds() async throws {
+    func testWithNoKnownMachineARefusalPausesTheWorkspaceForAWhile() async throws {
         let source = ScriptedSessionSource()
         source.fail(acme.alias, with: .authDenied)
-        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        let model = makeModel(source, machines: [:])
         try await sweep(model)
 
         let pause = try XCTUnwrap(model.pollPauses[acme.alias])
         XCTAssertEqual(pause.reason, .loginRefused)
-        XCTAssertEqual(pause.machine, "main")
+        XCTAssertNil(pause.machine)
         XCTAssertEqual(
             pause.notice(workspace: "acme"),
-            "Login refused for acme. Paused checking it for 5 min so main doesn't block this Mac's IP.")
+            "Login refused for acme. Paused checking it for 5 min so its machine doesn't block this Mac's IP.")
         XCTAssertNil(model.pollPauses[beta.alias])
         XCTAssertFalse(model.showsSessionSkeleton(alias: acme.alias))
 
@@ -238,7 +259,7 @@ final class PollPauseTests: XCTestCase {
     func testRefusalsInARowDoubleThePauseUpToHalfAnHour() async throws {
         let source = ScriptedSessionSource()
         source.fail(acme.alias, with: .authDenied)
-        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        let model = makeModel(source, machines: [:])
         var now = Date()
         model.pauseClock = { now }
 
@@ -254,15 +275,15 @@ final class PollPauseTests: XCTestCase {
         XCTAssertEqual(source.calls(acme.alias), 5, "one login per pause, never one per sweep")
         XCTAssertEqual(
             model.pollPauses[acme.alias]?.notice(workspace: "acme"),
-            "Login refused for acme. Paused checking it for 30 min so main doesn't block this Mac's IP.")
-        XCTAssertFalse(model.isPollingPaused(alias: beta.alias), "the sibling on main keeps its own login")
+            "Login refused for acme. Paused checking it for 30 min so its machine doesn't block this Mac's IP.")
+        XCTAssertFalse(model.isPollingPaused(alias: beta.alias), "with no known machine, only that workspace")
         XCTAssertEqual(source.calls(beta.alias), 5)
     }
 
     func testTryAgainAsksDuringALongPauseAndASuccessResetsTheBackOff() async throws {
         let source = ScriptedSessionSource()
         source.fail(acme.alias, with: .authDenied)
-        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        let model = makeModel(source, machines: [:])
         try await sweep(model)
         model.retry(alias: acme.alias)
         try await waitFor { model.pollPauses[self.acme.alias]?.seconds == 600 }
@@ -278,7 +299,7 @@ final class PollPauseTests: XCTestCase {
         XCTAssertEqual(model.pollPauses[acme.alias]?.seconds, PollPause.loginRefusedSeconds)
     }
 
-    func testALoginRefusedByTheCLIPausesThatWorkspaceAndItsSiblingKeepsBeingAsked() async throws {
+    func testALoginRefusedByTheCLIHoldsItsMachineAndTheOtherMachineKeepsBeingAsked() async throws {
         let runner = SessionsCLIRunner(result: (
             #"{"workspaces":["#
                 + #"{"name":"acme","machine":"main","sessions":[],"error":{"kind":"login-refused","#
@@ -299,17 +320,16 @@ final class PollPauseTests: XCTestCase {
 
         try await sweep(model)
 
-        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .loginRefused)
-        XCTAssertFalse(model.isPollingPaused(alias: beta.alias))
+        XCTAssertEqual(model.loginHold(alias: acme.alias)?.reason, .loginRefused)
+        XCTAssertEqual(model.loginHold(alias: acme.alias)?.detail, "acme@203.0.113.7: Permission denied (publickey).")
+        XCTAssertTrue(model.isPollingPaused(alias: beta.alias))
         XCTAssertFalse(model.offlineAliases.contains(beta.alias))
         XCTAssertFalse(model.offlineAliases.contains(acme.alias), "a refused login says nothing about the host")
-        XCTAssertEqual(model.sessionsByAlias[beta.alias], [])
 
         try await sweep(model)
 
         XCTAssertEqual(runner.calls.count, 2)
-        XCTAssertEqual(
-            runner.calls.last, ["--format", "json", "sessions", "--workspace", "beta", "--workspace", "gamma"])
+        XCTAssertEqual(runner.calls.last, ["--format", "json", "sessions", "--workspace", "gamma"])
     }
 
     func testAWorkspaceTheLockDoesNotNameIsNotAskedUntilASyncNamesIt() async throws {
@@ -449,7 +469,7 @@ final class PollPauseTests: XCTestCase {
         XCTAssertEqual(source.calls(beta.alias), 1)
     }
 
-    func testALoginRefusedOutsideTheSweepPausesOnlyItsWorkspace() {
+    func testALoginRefusedOutsideTheSweepHoldsItsMachine() {
         let model = makeModel(ScriptedSessionSource(), machines: ["acme": "main", "beta": "main"])
 
         model.noteSSHFailure(alias: acme.alias, .hostKeyRejected)
@@ -457,78 +477,88 @@ final class PollPauseTests: XCTestCase {
 
         model.noteSSHFailure(alias: acme.alias, .authDenied)
         XCTAssertTrue(model.isPollingPaused(alias: acme.alias))
-        XCTAssertFalse(model.isPollingPaused(alias: beta.alias))
+        XCTAssertTrue(model.isPollingPaused(alias: beta.alias))
 
         model.noteSSHFailure(alias: gamma.alias, .unreachable)
         XCTAssertTrue(model.isPollingPaused(alias: gamma.alias))
     }
 
-    func testOneRefusalPausesOneWorkspaceAndASecondOnTheSameMachinePausesTheMachine() async throws {
+    func testARefusalOnAnotherMachineHoldsOnlyThatMachine() async throws {
         let source = ScriptedSessionSource()
-        source.fail(acme.alias, with: .authDenied)
-        let delta = Workspace(name: "delta", alias: "delta-devmachine")
-        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge", "delta": "main"])
-        model.workspaces = [acme, beta, gamma, delta]
-
-        try await sweep(model)
-        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .loginRefused)
-        XCTAssertFalse(model.isPollingPaused(alias: beta.alias))
-
-        source.fail(beta.alias, with: .authDenied)
-        try await sweep(model)
-
-        for ws in [acme, beta, delta] {
-            XCTAssertEqual(model.pollPauses[ws.alias]?.reason, .machineLoginsRefused, ws.name)
-            XCTAssertTrue(model.isPollingPaused(alias: ws.alias), ws.name)
-        }
-        XCTAssertEqual(source.calls(delta.alias), 1, "the machine is paused before its next account is asked")
-        XCTAssertFalse(model.isPollingPaused(alias: gamma.alias))
-        let pause = try XCTUnwrap(model.pollPauses[beta.alias])
-        XCTAssertEqual(
-            pause.notice(workspace: "beta"),
-            "Logins to several workspaces on main were refused. Paused checking main for 5 min "
-                + "so it doesn't block this Mac's IP.")
-
-        try await sweep(model)
-        XCTAssertEqual(source.calls(acme.alias) + source.calls(beta.alias), 3, "no login to a paused machine")
-    }
-
-    func testARefusalOnAnotherMachineDoesNotCount() async throws {
-        let source = ScriptedSessionSource()
-        source.fail(acme.alias, with: .authDenied)
         source.fail(gamma.alias, with: .authDenied)
         let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
 
         try await sweep(model)
+        try await sweep(model)
 
-        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .loginRefused)
-        XCTAssertEqual(model.pollPauses[gamma.alias]?.reason, .loginRefused)
-        XCTAssertNil(model.pollPauses[beta.alias])
+        XCTAssertEqual(model.loginHold(alias: gamma.alias)?.reason, .loginRefused)
+        XCTAssertNil(model.loginHold(alias: acme.alias))
+        XCTAssertEqual(source.calls(acme.alias), 2)
+        XCTAssertEqual(source.calls(beta.alias), 2)
+        XCTAssertEqual(source.calls(gamma.alias), 1)
     }
 
-    func testTryAgainOnAPausedMachineAsksOnceAndASuccessFreesIt() async throws {
+    func testAConnectionRefusedAfterARefusedLoginReadsAsABlock() async throws {
         let source = ScriptedSessionSource()
         source.fail(acme.alias, with: .authDenied)
-        source.fail(beta.alias, with: .authDenied)
         let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
         try await sweep(model)
-        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .machineLoginsRefused)
 
-        source.fail(acme.alias, with: nil)
-        source.fail(beta.alias, with: nil)
+        source.failConnectionRefused(acme.alias)
         model.retry(alias: acme.alias)
-        try await waitFor { model.sessionsByAlias[self.acme.alias] != nil }
+        try await waitFor { model.loginHold(alias: self.acme.alias)?.reason == .probablyBlocked }
+        try await sweep(model)
 
         XCTAssertEqual(source.calls(acme.alias), 2)
+        XCTAssertFalse(model.offlineAliases.contains(acme.alias))
+        XCTAssertEqual(
+            model.loginHold(alias: beta.alias)?.message,
+            "The server may be blocking this Mac after failed logins. Wait about 10 minutes, then Retry.")
+    }
+
+    func testARetryWithNothingToAskLeavesTheHoldAndAnotherRetryPossible() async throws {
+        let source = ScriptedSessionSource()
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        var asked: [String] = []
+        model.attemptWithoutWorkspace = { asked.append($0); return false }
+        model.noteSSHFailure(alias: acme.alias, .authDenied)
+        model.applySyncLock(PackagesLock(machines: [:], workspaces: ["gamma": []]))
+
+        model.retry(alias: acme.alias)
+        model.retry(alias: beta.alias)
+        try await settle()
+
+        XCTAssertEqual(asked, ["main", "main"], "each Retry gets its own attempt")
+        XCTAssertFalse(model.loginHolds.holds.isRetrying("main"))
+        XCTAssertTrue(model.isPollingPaused(alias: acme.alias))
+        XCTAssertEqual(source.calls(acme.alias) + source.calls(beta.alias), 0)
+    }
+
+    func testAChangedMachineEntryEndsTheHoldAndAsksAtOnce() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .authDenied)
+        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
+        model.loginHolds.configurationRead(["main": "203.0.113.7|alice|22||", "edge": "203.0.113.8|bob|22||"])
+        try await sweep(model)
+        source.fail(acme.alias, with: nil)
+
+        model.loginHolds.configurationRead(["main": "203.0.113.7|alice|22||", "edge": "203.0.113.8|bob|22||"])
+        try await settle()
+        XCTAssertEqual(source.calls(acme.alias), 1, "the same entry read again changes nothing")
+
+        model.loginHolds.configurationRead(["main": "203.0.113.7|alice|22|/Users/alice/.ssh/main|", "edge": "203.0.113.8|bob|22||"])
+        try await waitFor { model.sessionsByAlias[self.beta.alias] != nil && model.sessionsByAlias[self.acme.alias] != nil }
+
+        XCTAssertNil(model.loginHold(alias: acme.alias))
+        XCTAssertEqual(source.calls(acme.alias), 2)
         XCTAssertEqual(source.calls(beta.alias), 1)
-        XCTAssertTrue(model.pollPauses.isEmpty)
     }
 
     func testTheToastShowsOnceWhenAPauseStarts() async throws {
         let source = ScriptedSessionSource()
         source.fail(acme.alias, with: .authDenied)
-        let model = makeModel(source, machines: ["acme": "main", "beta": "main", "gamma": "edge"])
-        let notice = "Login refused for acme. Paused checking it for 5 min so main doesn't block this Mac's IP."
+        let model = makeModel(source, machines: [:])
+        let notice = "Login refused for acme. Paused checking it for 5 min so its machine doesn't block this Mac's IP."
         let toasts = toastCounter(model, label: notice)
         defer { toasts.cancel() }
 

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import AppKit
 import DevmachineCore
@@ -78,6 +79,8 @@ final class StatsStore: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var loadMachinesTask: Task<Void, Never>?
     private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+    let loginHolds: LoginHoldCenter
+    private var loginHoldsWatch: AnyCancellable?
 
     init(
         cli: @escaping @Sendable () throws -> DevmachineCLI = { try DevmachineCLI.resolve() },
@@ -86,15 +89,28 @@ final class StatsStore: ObservableObject {
         policy: StatsPollPolicy = .standard,
         tickInterval: TimeInterval? = 1,
         now: @escaping @MainActor () -> Date = { Date() },
-        fileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+        fileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        loginHolds: LoginHoldCenter = .live()
     ) {
         self.cli = cli
+        self.loginHolds = loginHolds
         self.fileExists = fileExists
         self.selection = selection
         self.cache = cache
         self.tickInterval = tickInterval
         self.now = now
         self.schedule = StatsPollSchedule(policy: policy)
+        loginHoldsWatch = loginHolds.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+    }
+
+    /// Why Stats stopped asking a machine whose server refused the login.
+    func loginHold(for machine: String) -> LoginHolds.Hold? { loginHolds.hold(for: machine) }
+
+    /// Retry's one attempt for a held machine that has no workspace to ask.
+    func attemptLogin(machine: String) -> Bool {
+        guard !DemoMode.isActive, schedule.machines.contains(machine), !schedule.isInFlight(machine) else { return false }
+        fetch(machine)
+        return true
     }
 
     var pollInterval: TimeInterval { schedule.policy.interval }
@@ -167,10 +183,12 @@ final class StatsStore: ObservableObject {
         return []
     }
 
-    /// Runs every machine that is due and has nothing in flight.
+    /// Runs every machine that is due and has nothing in flight. A machine
+    /// whose server refused the login waits for Retry: each read would be
+    /// one more refused login toward a ban of this Mac.
     func tick() {
         guard !isAsleep, !DemoMode.isActive else { return }
-        for name in schedule.due(now: now()) { fetch(name) }
+        for name in schedule.due(now: now()) where !loginHolds.isHeld(machine: name) { fetch(name) }
     }
 
     /// The refresh button: every machine now, the selected one first, and
@@ -211,7 +229,8 @@ final class StatsStore: ObservableObject {
            now().timeIntervalSince(refreshedAt) < maxAge {
             return current?.snapshot
         }
-        guard !DemoMode.isActive, !isAsleep, schedule.machines.contains(machine) else {
+        guard !DemoMode.isActive, !isAsleep, schedule.machines.contains(machine),
+              !loginHolds.isHeld(machine: machine) else {
             return current?.snapshot
         }
         if !schedule.isInFlight(machine) {
@@ -308,8 +327,10 @@ final class StatsStore: ObservableObject {
         switch result {
         case .success:
             schedule.succeed(machine, now: finishedAt)
-        case .failure:
+            loginHolds.recordSuccess(machine: machine)
+        case .failure(let message):
             schedule.fail(machine, now: finishedAt)
+            loginHolds.record(message: message, machine: machine)
         }
         guard machines.contains(where: { $0.name == machine }) else { return }
         switch result {

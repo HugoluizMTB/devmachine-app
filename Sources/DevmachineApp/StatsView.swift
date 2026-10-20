@@ -114,7 +114,11 @@ struct StatsView: View {
     private var content: some View {
         // A snapshot already on screen stays there under an error banner: a
         // blip does not have to blank a panel the person was just reading.
-        if let snapshot = store.snapshot {
+        if let machine = store.selectedMachine, let hold = store.loginHold(for: machine) {
+            LoginHoldView(hold: hold, retry: { store.loginHolds.retry(machine: machine) })
+                .padding(m.space.xxl)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let snapshot = store.snapshot {
             VStack(spacing: 0) {
                 if let err = store.errorText {
                     errorBanner(err)
