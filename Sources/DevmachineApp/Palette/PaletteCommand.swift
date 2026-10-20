@@ -60,6 +60,7 @@ enum PaletteAction: Equatable {
     case maximizePane
     case openURL(URL)
     case checkForUpdates
+    case logs(LogAction)
     case preview(PreviewRequest)
     case openPreviewField
     case pickColor
@@ -109,6 +110,8 @@ struct PaletteContext {
     var chatSettings = ChatSettings.default
     var chatConfig = ChatCLIConfig()
     var chatWorkspaces: [String] = []
+    var cliLogExists = false
+    var historyExists = false
 
     var currentWorkspace: Workspace? {
         guard let alias = currentWorkspaceAlias else { return nil }

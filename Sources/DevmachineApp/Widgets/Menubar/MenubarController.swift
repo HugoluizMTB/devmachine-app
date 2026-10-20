@@ -1,7 +1,6 @@
 import Combine
 import DevmachineCore
 import Foundation
-import os
 
 /// What the menu bar title draws. It is its own object, so a change in the
 /// popover never redraws the rasterised title.
@@ -37,7 +36,7 @@ final class MenubarController: ObservableObject {
     private var triggers: [String: StackJobsTrigger] = [:]
     private var cancellables: Set<AnyCancellable> = []
     private var slotSourcesChange: AnyCancellable?
-    private static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
+    private static let log = AppLogChannel(category: "widgets")
 
     init(slots: StackBoardController, panel: StackBoardController) {
         self.slots = slots
@@ -86,7 +85,7 @@ final class MenubarController: ObservableObject {
         }
         panel.setVisible(open)
         panel.runtime.setJobs(panel.runtimeJobs())
-        Self.log.info("menubar panel \(open ? "opened" : "closed", privacy: .public)")
+        Self.log.info("menubar panel \(open ? "opened" : "closed")")
     }
 
     func showTab(_ id: String?) {

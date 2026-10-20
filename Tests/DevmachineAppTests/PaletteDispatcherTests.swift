@@ -58,6 +58,12 @@ private final class FakeUpdates: PaletteUpdateChecking {
 }
 
 @MainActor
+private final class FakeLogs: PaletteLogsHandling {
+    var performed: [LogAction] = []
+    func perform(_ action: LogAction) { performed.append(action) }
+}
+
+@MainActor
 final class PaletteDispatcherTests: XCTestCase {
     private var model: AppModel!
     private var stats: FakeStats!
@@ -101,6 +107,13 @@ final class PaletteDispatcherTests: XCTestCase {
         XCTAssertEqual(store.selectedID, "c1")
         run(.showCode)
         XCTAssertEqual(model.appMode, .code)
+    }
+
+    func testLogCommandsRunTheSameActionsAsTheHelpMenu() {
+        let logs = FakeLogs()
+        dispatcher.logs = logs
+        for action in LogAction.allCases { run(.logs(action)) }
+        XCTAssertEqual(logs.performed, LogAction.allCases)
     }
 
     func testRunningACommandClosesThePaletteAndRemembersIt() {

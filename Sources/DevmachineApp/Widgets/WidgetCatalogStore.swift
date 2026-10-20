@@ -103,6 +103,7 @@ final class WidgetCatalogStore: ObservableObject {
             state = .loaded
             stopRetrying()
         case let .failure(error):
+            AppLog.shared.error("widgets", "widget catalog did not load: \(error.localizedDescription)")
             let message = error.localizedDescription
             if catalog == nil, retryQuickly(after: message) { break }
             if let current = catalog, !current.isStale { catalog = current.stale() }

@@ -100,4 +100,10 @@ final class BugReportTests: XCTestCase {
         XCTAssertTrue(body.contains("line 61\n"))
         XCTAssertFalse(body.contains("line 60\n"))
     }
+
+    func testTheBodySaysWhereTheLogsAre() {
+        let body = report(lines: ["boom"]).body(context: context)
+        XCTAssertTrue(body.contains("Help > Logs > Save All Logs…"), body)
+        XCTAssertTrue(body.contains("~/Library/Logs/Devmachine"), body)
+    }
 }

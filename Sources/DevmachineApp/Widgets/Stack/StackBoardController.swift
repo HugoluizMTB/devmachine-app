@@ -1,7 +1,6 @@
 import Combine
 import DevmachineCore
 import Foundation
-import os
 
 enum StackBoardError: LocalizedError, Equatable {
     case noConfiguration(surface: String)
@@ -58,7 +57,7 @@ final class StackBoardController: ObservableObject {
     private var openingFromConfiguration = false
     private let configPath: @Sendable () async -> String?
     private var createdSources: WidgetSourceController?
-    private static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
+    private static let log = AppLogChannel(category: "widgets")
 
     init(
         surface: String,
@@ -321,14 +320,14 @@ final class StackBoardController: ObservableObject {
             logSetAside(try placementsFile.save(next, surface: surface))
             placementsError = nil
         } catch {
-            Self.log.error("saving widget placements failed: \(error.localizedDescription, privacy: .public)")
+            Self.log.error("saving widget placements failed: \(error.localizedDescription)")
             placementsError = error.localizedDescription
         }
     }
 
     private func logSetAside(_ broken: URL?) {
         guard let broken else { return }
-        Self.log.error("widget placements file did not decode; moved it to \(broken.path, privacy: .public)")
+        Self.log.error("widget placements file did not decode; moved it to \(broken.path)")
     }
 }
 

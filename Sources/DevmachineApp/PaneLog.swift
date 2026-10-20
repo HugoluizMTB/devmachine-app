@@ -4,7 +4,7 @@ import Foundation
 /// only shows up while you are working can be read afterwards instead of
 /// guessed at. Off unless the file's directory exists.
 enum PaneLog {
-    static let path = NSHomeDirectory() + "/.devmachine-app/terminal.log"
+    static let path = AppLog.directory.appendingPathComponent("terminal.log").path
 
     private static let queue = DispatchQueue(label: "devmachine.pane-log")
     /// Built per line: a formatter is not safe to share across threads, and
@@ -34,7 +34,7 @@ enum PaneLog {
     static func prepare() {
         try? FileManager.default.createDirectory(
             atPath: (path as NSString).deletingLastPathComponent,
-            withIntermediateDirectories: true)
+            withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     }
 
     /// Half a megabyte of history is plenty to read a bug from; past a

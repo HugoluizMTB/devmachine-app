@@ -41,6 +41,8 @@ struct CommandPaletteView: View {
         context.chatSettings = chats.settings
         context.chatConfig = chats.config
         context.chatWorkspaces = chats.workspaces
+        context.cliLogExists = LogFiles.shared.cliLogExists
+        context.historyExists = LogFiles.shared.historyExists
         context.previewTargets = PreviewTargetsStore.shared.knownTargets().map {
             PalettePreviewGroup(place: $0.place, targets: $0.targets)
         }

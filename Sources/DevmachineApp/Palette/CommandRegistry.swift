@@ -19,7 +19,27 @@ enum CommandRegistry {
             + previewCommands(context)
             + machineCommands(context)
             + chatCommands(context)
+            + logCommands(context)
             + settingsCommands()
+    }
+
+    private static let logKeywords = ["logs", "log", "debug", "diagnostics", "support", "bug", "report", "help"]
+
+    /// The same five as Help > Logs; the CLI's log and history only once
+    /// they are on disk.
+    static func logCommands(_ context: PaletteContext) -> [PaletteCommand] {
+        let commands: [(LogAction, String, String, Bool)] = [
+            (.openAppLog, "doc.text", "app.log", true),
+            (.openCLILog, "terminal", "devmachine.log", context.cliLogExists),
+            (.openHistory, "clock.arrow.circlepath", "history.log", context.historyExists),
+            (.showInFinder, "folder", "~/Library/Logs/Devmachine", true),
+            (.saveAll, "archivebox", "a zip on the Desktop", true),
+        ]
+        return commands.filter(\.3).map { action, image, subtitle, _ in
+            PaletteCommand(
+                id: "action.logs." + action.rawValue, title: action.title(), subtitle: subtitle,
+                category: .action, systemImage: image, keywords: logKeywords, action: .logs(action))
+        }
     }
 
     private static let chatKeywords = ["chat", "ask", "question", "conversation", "claude", "codex"]

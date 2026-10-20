@@ -37,6 +37,10 @@ private struct CLIWorkspaceDetailList: Decodable {
     let workspaces: [Row]
 }
 
+struct CLILogsPath: Decodable, Equatable, Sendable {
+    let path: String
+}
+
 struct CLIConfigPath: Decodable, Equatable, Sendable {
     let path: String
     let source: String
@@ -378,7 +382,7 @@ struct DevmachineCLI: Sendable {
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.executable = executable
-        self.runner = runner
+        self.runner = runner is LoggingCommandRunner ? runner : LoggingCommandRunner(wrapping: runner, logger: AppLog.shared)
         self.customSocket = customSocket
         self.socketFileExists = socketFileExists
         self.processEnvironment = processEnvironment
@@ -703,6 +707,18 @@ struct DevmachineCLI: Sendable {
         )
         try requireSuccess(result)
         return try JSONDecoder().decode(CLIConfigPath.self, from: Data(result.stdout.utf8))
+    }
+
+    /// Where the CLI writes its own log (`logs path`, CLI 0.16+); nil from an
+    /// older CLI, which has no such command.
+    func logsPath() -> String? {
+        guard let result = try? runner.runCapturing(
+            executable: executable, args: ["--format", "json", "logs", "path"], environment: environment()),
+            result.exitCode == 0,
+            let answer = try? JSONDecoder().decode(CLILogsPath.self, from: Data(result.stdout.utf8)),
+            !answer.path.isEmpty
+        else { return nil }
+        return answer.path
     }
 
     /// The host key a server presents, read without logging in or writing
