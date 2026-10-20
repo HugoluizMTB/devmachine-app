@@ -119,7 +119,7 @@ final class DemoRefusalTests: XCTestCase {
                                             details: "$ devmachine sync --machine main --tags hostinger --yes"))
     }
 
-    func testRemovingADNSProviderIsRefusedWithoutCallingTheCLI() async {
+    func testRemoveInDemoModeIsRefused() async {
         let center = MachineJobCenter(runner: ProcessJobRunner(cli: {
             XCTFail("demo mode resolved the CLI to remove a DNS provider")
             throw DevmachineCLIError.commandFailed("no")

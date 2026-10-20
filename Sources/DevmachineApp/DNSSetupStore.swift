@@ -246,6 +246,7 @@ final class DNSSetupStore: ObservableObject {
         guard let machine else { return }
         if let id = syncing[machine] { center()?.dismiss(id) }
         syncing[machine] = nil
+        removing[machine] = nil
         jobs[machine] = nil
         runs[machine] = nil
     }
@@ -253,7 +254,7 @@ final class DNSSetupStore: ObservableObject {
     private func syncFinished(_ machine: String, run: UUID, job: UUID, outcome: MachineJobOutcome) {
         guard runs[machine] == run else { return }
         let removed = removing[machine]
-        if outcome != .succeeded { removing[machine] = nil }
+        if outcome == .cancelled { removing[machine] = nil }
         switch outcome {
         case .succeeded:
             if let removed {
@@ -303,6 +304,7 @@ final class DNSSetupStore: ObservableObject {
         for (machine, id) in syncing {
             guard let job = centerJobs.first(where: { $0.id == id }) else {
                 syncing[machine] = nil
+                removing[machine] = nil
                 if case .failed(.sync, _, _) = jobs[machine] {
                     jobs[machine] = nil
                     runs[machine] = nil
@@ -337,6 +339,7 @@ final class DNSSetupStore: ObservableObject {
         let run = UUID()
         runs[machine] = run
         jobPackage[machine] = package
+        removing[machine] = nil
         jobs[machine] = .running(step)
         savedToken = nil
         savedZones = nil
