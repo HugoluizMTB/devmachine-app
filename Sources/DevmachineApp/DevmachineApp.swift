@@ -24,6 +24,9 @@ struct DevmachineApp: App {
     @StateObject private var updates = UpdateController.live()
 
     init() {
+        _ = SettingsStore.shared
+        AppLog.recordLaunch()
+        LogFiles.shared.startWatching()
         ScrollBarStyle.apply()
         MainWindowSizer.readSavedFrame()
         let prs = PRStore()
@@ -219,6 +222,7 @@ struct DevmachineApp: App {
             CommandGroup(replacing: .help) {
                 Button("Keyboard Shortcuts") { model.showShortcuts = true }
                     .keyboardShortcut("?", modifiers: .command)
+                LogsMenu(files: LogFiles.shared)
             }
             // Real menu commands, not hidden buttons: a key equivalent in the
             // menu is handled before the key reaches the focused view, and the

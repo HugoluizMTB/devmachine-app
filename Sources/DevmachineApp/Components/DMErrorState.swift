@@ -96,6 +96,13 @@ struct DMErrorStateView: View {
             }
         }
         .frame(maxWidth: m.card.errorState)
+        .task(id: state) { Self.record(state) }
+    }
+
+    static func record(_ state: DMErrorState) {
+        let details = state.details.split(separator: "\n").suffix(CLICall.stderrTailLines).map(String.init)
+        let head = "shown: \(state.title)" + (state.cause.map { " — \($0)" } ?? "")
+        AppLog.shared.error("ui", ([head] + details).joined(separator: "\n"))
     }
 
     static let updateCLITitle = "Update the CLI"

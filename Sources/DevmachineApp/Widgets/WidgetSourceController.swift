@@ -1,7 +1,6 @@
 import Combine
 import DevmachineCore
 import Foundation
-import os
 
 struct SourceRunners: Sendable {
     var command: any SourceRunner
@@ -65,7 +64,7 @@ final class WidgetSourceController: ObservableObject {
     private let startsTimer: Bool
     private let now: () -> Date
     private let loginHolds: LoginHoldCenter
-    private nonisolated static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
+    private nonisolated static let log = AppLogChannel(category: "widgets")
     private nonisolated static let historyQueue = DispatchQueue(label: "app.devmachine.mac.widget-history", qos: .utility)
 
     init(
@@ -249,7 +248,7 @@ final class WidgetSourceController: ObservableObject {
             approvals = try approvalsFile.record(decision, hash: hash, summary: summary, at: now())
         } catch {
             approvals.record(decision, hash: hash, summary: summary, at: now())
-            Self.log.error("saving widget approvals failed: \(error.localizedDescription, privacy: .public)")
+            Self.log.error("saving widget approvals failed: \(error.localizedDescription)")
         }
         if decision == .denied {
             cancelRun(id)
@@ -371,11 +370,11 @@ final class WidgetSourceController: ObservableObject {
             reportLogin(id, error: nil)
         case let .result(.needsApproval(approval)):
             schedule.pause(id, for: approval)
-            Self.log.info("widget \(id, privacy: .public) waits for approval")
+            Self.log.info("widget \(id) waits for approval")
         case let .failure(error):
             state.error = error
             reportLogin(id, error: error)
-            Self.log.error("widget \(id, privacy: .public): \(error.title, privacy: .public): \(error.details, privacy: .public)")
+            Self.log.error("widget \(id): \(error.title): \(error.details)")
         }
         if states[id] != state { states[id] = state }
     }
@@ -392,7 +391,7 @@ final class WidgetSourceController: ObservableObject {
             do {
                 try store.save(saved, surface: surface, id: id)
             } catch {
-                Self.log.error("saving widget history failed: \(error.localizedDescription, privacy: .public)")
+                Self.log.error("saving widget history failed: \(error.localizedDescription)")
             }
         }
     }
@@ -460,7 +459,7 @@ final class WidgetSourceController: ObservableObject {
         states[id] = state
         if let error {
             reportLogin(id, error: error)
-            Self.log.error("widget stream \(id, privacy: .public) ended: \(error.details, privacy: .public)")
+            Self.log.error("widget stream \(id) ended: \(error.details)")
         }
     }
 }

@@ -71,6 +71,7 @@ final class SettingsStore: ObservableObject {
     @Published var settings: AppSettings? {
         didSet {
             save()
+            syncLogLevel()
             syncSSHAgentSocketPreference()
             syncTextSize()
         }
@@ -105,6 +106,12 @@ final class SettingsStore: ObservableObject {
         guard let data = defaults.data(forKey: Self.key) else { return }
         settings = try? JSONDecoder().decode(AppSettings.self, from: data)
         syncSSHAgentSocketPreference()
+        syncLogLevel()
+    }
+
+    private func syncLogLevel() {
+        guard drivesTextSize else { return }
+        AppLog.applyDebugLogging(settings?.debugLogging == true)
     }
 
     /// Keeps `RemoteCommands.SSHAgentSocketPreference` current, so any code

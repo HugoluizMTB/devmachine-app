@@ -265,6 +265,22 @@ final class MachineStepRunnerBackgroundTests: XCTestCase {
         XCTAssertEqual(terminal.processes[1].input, Data("right".utf8))
     }
 
+    func testEachStepIsLoggedAndTheFailureCarriesItsOutputButNeverThePassword() async throws {
+        let terminal = FakeTerminal()
+        terminal.processStatus = { $0.starts(with: ["machines", "add"]) ? 1 : 0 }
+        let runner = MachineStepRunner(hooks: terminal.hooks, pollInterval: 1_000_000)
+        let steps = passwordPlan()
+
+        await runner.run(steps, inTerminal: false, password: SecretText("fake-step-password-0123"))
+
+        AppLog.shared.flush()
+        let log = try String(contentsOf: AppLog.shared.fileURL, encoding: .utf8)
+        XCTAssertTrue(log.contains("[steps] step started: \(steps[0].displayLine)"), log)
+        XCTAssertTrue(log.contains("[steps] step failed (exit 1): \(steps[0].displayLine): machines refused"), log)
+        XCTAssertTrue(log.contains("    | Error: machines refused"), log)
+        XCTAssertFalse(log.contains("fake-step-password-0123"))
+    }
+
     func testStoppingABackgroundStepCancelsItsProcess() async throws {
         var hooks = FakeTerminal().hooks
         let started = Flag()

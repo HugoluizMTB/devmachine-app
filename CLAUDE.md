@@ -1662,6 +1662,28 @@ menu bar; the app has no code for a particular widget's choices.
   a different key. It writes only the CLI's local `known_hosts`, never the
   machine.
 
+## Logs
+- The app always writes `~/Library/Logs/Devmachine/app.log` (`AppLog.shared`,
+  an `AppLogger` from Core): folder 0700, file 0600, rotated at 5 MB keeping
+  `.1`–`.3`, written on its own queue; a failed write is dropped. Under
+  XCTest it goes to a temp folder, never the real one.
+- Every line goes through `LogRedactor` (Core): tokens, keys, passwords,
+  `NAME=value` and JSON values with a secret's name, `.env` lines, private
+  key blocks become `***`. Addresses, host, machine, workspace and user names
+  and paths stay: they are what an install problem is read from. The rules
+  match the CLI's own log.
+- `DevmachineCLI` wraps its runner in `LoggingCommandRunner`: argv
+  (redacted), exit code, duration, the stderr tail on failure; stdin is never
+  logged. A read the app repeats (`CLICall.isPolledRead`) is written only when
+  it starts failing or works again; Settings → Debug logging writes every
+  run and the debug lines. The same line is written once per 5 minutes.
+- Log through `AppLogChannel(category:)`, not `os.Logger`: it writes both.
+- Help > Logs and the ⌘K log commands share `LogActionRunner`; "Save All
+  Logs…" zips the app's, the CLI's logs and `history.log` with an
+  `about.txt` (`LogBundle`) to the Desktop. The CLI's log is where
+  `devmachine --format json logs path` says; an older CLI without that
+  command falls back to `<config>/logs/devmachine.log`.
+
 ## Publishing feedback
 - `expose add` / `expose rm` run with `--format json` (CLI 0.7.21+): the
   result (`applied`, `status`, `note`) and the exact stderr drive

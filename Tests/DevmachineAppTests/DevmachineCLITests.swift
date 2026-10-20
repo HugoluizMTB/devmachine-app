@@ -275,6 +275,29 @@ final class DevmachineCLITests: XCTestCase {
         XCTAssertEqual(runner.inputs.first ?? nil, Data("tok-secret-123\n".utf8))
     }
 
+    func testEveryCLIRunIsLoggedWithoutTheSecretSentOnStdin() throws {
+        let runner = CLIRecordingRunner(result: ("", "error: the keychain is locked for fake-log-secret-0123\n", 1))
+
+        XCTAssertThrowsError(try DevmachineCLI(executable: "/x", runner: runner)
+            .setSecret("acme-dns", value: "fake-log-secret-0123"))
+
+        AppLog.shared.flush()
+        let log = try String(contentsOf: AppLog.shared.fileURL, encoding: .utf8)
+        XCTAssertTrue(log.contains("ERROR [cli] devmachine secrets set acme-dns --stdin (stdin): exit 1 in "), log)
+        XCTAssertTrue(log.contains("    | error: the keychain is locked for"), log)
+        XCTAssertFalse(log.contains("fake-log-secret-0123"), log)
+    }
+
+    func testTheCLISaysWhereItsLogIsAndAnOlderOneSaysNothing() {
+        let newer = CLIRecordingRunner(result: (#"{"path": "/Users/alice/.config/devmachine/logs/devmachine.log"}"#, "", 0))
+        XCTAssertEqual(
+            DevmachineCLI(executable: "/x", runner: newer).logsPath(), "/Users/alice/.config/devmachine/logs/devmachine.log")
+        XCTAssertEqual(newer.calls.first?.args, ["--format", "json", "logs", "path"])
+
+        let older = CLIRecordingRunner(result: ("", "Error: unknown command \"logs\" for \"devmachine\"\n", 1))
+        XCTAssertNil(DevmachineCLI(executable: "/x", runner: older).logsPath())
+    }
+
     func testAnEmptySecretIsRefusedBeforeTheCLIRuns() {
         let runner = CLIRecordingRunner(result: ("", "", 0))
 

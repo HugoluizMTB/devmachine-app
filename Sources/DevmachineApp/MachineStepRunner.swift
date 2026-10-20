@@ -79,6 +79,7 @@ final class MachineStepRunner: ObservableObject {
     nonisolated static let timedOut = "The step gave no result for too long. If it still runs in the terminal, "
         + "stop it there, then Try again."
     nonisolated static let demoRefusal = "Demo mode never adds a machine."
+    private static let log = AppLogChannel(category: "steps")
 
     let terminalKind: TerminalKind
     private let hooks: Hooks
@@ -88,6 +89,7 @@ final class MachineStepRunner: ObservableObject {
     private var runToken = UUID()
     private var activeStep: MachinePlanStep?
     private var processTask: Task<(Int32, PackagesFetch?), Error>?
+    private var passwordForLog = ""
 
     /// The shell is asked whether it is back at its prompt only after a few
     /// polls (the step's `sh` needs a moment to take the foreground), then
@@ -135,12 +137,14 @@ final class MachineStepRunner: ObservableObject {
         }
         let token = UUID()
         runToken = token
+        passwordForLog = password.value
         problem = nil
         exitCode = nil
         phase = .running
         inBackground = !inTerminal
         let task = hooks.beginTask(label, steps.count)
         defer { if let task { hooks.endTask(task, phase == .succeeded) } }
+        Self.log.info("\(label) \(steps.count) steps, \(inTerminal ? "in a terminal" : "in the background")")
 
         guard inTerminal else {
             for (index, step) in steps.enumerated() where status(of: step) != .done {
@@ -149,7 +153,7 @@ final class MachineStepRunner: ObservableObject {
                 guard await runInBackground(step, password: password, limaMethod: limaMethod, token: token)
                 else { return }
             }
-            phase = .succeeded
+            succeed()
             return
         }
         guard let executable = hooks.executable() else {
@@ -165,7 +169,23 @@ final class MachineStepRunner: ObservableObject {
             if let task { hooks.setTask(task, index) }
             guard await runOne(step, executable: executable, token: token) else { return }
         }
+        succeed()
+    }
+
+    private func succeed() {
         phase = .succeeded
+        Self.log.info("every step finished")
+    }
+
+    private func start(_ step: MachinePlanStep) {
+        activeStep = step
+        statuses[step.id] = .running
+        Self.log.info("step started: \(step.displayLine)")
+    }
+
+    private func finish(_ step: MachinePlanStep) {
+        statuses[step.id] = .done
+        Self.log.info("step finished: \(step.displayLine)")
     }
 
     /// Ends the step that runs and every step after it: Ctrl-C in the
@@ -200,15 +220,14 @@ final class MachineStepRunner: ObservableObject {
     private func runInBackground(
         _ step: MachinePlanStep, password: SecretText, limaMethod: LimaInstall.Method, token: UUID
     ) async -> Bool {
-        activeStep = step
-        statuses[step.id] = .running
+        start(step)
         attempts[step.id] = nil
         var attempt = 1
         while true {
             let outcome = await attemptInBackground(step, password: password, limaMethod: limaMethod, token: token)
             guard runToken == token else { return false }
             guard let failure = outcome else {
-                statuses[step.id] = .done
+                finish(step)
                 return true
             }
             let policy = RetryPolicy.downloads
@@ -220,6 +239,7 @@ final class MachineStepRunner: ObservableObject {
                 fail(step, tries + failure.message)
                 return false
             }
+            Self.log.info("step \(step.displayLine): attempt \(attempt) failed on the network, trying again")
             lines.append("▸ Attempt \(attempt) of \(policy.maxAttempts) failed on the network. "
                 + "Trying again in \(Int(delay)) s.")
             await hooks.sleep(delay)
@@ -287,8 +307,7 @@ final class MachineStepRunner: ObservableObject {
     }
 
     private func runOne(_ step: MachinePlanStep, executable: String, token: UUID) async -> Bool {
-        activeStep = step
-        statuses[step.id] = .running
+        start(step)
         let nonce = TerminalStepMarker.newNonce()
         let script = TerminalStepMarker.script(executable: executable, step: step, nonce: nonce)
         do {
@@ -304,7 +323,7 @@ final class MachineStepRunner: ObservableObject {
         while runToken == token {
             if let outcome = outcome(nonce) {
                 if outcome {
-                    statuses[step.id] = .done
+                    finish(step)
                     return true
                 }
                 fail(step, "\(step.displayLine) ended with an error. The terminal shows what it said.")
@@ -348,6 +367,11 @@ final class MachineStepRunner: ObservableObject {
         if let step { statuses[step.id] = .failed }
         problem = message
         phase = .failed(step: step?.id ?? "")
+        let exit = exitCode.map { " (exit \($0))" } ?? ""
+        let output = (inBackground ? lines.suffix(CLICall.stderrTailLines) : []).map {
+            passwordForLog.isEmpty ? $0 : $0.replacingOccurrences(of: passwordForLog, with: LogRedactor.mask)
+        }
+        Self.log.error((["step failed\(exit): \(step?.displayLine ?? "before any step"): \(message)"] + output).joined(separator: "\n"))
     }
 
     #if DEBUG

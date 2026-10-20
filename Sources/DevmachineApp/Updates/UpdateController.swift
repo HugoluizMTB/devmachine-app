@@ -1,7 +1,6 @@
 import AppKit
 import DevmachineCore
 import Foundation
-import os
 
 enum UpdateProgress: Equatable, Sendable {
     case downloading(Double)
@@ -148,7 +147,7 @@ final class UpdateController: ObservableObject {
         packagesLaterVersion = dependencies.preferences.packagesLaterVersion
     }
 
-    private static let log = Logger(subsystem: "app.devmachine.mac", category: "updates")
+    private static let log = AppLogChannel(category: "updates")
 
     var currentVersion: SemanticVersion? { dependencies.currentVersion }
 
@@ -230,9 +229,12 @@ final class UpdateController: ObservableObject {
             let release = try await latest(from: dependencies.appFeed)
             availability = UpdatePolicy.evaluate(
                 current: current, release: release, skippedVersion: dependencies.preferences.skippedVersion)
+            Self.log.info("app update check (\(userInitiated ? "asked" : "automatic")): \(current) installed, "
+                + "\(release.tagName) is the latest")
             checkError = nil
             if case .failed = phase { phase = .idle }
         } catch {
+            Self.log.error("app update check failed: \(error.localizedDescription)")
             if userInitiated || availability == nil {
                 checkError = DMErrorState(title: "Could not check for updates", message: error.localizedDescription)
             }
@@ -326,6 +328,7 @@ final class UpdateController: ObservableObject {
                 cliPhase = .needsManualUpdate
                 return
             }
+            Self.log.error("CLI update failed: \(error.localizedDescription)")
             cliPhase = .failed(DMErrorState(
                 title: "The CLI was not updated",
                 cause: CLISelfUpdate.failureCause(cliOutput) ?? error.localizedDescription,
@@ -387,6 +390,7 @@ final class UpdateController: ObservableObject {
             packagesPhase = .done(report)
         } catch {
             packagesOutput = sink.snapshot
+            Self.log.error("packages update failed: \(error.localizedDescription)")
             packagesPhase = .failed(DMErrorState(
                 title: "Packages were not updated",
                 cause: CLISelfUpdate.failureCause(packagesOutput) ?? error.localizedDescription,
@@ -465,6 +469,7 @@ final class UpdateController: ObservableObject {
         } catch {
             homebrewOutput = sink.snapshot
             let output = homebrewOutput.suffix(40).joined(separator: "\n")
+            Self.log.error("Homebrew update failed: \(error.localizedDescription)")
             phase = .failed(DMErrorState(
                 title: "Homebrew could not update Devmachine",
                 cause: error.localizedDescription,
@@ -483,6 +488,7 @@ final class UpdateController: ObservableObject {
             case .needsManualMove(let app): phase = .manualMove(app)
             }
         } catch {
+            Self.log.error("app update install failed: \(error.localizedDescription)")
             phase = .failed(DMErrorState(title: "The update was not installed", message: error.localizedDescription))
         }
     }
@@ -549,7 +555,7 @@ final class UpdateController: ObservableObject {
         do {
             return PackagesUpdateToast.offered(try PackagesOutdated.parse(try await dependencies.packagesOutdated()))
         } catch {
-            Self.log.error("packages outdated failed: \(error.localizedDescription, privacy: .public)")
+            Self.log.error("packages outdated failed: \(error.localizedDescription)")
             return nil
         }
     }

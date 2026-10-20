@@ -31,6 +31,18 @@ protocol PaletteUpdateChecking: AnyObject {
 
 extension UpdateController: PaletteUpdateChecking {}
 
+@MainActor
+protocol PaletteLogsHandling {
+    func perform(_ action: LogAction)
+}
+
+@MainActor
+struct LiveLogActions: PaletteLogsHandling {
+    func perform(_ action: LogAction) {
+        Task { await LogActionRunner().perform(action) }
+    }
+}
+
 /// What reaches outside the app's own state: windows, Finder, the browser.
 @MainActor
 protocol PaletteSystem {
@@ -67,6 +79,7 @@ struct PaletteDispatcher {
     let system: any PaletteSystem
     var previews: any PalettePreviewOpening = PreviewStore.shared
     var chats: ChatStore = .shared
+    var logs: any PaletteLogsHandling = LiveLogActions()
 
     func perform(_ command: PaletteCommand) {
         model.showCommandPalette = false
@@ -124,6 +137,7 @@ struct PaletteDispatcher {
         case .checkForUpdates:
             updates.checkNow()
             model.openSettings(.about)
+        case let .logs(action): logs.perform(action)
         case let .preview(request): previews.open(request, inverted: false)
         case .openPreviewField: model.requestPreviewField()
         case .pickColor: system.pickScreenColor(onCopy: model.announceCopiedColor)

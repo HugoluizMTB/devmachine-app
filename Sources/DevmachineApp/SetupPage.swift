@@ -1097,11 +1097,11 @@ struct SetupPage: View {
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-            note("Writes what happens around a terminal — the size a program is "
-                + "given, when it starts, when a pane is put away and brought back "
-                + "— to ~/.devmachine-app/terminal.log. Turn it on only while "
-                + "chasing something; off, nothing is written. The file keeps "
-                + "itself under a megabyte.")
+            note("The app always keeps a log in ~/Library/Logs/Devmachine (Help > Logs). "
+                + "On, it also writes every check it repeats, and what happens around a "
+                + "terminal — the size a program is given, when it starts, when a pane is "
+                + "put away and brought back — to terminal.log in the same folder. Turn it "
+                + "on only while chasing something. Secrets are taken out of every line.")
         }
     }
 

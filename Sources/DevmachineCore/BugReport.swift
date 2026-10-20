@@ -8,6 +8,10 @@ public struct BugReport: Equatable, Sendable {
     /// Browsers and GitHub cut a longer address.
     public static let maxURLLength = 7000
     public static let maxLines = 40
+    /// Where the full logs are, for the person to attach.
+    public static let logsHint = "More detail: in the app, Help > Logs > Save All Logs… writes a zip of the "
+        + "app's and the CLI's logs (secrets taken out) to the Desktop. Drag it into this issue. "
+        + "The app's own log is in ~/Library/Logs/Devmachine."
 
     /// What the person typed or this Mac is called, to be taken out by name.
     public struct Context: Equatable, Sendable {
@@ -74,6 +78,8 @@ public struct BugReport: Equatable, Sendable {
             ```
             \(log)
             ```
+
+            \(Self.logsHint)
             """
         return Self.redact(text, context: context)
     }

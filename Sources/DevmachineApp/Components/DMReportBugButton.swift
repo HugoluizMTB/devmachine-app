@@ -14,7 +14,8 @@ struct DMReportBugButton: View {
             NSWorkspace.shared.open(url)
         }
         .dmHelp("Opens a new GitHub issue in your browser, filled in and with personal data taken out. "
-            + "Nothing is sent until you submit it there.")
+            + "Nothing is sent until you submit it there. To attach the full logs, use "
+            + "Help > Logs > Save All Logs…; they are in ~/Library/Logs/Devmachine.")
     }
 }
 

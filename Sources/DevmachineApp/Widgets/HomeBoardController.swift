@@ -1,6 +1,5 @@
 import Foundation
 import DevmachineCore
-import os
 
 enum HomeBoardError: LocalizedError, Equatable {
     case noConfiguration
@@ -41,7 +40,7 @@ final class HomeBoardController: ObservableObject {
     private var handedConfigDirectory: String?
     private let configPath: @Sendable () async -> String?
     private var injectedSources: WidgetSourceController?
-    private static let log = Logger(subsystem: "app.devmachine.mac", category: "widgets")
+    private static let log = AppLogChannel(category: "widgets")
 
     init(
         placementsFile: WidgetPlacementsFile = WidgetPlacementsFile(fileURL: HomeBoardController.placementsURL()),
@@ -283,7 +282,7 @@ final class HomeBoardController: ObservableObject {
 
     private func logSetAside(_ broken: URL?) {
         guard let broken else { return }
-        Self.log.error("widget placements file did not decode; moved it to \(broken.path, privacy: .public)")
+        Self.log.error("widget placements file did not decode; moved it to \(broken.path)")
     }
 
     func syncCatalogWaits() {
@@ -326,7 +325,7 @@ final class HomeBoardController: ObservableObject {
             logSetAside(try placementsFile.save(next, surface: DefaultBoard.surface))
             placementsError = nil
         } catch {
-            Self.log.error("saving widget placements failed: \(error.localizedDescription, privacy: .public)")
+            Self.log.error("saving widget placements failed: \(error.localizedDescription)")
             placementsError = error.localizedDescription
         }
     }
