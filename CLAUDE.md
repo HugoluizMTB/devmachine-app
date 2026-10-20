@@ -1166,6 +1166,20 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   multiplies by the text scale to draw and divides to store, so the file reads
   the same at any setting. A window smaller than the layout moves widgets in on
   screen only.
+- **A widget is never lost** (`CanvasBounds`, Core). Every widget is drawn
+  fully inside the canvas when it fits, else pinned top-left so its top
+  shows; push-down stops where the top 44 pt (`CanvasBounds.grab`) is still
+  on screen. A drag stays on the canvas, a resize stops at its edge. Every
+  widget is drawn and resized at least to its declared minimum raised to
+  160x80 (`CanvasBounds.floor`; a growing view only to 44 high), placeholders
+  and failed cards included. Clamping is display only: the file changes only
+  on a move or resize, so a window that shrinks and grows back shows the
+  saved layout, and an old file with a widget far off screen draws it in view.
+- **The top 44 pt of a card drags it** (`WidgetChromeLayout.moveStrip`), on
+  any content, error and placeholder cards included; buttons in that strip
+  still win their clicks. The hover handle's grip and ⋯ are 44 pt high too.
+  A web page eats its own mouse events, so over a web widget only the handle
+  drags.
 - **A stored `x` is a place on Home with the sidebar open**
   (`CanvasLayout.aligned`). With the sidebar hidden the canvas is wider, and
   `HomeCanvasView` draws each widget from the sidebar-open width to the real

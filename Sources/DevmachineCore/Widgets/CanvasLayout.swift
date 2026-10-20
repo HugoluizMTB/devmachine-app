@@ -162,10 +162,7 @@ public enum CanvasLayout {
     }
 
     public static func clamped(_ frame: BoardFrame, in visible: CGSize) -> CGRect {
-        let width = Double(frame.w), height = Double(frame.h)
-        let x = min(Double(frame.x), max(0, visible.width - width))
-        let y = min(Double(frame.y), max(0, visible.height - height))
-        return CGRect(x: max(0, x), y: max(0, y), width: width, height: height)
+        CanvasBounds.onCanvas(frame, in: visible).rect
     }
 
     public static func moved(_ frame: BoardFrame, to origin: CGPoint, among others: [BoardFrame]) -> CanvasMove {

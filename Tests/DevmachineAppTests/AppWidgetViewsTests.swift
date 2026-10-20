@@ -74,9 +74,27 @@ final class AppWidgetViewsTests: XCTestCase {
             every: every, minimum: CanvasSize(w: 160, h: 160))
     }
 
-    func testTheHandleGripAndMenuFillThePillHeight() {
-        XCTAssertEqual(WidgetChromeLayout.gripArea.height, DMControlHeight.small)
-        XCTAssertEqual(WidgetChromeLayout.menuArea.height, DMControlHeight.small)
+    func testTheHandleGripAndMenuCoverThePillAndAreAtLeast44PointsHigh() {
+        for area in [WidgetChromeLayout.gripArea, WidgetChromeLayout.menuArea] {
+            XCTAssertGreaterThanOrEqual(area.height, WidgetChromeLayout.pillHeight)
+            XCTAssertGreaterThanOrEqual(area.height, 44)
+        }
+    }
+
+    func testTheTopStripOfACardMovesIt() {
+        let card = CGRect(x: 100, y: 200, width: 320, height: 160)
+        let strip = WidgetChromeLayout.moveStrip
+        XCTAssertGreaterThanOrEqual(strip, 44)
+        XCTAssertTrue(WidgetChromeLayout.startsMove(at: CGPoint(x: 101, y: 201), in: card, strip: strip))
+        XCTAssertTrue(WidgetChromeLayout.startsMove(at: CGPoint(x: 419, y: 200 + strip - 1), in: card, strip: strip))
+        XCTAssertFalse(WidgetChromeLayout.startsMove(at: CGPoint(x: 200, y: 200 + strip + 1), in: card, strip: strip))
+        XCTAssertFalse(WidgetChromeLayout.startsMove(at: CGPoint(x: 99, y: 210), in: card, strip: strip))
+    }
+
+    func testACardShorterThanTheStripMovesFromAnywhereOnIt() {
+        let card = CGRect(x: 0, y: 0, width: 160, height: 30)
+        XCTAssertTrue(WidgetChromeLayout.startsMove(at: CGPoint(x: 80, y: 29), in: card, strip: WidgetChromeLayout.moveStrip))
+        XCTAssertFalse(WidgetChromeLayout.startsMove(at: CGPoint(x: 80, y: 31), in: card, strip: WidgetChromeLayout.moveStrip))
     }
 
     func testTheHandleGripAndMenuAreComfortableTargets() {
