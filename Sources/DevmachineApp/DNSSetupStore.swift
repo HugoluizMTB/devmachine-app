@@ -146,6 +146,13 @@ final class DNSSetupStore: ObservableObject {
         onConfigurationChanged()
     }
 
+    /// `install`, then `sync` of the package alone when the CLI can and the
+    /// add left it waiting for one.
+    func installAndSync(_ package: String, token: String, zones: String = "") async {
+        await install(package, token: token, zones: zones)
+        if stateOf(package) == .notSynced, canRunSync() { sync(package) }
+    }
+
     /// Writes the zones the provider may manage into the machine's
     /// settings (`machines edit --set`); the next sync applies them.
     func saveZones(_ package: String, zones: String) async {
@@ -176,6 +183,13 @@ final class DNSSetupStore: ObservableObject {
         guard runs[machine] == run else { return }
         jobs[machine] = .finished
         savedToken = package
+    }
+
+    /// `saveToken`, then `sync` of the package alone when the token was kept
+    /// and the CLI can, so the new token reaches the machine.
+    func saveTokenAndSync(_ package: String, token: String) async {
+        await saveToken(package, token: token)
+        if savedToken == package, canRunSync() { sync(package) }
     }
 
     /// Applies only `package` on the machine, then delivers its token, as a
@@ -367,12 +381,14 @@ final class DNSSetupStore: ObservableObject {
     #if DEBUG
     /// Demo walks only: a fixed state, with no real CLI behind it.
     func seedDemo(
-        machine: String, packages: [CLIPackage], answers: [DNSProviderAnswer]?, job: DNSSetupJob? = nil
+        machine: String, packages: [CLIPackage], answers: [DNSProviderAnswer]?, job: DNSSetupJob? = nil,
+        package: String? = nil
     ) {
         canRunSync = { true }
         canEditMachineSettings = { true }
         update(machine: machine, packages: packages, answers: answers)
         jobs[machine] = job
+        jobPackage[machine] = package
     }
 
     /// Demo walks only: syncs run on `center`, whose runner never reaches a CLI.

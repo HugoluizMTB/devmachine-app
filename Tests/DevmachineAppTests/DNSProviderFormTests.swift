@@ -4,7 +4,7 @@ import DevmachineCore
 @testable import DevmachineApp
 
 @MainActor
-final class DNSProviderSetupCardTests: XCTestCase {
+final class DNSProviderFormTests: XCTestCase {
     private let packages = [
         CLIPackage(name: "cloudflare", scope: "machine", installedOn: [], summary: "DNS zones on Cloudflare."),
         CLIPackage(name: "hostinger", scope: "machine", installedOn: ["machine box"], summary: "DNS zones on Hostinger."),
@@ -55,15 +55,44 @@ final class DNSProviderSetupCardTests: XCTestCase {
         XCTAssertTrue(DNSSetupContent.syncingBody.contains("corner"))
     }
 
-    func testTheCardRendersInEveryStateAndNotWhenReady() throws {
-        let cases: [(answers: [DNSProviderAnswer]?, job: DNSSetupJob?, declared: Bool, shows: Bool)] = [
-            ([], nil, false, true),
-            ([], nil, true, true),
-            ([DNSProviderAnswer(name: "hostinger", zones: [], error: "no token")], nil, true, true),
-            ([DNSProviderAnswer(name: "hostinger", zones: [], error: nil)], nil, true, true),
-            ([], .running(.sync), true, true),
-            ([], .failed(.sync, cause: "exit status 2", details: "fatal"), true, true),
-            ([DNSProviderAnswer(name: "hostinger", zones: ["example.com"], error: nil)], nil, true, false),
+    func testTheConfirmationsForAddAndSaveAndRemoveSayWhatHappens() {
+        let add = DNSSetupContent.addAndSaveConfirmation("hostinger", machine: "box", zones: [])
+        XCTAssertTrue(add.hasPrefix(DNSSetupContent.installConfirmation("hostinger", machine: "box")))
+        XCTAssertTrue(add.hasSuffix(" Then it syncs hostinger alone on box and delivers the token."))
+        let remove = DNSSetupContent.removeConfirmation("hostinger", machine: "box")
+        XCTAssertTrue(remove.contains("runs a full sync on box"))
+        XCTAssertTrue(remove.contains("/opt/devmachine/roles/hostinger"))
+    }
+
+    func testButtonsPerState() {
+        XCTAssertEqual(DNSProviderForm.actions(for: .notInstalled, canRunSync: true), [.addAndSave])
+        XCTAssertEqual(DNSProviderForm.actions(for: .notSynced, canRunSync: true), [.saveToken, .pushAgain, .remove])
+        XCTAssertEqual(
+            DNSProviderForm.actions(for: .tokenMissing(error: "e"), canRunSync: true), [.saveToken, .pushAgain, .remove])
+        XCTAssertEqual(DNSProviderForm.actions(for: .noZones, canRunSync: true), [.saveToken, .pushAgain, .remove])
+        XCTAssertEqual(DNSProviderForm.actions(for: .ready, canRunSync: true), [.saveToken, .pushAgain, .remove])
+        XCTAssertEqual(DNSProviderForm.actions(for: .working(.sync), canRunSync: true), [])
+        XCTAssertEqual(DNSProviderForm.actions(for: .failed(.sync, cause: "x", details: "y"), canRunSync: true), [])
+        XCTAssertEqual(DNSProviderForm.actions(for: .ready, canRunSync: false), [.saveToken])
+        XCTAssertEqual(DNSProviderForm.actions(for: .notInstalled, canRunSync: false), [.addAndSave])
+    }
+
+    func testAddAndSaveNeedsAUsableTokenAndValidZones() {
+        XCTAssertTrue(DNSProviderForm.canSubmit(token: "  tok-1 ", zones: ""))
+        XCTAssertFalse(DNSProviderForm.canSubmit(token: "   ", zones: ""))
+        XCTAssertFalse(DNSProviderForm.canSubmit(token: "one\ntwo", zones: ""))
+        XCTAssertFalse(DNSProviderForm.canSubmit(token: "tok-1", zones: "example.com]: x"))
+    }
+
+    func testTheFormRendersInEveryState() throws {
+        let cases: [(answers: [DNSProviderAnswer]?, job: DNSSetupJob?, declared: Bool)] = [
+            ([], nil, false),
+            ([], nil, true),
+            ([DNSProviderAnswer(name: "hostinger", zones: [], error: "no token")], nil, true),
+            ([DNSProviderAnswer(name: "hostinger", zones: [], error: nil)], nil, true),
+            ([], .running(.sync), true),
+            ([], .failed(.sync, cause: "exit status 2", details: "fatal"), true),
+            ([DNSProviderAnswer(name: "hostinger", zones: ["example.com"], error: nil)], nil, true),
         ]
         for item in cases {
             let setup = DNSSetupStore(
@@ -71,13 +100,11 @@ final class DNSProviderSetupCardTests: XCTestCase {
             let listed = item.declared ? packages : packages.map {
                 CLIPackage(name: $0.name, scope: $0.scope, installedOn: [], summary: $0.summary)
             }
-            setup.seedDemo(machine: "box", packages: listed, answers: item.answers, job: item.job)
-            XCTAssertEqual(setup.state.showsCard, item.shows)
+            setup.seedDemo(machine: "box", packages: listed, answers: item.answers, job: item.job, package: "hostinger")
 
-            guard item.shows else { continue }
-            let view = DNSProviderSetupCard(setup: setup, domain: "example.com").frame(width: 760)
+            let view = DNSProviderForm(setup: setup, package: "hostinger", domain: "example.com").frame(width: 760)
             let image = try XCTUnwrap(ImageRenderer(content: view).nsImage)
-            XCTAssertGreaterThan(image.size.height, 60, "\(setup.state)")
+            XCTAssertGreaterThan(image.size.height, 15, "\(setup.stateOf("hostinger"))")
         }
     }
 }

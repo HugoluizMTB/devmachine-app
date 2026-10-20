@@ -365,6 +365,75 @@ final class DNSSetupStoreTests: XCTestCase {
         XCTAssertEqual(center.jobs.count, 1)
     }
 
+    func testAddAndSaveInstallsThenSyncsAndPushes() async throws {
+        let cli = DNSSetupCLIRunner()
+        let sync = FakeSyncRunner()
+        sync.onRun = {
+            if $0.first == "credentials" {
+                cli.set { $0.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"# }
+            }
+        }
+        let store = try await loadedStore(cli, sync: sync)
+
+        await store.dnsSetup.installAndSync("hostinger", token: "tok-1")
+
+        try await eventually { store.dnsSetup.stateOf("hostinger") == .ready }
+        XCTAssertEqual(sync.calls, [
+            ["sync", "--machine", "box", "--tags", "hostinger", "--yes"],
+            ["credentials", "push", "--machine", "box", "--yes"],
+        ])
+    }
+
+    func testAddAndSaveStopsAtTheFailedStepAndSyncsNothing() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.set { $0.secretFails = true }
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync)
+
+        await store.dnsSetup.installAndSync("hostinger", token: "tok-1")
+
+        guard case .failed(.saveToken, _, _) = store.dnsSetup.stateOf("hostinger") else {
+            return XCTFail("\(store.dnsSetup.stateOf("hostinger"))")
+        }
+        XCTAssertTrue(sync.calls.isEmpty)
+    }
+
+    func testAddAndSaveOnAnOldCLISavesAndSyncsNothing() async throws {
+        let cli = DNSSetupCLIRunner()
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync, canRunSync: false)
+
+        await store.dnsSetup.installAndSync("hostinger", token: "tok-1")
+
+        XCTAssertEqual(store.dnsSetup.stateOf("hostinger"), .notSynced)
+        XCTAssertTrue(sync.calls.isEmpty)
+    }
+
+    func testSaveTokenAndSyncPushesTheNewToken() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync)
+
+        await store.dnsSetup.saveTokenAndSync("hostinger", token: "tok-2")
+
+        try await eventually { sync.calls.count == 2 }
+        XCTAssertEqual(sync.calls.first, ["sync", "--machine", "box", "--tags", "hostinger", "--yes"])
+        XCTAssertEqual(sync.calls.last, ["credentials", "push", "--machine", "box", "--yes"])
+    }
+
+    func testSaveTokenAndSyncSyncsNothingWhenTheTokenFails() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.set { $0.secretFails = true }
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync)
+
+        await store.dnsSetup.saveTokenAndSync("hostinger", token: "tok-2")
+
+        XCTAssertTrue(sync.calls.isEmpty)
+    }
+
     func testAnOldCLINeverSyncsFromTheApp() async throws {
         let cli = DNSSetupCLIRunner()
         cli.declared = ["hostinger"]
