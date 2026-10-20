@@ -1,94 +1,100 @@
 import SwiftUI
 import DevmachineCore
 
-/// The server's host key, read with `machines scan` before anything trusts
-/// it: what it presents beside the command that prints the same key on its
-/// own console. The add trusts it only once the person says they match, or
-/// the console output pasted here holds it.
+/// The server's host key, read with `machines scan` once the address is
+/// typed: one quiet line. The add trusts only that key, so a fake server
+/// never gets the password. Checking it against the provider's console is
+/// there for whoever wants it, folded away.
 struct AddMachineScanView: View {
     @Environment(\.dmMetrics) private var m
     @ObservedObject var state: AddMachineModel
+    @State private var showsDetails = false
+    @State private var checksConsole = false
 
     private var draft: MachineDraft { state.wizard.draft }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: m.space.md) {
-            AddMachineFieldLabel(text: "Server fingerprint")
-            Text(verbatim: "devmachine reads the key the server presents, without logging in. Check it against "
-                + "your provider's console (not SSH) before anything trusts it.")
-                .font(.dm(11))
-                .foregroundStyle(Color.dmMuted)
-                .fixedSize(horizontal: false, vertical: true)
-            DMButton(
-                draft.currentScan == nil ? "Read the fingerprint" : "Read it again", systemImage: "key.viewfinder",
-                variant: .outline, size: .small, isLoading: state.scanning
-            ) { Task { await state.scan() } }
-            .disabled(draft.address.trimmingCharacters(in: .whitespaces).isEmpty)
-            if let error = state.scanError {
-                AddMachineWarning(text: "Could not read the fingerprint: \(error)")
-            }
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            line
             if let scan = draft.currentScan {
-                presented(scan)
+                DisclosureGroup(isExpanded: $checksConsole) {
+                    consoleCheck(scan)
+                        .padding(.top, m.space.sm)
+                } label: {
+                    Text(verbatim: "Check it against the provider console (optional)")
+                        .font(.dm(11))
+                        .foregroundStyle(Color.dmMuted)
+                }
             }
-            consoleField
-            outcome
+            if draft.consoleDisagreesWithScan {
+                AddMachineWarning(text: "The console printed a different key than the server presented. "
+                    + "Do not add this server: something between you and it may not be the server.")
+            }
         }
-    }
-
-    private func presented(_ scan: MachineScan) -> some View {
-        HStack(alignment: .top, spacing: m.space.lg) {
-            VStack(alignment: .leading, spacing: m.space.xs) {
-                AddMachineFieldLabel(text: "The server presents")
-                Text(verbatim: scan.keyType)
-                    .font(.dm(10.5))
-                    .foregroundStyle(Color.dmMuted)
-                Text(verbatim: scan.fingerprint)
-                    .font(.dm(11.5, design: .monospaced))
-                    .foregroundStyle(Color.dmRowText)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(m.space.lg)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .dmSurface(Color.dmBand, radius: DMRadius.panel)
-            VStack(alignment: .leading, spacing: m.space.xs) {
-                AddMachineFieldLabel(text: "On its console, run")
-                DMCommandBlock(scan.verify ?? AddMachineContent.verifyCommand, wraps: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var consoleField: some View {
-        TextField(
-            "Optional: paste what the console printed", text: $state.wizard.draft.fingerprint, axis: .vertical)
-            .lineLimit(1...3)
-            .font(.system(size: m.pt(11.5), design: .monospaced))
-            .dmField()
+        .task(id: state.scanTarget) { await state.scanAfterPause() }
     }
 
     @ViewBuilder
-    private var outcome: some View {
-        if draft.consoleDisagreesWithScan {
-            AddMachineWarning(text: "The console printed a different key than the server presented. "
-                + "Do not add this server: something between you and it may not be the server.")
-        } else if draft.consoleConfirmsScan || (draft.currentScan == nil && draft.expectedFingerprint != nil) {
-            Label {
-                Text(verbatim: draft.consoleConfirmsScan
-                    ? "The console shows the same key." : "devmachine trusts \(draft.expectedFingerprint ?? "").")
-            } icon: {
-                Image(systemName: "checkmark.seal.fill")
+    private var line: some View {
+        if let scan = draft.currentScan {
+            HStack(spacing: m.space.sm) {
+                Image(systemName: "key")
+                    .foregroundStyle(Color.dmMuted)
+                Text(verbatim: "Server key: \(scan.keyTypeName) \(scan.fingerprint)")
+                    .font(.dm(11, design: .monospaced))
+                    .foregroundStyle(Color.dmMuted)
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            .font(.dm(11))
-            .foregroundStyle(Color.green)
-        } else if draft.currentScan != nil {
-            Toggle(isOn: $state.wizard.draft.scanConfirmed) {
-                Text(verbatim: "The console shows this same fingerprint")
-                    .font(.dm(11.5))
-                    .foregroundStyle(Color.dmRowText)
+        } else if state.scanning {
+            HStack(spacing: m.space.sm) {
+                ProgressView().controlSize(.small)
+                Text(verbatim: "Reading the server's key…")
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
             }
-            .toggleStyle(.checkbox)
+        } else if let failure = state.currentScanFailure {
+            VStack(alignment: .leading, spacing: m.space.xs) {
+                AddMachineWarning(text: failure.message)
+                HStack(spacing: m.space.sm) {
+                    DMButton("Try again", variant: .ghost, size: .small) { Task { await state.scan() } }
+                    DMButton(DMErrorStateView.disclosureTitle(expanded: showsDetails), variant: .ghost,
+                             size: .small) { showsDetails.toggle() }
+                }
+                if showsDetails {
+                    Text(verbatim: failure.details)
+                        .font(.dm(10.5, design: .monospaced))
+                        .foregroundStyle(Color.dmRowText)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(m.space.md)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .dmSurface(Color.dmBand, radius: DMRadius.panel)
+                }
+            }
+        }
+    }
+
+    private func consoleCheck(_ scan: MachineScan) -> some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            Text(verbatim: "Run this in the provider's web console and paste what it prints.")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+            DMCommandBlock(scan.verify ?? AddMachineContent.verifyCommand, wraps: true)
+            TextField("Paste what the console printed", text: $state.wizard.draft.fingerprint, axis: .vertical)
+                .lineLimit(1...3)
+                .font(.system(size: m.pt(11.5), design: .monospaced))
+                .dmField()
+            if draft.consoleConfirmsScan {
+                Label {
+                    Text(verbatim: "The console shows the same key.")
+                } icon: {
+                    Image(systemName: "checkmark.seal.fill")
+                }
+                .font(.dm(11))
+                .foregroundStyle(Color.green)
+            }
         }
     }
 }
@@ -120,7 +126,7 @@ struct AddMachineAgentKeysView: View {
                 DMButton("Read the agent again", variant: .ghost, size: .small) {
                     Task { await state.loadAgentKeys() }
                 }
-                Text(verbatim: "The key the server already takes. Only it is offered from then on.")
+                Text(verbatim: "Keys in the SSH agent, 1Password included.")
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
             }

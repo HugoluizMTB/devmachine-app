@@ -45,10 +45,14 @@ public struct MachinePlanStep: Equatable, Sendable, Identifiable {
     public static let installLimaID = "install-lima"
     public static let installCLIID = "install-cli"
 
+    /// An add keeps its id with or without `--password-stdin`: the password
+    /// is dropped after each run, and a retry must still find the step that
+    /// failed or was done.
     public var id: String {
         switch kind {
         case .installLima: return Self.installLimaID
         case .installCLI: return Self.installCLIID
+        case .addMachine: return arguments.filter { $0 != "--password-stdin" }.joined(separator: " ")
         default: return arguments.joined(separator: " ")
         }
     }
@@ -172,8 +176,8 @@ public enum MachinePlan {
     }
 
     private static func unattendedAddStep(for draft: MachineDraft, location: [String]) -> MachinePlanStep {
-        var arguments = ["machines", "add", "--name", draft.trimmedName, "--address", draft.trimmedAddress,
-                         "--fingerprint", draft.fingerprintToTrust ?? ""]
+        var arguments = ["machines", "add", "--name", draft.trimmedName, "--address", draft.trimmedAddress]
+        if let fingerprint = draft.fingerprintToTrust { arguments += ["--fingerprint", fingerprint] }
         if draft.trimmedUser != MachineDraft.defaultUser { arguments += ["--user", draft.trimmedUser] }
         if draft.trimmedPort != MachineDraft.defaultPort { arguments += ["--port", draft.trimmedPort] }
         var input: MachinePlanStep.Input?
@@ -183,6 +187,9 @@ public enum MachinePlan {
         case .key:
             if !draft.trimmedKeyFile.isEmpty { arguments += ["--key", draft.trimmedKeyFile] }
         case .password:
+            break
+        }
+        if draft.login == .password || !draft.password.value.isEmpty {
             arguments.append("--password-stdin")
             input = .password
         }

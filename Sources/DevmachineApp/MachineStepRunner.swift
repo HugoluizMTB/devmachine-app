@@ -219,8 +219,7 @@ final class MachineStepRunner: ObservableObject {
         lines = before + sink.snapshot
         guard status == 0 else {
             exitCode = status
-            fail(step, MachinePrepare.failureCause(sink.snapshot)
-                ?? "\(step.displayLine) ended with an error. The output shows what it said.")
+            fail(step, MachinePrepare.failureCause(sink.snapshot) ?? "The log shows what it said.")
             return false
         }
         statuses[step.id] = .done

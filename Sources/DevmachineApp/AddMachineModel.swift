@@ -17,7 +17,10 @@ final class AddMachineModel: ObservableObject {
 
     @Published var wizard: MachineWizard
     @Published private(set) var scanning = false
-    @Published private(set) var scanError: String?
+    /// The last scan that failed, for the address and port it tried.
+    @Published private(set) var scanFailure: (target: String, failure: MachineScanFailure)?
+    /// The private keys in ~/.ssh, offered beside the agent's.
+    @Published private(set) var keyFiles: [String] = []
     /// Nil until the agent was asked.
     @Published private(set) var agentKeys: [AgentKey]?
     @Published private(set) var agentKeysError: String?
@@ -40,6 +43,9 @@ final class AddMachineModel: ObservableObject {
     private let macLimits: () -> LocalMachineSizeLimits
     private let scanMachine: @Sendable (String, String) async throws -> MachineScan
     private let listAgentKeys: @Sendable () async throws -> [AgentKey]
+    private let listSSHFolder: () -> [String]
+    private let scanPause: UInt64
+    private var scanToken = UUID()
 
     init(
         machines: MachinesStore = .shared,
@@ -53,6 +59,8 @@ final class AddMachineModel: ObservableObject {
         listAgentKeys: @escaping @Sendable () async throws -> [AgentKey] = {
             try await Task.detached { try DevmachineCLI.resolve().agentKeys() }.value
         },
+        listSSHFolder: @escaping () -> [String] = { AddMachineModel.sshFolderNames() },
+        scanPause: UInt64 = MachineScanSchedule.pause,
         skillAgents: @escaping ([SkillAgent]) -> [SkillAgent] = { AddMachineModel.harnessesInUse(from: $0) },
         macLimits: @escaping () -> LocalMachineSizeLimits = { AddMachineModel.thisMacLimits() },
         firstRun: Bool = false
@@ -67,6 +75,8 @@ final class AddMachineModel: ObservableObject {
         self.onAdded = onAdded
         self.scanMachine = scanMachine
         self.listAgentKeys = listAgentKeys
+        self.listSSHFolder = listSSHFolder
+        self.scanPause = scanPause
         wizard = MachineWizard(existingMachines: [], limaFound: false, firstRun: firstRun)
         startOver()
     }
@@ -214,7 +224,7 @@ final class AddMachineModel: ObservableObject {
     func startOver() {
         limaMethod = .release
         runner.reset()
-        scanError = nil
+        scanFailure = nil
         wizard = freshWizard()
     }
 
@@ -266,24 +276,61 @@ final class AddMachineModel: ObservableObject {
         return creates == nil ? nil : wizard.draft.name.trimmingCharacters(in: .whitespaces)
     }
 
+    /// The address and port to read the key from, while the details hold
+    /// a server's and the CLI can read it without a terminal.
+    var scanTarget: String? {
+        guard wizard.unattended, wizard.draft.kind == .server else { return nil }
+        return MachineScanSchedule.target(address: wizard.draft.address, port: wizard.draft.port)
+    }
+
+    /// The failure of a scan of the address and port typed now.
+    var currentScanFailure: MachineScanFailure? {
+        guard let scanFailure, scanFailure.target == scanTarget else { return nil }
+        return scanFailure.failure
+    }
+
+    /// The details page calls it whenever the address or port changes, and
+    /// cancels it on the next change: the key is read once typing pauses.
+    func scanAfterPause() async {
+        if scanPause > 0 {
+            try? await Task.sleep(nanoseconds: scanPause)
+            guard !Task.isCancelled else { return }
+        }
+        guard MachineScanSchedule.shouldScan(
+            target: scanTarget, scanned: wizard.draft.currentScan?.target, failed: scanFailure?.target)
+        else { return }
+        await scan()
+    }
+
     /// Reads the key the server presents (`machines scan`), which logs in
-    /// nowhere and writes nothing, so the person can compare it with the
-    /// provider's console before anything trusts it.
+    /// nowhere and writes nothing. The add trusts only that key. A failure
+    /// blocks nothing: the add reads the key again.
     func scan() async {
-        let address = wizard.draft.address.trimmingCharacters(in: .whitespaces)
+        guard let target = scanTarget else { return }
+        let address = wizard.draft.trimmedAddress
         let port = wizard.draft.port.trimmingCharacters(in: .whitespaces)
-        guard !scanning, !address.isEmpty else { return }
+        let token = UUID()
+        scanToken = token
         scanning = true
-        scanError = nil
-        defer { scanning = false }
+        defer { if scanToken == token { scanning = false } }
         do {
             let scan = try await scanMachine(address, port)
-            wizard.draft.scan = scan
-            wizard.draft.scanConfirmed = false
+            guard scanToken == token else { return }
+            wizard.draft.scan = scan.asked(address: address, port: port)
+            scanFailure = nil
         } catch {
-            wizard.draft.scan = nil
-            scanError = error.localizedDescription
+            guard scanToken == token else { return }
+            scanFailure = (target, MachineScanFailure(error: error.localizedDescription, port: port))
         }
+    }
+
+    /// The private keys in ~/.ssh, read each time the key file choice shows.
+    func loadKeyFiles() {
+        keyFiles = SSHKeyFiles.privateKeys(names: listSSHFolder())
+    }
+
+    static func sshFolderNames(home: String = NSHomeDirectory()) -> [String] {
+        (try? FileManager.default.contentsOfDirectory(atPath: home + "/.ssh")) ?? []
     }
 
     /// The keys the SSH agent holds, read again each time the agent choice
@@ -313,7 +360,26 @@ final class AddMachineModel: ObservableObject {
         await runPlan()
     }
 
+    /// The answer the failed add needs again, asked on the failure itself.
+    var retryField: MachineDraftField? {
+        guard wizard.unattended, case .failed = runner.phase else { return nil }
+        return MachineRetryField.field(failedStep: failedStep, lines: runner.lines + [runner.problem ?? ""])
+    }
+
+    /// Try again with the password typed on the failure: the failed add runs
+    /// again with it on stdin, then whatever comes after.
+    func retry(password: SecretText) async {
+        guard !password.value.isEmpty, !isRunning else { return }
+        wizard.draft.password = password
+        await runPlan()
+    }
+
     private func runPlan() async {
+        if wizard.draft.kind == .server, wizard.unattended, wizard.draft.fingerprintToTrust == nil,
+           !wizard.draft.consoleDisagreesWithScan {
+            await scan()
+        }
+        let plan = wizard.plan
         let password = wizard.draft.password
         wizard.draft.password = SecretText()
         BugReportEnvironment.typedHosts = [wizard.draft.trimmedAddress]
@@ -321,7 +387,7 @@ final class AddMachineModel: ObservableObject {
         BugReportEnvironment.typedMachines = [wizard.draft.trimmedName]
         BugReportEnvironment.typedWorkspaces = [wizard.draft.workspace.trimmingCharacters(in: .whitespaces)]
         await runner.run(
-            wizard.plan, inTerminal: !wizard.unattended, password: password, limaMethod: limaMethod,
+            plan, inTerminal: !wizard.unattended, password: password, limaMethod: limaMethod,
             label: firstRun ? "Setting up devmachine…" : "Adding a machine…")
         guard runner.phase == .succeeded || onlySkillsFailed else { return }
         onAdded()

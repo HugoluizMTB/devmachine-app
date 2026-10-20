@@ -93,7 +93,6 @@ enum DemoAddMachine {
             await state.loadAgentKeys()
             state.wizard.draft.agentKey = DemoData.addMachineAgentKeys[0].fingerprint
             await state.scan()
-            state.wizard.draft.scanConfirmed = true
         case "add-machine-packages", "no-machines-packages":
             fillServer(state)
             state.wizard.next()

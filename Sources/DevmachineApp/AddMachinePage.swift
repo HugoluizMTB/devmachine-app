@@ -263,10 +263,8 @@ struct AddMachineDetailsView: View {
             }
             if !state.wizard.draft.hasConfiguration {
                 AddMachineNote(text: unattended
-                    ? "This is your first machine, so adding it also writes devmachine's configuration, "
-                        + "as devmachine setup would. Nothing asks in a terminal."
-                    : "This is your first machine, so devmachine setup adds it. "
-                        + "It asks its questions in the terminal on the last step; the answers to give are shown there.")
+                    ? "Your first machine also writes devmachine's configuration."
+                    : "Your first machine goes through devmachine setup, in a terminal on the last step.")
             }
         }
     }
@@ -296,29 +294,23 @@ struct AddMachineDetailsView: View {
             .frame(width: m.pt(160))
         }
         VStack(alignment: .leading, spacing: m.space.sm) {
-            label("How does the server let you in today?")
+            label("Log in with")
             DMTabStrip(
-                tabs: ServerLogin.allCases, selection: draft.login,
-                title: { $0 == .key ? "With an SSH key" : "Only with a password" },
+                tabs: [ServerLogin.password, .key], selection: draft.login,
+                title: { $0 == .key ? "SSH key" : "Password" },
                 fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
         }
         if unattended {
             if state.wizard.draft.login == .key {
                 keyChoice
-            } else {
-                field("Password", .password,
-                      hint: "Goes to the CLI on its standard input, once, to install a key. "
-                        + "It is never saved, logged or put in a command line.") {
-                    SecureField("The root password from your provider", text: draft.password.value).dmField()
-                }
             }
+            passwordField
             AddMachineScanView(state: state)
         } else if state.wizard.draft.login == .key {
             keyFileField
             fingerprintField
         } else {
-            AddMachineNote(text: "The CLI asks for the password in the terminal on the last step "
-                + "and uses it once to install a key. The app never sees it.")
+            AddMachineNote(text: "The CLI asks for the password in the terminal on the last step.")
             fingerprintField
         }
         passwordLoginFields
@@ -431,24 +423,39 @@ struct AddMachineDetailsView: View {
     }
 
     private var keyFileField: some View {
-        field("Key file", .keyFile,
-              hint: "The private key you gave your provider for this server, like ~/.ssh/id_ed25519. "
-                + "No key on it yet? Choose \"Only with a password\".") {
+        field("Key file", .keyFile, hint: "Like ~/.ssh/id_ed25519.") {
             TextField("~/.ssh/id_ed25519", text: draft.keyFile).dmField()
+        }
+    }
+
+    /// Always shown on a CLI that takes it on stdin: a key not on the
+    /// server yet needs it once, and a password login needs it every run.
+    private var passwordField: some View {
+        let key = state.wizard.draft.login == .key
+        return field(key ? "Password (optional)" : "Password", .password,
+                     hint: key ? AddMachineContent.keyPasswordHint : "It goes to the CLI once and is never saved.") {
+            SecureField(key ? "Leave empty if the key already logs in" : "The server's password",
+                        text: draft.password.value).dmField()
         }
     }
 
     @ViewBuilder
     private var keyChoice: some View {
-        VStack(alignment: .leading, spacing: m.space.sm) {
-            label("Which key?")
-            DMTabStrip(
-                tabs: ServerKeySource.allCases, selection: draft.keySource,
-                title: { $0 == .file ? "A key file" : "A key in the SSH agent" },
-                fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
-        }
+        DMTabStrip(
+            tabs: [ServerKeySource.agent, .file], selection: draft.keySource,
+            title: { $0 == .file ? "Key file" : "SSH agent or 1Password" },
+            fontSize: 12, cornerRadius: DMRadius.row, spacing: 2, grouped: true)
         if state.wizard.draft.keySource == .file {
+            ForEach(state.keyFiles, id: \.self) { file in
+                DMChoiceCard(
+                    title: (file as NSString).lastPathComponent, detail: file,
+                    selected: state.wizard.draft.keyFile == file
+                ) {
+                    state.wizard.draft.keyFile = file
+                }
+            }
             keyFileField
+                .onAppear { state.loadKeyFiles() }
         } else {
             AddMachineAgentKeysView(state: state)
         }
@@ -562,8 +569,7 @@ private struct AddMachinePackagesView: View {
                         Text(verbatim: "Install them now")
                             .font(.dm(12, weight: .medium))
                             .foregroundStyle(Color.dmRowText)
-                        Text(verbatim: "Runs devmachine sync at the end. Off, the packages are only written "
-                            + "to the configuration until you sync.")
+                        Text(verbatim: "Runs devmachine sync at the end.")
                             .font(.dm(11))
                             .foregroundStyle(Color.dmMuted)
                     }
@@ -631,8 +637,7 @@ struct AddMachineReviewView: View {
                 AddMachineNote(text: "\(draft.trimmedName) gets \(size.summary).")
             }
             if wizard.plan.contains(where: { $0.input == .password }) {
-                AddMachineNote(text: "The password goes to the CLI on its standard input. "
-                    + "It is never in a command line, a file or a log.")
+                AddMachineNote(text: "The password goes to the CLI on its standard input, never in a file or log.")
             }
             let answers = wizard.terminalAnswers
             if !answers.isEmpty {
@@ -673,15 +678,19 @@ struct AddMachineRunView: View {
             case .succeeded:
                 succeeded
             case .failed:
+                let asksPassword = state.retryField == .password
                 SetupFailurePanel(
                     step: state.failedStep, lines: runner.lines, problem: runner.problem, exitCode: runner.exitCode,
-                    onRetry: state.canRetry ? { Task { await state.retry() } } : nil,
+                    onRetry: state.canRetry && !asksPassword ? { Task { await state.retry() } } : nil,
                     onEditAnswers: { state.editAnswers() })
+                if asksPassword {
+                    AddMachinePasswordRetry(state: state)
+                }
                 if state.offersHomebrewLima {
                     DMButton("Install Lima with Homebrew instead", systemImage: "shippingbox", variant: .outline,
                              size: .small) { Task { await state.retryLimaWithHomebrew() } }
                 }
-                if !state.canRetry {
+                if !state.canRetry, !asksPassword {
                     Text(verbatim: "The password is not kept after a run. Type it again to try again.")
                         .font(.dm(11))
                         .foregroundStyle(Color.dmMuted)
@@ -724,6 +733,33 @@ struct AddMachineRunView: View {
                 DMButton("Done", action: onClose)
             }
         }
+    }
+}
+
+/// The password asked right on a failed add, for one Try again: it goes to
+/// the CLI's stdin like the one typed in the details, and is not kept.
+struct AddMachinePasswordRetry: View {
+    @Environment(\.dmMetrics) private var m
+    @ObservedObject var state: AddMachineModel
+    @State private var password = SecretText()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            SecureField("The server's password", text: $password.value)
+                .dmField()
+                .onSubmit(retry)
+            DMButton("Try again with this password", systemImage: "arrow.clockwise", action: retry)
+                .disabled(password.value.isEmpty)
+                .keyboardShortcut(.defaultAction)
+        }
+        .onDisappear { password = SecretText() }
+    }
+
+    private func retry() {
+        guard !password.value.isEmpty else { return }
+        let typed = password
+        password = SecretText()
+        Task { await state.retry(password: typed) }
     }
 }
 
@@ -860,23 +896,19 @@ enum AddMachineContent {
     static let defaultSizeNote = "This devmachine CLI makes the machine at its own size: 2 CPUs, 4 GiB of "
         + "memory, a 20 GiB disk. Version \(LocalMachineSizing.minimumCLIVersion) or newer lets you choose it here."
 
-    static let passwordLoginHint = "SSH has one setting for the whole machine. On a Mac that is every account "
-        + "on it: whoever logs in over SSH with a password needs a key afterwards, unless they keep it here. "
-        + "The login window, sudo and Screen Sharing keep their passwords."
+    static let passwordLoginHint = "One setting for every account on the machine; on a Mac, that is everyone "
+        + "who logs in to it over SSH."
 
-    static let workspaceHint = "A workspace is an account on the machine where your sessions run. "
-        + "Name it after your project, like acme. It gets the default workspace packages."
+    static let keyPasswordHint = "Needed once, to put the key on the server. Leave empty if the key already logs in."
 
-    static let noWorkspaceNote = "No workspace yet: only sessions on this Mac until you add one, "
-        + "with devmachine workspaces new or Add a machine."
+    static let workspaceHint = "The account your sessions run in, named after your project, like acme."
+
+    static let noWorkspaceNote = "Until you add a workspace, sessions run only on this Mac."
 
     static func localNote(unattended: Bool) -> String {
         unattended
-            ? "Lima creates the machine with root and the password devmachine, public on purpose: it holds "
-                + "nothing real. devmachine then connects it with that password and turns password login off. "
-                + "No address to type: it runs on this Mac."
-            : "Lima creates the machine with root and the password devmachine, "
-                + "public on purpose: it holds nothing real. The next step adds it like a server you bought."
+            ? "Lima makes the machine on this Mac, and devmachine connects it: there is nothing to type."
+            : "Lima makes the machine on this Mac; the next step adds it like a server."
     }
 
     static func localChoiceDetail(limaFound: Bool, unattended: Bool) -> String {
@@ -901,15 +933,12 @@ enum AddMachineContent {
     }
 
     static func reviewNote(_ draft: MachineDraft, firstRun: Bool = false) -> String {
-        let sync = firstRun || draft.sync
-            ? " sync then installs the packages." : " Nothing is installed until you run devmachine sync."
-        let retry = " If a step fails, Retry starts again from that step."
+        let installs = firstRun || draft.sync
         switch draft.kind {
         case .localVM:
-            return "create-local takes a few minutes the first time." + sync + retry
+            return installs ? "This takes a few minutes the first time." : "Nothing is installed until you sync."
         case .server:
-            return "The first command changes the server: a key goes in and it \(draft.passwordLoginPhrase). "
-                + "The package commands only write the configuration on this Mac." + sync + retry
+            return "The first command puts a key on the server and \(draft.passwordLoginPhrase)."
         }
     }
 }

@@ -93,7 +93,6 @@ enum DemoSetupFlow {
             wizard.wizard.draft.domain = "example.com"
             wizard.wizard.draft.workspace = "acme"
             wizard.wizard.draft.scan = DemoData.addMachineScan(address: "203.0.113.10", port: "22")
-            wizard.wizard.draft.scanConfirmed = true
             return
         default:
             break

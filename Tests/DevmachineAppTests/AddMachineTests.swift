@@ -449,8 +449,7 @@ final class AddMachineModelTests: XCTestCase {
         model.wizard.draft.login = .password
         model.wizard.draft.password = SecretText("hunter2")
         await model.scan()
-        XCTAssertFalse(model.wizard.canAdvance)
-        model.wizard.draft.scanConfirmed = true
+        XCTAssertTrue(model.wizard.canAdvance)
         model.wizard.next()
         model.wizard.next()
 
@@ -467,19 +466,169 @@ final class AddMachineModelTests: XCTestCase {
         XCTAssertEqual(added, 1)
     }
 
-    func testAScanThatFailsSaysWhyAndTrustsNothing() async {
-        struct Refused: Error, LocalizedError { var errorDescription: String? { "connection refused" } }
+    func testAScanThatFailsSaysWhyInPlainWordsAndTrustsNothing() async {
+        let refused = "dial tcp 203.0.113.20:22: connect: connection refused"
         let model = AddMachineModel(
             machines: await store(newCLISnapshot), runner: MachineStepRunner(hooks: FakeTerminal().hooks),
-            findLima: { nil }, onAdded: {}, scanMachine: { _, _ in throw Refused() })
+            findLima: { nil }, onAdded: {}, scanMachine: { _, _ in throw ScanError(text: refused) })
         model.wizard.choose(.server)
         model.wizard.draft.address = "203.0.113.20"
 
         await model.scan()
 
-        XCTAssertEqual(model.scanError, "connection refused")
+        XCTAssertEqual(model.currentScanFailure?.kind, .refused)
+        XCTAssertTrue(model.currentScanFailure?.message.hasPrefix("Nothing answered on port 22") == true)
+        XCTAssertEqual(model.currentScanFailure?.details, refused)
         XCTAssertNil(model.wizard.draft.scan)
         XCTAssertFalse(model.scanning)
+        model.wizard.draft.address = "203.0.113.21"
+        XCTAssertNil(model.currentScanFailure, "a failure of another address says nothing about this one")
+    }
+
+    private func scanningModel(
+        _ terminal: FakeTerminal, scans: ScanCounter, hooks: MachineStepRunner.Hooks? = nil,
+        answer: @escaping @Sendable (Int) throws -> MachineScan
+    ) async -> AddMachineModel {
+        let model = AddMachineModel(
+            machines: await store(newCLISnapshot),
+            runner: MachineStepRunner(hooks: hooks ?? terminal.hooks, pollInterval: 1_000_000),
+            findLima: { nil }, onAdded: {},
+            scanMachine: { _, _ in try answer(scans.next()) },
+            scanPause: 0)
+        model.wizard.choose(.server)
+        model.wizard.draft.name = "backup"
+        model.wizard.draft.keyFile = "~/.ssh/id_ed25519"
+        model.wizard.draft.sync = false
+        model.wizard.draft.packages = []
+        return model
+    }
+
+    private let scannedKey = "SHA256:" + String(repeating: "S", count: 43)
+
+    func testTheKeyIsReadFromTheAddressAloneAndAFailedReadDoesNotBlockTheWizard() async {
+        let scans = ScanCounter()
+        let model = await scanningModel(FakeTerminal(), scans: scans) { _ in
+            throw ScanError(text: "dial tcp 203.0.113.20:22: i/o timeout")
+        }
+        await model.scanAfterPause()
+        XCTAssertEqual(scans.count, 0, "nothing to read before an address")
+
+        model.wizard.draft.address = "203.0.113.20"
+        await model.scanAfterPause()
+        XCTAssertEqual(scans.count, 1)
+        XCTAssertEqual(model.currentScanFailure?.message, "The address did not answer.")
+        XCTAssertTrue(model.wizard.canAdvance)
+
+        await model.scanAfterPause()
+        XCTAssertEqual(scans.count, 1, "the same address is not read again on its own")
+
+        model.wizard.draft.address = "203.0.113.21"
+        await model.scanAfterPause()
+        XCTAssertEqual(scans.count, 2, "a changed address is read again")
+    }
+
+    func testTheKeyReadIsTrustedWithNoClick() async {
+        let terminal = FakeTerminal()
+        let key = scannedKey
+        let model = await scanningModel(terminal, scans: ScanCounter()) { _ in presented(key) }
+        model.wizard.draft.address = "203.0.113.20"
+        await model.scanAfterPause()
+        XCTAssertEqual(model.wizard.draft.fingerprintToTrust, key)
+        model.wizard.next()
+        model.wizard.next()
+
+        await model.create()
+
+        XCTAssertEqual(terminal.processes.map(\.arguments), [[
+            "machines", "add", "--name", "backup", "--address", "203.0.113.20", "--fingerprint", key,
+            "--key", "~/.ssh/id_ed25519", "--yes",
+        ]])
+        XCTAssertNil(terminal.processes[0].input)
+    }
+
+    func testCreateReadsTheKeyAgainWhenTheFirstReadFailed() async {
+        let terminal = FakeTerminal()
+        let scans = ScanCounter()
+        let key = scannedKey
+        let model = await scanningModel(terminal, scans: scans) { attempt in
+            guard attempt > 1 else { throw ScanError(text: "connect: connection refused") }
+            return presented(key)
+        }
+        model.wizard.draft.address = "203.0.113.20"
+        await model.scanAfterPause()
+        XCTAssertNotNil(model.currentScanFailure)
+        model.wizard.next()
+        model.wizard.next()
+
+        await model.create()
+
+        XCTAssertEqual(scans.count, 2)
+        XCTAssertEqual(model.runner.phase, .succeeded)
+        XCTAssertTrue(terminal.processes[0].arguments.contains(key))
+    }
+
+    func testAKeyNotOnTheServerAsksForThePasswordOnTheFailureAndRetriesOnlyThatStep() async {
+        let terminal = FakeTerminal()
+        let key = scannedKey
+        let runs = ScanCounter()
+        var hooks = terminal.hooks
+        hooks.runProcess = { arguments, input, output in
+            terminal.processes.append((arguments, input))
+            guard runs.next() > 1 else {
+                output("Error: the key does not log in yet and no password was given: pass the admin password "
+                    + "on stdin with --password-stdin, or put the key's public half in the admin's authorized_keys first")
+                return 1
+            }
+            return 0
+        }
+        let retrying = await scanningModel(terminal, scans: ScanCounter(), hooks: hooks) { _ in presented(key) }
+        retrying.wizard.draft.address = "203.0.113.20"
+        retrying.wizard.draft.workspace = "acme"
+        await retrying.scanAfterPause()
+        retrying.wizard.next()
+        retrying.wizard.next()
+
+        await retrying.create()
+
+        XCTAssertEqual(retrying.retryField, .password)
+        XCTAssertTrue(retrying.canRetry)
+
+        await retrying.retry(password: SecretText("hunter2"))
+
+        XCTAssertEqual(retrying.runner.phase, .succeeded)
+        XCTAssertNil(retrying.retryField)
+        XCTAssertEqual(terminal.processes.count, 3)
+        XCTAssertEqual(terminal.processes[1].arguments, [
+            "machines", "add", "--name", "backup", "--address", "203.0.113.20", "--fingerprint", key,
+            "--key", "~/.ssh/id_ed25519", "--password-stdin", "--yes",
+        ])
+        XCTAssertEqual(terminal.processes[1].input, Data("hunter2".utf8))
+        XCTAssertEqual(terminal.processes[2].arguments, ["workspaces", "new", "acme", "--machine", "backup", "--yes"])
+        XCTAssertNil(terminal.processes[2].input)
+        XCTAssertEqual(retrying.wizard.draft.password.value, "")
+    }
+
+    func testAnotherFailureAsksForNoPassword() async {
+        let terminal = FakeTerminal()
+        terminal.processStatus = { _ in 1 }
+        let key = scannedKey
+        let model = await scanningModel(terminal, scans: ScanCounter()) { _ in presented(key) }
+        model.wizard.draft.address = "203.0.113.20"
+        await model.scanAfterPause()
+        model.wizard.next()
+        model.wizard.next()
+
+        await model.create()
+
+        XCTAssertNil(model.retryField)
+    }
+
+    func testTheKeyFilesInTheSSHFolderAreOffered() async {
+        let model = AddMachineModel(
+            machines: await store(newCLISnapshot), runner: MachineStepRunner(hooks: FakeTerminal().hooks),
+            findLima: { nil }, onAdded: {}, listSSHFolder: { ["config", "id_ed25519", "id_ed25519.pub"] })
+        model.loadKeyFiles()
+        XCTAssertEqual(model.keyFiles, ["~/.ssh/id_ed25519"])
     }
 
     func testASingleAgentKeyIsChosenForThePerson() async {
@@ -926,4 +1075,28 @@ final class DevmachineCLIMachineTrustTests: XCTestCase {
         XCTAssertEqual(try cli(agentExit: 1).agentKeys(), [])
         XCTAssertThrowsError(try cli(agentExit: 2).agentKeys())
     }
+}
+
+private struct ScanError: Error, LocalizedError {
+    let text: String
+    var errorDescription: String? { text }
+}
+
+/// Counts calls from any thread; `next()` answers the call's number, from 1.
+private final class ScanCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+
+    var count: Int { lock.withLock { calls } }
+
+    func next() -> Int {
+        lock.withLock {
+            calls += 1
+            return calls
+        }
+    }
+}
+
+private func presented(_ fingerprint: String) -> MachineScan {
+    MachineScan(address: "203.0.113.20", port: 22, keyType: "ssh-ed25519", fingerprint: fingerprint, verify: nil)
 }
