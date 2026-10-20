@@ -6,9 +6,19 @@ enum WidgetChromeLayout {
     static let resizeCornerAlignment: Alignment = .bottomTrailing
     /// The grip and the ⋯ split the whole handle pill between them, its
     /// padding included, so no click on the glass falls between targets.
-    static let gripArea = CGSize(width: 28, height: DMControlHeight.small)
-    static let menuArea = CGSize(width: 24, height: DMControlHeight.small)
+    /// Their click areas are taller than the pill, so the handle is easy to
+    /// catch.
+    static let gripArea = CGSize(width: 28, height: moveStrip)
+    static let menuArea = CGSize(width: 24, height: moveStrip)
+    static let pillHeight = DMControlHeight.small
     static let resizeCorner = DMHitSize.regular
+    /// The top of every card drags it, error and placeholder cards included,
+    /// so a card is never stuck where the small handle is hard to reach.
+    static let moveStrip = CGFloat(CanvasBounds.grab.h)
+
+    static func startsMove(at point: CGPoint, in card: CGRect, strip: CGFloat) -> Bool {
+        CGRect(x: card.minX, y: card.minY, width: card.width, height: min(strip, card.height)).contains(point)
+    }
 }
 
 /// Where an overlay of a given size lands inside a card, so content
@@ -62,6 +72,10 @@ struct WidgetChromeView: View {
 
     @State private var hovering = false
     @State private var pillDragged = false
+    @State private var cardFrame: CGRect = .zero
+    /// Decided when a drag on the card starts: only one that starts in the
+    /// top strip moves the card, even after the card has moved under it.
+    @State private var stripDrag: Bool?
     /// Half of the handle sits outside the card, where the card's own hover
     /// ends, so the handle keeps itself shown while the pointer is on it.
     @State private var handleHovered = false
@@ -69,6 +83,7 @@ struct WidgetChromeView: View {
     /// stay while their drag is held, even when the pointer runs ahead of
     /// the card and its hover ends.
     @GestureState private var moving = false
+    @GestureState private var stripHeld = false
     @GestureState private var resizing = false
     @Environment(\.dmMetrics) private var m
 
@@ -81,6 +96,11 @@ struct WidgetChromeView: View {
             }
         }
         .onChange(of: moving) { _, held in if !held { onMoveEnded() } }
+        .onChange(of: stripHeld) { _, held in
+            guard !held else { return }
+            if stripDrag == true { onMoveEnded() }
+            stripDrag = nil
+        }
         .onChange(of: resizing) { _, held in if !held { onResizeEnded() } }
     }
 
@@ -99,6 +119,22 @@ struct WidgetChromeView: View {
             .updating($moving) { _, held, _ in held = true }
             .onChanged { onMoveChanged($0.translation) }
             .onEnded { _ in onMoveEnded() }
+    }
+
+    private var stripMoveGesture: some Gesture {
+        DragGesture(minimumDistance: 2, coordinateSpace: .global)
+            .updating($stripHeld) { _, held, _ in held = true }
+            .onChanged { value in
+                if stripDrag == nil {
+                    stripDrag = WidgetChromeLayout.startsMove(
+                        at: value.startLocation, in: cardFrame, strip: m.pt(WidgetChromeLayout.moveStrip))
+                }
+                if stripDrag == true { onMoveChanged(value.translation) }
+            }
+            .onEnded { _ in
+                if stripDrag == true { onMoveEnded() }
+                stripDrag = nil
+            }
     }
 
     /// Tap restores and drag moves, never both: a drag that ends over the
@@ -145,6 +181,13 @@ struct WidgetChromeView: View {
 
     private var card: some View {
         sizedContent
+            .background(alignment: .top) {
+                Color.clear
+                    .frame(height: min(m.pt(WidgetChromeLayout.moveStrip), size.height))
+                    .contentShape(Rectangle())
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cardFrame = $0 }
+            .gesture(stripMoveGesture, including: editable ? .all : .none)
             .overlay {
                 if hovering {
                     RoundedRectangle(cornerRadius: m.radius.card)
@@ -235,7 +278,12 @@ struct WidgetChromeView: View {
             .fixedSize()
             .accessibilityLabel(Text(verbatim: "Actions for \(title)"))
         }
-        .dmGlass(radius: DMRadius.pill)
+        .background {
+            Color.clear
+                .frame(height: m.pt(WidgetChromeLayout.pillHeight))
+                .dmGlass(radius: DMRadius.pill)
+                .allowsHitTesting(false)
+        }
         .fixedSize()
         .onHover { handleHovered = $0 }
         .onDisappear { handleHovered = false }

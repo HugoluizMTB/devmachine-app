@@ -358,8 +358,8 @@ private struct BoardCanvasLayer: View {
     }
 
     private func minimum(_ resolution: WidgetResolution?) -> CanvasSize {
-        guard case let .ready(resolved)? = resolution else { return CanvasSize(w: 1, h: 1) }
-        return resolved.minimum
+        guard case let .ready(resolved)? = resolution else { return CanvasBounds.minimum(declared: nil, grows: false) }
+        return CanvasBounds.minimum(declared: resolved.minimum, grows: resolved.grows)
     }
 
     private func sizes(_ resolution: WidgetResolution?) -> [String] {
@@ -383,7 +383,8 @@ private struct BoardCanvasLayer: View {
             return CanvasSize(w: Int(pill.width.rounded(.up)), h: Int(pill.height.rounded(.up)))
         }
         let least = minimum(resolution)
-        return CanvasSize(w: max(widget.frame.w, least.w), h: drawnHeight(widget, resolution: resolution, least: least))
+        return CanvasSize(
+            w: max(widget.frame.w, least.w), h: max(drawnHeight(widget, resolution: resolution, least: least), least.h))
     }
 
     /// Each widget's x on the canvas as wide as it is now, from its stored
@@ -435,11 +436,7 @@ private struct BoardCanvasLayer: View {
                     widget, resolution: controller.resolution(of: widget), x: xs[widget.id] ?? Double(widget.frame.x))
             }
         }
-        let pushed = CanvasLayout.pushedDown(board.widgets.compactMap { widget in
-            frames[widget.id].map { CanvasPlacement(id: widget.id, x: $0.x, y: $0.y, w: $0.w, h: $0.h) }
-        })
-        for (id, y) in pushed where id != drag?.id { frames[id]?.y = y }
-        return frames
+        return CanvasBounds.settled(frames, order: board.widgets.map(\.id), in: boardVisible, holding: drag?.id)
     }
 
     private func dragStart(_ widget: BoardWidget, board: Board) -> BoardFrame {
@@ -458,7 +455,8 @@ private struct BoardCanvasLayer: View {
         }.compactMap { frames[$0.id] }
         let move = CanvasLayout.moved(
             start, to: CGPoint(x: Double(start.x) + delta.width, y: Double(start.y) + delta.height), among: others)
-        drag = CanvasDrag(id: widget.id, start: start, frame: move.frame, guides: move.guides)
+        drag = CanvasDrag(
+            id: widget.id, start: start, frame: CanvasBounds.onCanvas(move.frame, in: boardVisible), guides: move.guides)
     }
 
     /// A move keeps the stored size; only the place and the stacking change.
@@ -481,10 +479,13 @@ private struct BoardCanvasLayer: View {
             let content = contentHeights[widget.id] ?? start.h
             let result = CanvasLayout.resizedGrowing(
                 start, width: width, height: height, content: content, minimum: minimum(resolution))
-            drag = CanvasDrag(id: widget.id, start: start, frame: result.frame, guides: [], auto: result.auto)
+            let frame = CanvasBounds.fitted(result.frame, minimum: minimum(resolution), in: boardVisible, capsHeight: false)
+            drag = CanvasDrag(id: widget.id, start: start, frame: frame, guides: [], auto: result.auto)
         } else {
             let frame = CanvasLayout.resized(start, width: width, height: height, minimum: minimum(resolution))
-            drag = CanvasDrag(id: widget.id, start: start, frame: frame, guides: [])
+            drag = CanvasDrag(
+                id: widget.id, start: start, frame: CanvasBounds.fitted(frame, minimum: minimum(resolution), in: boardVisible),
+                guides: [])
         }
     }
 
