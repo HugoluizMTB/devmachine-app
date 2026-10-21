@@ -98,7 +98,7 @@ struct SubdomainsView: View {
 
     private var header: some View {
         HStack(spacing: m.pt(10)) {
-            Text("Published apps")
+            Text("Publish")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 

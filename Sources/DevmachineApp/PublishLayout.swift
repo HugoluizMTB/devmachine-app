@@ -1,6 +1,6 @@
 import DevmachineCore
 
-/// What the Published apps tab shows: a status view wins over everything,
+/// What the Publish tab shows: a status view wins over everything,
 /// then the DNS provider chooser or its bar, else the plain table.
 enum PublishLayout: Equatable {
     case status, chooser, barAndTable, table

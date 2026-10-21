@@ -235,6 +235,13 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(top("prefs"), "go.settings")
     }
 
+    func testThePageIsCalledPublish() {
+        let all = commands(context(machines: ["main", "staging"]))
+        XCTAssertEqual(all.first { $0.id == "go.subdomains" }?.title, "Publish")
+        XCTAssertEqual(all.first { $0.id == "machine.staging.subdomains" }?.title, "Publish on staging")
+        XCTAssertFalse(all.contains { $0.title.contains("Published apps") })
+    }
+
     func testCheckForUpdatesIsAlwaysThere() {
         let command = commands(context()).first { $0.id == "action.check-updates" }
         XCTAssertEqual(command?.title, "Check for Updates…")

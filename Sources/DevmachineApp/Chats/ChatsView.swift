@@ -166,7 +166,7 @@ struct ChatsSidebar: View {
                 .dmHelp("Stats")
             if model.hasCaddyMachine {
                 footerButton("globe") { model.showPage(.subdomains) }
-                    .dmHelp("Published apps")
+                    .dmHelp("Publish")
             }
             footerButton("gearshape") { model.openSettings(.chats) }
                 .dmHelp("Settings (⌘,)")

@@ -40,7 +40,7 @@ When the owner asks for a feature or "a page", he wants something that loads
   over the (still-mounted, hidden) terminals — so switching to a page never tears
   down a live ssh/tmux terminal.
 - Selecting a session or the ops shell clears `activePage` (back to the terminal).
-- Sidebar / menu bar entries for pages (Stats, Published apps, …) SET `activePage`;
+- Sidebar / menu bar entries for pages (Stats, Publish, …) SET `activePage`;
   they do NOT `openWindow`.
 - **Settings is a page too** (`AppPage.setup`, `SetupPage` in `PageHost`), with
   the sidebar beside it, never a window or a full-window card: ⌘,, the
@@ -1845,11 +1845,11 @@ once may fail there.
   it** (`expose add --via`). The add sheet's "Published by" lists the
   non-self machines with caddy (`CaddyStore.publishPlaces`); the
   workspace's own machine wins when it has caddy, then the machine the
-  Published apps page shows, then the first. `via` is passed only when it
+  Publish page shows, then the first. `via` is passed only when it
   differs from the workspace's machine, so nothing changes for a machine
   that serves its own sites. Nothing known about where things live means
   no `--via`, as before.
-- The Published apps page of a machine with caddy also offers the workspaces
+- The Publish page of a machine with caddy also offers the workspaces
   of machines without it. After a publish, the serving machine is the one
   read again, not the workspace's.
 - An older CLI answers `unknown flag: --via`; the card says to run
@@ -1858,13 +1858,21 @@ once may fail there.
   attention step carrying the CLI's note.
 
 ## DNS provider setup
-- **A server with caddy and no DNS provider that answers gets a card on
-  the Published apps page** (`DNSProviderSetupCard`, `DNSSetupStore`, state in
-  Core `DNSProviderSetup.evaluate`). Without one, `expose add` saves the
-  site and only prints the record to make by hand; the card says so.
-  Only `dns providers` answering with a zone ends it: a finished sync that
-  still sees none keeps the card on "Run sync". A machine that could not
-  be asked shows no card (fails open).
+- **A server with caddy and no DNS provider that answers, or a Publish
+  page with no sites, shows the chooser page** (`DNSProviderChooserPage`):
+  one card per provider package, and the form of the chosen one below.
+  With sites, "Set up DNS" opens it and "Back to Publish" leaves it. State
+  is `DNSSetupStore`, from Core `DNSProviderSetup.evaluate`. Without a
+  provider, `expose add` saves the site and only prints the record to make
+  by hand; the page says so. Only `dns providers` answering with a zone
+  ends it: a finished sync that still sees none keeps it on "Run sync". A
+  machine that could not be asked shows no chooser (fails open).
+- **One form, two places.** `DNSProviderForm` is shared by the chooser page
+  and Settings → DNS providers (`DNSProvidersSettingsView`), which lists
+  every provider package with where it stands on the picked machine.
+- **Remove** (`DNSSetupStore.remove`) drops the package from the machine's
+  configuration, runs a full sync as a corner job, then forgets its token.
+  Only a full sync rewrites the lock `dns providers` reads.
 - Declared providers come from `packages list` (`installed_on`). A CLI
   that reports `kind`/`credentials` (0.7.27+) is read by `kind == "dns"`
   alone; an older one by the summary "DNS zones on …". The token is stored
@@ -1874,9 +1882,9 @@ once may fail there.
   confirm. The token goes on stdin only, never argv, logs or the job
   output. Run sync = `sync --machine <m> --tags <p> --yes` then
   `credentials push --machine <m> --yes`, behind a confirm, as a machine
-  job in the corner (`MachineJobCenter`), which holds the log; the card
+  job in the corner (`MachineJobCenter`), which holds the log; the form
   only says where it stands. A failed job retried or dismissed in the
-  corner moves the card with it. A CLI older than 0.7.24 gets the commands.
+  corner moves the form with it. A CLI older than 0.7.24 gets the commands.
 - Hostinger's `hostinger.zones` is set with `machines edit <m> --set
   hostinger.zones=[…] --yes` behind a confirm on CLI 0.7.27+, after the
   package is added (the CLI refuses a setting for a package not there).
