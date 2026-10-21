@@ -298,7 +298,7 @@ struct StackBoardView: View {
             .popover(isPresented: $showsGallery, arrowEdge: .trailing) {
                 WidgetGalleryView(
                     surface: controller.surface, catalog: controller.catalog.catalog,
-                    entries: controller.galleryEntries(), failure: galleryFailure,
+                    entries: controller.galleryEntries(), failure: controller.catalog.failureMessage,
                     blockedReason: { controller.addBlockedReason(for: $0) },
                     onAdd: { if controller.add($0) { showsGallery = false } },
                     onRetry: { controller.catalog.reloadSoon() },
@@ -308,11 +308,6 @@ struct StackBoardView: View {
                 .opensNewWidget($newWidget, into: $editing)
             }
             .onChange(of: showsGallery) { _, open in if open { controller.catalog.reloadSoon() } }
-    }
-
-    private var galleryFailure: String? {
-        if case let .failed(message) = controller.catalog.state { return message }
-        return nil
     }
 
     @ViewBuilder

@@ -15,10 +15,19 @@ final class WidgetCatalogStore: ObservableObject {
         case loading
         case loaded
         case failed(String)
+        /// The devmachine CLI is not on this Mac; the text is its error.
+        case cliMissing(String)
     }
 
     @Published private(set) var state: State = .idle
     @Published private(set) var catalog: WidgetCatalog?
+
+    var failureMessage: String? {
+        switch state {
+        case let .failed(message), let .cliMissing(message): message
+        case .idle, .loading, .loaded: nil
+        }
+    }
 
     private let read: @Sendable () throws -> WidgetCatalog
     private var running = false
@@ -107,13 +116,18 @@ final class WidgetCatalogStore: ObservableObject {
             let message = error.localizedDescription
             if catalog == nil, retryQuickly(after: message) { break }
             if let current = catalog, !current.isStale { catalog = current.stale() }
-            state = .failed(message)
+            state = Self.isMissingCLI(error) ? .cliMissing(message) : .failed(message)
             scheduleRetry()
         }
         if again {
             again = false
             await reload()
         }
+    }
+
+    private nonisolated static func isMissingCLI(_ error: Error) -> Bool {
+        if case .executableNotFound = error as? DevmachineCLIError { return true }
+        return false
     }
 
     /// No catalog yet and the network failed: read again soon, up to
@@ -149,7 +163,7 @@ final class WidgetCatalogStore: ObservableObject {
         if waits { catalogWaiters.insert(board) } else { catalogWaiters.remove(board) }
         if !needsRetry {
             stopSlowRetry()
-        } else if catalog == nil, case .failed = state {
+        } else if catalog == nil, failureMessage != nil {
             scheduleRetry()
         }
     }

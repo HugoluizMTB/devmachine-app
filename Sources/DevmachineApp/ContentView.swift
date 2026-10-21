@@ -29,14 +29,12 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Onboarding owns the whole window until the Mac is set up or the
-            // person skips it: nothing else starts (no sweep, no stats, no
+            // Onboarding owns the whole window until the Mac is set up:
+            // nothing else starts (no sweep, no stats, no
             // context) before then. Later, a machine without the devmachine-app
             // package does not block the app; it gets its own Prepare card.
             if model.showsOnboarding {
-                OnboardingPage(
-                    onStart: { Task { await model.completeOnboarding(saving: settingsStore) } },
-                    onSkip: { Task { await model.skipOnboarding(saving: settingsStore) } })
+                OnboardingPage(onStart: { Task { await model.completeOnboarding(saving: settingsStore) } })
             } else {
                 Group {
                     switch model.appMode {

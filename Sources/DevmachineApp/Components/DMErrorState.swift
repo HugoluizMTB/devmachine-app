@@ -41,15 +41,20 @@ struct DMErrorStateView: View {
     let state: DMErrorState
     var retry: (() -> Void)?
     var retryTitle: String
+    var retrySystemImage: String
+    var retryVariant: DMButtonVariant
     @State private var expanded: Bool
 
     init(
         state: DMErrorState, retry: (() -> Void)? = nil, retryTitle: String = "Try again",
+        retrySystemImage: String = "arrow.clockwise", retryVariant: DMButtonVariant = .outline,
         startsExpanded: Bool = false
     ) {
         self.state = state
         self.retry = retry
         self.retryTitle = retryTitle
+        self.retrySystemImage = retrySystemImage
+        self.retryVariant = retryVariant
         _expanded = State(initialValue: startsExpanded)
     }
 
@@ -113,7 +118,7 @@ struct DMErrorStateView: View {
             DMButton(Self.updateCLITitle, systemImage: "arrow.down.circle", size: .small, action: openCLIUpdate)
         }
         if let retry {
-            DMButton(retryTitle, systemImage: "arrow.clockwise", variant: .outline, size: .small,
+            DMButton(retryTitle, systemImage: retrySystemImage, variant: retryVariant, size: .small,
                      action: retry)
         }
         DMButton(

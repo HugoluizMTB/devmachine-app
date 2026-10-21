@@ -23,6 +23,8 @@ final class HomeBoardController: ObservableObject {
 
     @Published private(set) var store: BoardStore?
     @Published private(set) var placementsError: String?
+    /// The CLI did not say where its configuration lives, so no board can open.
+    @Published private(set) var configurationUnknown = false
     let catalog: WidgetCatalogStore
     let runtime = WidgetRuntimeDriver()
     var canvasWidth = 1280
@@ -98,7 +100,8 @@ final class HomeBoardController: ObservableObject {
         Task {
             let path = await configPath()
             openingFromConfiguration = false
-            if let path, store == nil { open(configDirectory: path) }
+            guard store == nil else { return }
+            if let path { open(configDirectory: path) } else { configurationUnknown = true }
         }
     }
 
@@ -122,6 +125,7 @@ final class HomeBoardController: ObservableObject {
             })
         watcher = nil
         watchedFolder = nil
+        configurationUnknown = false
         self.store = store
         store.load()
         watchIfNeeded(store)

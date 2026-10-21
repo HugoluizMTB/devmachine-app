@@ -58,12 +58,37 @@ final class CLIGateTests: XCTestCase {
     }
 
     func testLaunchRoute() {
-        XCTAssertEqual(AppModel.launchRoute(cliFound: false, isConfigured: false, skipped: false), .onboarding)
-        XCTAssertEqual(AppModel.launchRoute(cliFound: false, isConfigured: true, skipped: false), .onboarding)
-        XCTAssertEqual(AppModel.launchRoute(cliFound: true, isConfigured: false, skipped: false), .onboarding)
-        XCTAssertEqual(AppModel.launchRoute(cliFound: true, isConfigured: true, skipped: false), .home)
-        XCTAssertEqual(AppModel.launchRoute(cliFound: false, isConfigured: true, skipped: true), .home)
-        XCTAssertEqual(AppModel.launchRoute(cliFound: false, isConfigured: false, skipped: true), .onboarding)
+        XCTAssertEqual(AppModel.launchRoute(cliFound: false, isConfigured: false), .onboarding)
+        XCTAssertEqual(AppModel.launchRoute(cliFound: false, isConfigured: true), .onboarding)
+        XCTAssertEqual(AppModel.launchRoute(cliFound: true, isConfigured: false), .onboarding)
+        XCTAssertEqual(AppModel.launchRoute(cliFound: true, isConfigured: true), .home)
+    }
+
+    func testAMacThatSkippedTheSetupBeforeGoesBackToOnboarding() {
+        let suite = UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!
+        suite.set(true, forKey: "onboardingSkipped")
+        let model = model(cliFound: { false }, defaults: suite)
+        model.settings = AppSettings(
+            opsRepoPath: "/Users/alice/dev", hostAlias: "lab", publicIP: "203.0.113.10", baseDomain: "example.com")
+
+        model.checkCLIAndProceed(isConfigured: true)
+
+        XCTAssertTrue(model.showsOnboarding)
+        XCTAssertTrue(model.workspaces.isEmpty)
+        XCTAssertNil(suite.object(forKey: "onboardingSkipped"))
+    }
+
+    func testTheOldSkipIsForgottenOnASetUpMacToo() {
+        let suite = UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!
+        suite.set(true, forKey: "onboardingSkipped")
+        let model = model(cliFound: { true }, defaults: suite)
+        model.settings = AppSettings(
+            opsRepoPath: "/Users/alice/dev", hostAlias: "lab", publicIP: "203.0.113.10", baseDomain: "example.com")
+
+        model.checkCLIAndProceed(isConfigured: true)
+
+        XCTAssertFalse(model.showsOnboarding)
+        XCTAssertNil(suite.object(forKey: "onboardingSkipped"))
     }
 
     func testStartUsingSavesWhatTheCLIReportsAndOpensHome() async {
@@ -117,7 +142,7 @@ final class CLIGateTests: XCTestCase {
         model.onLeftOnboarding = { reloads += 1 }
 
         await model.completeOnboarding(saving: store)
-        await model.skipOnboarding(saving: store)
+        await model.completeOnboarding(saving: store)
 
         XCTAssertEqual(reloads, 2)
     }
@@ -138,38 +163,18 @@ final class CLIGateTests: XCTestCase {
         XCTAssertEqual(store.settings?.opsRepoPath, "/Users/alice/.config/devmachine")
     }
 
-    func testSkipOpensHomeAndIsRememberedForTheNextLaunch() async {
-        let suite = UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!
-        let store = SettingsStore(defaults: suite)
-        let first = model(cliFound: { false }, defaults: suite)
-        first.checkCLIAndProceed(isConfigured: store.isConfigured)
-        XCTAssertTrue(first.showsOnboarding)
-
-        await first.skipOnboarding(saving: store)
-
-        XCTAssertFalse(first.showsOnboarding)
-        XCTAssertNil(first.activePage)
-        XCTAssertTrue(store.isConfigured)
-        XCTAssertTrue(first.hasLoadedWorkspaces)
-
-        let next = model(cliFound: { false }, defaults: suite)
-        next.settings = store.settings
-        next.checkCLIAndProceed(isConfigured: store.isConfigured)
-        XCTAssertFalse(next.showsOnboarding)
-    }
-
-    func testOpeningTheSetupAgainShowsOnboardingAndForgetsTheSkip() async {
-        let suite = UserDefaults(suiteName: "app.devmachine.mac.tests.\(UUID().uuidString)")!
-        let store = SettingsStore(defaults: suite)
-        let model = model(cliFound: { false }, defaults: suite)
-        await model.skipOnboarding(saving: store)
+    func testFinishSetupFromHomeOpensOnboarding() {
+        let model = model(cliFound: { true })
+        model.settings = AppSettings(
+            opsRepoPath: "/Users/alice/dev", hostAlias: "lab", publicIP: "203.0.113.10", baseDomain: "example.com")
+        model.checkCLIAndProceed(isConfigured: true)
+        XCTAssertFalse(model.showsOnboarding)
         model.activePage = .setup
 
         model.openOnboarding()
 
         XCTAssertTrue(model.showsOnboarding)
         XCTAssertNil(model.activePage)
-        XCTAssertFalse(model.onboardingSkipped)
     }
 
     func testDetectionIsReadAgainOnRequest() async {

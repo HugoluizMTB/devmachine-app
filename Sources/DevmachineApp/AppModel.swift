@@ -608,7 +608,7 @@ final class AppModel: ObservableObject {
     /// (session sweep, stats, context) is started until this clears.
     @Published private(set) var cliMissing = false
     /// The first-run setup owns the window: no CLI, or no saved settings
-    /// yet, and the person has not skipped it (`launchRoute`).
+    /// yet (`launchRoute`).
     @Published private(set) var showsOnboarding = false
     @Published var settings: AppSettings? = nil
     /// What the CLI answered about this Mac's setup — the config folder,
@@ -1934,16 +1934,16 @@ final class AppModel: ObservableObject {
         case home
     }
 
-    static let onboardingSkippedKey = "onboardingSkipped"
+    /// Where app versions up to 0.8 remembered that the person put the setup
+    /// off. Deleted at launch, so that Mac goes back to the setup.
+    static let retiredOnboardingSkippedKey = "onboardingSkipped"
 
-    /// Home needs saved settings, and the CLI unless the person chose to go
-    /// without it. Anything else is the setup flow, never Settings, which
-    /// used to greet a first run with a form to fill in.
-    static func launchRoute(cliFound: Bool, isConfigured: Bool, skipped: Bool) -> LaunchRoute {
-        isConfigured && (cliFound || skipped) ? .home : .onboarding
+    /// Home needs the CLI and saved settings. Anything else is the setup
+    /// flow, never Settings, which used to greet a first run with a form to
+    /// fill in.
+    static func launchRoute(cliFound: Bool, isConfigured: Bool) -> LaunchRoute {
+        cliFound && isConfigured ? .home : .onboarding
     }
-
-    var onboardingSkipped: Bool { defaults.bool(forKey: Self.onboardingSkippedKey) }
 
     /// Runs at launch. Onboarding owns the window while it is due, and
     /// nothing below it starts; otherwise the workspaces load.
@@ -1952,8 +1952,9 @@ final class AppModel: ObservableObject {
             seedDemoState()
             return
         }
+        defaults.removeObject(forKey: Self.retiredOnboardingSkippedKey)
         cliMissing = !cliAvailabilityCheck()
-        switch Self.launchRoute(cliFound: !cliMissing, isConfigured: isConfigured, skipped: onboardingSkipped) {
+        switch Self.launchRoute(cliFound: !cliMissing, isConfigured: isConfigured) {
         case .onboarding:
             showsOnboarding = true
         case .home:
@@ -1980,16 +1981,8 @@ final class AppModel: ObservableObject {
         await leaveOnboarding(saving: store)
     }
 
-    /// "Skip for now": Home with local sessions only. Remembered, so the next
-    /// launch does not ask again; Settings can open the setup later.
-    func skipOnboarding(saving store: SettingsStore) async {
-        defaults.set(true, forKey: Self.onboardingSkippedKey)
-        await leaveOnboarding(saving: store)
-    }
-
-    /// Back to the setup flow from Settings: the skip is forgotten.
+    /// Back to the setup flow, from Settings or from Home's "Finish setup".
     func openOnboarding() {
-        defaults.removeObject(forKey: Self.onboardingSkippedKey)
         activePage = nil
         showsOnboarding = true
     }

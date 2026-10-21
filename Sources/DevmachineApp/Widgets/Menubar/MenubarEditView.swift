@@ -61,7 +61,7 @@ struct MenubarEditView: View {
                 DMButton("Back", systemImage: "chevron.left", variant: .ghost, size: .small) { adding = nil }
                 WidgetGalleryView(
                     surface: board.surface, catalog: board.catalog.catalog, entries: board.galleryEntries(),
-                    failure: galleryFailure(board), blockedReason: { board.addBlockedReason(for: $0) },
+                    failure: board.catalog.failureMessage, blockedReason: { board.addBlockedReason(for: $0) },
                     onAdd: { if board.add($0) { adding = nil } }, onRetry: { board.catalog.reloadSoon() },
                     templates: InlineWidgetTemplate.offered(on: WidgetContract.current.layout(of: board.surface)),
                     canMakeWidgets: board.canEdit,
@@ -151,10 +151,5 @@ struct MenubarEditView: View {
                 Text(verbatim: full).font(.dm(11)).foregroundStyle(Color.dmMuted)
             }
         }
-    }
-
-    private func galleryFailure(_ board: StackBoardController) -> String? {
-        if case let .failed(message) = board.catalog.state { return message }
-        return nil
     }
 }
