@@ -316,7 +316,7 @@ struct SetupPage: View {
                     case .machines: MachinesSettingsView()
                     case .workspaces: EmptyView()
                     case .packages: EmptyView()
-                    case .dnsProviders: Text(verbatim: "DNS providers")
+                    case .dnsProviders: DNSProvidersSettingsView()
                     case .harnesses: harnessesBlock.task { await machinesStore.load() }
                     case .chats:
                         ChatsSettingsView(
