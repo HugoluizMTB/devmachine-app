@@ -127,7 +127,6 @@ final class DNSSetupStore: ObservableObject {
     /// when some were typed and the CLI can, and stores its token. All of it
     /// stays on this Mac; the machine changes only on sync. The zones come
     /// after the add: the CLI refuses a setting for a package not there.
-    /// True when every step ended well and this run is still the latest.
     @discardableResult
     func install(_ package: String, token: String, zones: String = "") async -> Bool {
         guard let machine, !isRunning(machine) else { return false }

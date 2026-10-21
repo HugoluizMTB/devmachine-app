@@ -1871,8 +1871,8 @@ once may fail there.
   while a job runs on it or on another provider. A sync's end waits for a
   `dns providers` read already running (`DataCache.waitForRunningFetch`),
   then asks again: a forced read joins the running one, which may predate
-  the sync. Add and save syncs on the install's own outcome. Nothing read at all
-  (`unknown`) shows the table, with no chooser and no bar.
+  the sync. Add and save syncs on the install's own outcome. Nothing read
+  at all (`unknown`) shows the table, with no chooser and no bar.
 - **One form, two places.** `DNSProviderForm` is shared by the chooser page
   and Settings → DNS providers (`DNSProvidersSettingsView`), which lists
   every provider package with where it stands on the picked machine.
