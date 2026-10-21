@@ -68,6 +68,7 @@ enum ToolsStepPhase: Equatable {
     case idle
     case running
     case upToDate
+    case unknown
     case done
     case failed(DMErrorState)
     case needsManualUpdate(String)
@@ -84,12 +85,13 @@ enum UnifiedUpdateStepStatus: Equatable {
     case waiting
     case running
     case done
+    case upToDate
+    case couldNotCheck
     case skipped
     case failed
+    case moveByHand
 }
 
-/// What each of the dialog's three steps shows, read from step 1 and the
-/// app's install phase.
 struct UnifiedUpdateSteps: Equatable {
     let tools: UnifiedUpdateStepStatus
     let app: UnifiedUpdateStepStatus
@@ -101,11 +103,13 @@ struct UnifiedUpdateSteps: Equatable {
         self.relaunch = relaunch
     }
 
-    init(tools: ToolsStepPhase, toolsBehind: Bool, phase: UpdatePhase) {
+    init(tools: ToolsStepPhase, toolsBehind: Bool, toolsKnown: Bool = true, phase: UpdatePhase) {
         switch tools {
-        case .idle: self.tools = toolsBehind ? .waiting : .skipped
+        case .idle: self.tools = toolsBehind ? .waiting : (toolsKnown ? .upToDate : .couldNotCheck)
         case .running: self.tools = .running
-        case .upToDate, .bypassed: self.tools = .skipped
+        case .upToDate: self.tools = .upToDate
+        case .unknown: self.tools = .couldNotCheck
+        case .bypassed: self.tools = .skipped
         case .done: self.tools = .done
         case .failed, .needsManualUpdate: self.tools = .failed
         }
@@ -121,9 +125,9 @@ struct UnifiedUpdateSteps: Equatable {
             relaunch = .running
         case .restartNeeded:
             app = .done
-            relaunch = .failed
+            relaunch = .waiting
         case .manualMove:
-            app = .done
+            app = .moveByHand
             relaunch = .skipped
         case .failed:
             app = .failed
@@ -211,6 +215,7 @@ final class UpdateController: ObservableObject {
     @Published private var packagesLaterVersion: String?
     @Published private var packagesUpdateClosed = false
     @Published private(set) var toolsStep: ToolsStepPhase = .idle
+    @Published private(set) var toolsKnown = false
     @Published var showsDialog = false
 
     private let dependencies: UpdateDependencies
@@ -322,6 +327,7 @@ final class UpdateController: ObservableObject {
         }
         let state = await cli
         cliNotice = state.notice
+        toolsKnown = state.known
         if case .updated = cliPhase, cliNotice != nil { cliPhase = .idle }
         if packagesPhase != .running {
             packagesNotice = state.packages
@@ -405,7 +411,11 @@ final class UpdateController: ObservableObject {
                 return
             }
             cliNotice = nil
-            if command.printsJSON { cliReport = CLIUpdateReport.parse(stdout) }
+            if command.printsJSON {
+                cliReport = CLIUpdateReport.parse(stdout)
+            } else if packagesPhase != .running {
+                packagesNotice = await readPackages(installed: version)
+            }
             if let report = cliReport, let latest = packagesNotice?.latest,
                PackagesUpdateToast.isCovered(latest: latest, by: report), packagesPhase != .running {
                 packagesNotice = nil
@@ -496,7 +506,7 @@ final class UpdateController: ObservableObject {
     var toolsBehind: Bool { cliNotice != nil || packagesNotice != nil }
 
     var dialogSteps: UnifiedUpdateSteps {
-        UnifiedUpdateSteps(tools: toolsStep, toolsBehind: toolsBehind, phase: phase)
+        UnifiedUpdateSteps(tools: toolsStep, toolsBehind: toolsBehind, toolsKnown: toolsKnown, phase: phase)
     }
 
     var appCardTitle: String {
@@ -512,7 +522,7 @@ final class UpdateController: ObservableObject {
     func updateTools() async -> Bool {
         guard availableRelease != nil, toolsStep != .running, !phase.isBusy, !isWaitingForRestart else { return false }
         guard toolsBehind else {
-            toolsStep = .upToDate
+            toolsStep = toolsKnown ? .upToDate : .unknown
             return true
         }
         toolsStep = .running
@@ -549,9 +559,7 @@ final class UpdateController: ObservableObject {
         return true
     }
 
-    /// The app dialog's "Update and Relaunch": step 1, then the install and
-    /// the relaunch exactly as before. A step 1 that did not finish leaves
-    /// the app alone.
+    /// A step 1 that did not finish leaves the app alone.
     func updateAll() async {
         guard await updateTools() else { return }
         await install()
@@ -707,13 +715,14 @@ final class UpdateController: ObservableObject {
     /// The installed CLI is read once for both cards. `packages outdated`
     /// falls back to its last stored answer offline and fails only when it
     /// never had one, so a failure means "unknown": no card, only a log line.
-    private func readCLIState() async -> (notice: CLIUpdateNotice?, packages: PackagesOutdated?) {
-        guard let reading = await dependencies.cliVersion() else { return (nil, nil) }
+    private func readCLIState() async -> (notice: CLIUpdateNotice?, packages: PackagesOutdated?, known: Bool) {
+        guard let reading = await dependencies.cliVersion() else { return (nil, nil, false) }
         async let packages = readPackages(installed: SemanticVersion.first(in: reading.output))
-        let notice = (try? await latest(from: dependencies.cliFeed)).flatMap {
+        let release = try? await latest(from: dependencies.cliFeed)
+        let notice = release.flatMap {
             CLIUpdateAdvice.notice(versionOutput: reading.output, latest: $0, method: reading.method)
         }
-        return (notice, await packages)
+        return (notice, await packages, release != nil)
     }
 
     private func readPackages(installed: SemanticVersion?) async -> PackagesOutdated? {

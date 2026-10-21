@@ -598,12 +598,13 @@ final class UpdateControllerTests: XCTestCase {
 
     func testACLIBeforeNoMachinesStillRunsCLIOnly() async {
         let updates = await cliNoticeFor(installed: "0.7.30")
+        XCTAssertEqual(outdated.reads, 0)
 
         await updates.updateCLI()
 
         XCTAssertEqual(cliUpdater.commands, [.cliOnly])
         XCTAssertNil(updates.cliReport)
-        XCTAssertEqual(outdated.reads, 0)
+        XCTAssertEqual(outdated.reads, 1)
     }
 
     func testANewerPackagesReleaseShowsTheCard() async {
@@ -799,7 +800,7 @@ final class UpdateControllerTests: XCTestCase {
         serve(app: "v0.1.3", cli: "v0.8.0")
         let updates = controller()
         await updates.check(userInitiated: false)
-        XCTAssertEqual(updates.dialogSteps.tools, .skipped)
+        XCTAssertEqual(updates.dialogSteps.tools, .upToDate)
         XCTAssertEqual(UnifiedUpdateContent.toolsDetail(cli: nil, packages: nil), "Up to date")
 
         await updates.updateAll()
@@ -832,6 +833,7 @@ final class UpdateControllerTests: XCTestCase {
         XCTAssertEqual(installer.installed, ["v0.1.3"])
         XCTAssertEqual(relaunched.count, 1)
         XCTAssertEqual(updates.dialogSteps.tools, .skipped)
+        XCTAssertEqual(UnifiedUpdateContent.status(updates.dialogSteps.tools), "Skipped")
     }
 
     func testAnOldCLIShowsTheCommandInStepOneAndRunsNothing() async {
@@ -857,6 +859,49 @@ final class UpdateControllerTests: XCTestCase {
 
         guard case .needsManualUpdate = updates.toolsStep else { return XCTFail("\(updates.toolsStep)") }
         XCTAssertTrue(installer.installed.isEmpty)
+    }
+
+    func testAnOlderCLIUpdatedWithCLIOnlyThenMovesThePackagesPinBeforeTheApp() async {
+        cliUpdater.stdout = Self.pinnedReport
+        let updates = await appAndToolsBehind(installed: "0.7.25")
+        XCTAssertNil(updates.packagesNotice)
+        let cliUpdater = cliUpdater!
+        var runsAtInstall: [Int] = []
+        installer.onInstall = { runsAtInstall.append(cliUpdater.runs) }
+
+        await updates.updateAll()
+
+        XCTAssertEqual(cliUpdater.commands, [.cliOnly, .packagesOnly])
+        XCTAssertEqual(runsAtInstall, [2])
+        XCTAssertEqual(updates.toolsStep, .done)
+        XCTAssertNil(updates.packagesNotice)
+    }
+
+    func testAMissingCLIIsCouldNotCheckNotUpToDate() async {
+        cliOutput = nil
+        serve(app: "v0.1.3", cli: "v0.8.0")
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        XCTAssertEqual(updates.dialogSteps.tools, .couldNotCheck)
+
+        await updates.updateAll()
+
+        XCTAssertEqual(updates.toolsStep, .unknown)
+        XCTAssertEqual(updates.dialogSteps.tools, .couldNotCheck)
+        XCTAssertEqual(cliUpdater.runs, 0)
+        XCTAssertEqual(installer.installed, ["v0.1.3"])
+    }
+
+    func testAnUnreadableCLIFeedIsCouldNotCheckNotUpToDate() async {
+        cliOutput = "0.8.0"
+        http.queue(ReleaseFeed.appReleases, HTTPResponse(status: 200, headers: [:], body: releaseJSON("v0.1.3")))
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        XCTAssertNotNil(updates.availableRelease)
+
+        XCTAssertEqual(updates.dialogSteps.tools, .couldNotCheck)
+        await updates.updateAll()
+        XCTAssertEqual(updates.toolsStep, .unknown)
     }
 
     func testOnlyPackagesBehindRunsThePackagesCommandBeforeTheApp() async {

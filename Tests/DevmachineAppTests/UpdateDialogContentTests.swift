@@ -107,33 +107,37 @@ final class UpdateDialogContentTests: XCTestCase {
         XCTAssertEqual(UnifiedUpdateContent.toolsDetail(cli: nil, packages: packages), "packages v32 → v33")
         XCTAssertEqual(UnifiedUpdateContent.toolsDetail(cli: nil, packages: nil), "Up to date")
         XCTAssertEqual(UnifiedUpdateContent.updateOnlyTheAppTitle, "Update only the app")
-        XCTAssertEqual(
-            UnifiedUpdateContent.status(.skipped, step: .tools), "Up to date")
-        XCTAssertEqual(UnifiedUpdateContent.status(.skipped, step: .relaunch), "Skipped")
-        XCTAssertEqual(UnifiedUpdateContent.status(.running, step: .app), "Running")
-        XCTAssertEqual(UnifiedUpdateContent.status(.done, step: .app), "Done")
-        XCTAssertEqual(UnifiedUpdateContent.status(.failed, step: .tools), "Failed")
-        XCTAssertEqual(UnifiedUpdateContent.status(.waiting, step: .app), "Waiting")
+        XCTAssertEqual(UnifiedUpdateContent.status(.upToDate), "Up to date")
+        XCTAssertEqual(UnifiedUpdateContent.status(.couldNotCheck), "Could not check")
+        XCTAssertEqual(UnifiedUpdateContent.status(.skipped), "Skipped")
+        XCTAssertEqual(UnifiedUpdateContent.status(.running), "Running")
+        XCTAssertEqual(UnifiedUpdateContent.status(.done), "Done")
+        XCTAssertEqual(UnifiedUpdateContent.status(.failed), "Failed")
+        XCTAssertEqual(UnifiedUpdateContent.status(.waiting), "Waiting")
+        XCTAssertEqual(UnifiedUpdateContent.status(.moveByHand), "Move it by hand")
     }
 
     func testTheStepsFollowTheToolsAndTheAppPhases() {
         XCTAssertEqual(
             UnifiedUpdateSteps(tools: .idle, toolsBehind: true, phase: .idle),
             UnifiedUpdateSteps(tools: .waiting, app: .waiting, relaunch: .waiting))
-        XCTAssertEqual(UnifiedUpdateSteps(tools: .idle, toolsBehind: false, phase: .idle).tools, .skipped)
+        XCTAssertEqual(UnifiedUpdateSteps(tools: .idle, toolsBehind: false, phase: .idle).tools, .upToDate)
+        XCTAssertEqual(
+            UnifiedUpdateSteps(tools: .idle, toolsBehind: false, toolsKnown: false, phase: .idle).tools, .couldNotCheck)
+        XCTAssertEqual(UnifiedUpdateSteps(tools: .unknown, toolsBehind: false, phase: .idle).tools, .couldNotCheck)
         XCTAssertEqual(UnifiedUpdateSteps(tools: .running, toolsBehind: true, phase: .idle).tools, .running)
         XCTAssertEqual(
             UnifiedUpdateSteps(tools: .done, toolsBehind: false, phase: .downloading(0.4)),
             UnifiedUpdateSteps(tools: .done, app: .running, relaunch: .waiting))
         XCTAssertEqual(
             UnifiedUpdateSteps(tools: .upToDate, toolsBehind: false, phase: .upgradingWithHomebrew),
-            UnifiedUpdateSteps(tools: .skipped, app: .running, relaunch: .waiting))
+            UnifiedUpdateSteps(tools: .upToDate, app: .running, relaunch: .waiting))
         XCTAssertEqual(
             UnifiedUpdateSteps(tools: .done, toolsBehind: false, phase: .relaunching),
             UnifiedUpdateSteps(tools: .done, app: .done, relaunch: .running))
         XCTAssertEqual(
             UnifiedUpdateSteps(tools: .done, toolsBehind: false, phase: .restartNeeded("0.1.3")),
-            UnifiedUpdateSteps(tools: .done, app: .done, relaunch: .failed))
+            UnifiedUpdateSteps(tools: .done, app: .done, relaunch: .waiting))
         XCTAssertEqual(
             UnifiedUpdateSteps(tools: .done, toolsBehind: false, phase: .failed(DMErrorState(title: "x", message: "y"))),
             UnifiedUpdateSteps(tools: .done, app: .failed, relaunch: .waiting))
@@ -144,6 +148,6 @@ final class UpdateDialogContentTests: XCTestCase {
         XCTAssertEqual(
             UnifiedUpdateSteps(
                 tools: .done, toolsBehind: false, phase: .manualMove(URL(fileURLWithPath: "/tmp/Devmachine.app"))),
-            UnifiedUpdateSteps(tools: .done, app: .done, relaunch: .skipped))
+            UnifiedUpdateSteps(tools: .done, app: .moveByHand, relaunch: .skipped))
     }
 }

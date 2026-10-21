@@ -1817,7 +1817,12 @@ once may fail there.
   an ad-hoc build). The reason: a new app whose widgets need a newer CLI or
   packages release must never start on a Mac that lacks them. While the app
   card shows, it covers the CLI and packages cards and names what it also
-  updates (`AppUpdateCardContent`).
+  updates (`AppUpdateCardContent`). Step 1 has no Cancel while it runs, as
+  the app download has none. An unknown CLI state (no CLI, or the release
+  feed unread) is "Could not check", never "Up to date"; a CLI updated with
+  `--cli-only` is asked about packages again, so its pin moves before the
+  app installs. The compatibility card's Run update also re-checks app
+  updates. Demo shot `205` (`update-dialog-steps`) is the dialog.
 - Every finished `updateCLI`/`updatePackages` calls
   `UpdateDependencies.afterToolsUpdate`, which re-runs
   `WidgetCompatibilityStore.check()`, so the "needs a newer CLI" card never
@@ -1833,7 +1838,7 @@ once may fail there.
   ones (`CLIUpdateToast.shows`); a running or finished update shows
   whatever Later said, the finished one until Close. Details opens
   Settings → About. Demo shots `65`–`69` and `57` (a 0.7.31 CLI) in the
-  `cli-update` walk.
+  `cli-update` walk, built without an app update so the CLI card shows.
 - **A newer packages release gets its own corner card**
   (`PackagesUpdateBanner`, under the CLI's) while no app update is shown. On CLI 0.7.31+
   `check` also runs `packages outdated --format json` (the CLI caches it a
@@ -1845,7 +1850,8 @@ once may fail there.
   moved and points at Settings → Machines ("Open Machines"); it never syncs.
   Later is saved per release (`UpdatePreferences.packagesLaterVersion`) and
   hides it and older ones (`PackagesUpdateToast`, compared by
-  `PackagesVersion`); Details opens `notes_url`. Demo shots `53`–`56`.
+  `PackagesVersion`); Details opens `notes_url`. Demo shots `53`–`56`, also
+  without an app update.
 - Pure logic lives in `DevmachineCore/Updates` (versions, release JSON, ETag
   feed, schedule, install method, digest, bundle checks, swap, the update
   commands, their JSON and the packages card rules); the app's

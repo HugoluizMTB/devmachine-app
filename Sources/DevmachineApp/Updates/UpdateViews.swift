@@ -103,13 +103,16 @@ enum UnifiedUpdateContent {
         return parts.isEmpty ? "Up to date" : parts.joined(separator: " · ")
     }
 
-    static func status(_ status: UnifiedUpdateStepStatus, step: UnifiedUpdateStep) -> String {
+    static func status(_ status: UnifiedUpdateStepStatus) -> String {
         switch status {
         case .waiting: return "Waiting"
         case .running: return "Running"
         case .done: return "Done"
-        case .skipped: return step == .tools ? "Up to date" : "Skipped"
+        case .upToDate: return "Up to date"
+        case .couldNotCheck: return "Could not check"
+        case .skipped: return "Skipped"
         case .failed: return "Failed"
+        case .moveByHand: return "Move it by hand"
         }
     }
 }
@@ -652,7 +655,7 @@ private struct UnifiedUpdateStepsView: View {
                 }
             }
             Spacer(minLength: m.space.sm)
-            Text(verbatim: UnifiedUpdateContent.status(status, step: step))
+            Text(verbatim: UnifiedUpdateContent.status(status))
                 .font(.dm(11))
                 .foregroundStyle(Color.dmMuted)
         }
@@ -676,8 +679,12 @@ private struct UnifiedUpdateStepsView: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failed:
             Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
-        case .skipped:
+        case .upToDate:
+            Image(systemName: "checkmark.circle").foregroundStyle(Color.dmMuted)
+        case .skipped, .couldNotCheck:
             Image(systemName: "minus.circle").foregroundStyle(Color.dmMuted)
+        case .moveByHand:
+            Image(systemName: "hand.point.right").foregroundStyle(Color.dmMuted)
         case .waiting:
             Image(systemName: "circle").foregroundStyle(Color.dmMuted)
         }
