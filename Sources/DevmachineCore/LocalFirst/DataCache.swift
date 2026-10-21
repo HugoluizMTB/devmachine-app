@@ -192,6 +192,15 @@ public final class DataCache {
 
     public func isRefreshing<V>(_ key: CacheKey<V>) -> Bool { inFlight[key.id] != nil }
 
+    /// A forced read joins the fetch already running, which may have asked
+    /// before a change; waiting for it first lets the next read ask anew.
+    public func waitForRunningFetch<V>(_ key: CacheKey<V>) async {
+        while let running = inFlight[key.id] {
+            _ = try? await running.value
+            await Task.yield()
+        }
+    }
+
     public func lastError<V>(_ key: CacheKey<V>) -> String? { slots[key.id]?.error }
 
     public func count(of kind: CacheKind) -> Int { slots.values.filter { $0.kind == kind }.count }

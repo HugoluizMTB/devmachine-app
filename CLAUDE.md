@@ -1868,7 +1868,10 @@ once may fail there.
   `dns providers` answering with a zone ends it: a finished sync that still
   sees none leaves the provider's form showing the problem, with Save token,
   Push again and Remove. A provider that answers keeps the machine ready
-  while a job runs on it or on another provider. Nothing read at all
+  while a job runs on it or on another provider. A sync's end waits for a
+  `dns providers` read already running (`DataCache.waitForRunningFetch`),
+  then asks again: a forced read joins the running one, which may predate
+  the sync. Add and save syncs on the install's own outcome. Nothing read at all
   (`unknown`) shows the table, with no chooser and no bar.
 - **One form, two places.** `DNSProviderForm` is shared by the chooser page
   and Settings → DNS providers (`DNSProvidersSettingsView`), which lists

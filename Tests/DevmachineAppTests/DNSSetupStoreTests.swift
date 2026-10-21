@@ -390,6 +390,19 @@ final class DNSSetupStoreTests: XCTestCase {
         ])
     }
 
+    func testAddAndSaveSyncsOnTheInstallsOutcomeEvenWhenTheProviderStillAnswers() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"#
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync)
+        XCTAssertFalse(store.dnsSetup.isDeclared("hostinger"))
+
+        await store.dnsSetup.installAndSync("hostinger", token: "tok-1")
+
+        try await eventually { sync.calls.count == 2 }
+        XCTAssertEqual(sync.calls.first, ["sync", "--machine", "box", "--tags", "hostinger", "--yes"])
+    }
+
     func testAddAndSaveStopsAtTheFailedStepAndSyncsNothing() async throws {
         let cli = DNSSetupCLIRunner()
         cli.set { $0.secretFails = true }

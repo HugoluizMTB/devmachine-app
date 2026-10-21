@@ -131,7 +131,7 @@ final class CaddyStore: ObservableObject {
         self.dnsSetup.onConfigurationChanged = { [weak self] in self?.refresh(force: true) }
         self.dnsSetup.onSyncEnded = { [weak self] machine in
             guard let self, self.dnsMachine == machine else { return }
-            self.loadDNSProviders(force: true)
+            self.loadDNSProvidersAfterSync(machine)
         }
     }
 
@@ -460,6 +460,18 @@ final class CaddyStore: ObservableObject {
             dnsProvidersError = nil
         }
         isLoadingDNSProviders = cache.isRefreshing(key)
+    }
+
+    /// A read that started before the sync ended would answer for the
+    /// machine as it was; the forced read waits for it, then asks again.
+    private func loadDNSProvidersAfterSync(_ machine: String) {
+        let key = MachineDataKeys.dnsProviders(machine)
+        guard !DemoMode.isActive, cache.isRefreshing(key) else { return loadDNSProviders(force: true) }
+        Task { [weak self] in
+            await self?.cache.waitForRunningFetch(key)
+            guard let self, self.dnsMachine == machine else { return }
+            self.loadDNSProviders(force: true)
+        }
     }
 
     private func showDNSAnswers(_ answers: [DNSProviderAnswer]?) {

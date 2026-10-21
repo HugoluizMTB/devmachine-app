@@ -127,17 +127,23 @@ final class DNSSetupStore: ObservableObject {
     /// when some were typed and the CLI can, and stores its token. All of it
     /// stays on this Mac; the machine changes only on sync. The zones come
     /// after the add: the CLI refuses a setting for a package not there.
-    func install(_ package: String, token: String, zones: String = "") async {
-        guard let machine, !isRunning(machine) else { return }
+    /// True when every step ended well and this run is still the latest.
+    @discardableResult
+    func install(_ package: String, token: String, zones: String = "") async -> Bool {
+        guard let machine, !isRunning(machine) else { return false }
         let zoneList = zonesToSet(package, zones)
         guard zoneList != nil || zones.trimmingCharacters(in: .whitespaces).isEmpty || !canEditMachineSettings()
-        else { return }
+        else { return false }
         let run = begin(machine, .install, package: package)
-        if DemoMode.isActive { return fail(machine, run: run, step: .install, error: Self.demoRefusal) }
+        if DemoMode.isActive {
+            fail(machine, run: run, step: .install, error: Self.demoRefusal)
+            return false
+        }
         let service = self.service
         let secret = secretName(package)
         if let failure = await perform({ try service.addPackage(package, machine: machine) }) {
-            return fail(machine, run: run, step: .install, error: failure)
+            fail(machine, run: run, step: .install, error: failure)
+            return false
         }
         added[machine, default: []].insert(package)
         if !(declared ?? []).contains(package) { declared = (declared ?? []) + [package] }
@@ -145,25 +151,30 @@ final class DNSSetupStore: ObservableObject {
             jobs[machine] = .running(.saveZones)
             if let failure = await perform({ try service.setZones(setting: setting, machine: machine, zones: zoneList) }) {
                 onConfigurationChanged()
-                return fail(machine, run: run, step: .saveZones, error: failure)
+                fail(machine, run: run, step: .saveZones, error: failure)
+                return false
             }
         }
         jobs[machine] = .running(.saveToken)
         if let failure = await perform({ try service.setSecret(secret, value: token) }) {
             onConfigurationChanged()
-            return fail(machine, run: run, step: .saveToken, error: failure)
+            fail(machine, run: run, step: .saveToken, error: failure)
+            return false
         }
-        guard runs[machine] == run else { return }
+        guard runs[machine] == run else { return false }
         jobs[machine] = .finished
         savedToken = package
         onConfigurationChanged()
+        return true
     }
 
-    /// `install`, then `sync` of the package alone when the CLI can and the
-    /// add left it waiting for one.
+    /// `install`, then `sync` of the package alone when the install ended
+    /// well and the CLI can. The install's own outcome decides, never a state
+    /// that the configuration's re-read may not have reached yet.
     func installAndSync(_ package: String, token: String, zones: String = "") async {
-        await install(package, token: token, zones: zones)
-        if stateOf(package) == .notSynced, canRunSync() { sync(package) }
+        let machine = self.machine
+        guard await install(package, token: token, zones: zones) else { return }
+        if self.machine == machine, canRunSync() { sync(package) }
     }
 
     /// Writes the zones the provider may manage into the machine's
