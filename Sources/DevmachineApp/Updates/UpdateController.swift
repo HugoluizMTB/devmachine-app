@@ -62,6 +62,84 @@ enum PackagesUpdatePhase: Equatable {
     case failed(DMErrorState)
 }
 
+/// Step 1 of the app dialog: the CLI, the packages pin and the skills,
+/// brought up before the app so a new build never needs what the Mac lacks.
+enum ToolsStepPhase: Equatable {
+    case idle
+    case running
+    case upToDate
+    case done
+    case failed(DMErrorState)
+    case needsManualUpdate(String)
+    case bypassed
+}
+
+enum UnifiedUpdateStep: Equatable, CaseIterable {
+    case tools
+    case app
+    case relaunch
+}
+
+enum UnifiedUpdateStepStatus: Equatable {
+    case waiting
+    case running
+    case done
+    case skipped
+    case failed
+}
+
+/// What each of the dialog's three steps shows, read from step 1 and the
+/// app's install phase.
+struct UnifiedUpdateSteps: Equatable {
+    let tools: UnifiedUpdateStepStatus
+    let app: UnifiedUpdateStepStatus
+    let relaunch: UnifiedUpdateStepStatus
+
+    init(tools: UnifiedUpdateStepStatus, app: UnifiedUpdateStepStatus, relaunch: UnifiedUpdateStepStatus) {
+        self.tools = tools
+        self.app = app
+        self.relaunch = relaunch
+    }
+
+    init(tools: ToolsStepPhase, toolsBehind: Bool, phase: UpdatePhase) {
+        switch tools {
+        case .idle: self.tools = toolsBehind ? .waiting : .skipped
+        case .running: self.tools = .running
+        case .upToDate, .bypassed: self.tools = .skipped
+        case .done: self.tools = .done
+        case .failed, .needsManualUpdate: self.tools = .failed
+        }
+        switch phase {
+        case .idle:
+            app = .waiting
+            relaunch = .waiting
+        case .downloading, .verifying, .installing, .upgradingWithHomebrew:
+            app = .running
+            relaunch = .waiting
+        case .relaunching:
+            app = .done
+            relaunch = .running
+        case .restartNeeded:
+            app = .done
+            relaunch = .failed
+        case .manualMove:
+            app = .done
+            relaunch = .skipped
+        case .failed:
+            app = .failed
+            relaunch = .waiting
+        }
+    }
+
+    func status(_ step: UnifiedUpdateStep) -> UnifiedUpdateStepStatus {
+        switch step {
+        case .tools: return tools
+        case .app: return app
+        case .relaunch: return relaunch
+        }
+    }
+}
+
 struct CLIVersionReading: Equatable, Sendable {
     let output: String
     let method: CLIInstallMethod
@@ -101,6 +179,7 @@ struct UpdateDependencies {
     var homebrew: any HomebrewUpgrading
     var cliUpdater: any CLIUpdating = UnavailableCLIUpdater()
     var packagesOutdated: @Sendable () async throws -> Data = { throw CLIUpdateError.unavailable }
+    var afterToolsUpdate: @MainActor () async -> Void = {}
     var currentAppURL: URL
     var relaunchTimeout: TimeInterval = 10
     var relaunch: @MainActor (URL) throws -> Void
@@ -131,6 +210,7 @@ final class UpdateController: ObservableObject {
     @Published private(set) var packagesOutput: [String] = []
     @Published private var packagesLaterVersion: String?
     @Published private var packagesUpdateClosed = false
+    @Published private(set) var toolsStep: ToolsStepPhase = .idle
     @Published var showsDialog = false
 
     private let dependencies: UpdateDependencies
@@ -214,7 +294,8 @@ final class UpdateController: ObservableObject {
     }
 
     func check(userInitiated: Bool) async {
-        guard let current = dependencies.currentVersion, !isChecking, !phase.isBusy else { return }
+        guard let current = dependencies.currentVersion, !isChecking, !phase.isBusy, toolsStep != .running
+        else { return }
         isChecking = true
         defer {
             isChecking = false
@@ -254,8 +335,11 @@ final class UpdateController: ObservableObject {
         return CLISelfUpdate.supportsCLIOnly(notice.installed)
     }
 
+    /// The app card covers the CLI and packages cards: its dialog updates
+    /// them first.
     var showsCLIBanner: Bool {
-        CLIUpdateToast.shows(stage: cliToastStage, latest: cliNotice?.latest, laterVersion: cliLaterVersion)
+        guard !showsBanner else { return false }
+        return CLIUpdateToast.shows(stage: cliToastStage, latest: cliNotice?.latest, laterVersion: cliLaterVersion)
     }
 
     private var cliToastStage: CLIUpdateToast.Stage {
@@ -293,6 +377,11 @@ final class UpdateController: ObservableObject {
             cliPhase = .needsManualUpdate
             return
         }
+        await runCLIUpdate(notice)
+        await dependencies.afterToolsUpdate()
+    }
+
+    private func runCLIUpdate(_ notice: CLIUpdateNotice) async {
         let command = CLIUpdateCommand.forCLI(installed: notice.installed)
         cliUpdateClosed = false
         cliOutput = []
@@ -337,7 +426,8 @@ final class UpdateController: ObservableObject {
     }
 
     var showsPackagesBanner: Bool {
-        PackagesUpdateToast.shows(
+        guard !showsBanner else { return false }
+        return PackagesUpdateToast.shows(
             stage: packagesToastStage, notice: packagesNotice, laterVersion: packagesLaterVersion)
     }
 
@@ -368,6 +458,11 @@ final class UpdateController: ObservableObject {
     /// which this never runs.
     func updatePackages() async {
         guard let notice = packagesNotice, packagesPhase != .running else { return }
+        await runPackagesUpdate(notice)
+        await dependencies.afterToolsUpdate()
+    }
+
+    private func runPackagesUpdate(_ notice: PackagesOutdated) async {
         packagesUpdateClosed = false
         packagesOutput = []
         packagesPhase = .running
@@ -396,6 +491,76 @@ final class UpdateController: ObservableObject {
                 cause: CLISelfUpdate.failureCause(packagesOutput) ?? error.localizedDescription,
                 details: details(packagesOutput, fallback: error.localizedDescription)))
         }
+    }
+
+    var toolsBehind: Bool { cliNotice != nil || packagesNotice != nil }
+
+    var dialogSteps: UnifiedUpdateSteps {
+        UnifiedUpdateSteps(tools: toolsStep, toolsBehind: toolsBehind, phase: phase)
+    }
+
+    var appCardTitle: String {
+        guard let release = availableRelease else { return "" }
+        return AppUpdateCardContent.title(
+            version: release.version?.description ?? release.tagName, installed: isWaitingForRestart,
+            cli: cliNotice?.latest, packages: packagesNotice?.latest)
+    }
+
+    /// Step 1 runs the cards' own updates, never a command of its own: the
+    /// CLI card's when the CLI is behind, then the packages card's when the
+    /// pin is still behind. True when the app may go on to step 2.
+    func updateTools() async -> Bool {
+        guard availableRelease != nil, toolsStep != .running, !phase.isBusy, !isWaitingForRestart else { return false }
+        guard toolsBehind else {
+            toolsStep = .upToDate
+            return true
+        }
+        toolsStep = .running
+        if let notice = cliNotice {
+            await updateCLI()
+            switch cliPhase {
+            case .updated:
+                cliUpdateClosed = true
+            case .failed(let error):
+                toolsStep = .failed(error)
+                return false
+            case .needsManualUpdate:
+                toolsStep = .needsManualUpdate(notice.command)
+                return false
+            case .idle, .running:
+                toolsStep = .idle
+                return false
+            }
+        }
+        if packagesNotice != nil {
+            await updatePackages()
+            switch packagesPhase {
+            case .done:
+                closePackagesUpdated()
+            case .failed(let error):
+                toolsStep = .failed(error)
+                return false
+            case .idle, .running:
+                toolsStep = .idle
+                return false
+            }
+        }
+        toolsStep = .done
+        return true
+    }
+
+    /// The app dialog's "Update and Relaunch": step 1, then the install and
+    /// the relaunch exactly as before. A step 1 that did not finish leaves
+    /// the app alone.
+    func updateAll() async {
+        guard await updateTools() else { return }
+        await install()
+    }
+
+    func updateOnlyTheApp() async {
+        guard availableRelease != nil, toolsStep != .running, !phase.isBusy, !isWaitingForRestart else { return }
+        toolsStep = .bypassed
+        await install()
     }
 
     private func details(_ lines: [String], fallback: String) -> String {
@@ -432,6 +597,7 @@ final class UpdateController: ObservableObject {
 
     func requestUpdate() {
         guard availableRelease != nil else { return }
+        if toolsStep != .running, !phase.isBusy { toolsStep = .idle }
         showsDialog = true
     }
 

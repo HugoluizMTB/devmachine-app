@@ -468,8 +468,9 @@ extension UpdateController {
             installer: DiskImageUpdateInstaller(
                 currentApp: appURL, bundleID: bundle.bundleIdentifier ?? "app.devmachine.mac", runningTeamID: team),
             homebrew: ProcessHomebrewUpgrader(),
-            cliUpdater: ProcessCLIUpdater(),
+            cliUpdater: DemoMode.isActive ? UnavailableCLIUpdater() : ProcessCLIUpdater(),
             packagesOutdated: { try DevmachineCLI.resolve().packagesOutdated() },
+            afterToolsUpdate: { await WidgetCompatibilityStore.shared.check() },
             currentAppURL: appURL,
             relaunch: { try AppRelauncher().relaunch($0) }))
     }

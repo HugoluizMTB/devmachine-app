@@ -76,4 +76,74 @@ final class UpdateDialogContentTests: XCTestCase {
         XCTAssertEqual(PackagesUpdateContent.done(report), "Packages pinned v33 · skills updated")
         XCTAssertEqual(PackagesUpdateContent.done(nil), "Packages and skills updated")
     }
+
+    func testTheAppCardNamesWhatItAlsoUpdates() {
+        let cli = SemanticVersion("0.17.2")
+        XCTAssertEqual(
+            AppUpdateCardContent.title(version: "0.9.1", installed: false, cli: cli, packages: "v58"),
+            "Devmachine 0.9.1 is available · also updates the CLI to 0.17.2 and packages to v58")
+        XCTAssertEqual(
+            AppUpdateCardContent.title(version: "0.9.1", installed: false, cli: cli, packages: nil),
+            "Devmachine 0.9.1 is available · also updates the CLI to 0.17.2")
+        XCTAssertEqual(
+            AppUpdateCardContent.title(version: "0.9.1", installed: false, cli: nil, packages: "v58"),
+            "Devmachine 0.9.1 is available · also updates packages to v58")
+        XCTAssertEqual(
+            AppUpdateCardContent.title(version: "0.9.1", installed: false, cli: nil, packages: nil),
+            "Devmachine 0.9.1 is available")
+        XCTAssertEqual(
+            AppUpdateCardContent.title(version: "0.9.1", installed: true, cli: cli, packages: "v58"),
+            "Devmachine 0.9.1 is installed")
+    }
+
+    func testTheDialogStepsWording() {
+        let notice = CLIUpdateNotice(
+            installed: SemanticVersion("0.7.31")!, latest: SemanticVersion("0.8.0")!,
+            command: "brew upgrade devmachine", releaseURL: nil)
+        let packages = PackagesOutdated(pinned: "v32", latest: "v33", newer: true, notesURL: nil)
+        XCTAssertEqual(
+            UnifiedUpdateContent.toolsDetail(cli: notice, packages: packages), "CLI 0.7.31 → 0.8.0 · packages v32 → v33")
+        XCTAssertEqual(UnifiedUpdateContent.toolsDetail(cli: notice, packages: nil), "CLI 0.7.31 → 0.8.0")
+        XCTAssertEqual(UnifiedUpdateContent.toolsDetail(cli: nil, packages: packages), "packages v32 → v33")
+        XCTAssertEqual(UnifiedUpdateContent.toolsDetail(cli: nil, packages: nil), "Up to date")
+        XCTAssertEqual(UnifiedUpdateContent.updateOnlyTheAppTitle, "Update only the app")
+        XCTAssertEqual(
+            UnifiedUpdateContent.status(.skipped, step: .tools), "Up to date")
+        XCTAssertEqual(UnifiedUpdateContent.status(.skipped, step: .relaunch), "Skipped")
+        XCTAssertEqual(UnifiedUpdateContent.status(.running, step: .app), "Running")
+        XCTAssertEqual(UnifiedUpdateContent.status(.done, step: .app), "Done")
+        XCTAssertEqual(UnifiedUpdateContent.status(.failed, step: .tools), "Failed")
+        XCTAssertEqual(UnifiedUpdateContent.status(.waiting, step: .app), "Waiting")
+    }
+
+    func testTheStepsFollowTheToolsAndTheAppPhases() {
+        XCTAssertEqual(
+            UnifiedUpdateSteps(tools: .idle, toolsBehind: true, phase: .idle),
+            UnifiedUpdateSteps(tools: .waiting, app: .waiting, relaunch: .waiting))
+        XCTAssertEqual(UnifiedUpdateSteps(tools: .idle, toolsBehind: false, phase: .idle).tools, .skipped)
+        XCTAssertEqual(UnifiedUpdateSteps(tools: .running, toolsBehind: true, phase: .idle).tools, .running)
+        XCTAssertEqual(
+            UnifiedUpdateSteps(tools: .done, toolsBehind: false, phase: .downloading(0.4)),
+            UnifiedUpdateSteps(tools: .done, app: .running, relaunch: .waiting))
+        XCTAssertEqual(
+            UnifiedUpdateSteps(tools: .upToDate, toolsBehind: false, phase: .upgradingWithHomebrew),
+            UnifiedUpdateSteps(tools: .skipped, app: .running, relaunch: .waiting))
+        XCTAssertEqual(
+            UnifiedUpdateSteps(tools: .done, toolsBehind: false, phase: .relaunching),
+            UnifiedUpdateSteps(tools: .done, app: .done, relaunch: .running))
+        XCTAssertEqual(
+            UnifiedUpdateSteps(tools: .done, toolsBehind: false, phase: .restartNeeded("0.1.3")),
+            UnifiedUpdateSteps(tools: .done, app: .done, relaunch: .failed))
+        XCTAssertEqual(
+            UnifiedUpdateSteps(tools: .done, toolsBehind: false, phase: .failed(DMErrorState(title: "x", message: "y"))),
+            UnifiedUpdateSteps(tools: .done, app: .failed, relaunch: .waiting))
+        XCTAssertEqual(
+            UnifiedUpdateSteps(tools: .needsManualUpdate("brew upgrade devmachine"), toolsBehind: true, phase: .idle).tools,
+            .failed)
+        XCTAssertEqual(UnifiedUpdateSteps(tools: .bypassed, toolsBehind: true, phase: .idle).tools, .skipped)
+        XCTAssertEqual(
+            UnifiedUpdateSteps(
+                tools: .done, toolsBehind: false, phase: .manualMove(URL(fileURLWithPath: "/tmp/Devmachine.app"))),
+            UnifiedUpdateSteps(tools: .done, app: .done, relaunch: .skipped))
+    }
 }

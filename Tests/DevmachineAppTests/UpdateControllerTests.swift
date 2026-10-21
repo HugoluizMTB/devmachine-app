@@ -29,10 +29,12 @@ private final class ScriptedHTTP: HTTPFetching, @unchecked Sendable {
 private final class FakeInstaller: AppUpdateInstalling, @unchecked Sendable {
     var outcome: Result<ManualInstallOutcome, Error> = .success(.replaced(URL(fileURLWithPath: "/Applications/Devmachine.app")))
     private(set) var installed: [String] = []
+    var onInstall: () -> Void = {}
 
     func install(
         release: GitHubRelease, progress: @escaping @Sendable (UpdateProgress) -> Void
     ) async throws -> ManualInstallOutcome {
+        onInstall()
         installed.append(release.tagName)
         progress(.downloading(0.5))
         return try outcome.get()
@@ -43,7 +45,10 @@ private final class FakeHomebrew: HomebrewUpgrading, @unchecked Sendable {
     var exitCode: Int32 = 0
     private(set) var runs: [String] = []
 
+    var onUpgrade: () -> Void = {}
+
     func upgrade(brew: String, output: @escaping @Sendable (String) -> Void) async throws {
+        onUpgrade()
         runs.append(brew)
         output("==> Upgrading devmachine-app")
         if exitCode != 0 { throw UpdateInstallError.homebrewFailed(exitCode) }
@@ -117,6 +122,7 @@ final class UpdateControllerTests: XCTestCase {
     private var cliVersion = VersionBox("0.7.1")
     private var cliUpdater: FakeCLIUpdater!
     private var outdated: FakeOutdated!
+    private var rechecks = 0
     private var cliOutput: String? {
         get { cliVersion.value }
         set { cliVersion.value = newValue }
@@ -134,6 +140,7 @@ final class UpdateControllerTests: XCTestCase {
         cliVersion = VersionBox("0.7.1")
         cliUpdater = FakeCLIUpdater(version: cliVersion)
         outdated = FakeOutdated()
+        rechecks = 0
     }
 
     override func tearDown() async throws {
@@ -160,6 +167,7 @@ final class UpdateControllerTests: XCTestCase {
             homebrew: homebrew,
             cliUpdater: cliUpdater,
             packagesOutdated: { try outdated.read() },
+            afterToolsUpdate: { [weak self] in self?.rechecks += 1 },
             currentAppURL: URL(fileURLWithPath: "/Applications/Devmachine.app"),
             relaunch: { [weak self] url in
                 guard let self else { return }
@@ -328,11 +336,11 @@ final class UpdateControllerTests: XCTestCase {
         XCTAssertEqual(updates.cliPhase, .needsManualUpdate)
     }
 
-    func testANewerCLIShowsItsOwnToastBesideTheApps() async {
-        serve(app: "v0.1.3", cli: "v0.8.0")
+    func testANewerCLIShowsItsOwnToastWhileTheAppIsCurrent() async {
+        serve(app: "v0.1.2", cli: "v0.8.0")
         let updates = controller()
         await updates.check(userInitiated: false)
-        XCTAssertTrue(updates.showsBanner)
+        XCTAssertFalse(updates.showsBanner)
         XCTAssertTrue(updates.showsCLIBanner)
     }
 
@@ -731,15 +739,237 @@ final class UpdateControllerTests: XCTestCase {
         XCTAssertFalse(updates.showsPackagesBanner)
     }
 
-    func testAllThreeCardsStack() async {
+    func testTheAppCardCoversTheCLIAndPackagesCards() async {
         outdated.answer(Self.newerPackages)
         serve(app: "v0.1.3", cli: "v0.8.0")
         cliOutput = "0.7.31"
         let updates = controller()
         await updates.check(userInitiated: false)
         XCTAssertTrue(updates.showsBanner)
+        XCTAssertFalse(updates.showsCLIBanner)
+        XCTAssertFalse(updates.showsPackagesBanner)
+        XCTAssertEqual(
+            updates.appCardTitle, "Devmachine 0.1.3 is available · also updates the CLI to 0.8.0 and packages to v33")
+
+        updates.later()
+        XCTAssertFalse(updates.showsBanner)
         XCTAssertTrue(updates.showsCLIBanner)
         XCTAssertTrue(updates.showsPackagesBanner)
+    }
+
+    private static let cliAndPackagesReport = Data(#"""
+        {"cli":{"from":"0.7.31","to":"0.8.0","updated":true},
+         "packages":{"from":"v32","to":"v33","pinned":true},"skills":{"updated":true}}
+        """#.utf8)
+
+    private func appAndToolsBehind(
+        installed: String = "0.7.31", packages: Bool = true, method: AppInstallMethod = .manual,
+        runningTeam: String? = "TEAM123456"
+    ) async -> UpdateController {
+        if packages { outdated.answer(Self.newerPackages) }
+        cliOutput = installed
+        serve(app: "v0.1.3", cli: "v0.8.0")
+        let updates = controller(method: method, runningTeam: runningTeam)
+        await updates.check(userInitiated: false)
+        return updates
+    }
+
+    func testUpdateAllRunsTheCLIStepBeforeTheAppAndThenRelaunches() async {
+        cliUpdater.stdout = Self.cliAndPackagesReport
+        let updates = await appAndToolsBehind()
+        let cliUpdater = cliUpdater!
+        var cliRunsAtInstall: [Int] = []
+        installer.onInstall = { cliRunsAtInstall.append(cliUpdater.runs) }
+        updates.requestUpdate()
+        XCTAssertEqual(updates.dialogSteps, UnifiedUpdateSteps(tools: .waiting, app: .waiting, relaunch: .waiting))
+
+        await updates.updateAll()
+
+        XCTAssertEqual(cliUpdater.commands, [.noMachines])
+        XCTAssertEqual(cliRunsAtInstall, [1])
+        XCTAssertEqual(installer.installed, ["v0.1.3"])
+        XCTAssertEqual(relaunched, [URL(fileURLWithPath: "/Applications/Devmachine.app")])
+        XCTAssertEqual(updates.toolsStep, .done)
+        XCTAssertEqual(updates.dialogSteps, UnifiedUpdateSteps(tools: .done, app: .done, relaunch: .running))
+        XCTAssertNil(updates.packagesNotice)
+    }
+
+    func testUpdateAllSkipsStepOneWhenNothingIsBehind() async {
+        cliOutput = "0.8.0"
+        serve(app: "v0.1.3", cli: "v0.8.0")
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        XCTAssertEqual(updates.dialogSteps.tools, .skipped)
+        XCTAssertEqual(UnifiedUpdateContent.toolsDetail(cli: nil, packages: nil), "Up to date")
+
+        await updates.updateAll()
+
+        XCTAssertEqual(cliUpdater.runs, 0)
+        XCTAssertEqual(updates.toolsStep, .upToDate)
+        XCTAssertEqual(installer.installed, ["v0.1.3"])
+        XCTAssertEqual(relaunched.count, 1)
+    }
+
+    func testAFailedStepOneLeavesTheAppAloneAndOffersUpdateOnlyTheApp() async {
+        cliUpdater.lines = ["==> CLI", "error: updating the CLI: checksum mismatch for devmachine_0.8.0.tar.gz"]
+        cliUpdater.failure = CLIUpdateError.exited(1)
+        let updates = await appAndToolsBehind(installed: "0.7.23", packages: false)
+
+        await updates.updateAll()
+
+        guard case .failed(let state) = updates.toolsStep else { return XCTFail("\(updates.toolsStep)") }
+        XCTAssertEqual(state.cause, "updating the CLI: checksum mismatch for devmachine_0.8.0.tar.gz")
+        guard case .failed(let cardState) = updates.cliPhase else { return XCTFail("\(updates.cliPhase)") }
+        XCTAssertEqual(state, cardState)
+        XCTAssertTrue(installer.installed.isEmpty)
+        XCTAssertTrue(relaunched.isEmpty)
+        XCTAssertEqual(updates.dialogSteps, UnifiedUpdateSteps(tools: .failed, app: .waiting, relaunch: .waiting))
+
+        await updates.updateOnlyTheApp()
+
+        XCTAssertEqual(cliUpdater.runs, 1)
+        XCTAssertEqual(updates.toolsStep, .bypassed)
+        XCTAssertEqual(installer.installed, ["v0.1.3"])
+        XCTAssertEqual(relaunched.count, 1)
+        XCTAssertEqual(updates.dialogSteps.tools, .skipped)
+    }
+
+    func testAnOldCLIShowsTheCommandInStepOneAndRunsNothing() async {
+        let updates = await appAndToolsBehind(installed: "0.7.22", packages: false)
+        let command = updates.cliNotice?.command
+
+        await updates.updateAll()
+
+        XCTAssertNotNil(command)
+        XCTAssertEqual(updates.toolsStep, .needsManualUpdate(command ?? ""))
+        XCTAssertEqual(cliUpdater.runs, 0)
+        XCTAssertTrue(installer.installed.isEmpty)
+        XCTAssertTrue(relaunched.isEmpty)
+        XCTAssertEqual(updates.dialogSteps.tools, .failed)
+    }
+
+    func testAnUnknownFlagInStepOneShowsTheCommand() async {
+        cliUpdater.lines = ["error: unknown flag: --cli-only"]
+        cliUpdater.failure = CLIUpdateError.exited(1)
+        let updates = await appAndToolsBehind(installed: "0.7.23", packages: false)
+
+        await updates.updateAll()
+
+        guard case .needsManualUpdate = updates.toolsStep else { return XCTFail("\(updates.toolsStep)") }
+        XCTAssertTrue(installer.installed.isEmpty)
+    }
+
+    func testOnlyPackagesBehindRunsThePackagesCommandBeforeTheApp() async {
+        cliUpdater.stdout = Self.pinnedReport
+        outdated.answer(Self.newerPackages)
+        cliOutput = "0.7.31"
+        serve(app: "v0.1.3", cli: "v0.7.31")
+        let updates = controller()
+        await updates.check(userInitiated: false)
+        XCTAssertNil(updates.cliNotice)
+
+        await updates.updateAll()
+
+        XCTAssertEqual(cliUpdater.commands, [.packagesOnly])
+        XCTAssertEqual(updates.toolsStep, .done)
+        XCTAssertEqual(installer.installed, ["v0.1.3"])
+    }
+
+    func testAPackagesFailureInStepOneLeavesTheAppAlone() async {
+        cliUpdater.lines = ["==> Packages", "error: pinning the packages: no route to host"]
+        cliUpdater.failure = CLIUpdateError.exited(1)
+        outdated.answer(Self.newerPackages)
+        cliOutput = "0.7.31"
+        serve(app: "v0.1.3", cli: "v0.7.31")
+        let updates = controller()
+        await updates.check(userInitiated: false)
+
+        await updates.updateAll()
+
+        guard case .failed(let state) = updates.toolsStep else { return XCTFail("\(updates.toolsStep)") }
+        XCTAssertEqual(state.cause, "pinning the packages: no route to host")
+        XCTAssertTrue(installer.installed.isEmpty)
+    }
+
+    func testAHomebrewAppStillUpgradesThroughBrewAfterStepOne() async {
+        cliUpdater.stdout = Self.cliAndPackagesReport
+        let updates = await appAndToolsBehind(method: .homebrew(brew: "/opt/homebrew/bin/brew"))
+        let cliUpdater = cliUpdater!
+        var cliRunsAtUpgrade: [Int] = []
+        homebrew.onUpgrade = { cliRunsAtUpgrade.append(cliUpdater.runs) }
+
+        await updates.updateAll()
+
+        XCTAssertEqual(cliRunsAtUpgrade, [1])
+        XCTAssertEqual(homebrew.runs, ["/opt/homebrew/bin/brew"])
+        XCTAssertTrue(installer.installed.isEmpty)
+        XCTAssertEqual(relaunched.count, 1)
+    }
+
+    func testAnUnsignedBuildRunsStepOneButNeverInstalls() async {
+        cliUpdater.stdout = Self.cliAndPackagesReport
+        let updates = await appAndToolsBehind(runningTeam: nil)
+        XCTAssertFalse(updates.canInstallInPlace)
+
+        let proceed = await updates.updateTools()
+
+        XCTAssertTrue(proceed)
+        XCTAssertEqual(cliUpdater.commands, [.noMachines])
+        XCTAssertTrue(installer.installed.isEmpty)
+        XCTAssertTrue(relaunched.isEmpty)
+    }
+
+    func testStepOneDoesNotLeaveTheCardsDoneStateBehind() async {
+        cliUpdater.stdout = Self.cliAndPackagesReport
+        let updates = await appAndToolsBehind(runningTeam: nil)
+
+        _ = await updates.updateTools()
+        updates.later()
+
+        XCTAssertFalse(updates.showsCLIBanner)
+        XCTAssertFalse(updates.showsPackagesBanner)
+    }
+
+    func testDemoModeRefusesEveryStep() async {
+        outdated.answer(Self.newerPackages)
+        cliOutput = "0.7.23"
+        serve(app: "v0.1.3", cli: "v0.8.0")
+        let updates = controller(current: nil)
+        await updates.check(userInitiated: true)
+
+        await updates.updateAll()
+        await updates.updateOnlyTheApp()
+        let proceed = await updates.updateTools()
+        await updates.updateCLI()
+        await updates.updatePackages()
+
+        XCTAssertFalse(proceed)
+        XCTAssertEqual(cliUpdater.runs, 0)
+        XCTAssertTrue(installer.installed.isEmpty)
+        XCTAssertTrue(homebrew.runs.isEmpty)
+        XCTAssertTrue(relaunched.isEmpty)
+        XCTAssertEqual(updates.toolsStep, .idle)
+    }
+
+    func testEveryFinishedToolsUpdateAsksForARecheck() async {
+        cliUpdater.stdout = Self.cliAndPackagesReport
+        let updates = await cliNoticeFor(installed: "0.7.31")
+        await updates.updateCLI()
+        XCTAssertEqual(rechecks, 1)
+
+        cliUpdater.failure = CLIUpdateError.exited(1)
+        let failing = await packagesNoticeFor()
+        await failing.updatePackages()
+        XCTAssertEqual(rechecks, 2)
+
+        cliUpdater.failure = nil
+        cliUpdater.stdout = Self.pinnedReport
+        await failing.updatePackages()
+        XCTAssertEqual(rechecks, 3)
+
+        let old = await cliNoticeFor(installed: "0.7.22")
+        await old.updateCLI()
+        XCTAssertEqual(rechecks, 3)
     }
 
     func testTurningAutomaticChecksOffIsSaved() {
