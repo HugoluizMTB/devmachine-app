@@ -158,7 +158,7 @@ struct MachineSettingsRow: View {
     private var sitesLine: some View {
         if !sites.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: m.space.sm) {
-                label("Published apps")
+                label("Publish")
                 FlowLayout(spacing: DMSpace.xs, rowSpacing: DMSpace.xs) {
                     ForEach(sites) { site in
                         DMKindLabel(text: site.via.map { "\(site.host) via \($0)" } ?? site.host)

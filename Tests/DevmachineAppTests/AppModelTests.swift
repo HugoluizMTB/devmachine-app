@@ -819,6 +819,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.activePage)
     }
 
+    func testOpenSettingsDNSProvidersLandsOnThatSection() {
+        let model = AppModel(services: fixtureServices())
+        model.openSettings(.dnsProviders)
+        XCTAssertEqual(model.activePage, .setup)
+        XCTAssertEqual(model.requestedSettingsSection, .dnsProviders)
+    }
+
     func testAddAMachineFromSettingsReturnsToSettingsOnMachines() {
         let model = AppModel(services: fixtureServices())
         model.openSettings(.machines)

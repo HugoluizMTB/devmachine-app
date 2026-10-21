@@ -20,6 +20,9 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
     var declared: [String] = []
     var providers = #"{"providers":[]}"#
     var secretFails = false
+    var removeFails = false
+    /// Other machines the configuration also gives each package.
+    var alsoOn: [String: [String]] = [:]
     /// A CLI 0.7.27+ reports kinds and credentials; its hostinger secret is
     /// named apart from the package, to prove the name is read.
     var reportsKinds = false
@@ -50,7 +53,9 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
         let declared = self.declared
         let providers = self.providers
         let secretFails = self.secretFails
+        let removeFails = self.removeFails
         let reportsKinds = self.reportsKinds
+        let alsoOn = self.alsoOn
         lock.unlock()
         switch args {
         case ["--format", "json", "machines", "list"]:
@@ -60,7 +65,10 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
         case ["--format", "json", "config", "show"]:
             return (#"{"machines":[],"workspaces":[],"domain":"example.com"}"#, "", 0)
         case ["--format", "json", "packages", "list"]:
-            let on = { (name: String) in declared.contains(name) ? #"["machine box"]"# : "[]" }
+            let on = { (name: String) -> String in
+                let targets = (declared.contains(name) ? ["machine box"] : []) + (alsoOn[name] ?? [])
+                return "[" + targets.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+            }
             if reportsKinds {
                 return (#"""
                 {"packages":[
@@ -85,6 +93,12 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
         case ["packages", "add", "hostinger", "--machine", "box", "--yes"]:
             lock.withLock { self.declared.append("hostinger") }
             return ("added hostinger to machine box\n", "", 0)
+        case ["packages", "rm", "hostinger", "--machine", "box", "--yes"]:
+            if removeFails { return ("", "error: hostinger is not installed on box\n", 1) }
+            lock.withLock { self.declared.removeAll { $0 == "hostinger" } }
+            return ("removed hostinger from machine box\n", "", 0)
+        case ["secrets", "rm", "hostinger"], ["secrets", "rm", "hostinger-api"]:
+            return ("", "", 0)
         case ["secrets", "set", "hostinger", "--stdin"], ["secrets", "set", "hostinger-api", "--stdin"]:
             return secretFails ? ("", "error: the keychain is locked\n", 1) : ("", "", 0)
         case ["machines", "edit", "box", "--set", "hostinger.zones=[example.com, example.net]", "--yes"]:
@@ -101,6 +115,7 @@ private final class FakeSyncRunner: MachineJobRunning, @unchecked Sendable {
     private let lock = NSLock()
     private var storedCalls: [[String]] = []
     var status: Int32 = 0
+    var failFirstRuns = 0
     var onRun: ([String]) -> Void = { _ in }
 
     var calls: [[String]] { lock.withLock { storedCalls } }
@@ -108,9 +123,14 @@ private final class FakeSyncRunner: MachineJobRunning, @unchecked Sendable {
     func run(arguments: [String], output: @escaping @Sendable (String) -> Void) async throws -> Int32 {
         lock.withLock { storedCalls.append(arguments) }
         output("ran \(arguments.first ?? "")")
-        if status != 0 { output("error: 1 task(s) failed on box: exit status 2") }
+        if status != 0 || lock.withLock({ failFirstRuns > 0 }) { output("error: 1 task(s) failed on box: exit status 2") }
         onRun(arguments)
-        return status
+        let failing = lock.withLock { () -> Bool in
+            guard failFirstRuns > 0 else { return false }
+            failFirstRuns -= 1
+            return true
+        }
+        return failing ? 1 : status
     }
 }
 
@@ -144,6 +164,21 @@ final class DNSSetupStoreTests: XCTestCase {
         store.refresh()
         try await eventually { store.dnsSetup.state != .unknown }
         return store
+    }
+
+    func testAJobOnOnePackageLeavesTheOtherAlone() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["cloudflare"]
+        cli.providers = #"{"providers":[{"name":"cloudflare","zones":["example.com"]}]}"#
+        let store = try await loadedStore(cli)
+        XCTAssertEqual(store.dnsSetup.stateOf("cloudflare"), .ready)
+        XCTAssertEqual(store.dnsSetup.stateOf("hostinger"), .notInstalled)
+
+        await store.dnsSetup.install("hostinger", token: "tok-1")
+
+        XCTAssertEqual(store.dnsSetup.stateOf("hostinger"), .notSynced)
+        XCTAssertEqual(store.dnsSetup.stateOf("cloudflare"), .ready)
+        XCTAssertEqual(store.dnsSetup.state, .ready)
     }
 
     func testAServerWithNoProviderShowsTheProvidersOnOffer() async throws {
@@ -336,6 +371,88 @@ final class DNSSetupStoreTests: XCTestCase {
         XCTAssertEqual(center.jobs.count, 1)
     }
 
+    func testAddAndSaveInstallsThenSyncsAndPushes() async throws {
+        let cli = DNSSetupCLIRunner()
+        let sync = FakeSyncRunner()
+        sync.onRun = {
+            if $0.first == "credentials" {
+                cli.set { $0.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"# }
+            }
+        }
+        let store = try await loadedStore(cli, sync: sync)
+
+        await store.dnsSetup.installAndSync("hostinger", token: "tok-1")
+
+        try await eventually { store.dnsSetup.stateOf("hostinger") == .ready }
+        XCTAssertEqual(sync.calls, [
+            ["sync", "--machine", "box", "--tags", "hostinger", "--yes"],
+            ["credentials", "push", "--machine", "box", "--yes"],
+        ])
+    }
+
+    func testAddAndSaveSyncsOnTheInstallsOutcomeEvenWhenTheProviderStillAnswers() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"#
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync)
+        XCTAssertFalse(store.dnsSetup.isDeclared("hostinger"))
+
+        await store.dnsSetup.installAndSync("hostinger", token: "tok-1")
+
+        try await eventually { sync.calls.count == 2 }
+        XCTAssertEqual(sync.calls.first, ["sync", "--machine", "box", "--tags", "hostinger", "--yes"])
+    }
+
+    func testAddAndSaveStopsAtTheFailedStepAndSyncsNothing() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.set { $0.secretFails = true }
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync)
+
+        await store.dnsSetup.installAndSync("hostinger", token: "tok-1")
+
+        guard case .failed(.saveToken, _, _) = store.dnsSetup.stateOf("hostinger") else {
+            return XCTFail("\(store.dnsSetup.stateOf("hostinger"))")
+        }
+        XCTAssertTrue(sync.calls.isEmpty)
+    }
+
+    func testAddAndSaveOnAnOldCLISavesAndSyncsNothing() async throws {
+        let cli = DNSSetupCLIRunner()
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync, canRunSync: false)
+
+        await store.dnsSetup.installAndSync("hostinger", token: "tok-1")
+
+        XCTAssertEqual(store.dnsSetup.stateOf("hostinger"), .notSynced)
+        XCTAssertTrue(sync.calls.isEmpty)
+    }
+
+    func testSaveTokenAndSyncPushesTheNewToken() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync)
+
+        await store.dnsSetup.saveTokenAndSync("hostinger", token: "tok-2")
+
+        try await eventually { sync.calls.count == 2 }
+        XCTAssertEqual(sync.calls.first, ["sync", "--machine", "box", "--tags", "hostinger", "--yes"])
+        XCTAssertEqual(sync.calls.last, ["credentials", "push", "--machine", "box", "--yes"])
+    }
+
+    func testSaveTokenAndSyncSyncsNothingWhenTheTokenFails() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.set { $0.secretFails = true }
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync)
+
+        await store.dnsSetup.saveTokenAndSync("hostinger", token: "tok-2")
+
+        XCTAssertTrue(sync.calls.isEmpty)
+    }
+
     func testAnOldCLINeverSyncsFromTheApp() async throws {
         let cli = DNSSetupCLIRunner()
         cli.declared = ["hostinger"]
@@ -430,5 +547,123 @@ final class DNSSetupStoreTests: XCTestCase {
         await store.dnsSetup.saveZones("hostinger", zones: "example.com]: x")
 
         XCTAssertFalse(cli.calls.contains { $0.first == "machines" && $0.contains("edit") })
+    }
+
+    func testRemoveRunsPackagesRmThenAFullSyncThenSecretsRm() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"#
+        let sync = FakeSyncRunner()
+        sync.onRun = { _ in cli.set { $0.providers = #"{"providers":[]}"#; $0.declared = [] } }
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
+
+        await store.dnsSetup.remove("hostinger")
+
+        try await eventually { store.dnsSetup.stateOf("hostinger") == .notInstalled }
+        XCTAssertTrue(cli.calls.contains(["packages", "rm", "hostinger", "--machine", "box", "--yes"]))
+        XCTAssertEqual(sync.calls, [["sync", "--machine", "box", "--yes"]])
+        XCTAssertTrue(cli.calls.contains(["secrets", "rm", "hostinger"]))
+        let rm = cli.calls.firstIndex(of: ["secrets", "rm", "hostinger"])!
+        XCTAssertGreaterThan(rm, cli.calls.firstIndex(of: ["packages", "rm", "hostinger", "--machine", "box", "--yes"])!)
+        XCTAssertEqual(center.jobs.first?.plan.title, "Remove hostinger from box")
+        XCTAssertEqual(store.dnsSetup.state, .noneInstalled)
+    }
+
+    func testAFailedPackagesRmRunsNoSyncAndNoSecretsRm() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.removeFails = true
+        let sync = FakeSyncRunner()
+        let store = try await loadedStore(cli, sync: sync)
+
+        await store.dnsSetup.remove("hostinger")
+
+        guard case let .failed(step, _, details) = store.dnsSetup.stateOf("hostinger") else { return XCTFail() }
+        XCTAssertEqual(step, .remove)
+        XCTAssertTrue(details.contains("not installed on box"))
+        XCTAssertEqual(sync.calls, [])
+        XCTAssertFalse(cli.calls.contains(["secrets", "rm", "hostinger"]))
+    }
+
+    func testRemoveWhileAJobRunsStartsNothing() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        let center = MachineJobCenter(runner: FakeSyncRunner(), successSeconds: 60)
+        let store = try await loadedStore(cli, center: center)
+        XCTAssertNotNil(store.dnsSetup.sync("hostinger"))
+
+        await store.dnsSetup.remove("hostinger")
+
+        XCTAssertFalse(cli.calls.contains { $0.first == "packages" && $0[1] == "rm" })
+        XCTAssertEqual(center.jobs.count, 1)
+    }
+
+    func testARetriedRemovalSyncStillRemovesTheSecret() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"#
+        let sync = FakeSyncRunner()
+        sync.failFirstRuns = 1
+        sync.onRun = { _ in cli.set { $0.providers = #"{"providers":[]}"#; $0.declared = [] } }
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
+
+        await store.dnsSetup.remove("hostinger")
+        try await eventually {
+            if case .failed(.sync, _, _) = store.dnsSetup.stateOf("hostinger") { return true }
+            return false
+        }
+        XCTAssertFalse(cli.calls.contains(["secrets", "rm", "hostinger"]))
+        XCTAssertTrue(store.dnsSetup.retrySync())
+
+        try await eventually { store.dnsSetup.stateOf("hostinger") == .notInstalled }
+        XCTAssertEqual(cli.calls.filter { $0 == ["secrets", "rm", "hostinger"] }.count, 1)
+        XCTAssertEqual(sync.calls.count, 2)
+    }
+
+    func testRemoveKeepsTheSecretAnotherMachineUses() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.alsoOn = ["hostinger": ["machine edge"]]
+        cli.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"#
+        let sync = FakeSyncRunner()
+        sync.onRun = { _ in cli.set { $0.providers = #"{"providers":[]}"#; $0.declared = [] } }
+        let store = try await loadedStore(cli, sync: sync)
+        XCTAssertEqual(store.dnsSetup.machineKeepingSecret(of: "hostinger"), "edge")
+
+        await store.dnsSetup.remove("hostinger")
+
+        try await eventually { store.dnsSetup.stateOf("hostinger") == .notInstalled }
+        XCTAssertTrue(cli.calls.contains(["packages", "rm", "hostinger", "--machine", "box", "--yes"]))
+        XCTAssertEqual(sync.calls, [["sync", "--machine", "box", "--yes"]])
+        XCTAssertFalse(cli.calls.contains { $0.first == "secrets" && $0.dropFirst().first == "rm" })
+    }
+
+    func testRemoveAfterAFailedSyncSkipsPackagesRm() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"#
+        let sync = FakeSyncRunner()
+        sync.failFirstRuns = 1
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
+
+        await store.dnsSetup.remove("hostinger")
+        try await eventually {
+            if case .failed(.sync, _, _) = store.dnsSetup.stateOf("hostinger") { return true }
+            return false
+        }
+        store.dnsSetup.dismissFailure()
+        try await eventually { !store.dnsSetup.isDeclared("hostinger") }
+        XCTAssertEqual(store.dnsSetup.stateOf("hostinger"), .ready)
+        sync.onRun = { _ in cli.set { $0.providers = #"{"providers":[]}"#; $0.declared = [] } }
+
+        await store.dnsSetup.remove("hostinger")
+
+        try await eventually { store.dnsSetup.stateOf("hostinger") == .notInstalled }
+        XCTAssertEqual(cli.calls.filter { $0.first == "packages" && $0.dropFirst().first == "rm" }.count, 1)
+        XCTAssertEqual(sync.calls, [["sync", "--machine", "box", "--yes"], ["sync", "--machine", "box", "--yes"]])
+        XCTAssertEqual(cli.calls.filter { $0 == ["secrets", "rm", "hostinger"] }.count, 1)
     }
 }

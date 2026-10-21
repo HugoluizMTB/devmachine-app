@@ -542,6 +542,27 @@ struct DevmachineCLI: Sendable {
         try requireSuccess(result)
     }
 
+    /// Drops `package` from `machine` in the configuration on this Mac.
+    /// The machine keeps it until a full sync.
+    func removePackage(_ package: String, machine: String) throws {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: DNSProviderSetup.removeArguments(package: package, machine: machine),
+            environment: environment()
+        )
+        try requireSuccess(result)
+    }
+
+    /// Forgets a secret in the CLI's own store.
+    func removeSecret(_ name: String) throws {
+        let result = try runner.runCapturing(
+            executable: executable,
+            args: DNSProviderSetup.secretRemoveArguments(credential: name),
+            environment: environment()
+        )
+        try requireSuccess(result)
+    }
+
     /// Writes a package setting into the machine's `settings:` in the
     /// configuration on this Mac (CLI 0.7.27+); `sync` applies it.
     func setZones(setting: String, machine: String, zones: [String]) throws {

@@ -225,9 +225,23 @@ final class CommandRegistryTests: XCTestCase {
                 .first?.commands.first?.id
         }
         XCTAssertEqual(top("dns"), "go.subdomains")
+        XCTAssertEqual(top("providers"), "settings.dnsProviders")
+        XCTAssertEqual(top("dns providers"), "settings.dnsProviders")
+        XCTAssertEqual(top("packages"), "settings.packages")
+        XCTAssertEqual(top("sync"), "go.workspaces")
+        XCTAssertEqual(top("account"), "go.workspaces")
+        XCTAssertEqual(top("check"), "action.check-updates")
+        XCTAssertEqual(top("help"), "action.docs")
         XCTAssertEqual(top("caddy"), "go.subdomains")
         XCTAssertEqual(top("ram"), "go.stats")
         XCTAssertEqual(top("prefs"), "go.settings")
+    }
+
+    func testThePageIsCalledPublish() {
+        let all = commands(context(machines: ["main", "staging"]))
+        XCTAssertEqual(all.first { $0.id == "go.subdomains" }?.title, "Publish")
+        XCTAssertEqual(all.first { $0.id == "machine.staging.subdomains" }?.title, "Publish on staging")
+        XCTAssertFalse(all.contains { $0.title.contains("Published apps") })
     }
 
     func testCheckForUpdatesIsAlwaysThere() {

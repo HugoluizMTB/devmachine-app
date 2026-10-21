@@ -21,8 +21,17 @@ private struct SetupPageLocator: ExecutableLocating {
 }
 
 final class SetupPageTests: XCTestCase {
+    func testDNSProvidersHasItsWords() {
+        XCTAssertEqual(SettingsSection.dnsProviders.title, "DNS providers")
+        XCTAssertEqual(SettingsSection.dnsProviders.systemImage, "globe")
+        XCTAssertEqual(
+            SettingsSection.dnsProviders.subtitle,
+            "Which registrar answers for your domain names, per machine, and the tokens they use.")
+    }
+
     func testThePackagesAndWorkspacesSectionsHaveNoSaveFooter() {
         XCTAssertFalse(SetupPage.showsFooter(for: .packages))
+        XCTAssertFalse(SetupPage.showsFooter(for: .dnsProviders), "its forms confirm and save each change")
         XCTAssertFalse(SetupPage.showsFooter(for: .workspaces), "its switches save at once, its flows have buttons")
         XCTAssertTrue(SetupPage.showsFooter(for: .general))
     }
@@ -194,6 +203,6 @@ final class SetupPageWallpaperTests: XCTestCase {
     func testSettingsHasGeneralAppearanceAndHealthCheckButNoTerminalPreviewsOrAdvanced() {
         XCTAssertEqual(
             SettingsSection.allCases.map(\.title),
-            ["General", "Machines", "Workspaces", "Packages", "Coding agents", "Chats", "Shares", "Appearance", "Health check", "About"])
+            ["General", "Machines", "Workspaces", "Packages", "DNS providers", "Coding agents", "Chats", "Shares", "Appearance", "Health check", "About"])
     }
 }

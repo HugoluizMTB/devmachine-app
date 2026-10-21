@@ -68,4 +68,28 @@ final class SubdomainsViewRenderTests: XCTestCase {
 
         XCTAssertEqual(image.size.width, 800)
     }
+
+    func testAMachineWithNoProviderAndNoSitesRendersTheChooser() throws {
+        let suiteName = "dev.devmachine.app.subdomains.render.tests3"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = CaddyStore()
+        store.show(
+            machines: [CLIMachine(name: "box", isSelf: false)],
+            states: ["box": MachineSitesState(rows: [], hasLoaded: true)],
+            selected: "box")
+        store.dnsSetup.seedDemo(
+            machine: "box",
+            packages: [CLIPackage(name: "cloudflare", scope: "machine", installedOn: [], summary: "DNS zones on Cloudflare.")],
+            answers: [])
+
+        let view = SubdomainsView()
+            .environmentObject(AppModel(store: SessionStore(runner: SilentRunner())))
+            .environmentObject(store)
+            .environmentObject(SettingsStore(defaults: defaults))
+            .frame(width: 900, height: 600)
+
+        XCTAssertEqual(try XCTUnwrap(ImageRenderer(content: view).nsImage).size.height, 600)
+    }
 }

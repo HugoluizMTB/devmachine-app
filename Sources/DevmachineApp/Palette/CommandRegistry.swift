@@ -110,7 +110,7 @@ enum CommandRegistry {
                 action: .showPage(.scheduled))),
             Entry(
                 command: PaletteCommand(
-                    id: "go.subdomains", title: "Published apps", subtitle: "", category: .goTo,
+                    id: "go.subdomains", title: "Publish", subtitle: "", category: .goTo,
                     systemImage: "globe", keywords: subdomainKeywords, action: .showPage(.subdomains)),
                 isAvailable: { $0.hasCaddyMachine }),
             Entry(command: PaletteCommand(
@@ -373,7 +373,7 @@ enum CommandRegistry {
                 action: .hostKey(machine: machine)))
             if context.hasCaddyMachine {
                 list.append(PaletteCommand(
-                    id: "machine.\(machine).subdomains", title: "Published apps on \(machine)",
+                    id: "machine.\(machine).subdomains", title: "Publish on \(machine)",
                     subtitle: "", category: .machine, systemImage: "globe",
                     keywords: [machine] + subdomainKeywords, action: .subdomains(machine: machine)))
                 list.append(PaletteCommand(

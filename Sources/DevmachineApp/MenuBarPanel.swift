@@ -215,7 +215,7 @@ struct MenuBarPanel: View {
                 openWindow(id: "main")
                 model.showPage(.scheduled)
             }
-            footerButton("globe", help: "Published apps") {
+            footerButton("globe", help: "Publish") {
                 openWindow(id: "main")
                 model.showPage(.subdomains)
             }

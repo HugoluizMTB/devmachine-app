@@ -27,11 +27,17 @@ enum PaletteRanker {
     }
 
     static let chatsBonus = 40
+    /// Lets a page named by a keyword beat a Settings section whose title starts with it.
+    static let exactKeywordBonus = 400
 
     /// In Chats mode, the groups that start or open a chat come first, and
     /// inside a group so do those commands.
     static func isChatCommand(_ command: PaletteCommand) -> Bool {
         command.category == .chats || command.id.hasPrefix("action.new-chat")
+    }
+
+    private static func hasKeyword(_ command: PaletteCommand, equalTo wanted: String) -> Bool {
+        command.keywords.contains { $0.lowercased() == wanted }
     }
 
     private static func emptyQuerySections(_ commands: [PaletteCommand], mru: CommandMRU) -> [PaletteSection] {
@@ -49,7 +55,9 @@ enum PaletteRanker {
     private static func matchedSections(
         _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String?, inChats: Bool
     ) -> [PaletteSection] {
-        let scored = commands.compactMap { command -> (PaletteCommand, Int)? in
+        let wanted = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let titleIsQuery = commands.contains { $0.title.lowercased() == wanted }
+        let matched = commands.compactMap { command -> (PaletteCommand, Int)? in
             let fields = [command.title, command.subtitle, command.keywords.joined(separator: " ")]
             guard let score = FuzzyMatch.score(query, fields: fields) else { return nil }
             var total = score + mru.boost(for: command.id)
@@ -59,6 +67,12 @@ enum PaletteRanker {
                 total += currentWorkspaceBonus
             }
             return (command, total)
+        }
+        let settingsLead = matched.max { $0.1 < $1.1 }?.0.category == .settings
+        let scored = matched.map { command, total -> (PaletteCommand, Int) in
+            let bonus = !titleIsQuery && settingsLead && command.category == .goTo
+                && hasKeyword(command, equalTo: wanted)
+            return (command, bonus ? total + exactKeywordBonus : total)
         }
         let groups = Dictionary(grouping: scored, by: { $0.0.category })
         return groups

@@ -52,10 +52,18 @@ enum DemoDNSWalk {
         switch id {
         case "dns-none": DemoData.dnsScenario = .noneInstalled
         case "dns-no-zones": DemoData.dnsScenario = .noZones
+        case "dns-chooser-godaddy": DemoData.dnsScenario = .noneInstalled
+        case "dns-settings": DemoData.dnsScenario = .mixed
         default: DemoData.dnsScenario = .notSynced
         }
         DemoSnapshots.subdomainsInitialTab = .sites
-        model.showPage(.subdomains)
+        if id == "dns-chooser-godaddy" { DemoSnapshots.dnsChooserPackage = "godaddy" }
+        if id == "dns-settings" {
+            DemoSnapshots.setupInitialSection = .dnsProviders
+            model.showPage(.setup)
+        } else {
+            model.showPage(.subdomains)
+        }
         try? await Task.sleep(nanoseconds: 300_000_000)
         switch id {
         case "dns-syncing":
@@ -75,6 +83,8 @@ enum DemoDNSWalk {
     /// The walk leaves the page as every other screen expects it.
     static func reset() {
         DemoData.dnsScenario = .ready
+        DemoSnapshots.dnsChooserPackage = nil
+        DemoSnapshots.setupInitialSection = .general
         DemoDNSSyncRunner.outcome = .succeeds
         AppModel.shared?.jobs.seedDemo([])
     }

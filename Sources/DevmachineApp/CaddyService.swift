@@ -115,6 +115,14 @@ struct CaddyService: Sendable {
         try resolvedCLI().setSecret(name, value: value)
     }
 
+    func removePackage(_ package: String, machine: String) throws {
+        try resolvedCLI().removePackage(package, machine: machine)
+    }
+
+    func removeSecret(_ name: String) throws {
+        try resolvedCLI().removeSecret(name)
+    }
+
     func dnsRecords(machine: String, provider: String, zone: String) throws -> [DNSRecordRow] {
         try resolvedCLI().dnsList(machine: machine, provider: provider, zone: zone)
     }

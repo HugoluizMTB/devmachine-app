@@ -31,6 +31,7 @@ public enum DNSSetupStep: Equatable, Sendable {
     case saveZones
     case saveToken
     case sync
+    case remove
 }
 
 /// What the person started from the card. `finished` keeps nothing on
@@ -64,6 +65,37 @@ public enum DNSSetupState: Equatable, Sendable {
 
     public var showsCard: Bool {
         self != .unknown && self != .ready
+    }
+}
+
+/// Where one DNS provider package stands on a machine, apart from the
+/// others on it.
+public enum DNSProviderState: Equatable, Sendable {
+    case notInstalled
+    case tokenMissing(error: String)
+    case notSynced
+    case noZones
+    case ready
+    case working(DNSSetupStep)
+    case failed(DNSSetupStep, cause: String, details: String)
+
+    public var label: String {
+        switch self {
+        case .notInstalled: "Not installed"
+        case .tokenMissing: "Token missing"
+        case .notSynced: "Not synced"
+        case .noZones: "No zones"
+        case .ready: "Ready"
+        case .working: "Working…"
+        case .failed: "Failed"
+        }
+    }
+
+    public var isInstalled: Bool {
+        switch self {
+        case .notInstalled, .working, .failed: false
+        case .tokenMissing, .notSynced, .noZones, .ready: true
+        }
     }
 }
 
@@ -110,12 +142,13 @@ public enum DNSProviderSetup {
     /// `declared` is the DNS packages the configuration asks for on the
     /// machine (`packages list`), `answers` what `dns providers` said (it
     /// lists only what a sync applied). A nil input is one that could not be
-    /// read. Only a provider answering with a zone makes the machine ready.
+    /// read. Only a provider answering with a zone makes the machine ready,
+    /// and a job on another provider never takes that away.
     public static func evaluate(
         declared: [String]?, answers: [DNSProviderAnswer]?, job: DNSSetupJob?
     ) -> DNSSetupState {
-        if case .running(let step) = job { return .working(step) }
         if answers?.contains(where: \.isAnswering) == true { return .ready }
+        if case .running(let step) = job { return .working(step) }
         if case let .failed(step, cause, details) = job { return .failed(step, cause: cause, details: details) }
         if declared == nil && answers == nil { return .unknown }
 
@@ -128,6 +161,21 @@ public enum DNSProviderSetup {
         }
         if let error = answer.error { return .notSynced(provider: provider, problem: .providerError(error)) }
         return .notSynced(provider: provider, problem: .noZones)
+    }
+
+    /// The state of one package. `job` is the job running for this package
+    /// only, never one that runs for another.
+    public static func evaluate(
+        package: String, declared: [String]?, answers: [DNSProviderAnswer]?, job: DNSSetupJob?
+    ) -> DNSProviderState {
+        if case .running(let step) = job { return .working(step) }
+        if case let .failed(step, cause, details) = job { return .failed(step, cause: cause, details: details) }
+        if let answer = answers?.first(where: { $0.name == package }) {
+            if !answer.zones.isEmpty { return .ready }
+            if let error = answer.error { return .tokenMissing(error: error) }
+            return .noZones
+        }
+        return declared?.contains(package) == true ? .notSynced : .notInstalled
     }
 
     /// Edits the configuration on this Mac only; no machine is touched.
@@ -157,6 +205,20 @@ public enum DNSProviderSetup {
             ["sync", "--machine", machine, "--tags", package, "--yes"],
             ["credentials", "push", "--machine", machine, "--yes"],
         ]
+    }
+
+    public static func removeArguments(package: String, machine: String) -> [String] {
+        ["packages", "rm", package, "--machine", machine, "--yes"]
+    }
+
+    /// No `--tags`: only a full sync rewrites the machine's lock, which is
+    /// what `dns providers` reads, so a removed provider stops answering.
+    public static func fullSyncSteps(machine: String) -> [[String]] {
+        [["sync", "--machine", machine, "--yes"]]
+    }
+
+    public static func secretRemoveArguments(credential: String) -> [String] {
+        ["secrets", "rm", credential]
     }
 
     /// The same steps for a terminal, for a CLI too old to run them from here.

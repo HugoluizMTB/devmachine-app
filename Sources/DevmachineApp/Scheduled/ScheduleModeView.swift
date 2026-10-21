@@ -135,8 +135,8 @@ struct ScheduleSidebar: View {
                 DMIconButton(
                     systemImage: "globe", size: DMMetrics.baseFontSize, hitSize: DMHitSize.footer, fillsWidth: true
                 ) { model.showPage(.subdomains) }
-                    .help("Published apps")
-                    .accessibilityLabel("Published apps")
+                    .help("Publish")
+                    .accessibilityLabel("Publish")
             }
             DMIconButton(
                 systemImage: "gearshape", size: DMMetrics.baseFontSize, hitSize: DMHitSize.footer, fillsWidth: true

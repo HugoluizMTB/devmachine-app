@@ -31,6 +31,7 @@ struct SubdomainsView: View {
     @State private var selectedTab: SubdomainsTab
     @State private var logsRequest: LogsRequest?
     @State private var confirmRemoveHost: String?
+    @State private var wantsChooser = false
 
     /// `initialTab` only ever differs from `.sites` for the website's demo
     /// screenshots, which need to open straight onto a DNS provider tab.
@@ -49,9 +50,6 @@ struct SubdomainsView: View {
                 machinePicker
             }
             tabsBar
-            if selectedTab == .sites {
-                DNSProviderSetupCard(setup: store.dnsSetup, domain: store.domain)
-            }
             body(for: selectedTab)
         }
         .animation(.easeOut(duration: 0.2), value: showsSkeleton)
@@ -62,6 +60,10 @@ struct SubdomainsView: View {
             openRequestedAdd()
         }
         .onChange(of: model.pendingAddSubdomain) { _, _ in openRequestedAdd() }
+        .onChange(of: store.selectedMachine) { _, _ in wantsChooser = false }
+        .onChange(of: store.dnsSetup.state) { _, state in
+            if state == .ready { wantsChooser = false }
+        }
         .onChange(of: store.dnsProviders) {
             if case .provider(let name) = selectedTab, !store.dnsProviders.contains(name) {
                 selectedTab = .sites
@@ -96,7 +98,7 @@ struct SubdomainsView: View {
 
     private var header: some View {
         HStack(spacing: m.pt(10)) {
-            Text("Published apps")
+            Text("Publish")
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
 
@@ -114,6 +116,11 @@ struct SubdomainsView: View {
             }
             DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { store.refresh() }
                 .help("Refresh")
+            if store.dnsSetup.state == .ready {
+                DMButton("DNS providers", systemImage: "globe", variant: .ghost, size: .small) {
+                    model.openSettings(.dnsProviders)
+                }
+            }
             DMButton("Add app", systemImage: "plus", size: .small) {
                 showAdd = true
             }
@@ -200,8 +207,41 @@ struct SubdomainsView: View {
         }
     }
 
+    private var showsStatus: Bool {
+        store.machinesError != nil || store.selectedState?.errorText != nil
+            || store.notSetUpMessage != nil || store.showsSitesSkeleton
+    }
+
+    private var layout: PublishLayout {
+        PublishLayout.pick(
+            state: store.dnsSetup.state, hasSites: !visibleRows.isEmpty, showsStatus: showsStatus,
+            wantsChooser: wantsChooser)
+    }
+
     @ViewBuilder
     private var sitesBody: some View {
+        switch layout {
+        case .chooser:
+            DNSProviderChooserPage(
+                setup: store.dnsSetup, domain: store.domain, initialPackage: DemoSnapshots.dnsChooserPackage,
+                onBack: visibleRows.isEmpty ? nil : { wantsChooser = false })
+        case .barAndTable:
+            VStack(spacing: 0) {
+                DMBanner(
+                    message: DNSSetupContent.handMadeBar(store.selectedMachine ?? store.dnsSetup.machine ?? ""),
+                    systemImage: "globe", tint: .dmMuted
+                ) {
+                    DMButton("Set up DNS", size: .small) { wantsChooser = true }
+                }
+                sitesStatusOrTable
+            }
+        case .status, .table:
+            sitesStatusOrTable
+        }
+    }
+
+    @ViewBuilder
+    private var sitesStatusOrTable: some View {
         if let err = store.machinesError {
             DMStatusView(kind: .failed(
                 title: "Couldn't read the machines", message: err, retry: { store.refresh() }))
