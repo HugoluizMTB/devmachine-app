@@ -390,22 +390,12 @@ enum CommandRegistry {
         return commands
     }
 
-    /// Typing "dns" opens Published apps, so this section's palette title
-    /// does not start with that word.
-    private static func paletteTitle(_ section: SettingsSection) -> String {
-        section == .dnsProviders ? "Registrar providers" : section.title
-    }
-
-    private static func paletteKeywords(_ section: SettingsSection) -> [String] {
-        section == .dnsProviders ? ["providers", "registrar", "token"] : []
-    }
-
     private static func settingsCommands() -> [PaletteCommand] {
         SettingsSection.allCases.map { section in
             PaletteCommand(
-                id: "settings.\(section.rawValue)", title: paletteTitle(section), subtitle: "Settings",
+                id: "settings.\(section.rawValue)", title: section.title, subtitle: "Settings",
                 category: .settings, systemImage: section.systemImage,
-                keywords: ["settings", "prefs", "preferences", section.subtitle] + paletteKeywords(section),
+                keywords: ["settings", "prefs", "preferences", section.subtitle],
                 action: .openSettings(section))
         }
     }
