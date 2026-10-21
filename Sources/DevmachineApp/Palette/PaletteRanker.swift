@@ -27,9 +27,8 @@ enum PaletteRanker {
     }
 
     static let chatsBonus = 40
-    /// A screen that lists the whole query as a keyword beats another
-    /// command whose title only starts with it ("dns" opens Published apps,
-    /// not Settings → DNS providers).
+    /// Settles a keyword against a title that only starts with the query,
+    /// never against a title that is the query.
     static let exactKeywordBonus = 400
 
     /// In Chats mode, the groups that start or open a chat come first, and
@@ -58,12 +57,13 @@ enum PaletteRanker {
     private static func matchedSections(
         _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String?, inChats: Bool
     ) -> [PaletteSection] {
+        let titleIsQuery = commands.contains { $0.title.lowercased() == query.trimmingCharacters(in: .whitespaces).lowercased() }
         let scored = commands.compactMap { command -> (PaletteCommand, Int)? in
             let fields = [command.title, command.subtitle, command.keywords.joined(separator: " ")]
             guard let score = FuzzyMatch.score(query, fields: fields) else { return nil }
             var total = score + mru.boost(for: command.id)
             if command.category == .session { total += sessionBonus }
-            if command.category == .goTo, hasKeyword(command, equalTo: query) { total += exactKeywordBonus }
+            if !titleIsQuery, command.category == .goTo, hasKeyword(command, equalTo: query) { total += exactKeywordBonus }
             if inChats, isChatCommand(command) { total += chatsBonus }
             if let currentWorkspace, !command.subtitle.isEmpty, command.subtitle == currentWorkspace {
                 total += currentWorkspaceBonus
