@@ -142,12 +142,13 @@ public enum DNSProviderSetup {
     /// `declared` is the DNS packages the configuration asks for on the
     /// machine (`packages list`), `answers` what `dns providers` said (it
     /// lists only what a sync applied). A nil input is one that could not be
-    /// read. Only a provider answering with a zone makes the machine ready.
+    /// read. Only a provider answering with a zone makes the machine ready,
+    /// and a job on another provider never takes that away.
     public static func evaluate(
         declared: [String]?, answers: [DNSProviderAnswer]?, job: DNSSetupJob?
     ) -> DNSSetupState {
-        if case .running(let step) = job { return .working(step) }
         if answers?.contains(where: \.isAnswering) == true { return .ready }
+        if case .running(let step) = job { return .working(step) }
         if case let .failed(step, cause, details) = job { return .failed(step, cause: cause, details: details) }
         if declared == nil && answers == nil { return .unknown }
 

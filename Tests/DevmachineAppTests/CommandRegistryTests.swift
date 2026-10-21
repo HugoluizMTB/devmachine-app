@@ -230,6 +230,8 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(top("packages"), "settings.packages")
         XCTAssertEqual(top("sync"), "go.workspaces")
         XCTAssertEqual(top("account"), "go.workspaces")
+        XCTAssertEqual(top("check"), "action.check-updates")
+        XCTAssertEqual(top("help"), "action.docs")
         XCTAssertEqual(top("caddy"), "go.subdomains")
         XCTAssertEqual(top("ram"), "go.stats")
         XCTAssertEqual(top("prefs"), "go.settings")

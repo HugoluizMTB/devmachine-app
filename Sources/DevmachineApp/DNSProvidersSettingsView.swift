@@ -7,12 +7,9 @@ struct DNSProviderRow: Identifiable, Equatable {
     var id: String { name }
 }
 
-/// Every DNS provider package the release offers, with where it stands on
-/// the machine picked above. Opening a row shows the same form as Publish.
 struct DNSProvidersSettingsView: View {
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var caddy: CaddyStore
-    @EnvironmentObject private var model: AppModel
     @State private var expanded: String?
 
     static let noMachine = "No server with Caddy yet. Add one in Machines, then come back here."

@@ -1858,21 +1858,29 @@ once may fail there.
   attention step carrying the CLI's note.
 
 ## DNS provider setup
-- **A server with caddy and no DNS provider that answers, or a Publish
-  page with no sites, shows the chooser page** (`DNSProviderChooserPage`):
-  one card per provider package, and the form of the chosen one below.
-  With sites, "Set up DNS" opens it and "Back to Publish" leaves it. State
-  is `DNSSetupStore`, from Core `DNSProviderSetup.evaluate`. Without a
-  provider, `expose add` saves the site and only prints the record to make
-  by hand; the page says so. Only `dns providers` answering with a zone
-  ends it: a finished sync that still sees none keeps it on "Run sync". A
-  machine that could not be asked shows no chooser (fails open).
+- **A server with caddy, no DNS provider that answers and no sites on the
+  Publish page shows the chooser page** (`DNSProviderChooserPage`): one
+  card per provider package, and the form of the chosen one below. With
+  sites, a bar says records are made by hand and its "Set up DNS" opens the
+  chooser; "Back to Publish" leaves it. State is `DNSSetupStore`, from Core
+  `DNSProviderSetup.evaluate`. Without a provider, `expose add` saves the
+  site and only prints the record to make by hand; the page says so. Only
+  `dns providers` answering with a zone ends it: a finished sync that still
+  sees none leaves the provider's form showing the problem, with Save token,
+  Push again and Remove. A provider that answers keeps the machine ready
+  while a job runs on it or on another provider. Nothing read at all
+  (`unknown`) shows the table, with no chooser and no bar.
 - **One form, two places.** `DNSProviderForm` is shared by the chooser page
   and Settings → DNS providers (`DNSProvidersSettingsView`), which lists
   every provider package with where it stands on the picked machine.
 - **Remove** (`DNSSetupStore.remove`) drops the package from the machine's
   configuration, runs a full sync as a corner job, then forgets its token.
-  Only a full sync rewrites the lock `dns providers` reads.
+  Only a full sync rewrites the lock `dns providers` reads. A plain secret
+  is one per Mac, so the token stays when another machine still has the
+  package; the confirm names that machine. A package no longer declared
+  that still answers is a removal whose sync failed: its form offers only
+  Remove, which skips `packages rm` and goes on from the sync. Save token
+  and Push again each confirm before they sync.
 - Declared providers come from `packages list` (`installed_on`). A CLI
   that reports `kind`/`credentials` (0.7.27+) is read by `kind == "dns"`
   alone; an older one by the summary "DNS zones on …". The token is stored

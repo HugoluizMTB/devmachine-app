@@ -65,16 +65,41 @@ final class DNSProviderFormTests: XCTestCase {
     }
 
     func testButtonsPerState() {
-        XCTAssertEqual(DNSProviderForm.actions(for: .notInstalled, canRunSync: true), [.addAndSave])
-        XCTAssertEqual(DNSProviderForm.actions(for: .notSynced, canRunSync: true), [.saveToken, .pushAgain, .remove])
+        func actions(_ state: DNSProviderState, canRunSync: Bool = true, declared: Bool = true) -> [DNSProviderFormAction] {
+            DNSProviderForm.actions(for: state, canRunSync: canRunSync, declared: declared)
+        }
+        XCTAssertEqual(actions(.notInstalled, declared: false), [.addAndSave])
+        XCTAssertEqual(actions(.notSynced), [.saveToken, .pushAgain, .remove])
+        XCTAssertEqual(actions(.tokenMissing(error: "e")), [.saveToken, .pushAgain, .remove])
+        XCTAssertEqual(actions(.noZones), [.saveToken, .pushAgain, .remove])
+        XCTAssertEqual(actions(.ready), [.saveToken, .pushAgain, .remove])
+        XCTAssertEqual(actions(.working(.sync)), [])
+        XCTAssertEqual(actions(.failed(.sync, cause: "x", details: "y")), [])
+        XCTAssertEqual(actions(.ready, canRunSync: false), [.saveToken])
+        XCTAssertEqual(actions(.notInstalled, canRunSync: false, declared: false), [.addAndSave])
+    }
+
+    func testAPackageNoLongerDeclaredThatStillAnswersOffersRemoveAlone() {
+        XCTAssertEqual(DNSProviderForm.actions(for: .ready, canRunSync: true, declared: false), [.remove])
+        XCTAssertEqual(DNSProviderForm.actions(for: .noZones, canRunSync: true, declared: false), [.remove])
         XCTAssertEqual(
-            DNSProviderForm.actions(for: .tokenMissing(error: "e"), canRunSync: true), [.saveToken, .pushAgain, .remove])
-        XCTAssertEqual(DNSProviderForm.actions(for: .noZones, canRunSync: true), [.saveToken, .pushAgain, .remove])
-        XCTAssertEqual(DNSProviderForm.actions(for: .ready, canRunSync: true), [.saveToken, .pushAgain, .remove])
-        XCTAssertEqual(DNSProviderForm.actions(for: .working(.sync), canRunSync: true), [])
-        XCTAssertEqual(DNSProviderForm.actions(for: .failed(.sync, cause: "x", details: "y"), canRunSync: true), [])
-        XCTAssertEqual(DNSProviderForm.actions(for: .ready, canRunSync: false), [.saveToken])
-        XCTAssertEqual(DNSProviderForm.actions(for: .notInstalled, canRunSync: false), [.addAndSave])
+            DNSProviderForm.actions(for: .tokenMissing(error: "e"), canRunSync: true, declared: false), [.remove])
+        XCTAssertEqual(DNSProviderForm.actions(for: .ready, canRunSync: false, declared: false), [])
+    }
+
+    func testSaveTokenSaysItSyncsThePackageAlone() {
+        XCTAssertEqual(
+            DNSSetupContent.saveTokenConfirmation("hostinger", machine: "box"),
+            "This saves the token on this Mac, then syncs hostinger alone on box and delivers it.")
+    }
+
+    func testRemoveSaysTheTokenStaysWhenAnotherMachineUsesIt() {
+        let alone = DNSSetupContent.removeConfirmation("hostinger", machine: "box")
+        XCTAssertFalse(alone.contains("stays on this Mac"))
+        let shared = DNSSetupContent.removeConfirmation("hostinger", machine: "box", keptBy: "edge")
+        XCTAssertTrue(shared.hasSuffix(" The token stays on this Mac: edge still uses it."))
+        XCTAssertTrue(shared.contains("runs a full sync on box"))
+        XCTAssertFalse(shared.contains("then deletes its token"))
     }
 
     func testAddAndSaveNeedsAUsableTokenAndValidZones() {
@@ -93,6 +118,7 @@ final class DNSProviderFormTests: XCTestCase {
             ([], .running(.sync), true),
             ([], .failed(.sync, cause: "exit status 2", details: "fatal"), true),
             ([DNSProviderAnswer(name: "hostinger", zones: ["example.com"], error: nil)], nil, true),
+            ([DNSProviderAnswer(name: "hostinger", zones: ["example.com"], error: nil)], nil, false),
         ]
         for item in cases {
             let setup = DNSSetupStore(

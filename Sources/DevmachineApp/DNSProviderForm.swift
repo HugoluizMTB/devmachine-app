@@ -100,10 +100,18 @@ enum DNSSetupContent {
             + " Then it syncs \(package) alone on \(machine) and delivers the token."
     }
 
-    static func removeConfirmation(_ package: String, machine: String) -> String {
-        "This removes \(package) from \(machine) in your configuration, runs a full sync on \(machine) so the "
-            + "lock forgets it, then deletes its token from this Mac. The role files stay under "
-            + "/opt/devmachine/roles/\(package); the zones setting stays in config.yml. Both are harmless."
+    static func saveTokenConfirmation(_ package: String, machine: String) -> String {
+        "This saves the token on this Mac, then syncs \(package) alone on \(machine) and delivers it."
+    }
+
+    /// `keptBy` is another machine that still has the package: the token
+    /// is one secret on this Mac for every machine, so it stays.
+    static func removeConfirmation(_ package: String, machine: String, keptBy: String? = nil) -> String {
+        let secret = keptBy == nil ? ", then deletes its token from this Mac" : ""
+        let kept = keptBy.map { " The token stays on this Mac: \($0) still uses it." } ?? ""
+        return "This removes \(package) from \(machine) in your configuration, runs a full sync on \(machine) so "
+            + "the lock forgets it\(secret). The role files stay under /opt/devmachine/roles/\(package); the "
+            + "zones setting stays in config.yml. Both are harmless.\(kept)"
     }
 
     static func zonesConfirmation(_ package: String, machine: String, zones: [String]) -> String {
@@ -145,14 +153,20 @@ struct DNSProviderForm: View {
     @State private var confirmSync = false
     @State private var confirmZones = false
     @State private var confirmRemove = false
+    @State private var confirmSaveToken = false
 
     /// The buttons for `state`; an old CLI cannot sync, so it cannot push or
-    /// remove either.
-    static func actions(for state: DNSProviderState, canRunSync: Bool) -> [DNSProviderFormAction] {
+    /// remove either. A package no longer declared that still answers is a
+    /// removal whose sync did not finish: only Remove finishes it.
+    static func actions(for state: DNSProviderState, canRunSync: Bool, declared: Bool) -> [DNSProviderFormAction] {
         switch state {
         case .notInstalled: [.addAndSave]
         case .notSynced, .tokenMissing, .noZones, .ready:
-            canRunSync ? [.saveToken, .pushAgain, .remove] : [.saveToken]
+            if declared {
+                canRunSync ? [.saveToken, .pushAgain, .remove] : [.saveToken]
+            } else {
+                canRunSync ? [.remove] : []
+            }
         case .working, .failed: []
         }
     }
@@ -198,13 +212,22 @@ struct DNSProviderForm: View {
             Text(verbatim: DNSSetupContent.syncConfirmation(package, machine: setup.machine ?? ""))
         }
         .confirmationDialog(
+            "Save the \(package) token?", isPresented: $confirmSaveToken, titleVisibility: .visible
+        ) {
+            Button("Save and sync") { saveToken() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(verbatim: DNSSetupContent.saveTokenConfirmation(package, machine: setup.machine ?? ""))
+        }
+        .confirmationDialog(
             "Remove \(package) from \(setup.machine ?? "")?", isPresented: $confirmRemove,
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) { Task { await setup.remove(package) } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(verbatim: DNSSetupContent.removeConfirmation(package, machine: setup.machine ?? ""))
+            Text(verbatim: DNSSetupContent.removeConfirmation(
+                package, machine: setup.machine ?? "", keptBy: setup.machineKeepingSecret(of: package)))
         }
     }
 
@@ -274,7 +297,7 @@ struct DNSProviderForm: View {
     }
 
     private func actionRow(_ state: DNSProviderState, machine: String) -> some View {
-        let actions = Self.actions(for: state, canRunSync: setup.canRunSync())
+        let actions = Self.actions(for: state, canRunSync: setup.canRunSync(), declared: setup.isDeclared(package))
         return HStack(spacing: m.space.sm) {
             ForEach(actions, id: \.self) { action in
                 button(action, state: state)
@@ -290,7 +313,7 @@ struct DNSProviderForm: View {
                 .disabled(!Self.canSubmit(token: token, zones: zones))
         case .saveToken:
             if showsTokenField || needsToken(state) {
-                DMButton("Save token", variant: .outline, size: .small) { saveToken() }
+                DMButton("Save token", variant: .outline, size: .small) { confirmSaveToken = true }
                     .disabled(DNSProviderSetup.secretInput(token) == nil)
             } else {
                 DMButton("Set or replace the token", variant: .link, size: .small) { showsTokenField = true }

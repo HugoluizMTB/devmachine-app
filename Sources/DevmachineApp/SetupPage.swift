@@ -351,7 +351,9 @@ struct SetupPage: View {
         }
     }
 
-    static func showsFooter(for section: SettingsSection) -> Bool { section != .packages && section != .workspaces }
+    static func showsFooter(for section: SettingsSection) -> Bool {
+        ![.packages, .workspaces, .dnsProviders].contains(section)
+    }
 
     private var footer: some View {
         HStack(spacing: m.pt(10)) {

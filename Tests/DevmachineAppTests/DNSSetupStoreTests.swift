@@ -21,6 +21,8 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
     var providers = #"{"providers":[]}"#
     var secretFails = false
     var removeFails = false
+    /// Other machines the configuration also gives each package.
+    var alsoOn: [String: [String]] = [:]
     /// A CLI 0.7.27+ reports kinds and credentials; its hostinger secret is
     /// named apart from the package, to prove the name is read.
     var reportsKinds = false
@@ -53,6 +55,7 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
         let secretFails = self.secretFails
         let removeFails = self.removeFails
         let reportsKinds = self.reportsKinds
+        let alsoOn = self.alsoOn
         lock.unlock()
         switch args {
         case ["--format", "json", "machines", "list"]:
@@ -62,7 +65,10 @@ private final class DNSSetupCLIRunner: CommandRunner, @unchecked Sendable {
         case ["--format", "json", "config", "show"]:
             return (#"{"machines":[],"workspaces":[],"domain":"example.com"}"#, "", 0)
         case ["--format", "json", "packages", "list"]:
-            let on = { (name: String) in declared.contains(name) ? #"["machine box"]"# : "[]" }
+            let on = { (name: String) -> String in
+                let targets = (declared.contains(name) ? ["machine box"] : []) + (alsoOn[name] ?? [])
+                return "[" + targets.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+            }
             if reportsKinds {
                 return (#"""
                 {"packages":[
@@ -601,5 +607,50 @@ final class DNSSetupStoreTests: XCTestCase {
         try await eventually { store.dnsSetup.stateOf("hostinger") == .notInstalled }
         XCTAssertEqual(cli.calls.filter { $0 == ["secrets", "rm", "hostinger"] }.count, 1)
         XCTAssertEqual(sync.calls.count, 2)
+    }
+
+    func testRemoveKeepsTheSecretAnotherMachineUses() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.alsoOn = ["hostinger": ["machine edge"]]
+        cli.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"#
+        let sync = FakeSyncRunner()
+        sync.onRun = { _ in cli.set { $0.providers = #"{"providers":[]}"#; $0.declared = [] } }
+        let store = try await loadedStore(cli, sync: sync)
+        XCTAssertEqual(store.dnsSetup.machineKeepingSecret(of: "hostinger"), "edge")
+
+        await store.dnsSetup.remove("hostinger")
+
+        try await eventually { store.dnsSetup.stateOf("hostinger") == .notInstalled }
+        XCTAssertTrue(cli.calls.contains(["packages", "rm", "hostinger", "--machine", "box", "--yes"]))
+        XCTAssertEqual(sync.calls, [["sync", "--machine", "box", "--yes"]])
+        XCTAssertFalse(cli.calls.contains { $0.first == "secrets" && $0.dropFirst().first == "rm" })
+    }
+
+    func testRemoveAfterAFailedSyncSkipsPackagesRm() async throws {
+        let cli = DNSSetupCLIRunner()
+        cli.declared = ["hostinger"]
+        cli.providers = #"{"providers":[{"name":"hostinger","zones":["example.com"]}]}"#
+        let sync = FakeSyncRunner()
+        sync.failFirstRuns = 1
+        let center = MachineJobCenter(runner: sync, successSeconds: 60)
+        let store = try await loadedStore(cli, sync: sync, center: center)
+
+        await store.dnsSetup.remove("hostinger")
+        try await eventually {
+            if case .failed(.sync, _, _) = store.dnsSetup.stateOf("hostinger") { return true }
+            return false
+        }
+        store.dnsSetup.dismissFailure()
+        try await eventually { !store.dnsSetup.isDeclared("hostinger") }
+        XCTAssertEqual(store.dnsSetup.stateOf("hostinger"), .ready)
+        sync.onRun = { _ in cli.set { $0.providers = #"{"providers":[]}"#; $0.declared = [] } }
+
+        await store.dnsSetup.remove("hostinger")
+
+        try await eventually { store.dnsSetup.stateOf("hostinger") == .notInstalled }
+        XCTAssertEqual(cli.calls.filter { $0.first == "packages" && $0.dropFirst().first == "rm" }.count, 1)
+        XCTAssertEqual(sync.calls, [["sync", "--machine", "box", "--yes"], ["sync", "--machine", "box", "--yes"]])
+        XCTAssertEqual(cli.calls.filter { $0 == ["secrets", "rm", "hostinger"] }.count, 1)
     }
 }

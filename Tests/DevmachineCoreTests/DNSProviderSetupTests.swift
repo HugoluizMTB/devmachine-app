@@ -61,6 +61,14 @@ final class DNSProviderSetupTests: XCTestCase {
             .working(.sync))
     }
 
+    func testAProviderThatAnswersWinsOverARunningJob() {
+        XCTAssertEqual(
+            DNSProviderSetup.evaluate(
+                declared: ["cloudflare"], answers: [answer("cloudflare", zones: ["example.com"])],
+                job: .running(.sync)),
+            .ready)
+    }
+
     func testAFailedJobShowsUntilAProviderAnswersWithZones() {
         let failed = DNSSetupJob.failed(.sync, cause: "exit status 2", details: "fatal")
         XCTAssertEqual(

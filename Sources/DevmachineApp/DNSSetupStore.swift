@@ -81,6 +81,19 @@ final class DNSSetupStore: ObservableObject {
         catalog.first { $0.name == package }?.secretName ?? package
     }
 
+    /// Another machine whose configuration still has `package`. A plain
+    /// secret is one per Mac, not one per machine, so its token must stay.
+    func machineKeepingSecret(of package: String) -> String? {
+        machine.flatMap { machineKeepingSecret(of: package, besides: $0) }
+    }
+
+    private func machineKeepingSecret(of package: String, besides machine: String) -> String? {
+        let prefix = "machine "
+        return catalog.first { $0.name == package }?.installedOn
+            .first { $0.hasPrefix(prefix) && $0 != prefix + machine }
+            .map { String($0.dropFirst(prefix.count)) }
+    }
+
     func isDeclared(_ package: String) -> Bool {
         declared?.contains(package) ?? false
     }
@@ -188,8 +201,9 @@ final class DNSSetupStore: ObservableObject {
     /// `saveToken`, then `sync` of the package alone when the token was kept
     /// and the CLI can, so the new token reaches the machine.
     func saveTokenAndSync(_ package: String, token: String) async {
+        let machine = self.machine
         await saveToken(package, token: token)
-        if savedToken == package, canRunSync() { sync(package) }
+        if self.machine == machine, savedToken == package, canRunSync() { sync(package) }
     }
 
     /// Applies only `package` on the machine, then delivers its token, as a
@@ -216,17 +230,21 @@ final class DNSSetupStore: ObservableObject {
     /// Drops `package` from the machine's configuration, then runs a full
     /// sync as a corner job, then forgets its token. Only a full sync
     /// rewrites the lock `dns providers` reads, so the provider stops
-    /// answering only after it.
+    /// answering only after it. A package already gone from the
+    /// configuration that still answers had its sync fail: the removal goes
+    /// on from the sync.
     func remove(_ package: String) async {
         guard let machine, !isRunning(machine), canRunSync(), let center = center() else { return }
+        let alreadyRemoved = !isDeclared(package) && answers?.contains { $0.name == package } == true
         let run = begin(machine, .remove, package: package)
         if DemoMode.isActive { return fail(machine, run: run, step: .remove, error: Self.demoRefusal) }
         let service = self.service
-        if let failure = await perform({ try service.removePackage(package, machine: machine) }) {
+        if !alreadyRemoved,
+           let failure = await perform({ try service.removePackage(package, machine: machine) }) {
             return fail(machine, run: run, step: .remove, error: failure)
         }
         guard runs[machine] == run else { return }
-        declared = (declared ?? []).filter { $0 != package }
+        if self.machine == machine { declared = (declared ?? []).filter { $0 != package } }
         added[machine]?.remove(package)
         if let previous = syncing[machine] { center.dismiss(previous) }
         jobs[machine] = .running(.sync)
@@ -282,6 +300,8 @@ final class DNSSetupStore: ObservableObject {
             var cause = "devmachine stopped."
             if case let .failed(reason) = center()?.job(job)?.phase { cause = reason }
             jobs[machine] = .failed(.sync, cause: cause, details: lines.isEmpty ? cause : lines.joined(separator: "\n"))
+            // `packages rm` already ran; without a new read the row would show it declared again.
+            if removed != nil { onConfigurationChanged() }
         case .cancelled:
             jobs[machine] = nil
             syncing[machine] = nil
@@ -290,6 +310,12 @@ final class DNSSetupStore: ObservableObject {
     }
 
     private func forgetSecret(of package: String, machine: String, run: UUID) {
+        if machineKeepingSecret(of: package, besides: machine) != nil {
+            removing[machine] = nil
+            jobs[machine] = .finished
+            onConfigurationChanged()
+            return
+        }
         jobs[machine] = .running(.remove)
         let service = self.service
         let secret = secretName(package)

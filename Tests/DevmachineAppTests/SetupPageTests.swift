@@ -31,6 +31,7 @@ final class SetupPageTests: XCTestCase {
 
     func testThePackagesAndWorkspacesSectionsHaveNoSaveFooter() {
         XCTAssertFalse(SetupPage.showsFooter(for: .packages))
+        XCTAssertFalse(SetupPage.showsFooter(for: .dnsProviders), "its forms confirm and save each change")
         XCTAssertFalse(SetupPage.showsFooter(for: .workspaces), "its switches save at once, its flows have buttons")
         XCTAssertTrue(SetupPage.showsFooter(for: .general))
     }

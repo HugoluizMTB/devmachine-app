@@ -27,8 +27,7 @@ enum PaletteRanker {
     }
 
     static let chatsBonus = 40
-    /// Settles a keyword against a title that only starts with the query,
-    /// never against a title that is the query.
+    /// Lets a page named by a keyword beat a Settings section whose title starts with it.
     static let exactKeywordBonus = 400
 
     /// In Chats mode, the groups that start or open a chat come first, and
@@ -37,9 +36,8 @@ enum PaletteRanker {
         command.category == .chats || command.id.hasPrefix("action.new-chat")
     }
 
-    private static func hasKeyword(_ command: PaletteCommand, equalTo query: String) -> Bool {
-        let wanted = query.trimmingCharacters(in: .whitespaces).lowercased()
-        return command.keywords.contains { $0.lowercased() == wanted }
+    private static func hasKeyword(_ command: PaletteCommand, equalTo wanted: String) -> Bool {
+        command.keywords.contains { $0.lowercased() == wanted }
     }
 
     private static func emptyQuerySections(_ commands: [PaletteCommand], mru: CommandMRU) -> [PaletteSection] {
@@ -57,18 +55,24 @@ enum PaletteRanker {
     private static func matchedSections(
         _ commands: [PaletteCommand], query: String, mru: CommandMRU, currentWorkspace: String?, inChats: Bool
     ) -> [PaletteSection] {
-        let titleIsQuery = commands.contains { $0.title.lowercased() == query.trimmingCharacters(in: .whitespaces).lowercased() }
-        let scored = commands.compactMap { command -> (PaletteCommand, Int)? in
+        let wanted = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let titleIsQuery = commands.contains { $0.title.lowercased() == wanted }
+        let matched = commands.compactMap { command -> (PaletteCommand, Int)? in
             let fields = [command.title, command.subtitle, command.keywords.joined(separator: " ")]
             guard let score = FuzzyMatch.score(query, fields: fields) else { return nil }
             var total = score + mru.boost(for: command.id)
             if command.category == .session { total += sessionBonus }
-            if !titleIsQuery, command.category == .goTo, hasKeyword(command, equalTo: query) { total += exactKeywordBonus }
             if inChats, isChatCommand(command) { total += chatsBonus }
             if let currentWorkspace, !command.subtitle.isEmpty, command.subtitle == currentWorkspace {
                 total += currentWorkspaceBonus
             }
             return (command, total)
+        }
+        let settingsLead = matched.max { $0.1 < $1.1 }?.0.category == .settings
+        let scored = matched.map { command, total -> (PaletteCommand, Int) in
+            let bonus = !titleIsQuery && settingsLead && command.category == .goTo
+                && hasKeyword(command, equalTo: wanted)
+            return (command, bonus ? total + exactKeywordBonus : total)
         }
         let groups = Dictionary(grouping: scored, by: { $0.0.category })
         return groups
