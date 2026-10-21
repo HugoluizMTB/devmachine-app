@@ -38,6 +38,8 @@ final class DNSSetupStore: ObservableObject {
     private let service: CaddyService
     private var center: @MainActor () -> MachineJobCenter?
     private var runs: [String: UUID] = [:]
+    private var jobPackage: [String: String] = [:]
+    private var removing: [String: String] = [:]
     private var jobsWatch: AnyCancellable?
     private weak var watchedCenter: MachineJobCenter?
     /// Packages this store added that `packages list` has not shown yet.
@@ -62,6 +64,11 @@ final class DNSSetupStore: ObservableObject {
         return DNSProviderSetup.evaluate(declared: declared, answers: answers, job: jobs[machine])
     }
 
+    func stateOf(_ package: String) -> DNSProviderState {
+        let job = machine.flatMap { jobPackage[$0] == package ? jobs[$0] : nil }
+        return DNSProviderSetup.evaluate(package: package, declared: declared, answers: answers, job: job)
+    }
+
     /// The provider the card is about once one is in the configuration, or
     /// the first one on offer before that.
     var suggestedProvider: String? {
@@ -72,6 +79,19 @@ final class DNSSetupStore: ObservableObject {
     /// The name the package's token is stored under.
     func secretName(_ package: String) -> String {
         catalog.first { $0.name == package }?.secretName ?? package
+    }
+
+    /// Another machine whose configuration still has `package`. A plain
+    /// secret is one per Mac, not one per machine, so its token must stay.
+    func machineKeepingSecret(of package: String) -> String? {
+        machine.flatMap { machineKeepingSecret(of: package, besides: $0) }
+    }
+
+    private func machineKeepingSecret(of package: String, besides machine: String) -> String? {
+        let prefix = "machine "
+        return catalog.first { $0.name == package }?.installedOn
+            .first { $0.hasPrefix(prefix) && $0 != prefix + machine }
+            .map { String($0.dropFirst(prefix.count)) }
     }
 
     func isDeclared(_ package: String) -> Bool {
@@ -107,17 +127,22 @@ final class DNSSetupStore: ObservableObject {
     /// when some were typed and the CLI can, and stores its token. All of it
     /// stays on this Mac; the machine changes only on sync. The zones come
     /// after the add: the CLI refuses a setting for a package not there.
-    func install(_ package: String, token: String, zones: String = "") async {
-        guard let machine, !isRunning(machine) else { return }
+    @discardableResult
+    func install(_ package: String, token: String, zones: String = "") async -> Bool {
+        guard let machine, !isRunning(machine) else { return false }
         let zoneList = zonesToSet(package, zones)
         guard zoneList != nil || zones.trimmingCharacters(in: .whitespaces).isEmpty || !canEditMachineSettings()
-        else { return }
-        let run = begin(machine, .install)
-        if DemoMode.isActive { return fail(machine, run: run, step: .install, error: Self.demoRefusal) }
+        else { return false }
+        let run = begin(machine, .install, package: package)
+        if DemoMode.isActive {
+            fail(machine, run: run, step: .install, error: Self.demoRefusal)
+            return false
+        }
         let service = self.service
         let secret = secretName(package)
         if let failure = await perform({ try service.addPackage(package, machine: machine) }) {
-            return fail(machine, run: run, step: .install, error: failure)
+            fail(machine, run: run, step: .install, error: failure)
+            return false
         }
         added[machine, default: []].insert(package)
         if !(declared ?? []).contains(package) { declared = (declared ?? []) + [package] }
@@ -125,18 +150,30 @@ final class DNSSetupStore: ObservableObject {
             jobs[machine] = .running(.saveZones)
             if let failure = await perform({ try service.setZones(setting: setting, machine: machine, zones: zoneList) }) {
                 onConfigurationChanged()
-                return fail(machine, run: run, step: .saveZones, error: failure)
+                fail(machine, run: run, step: .saveZones, error: failure)
+                return false
             }
         }
         jobs[machine] = .running(.saveToken)
         if let failure = await perform({ try service.setSecret(secret, value: token) }) {
             onConfigurationChanged()
-            return fail(machine, run: run, step: .saveToken, error: failure)
+            fail(machine, run: run, step: .saveToken, error: failure)
+            return false
         }
-        guard runs[machine] == run else { return }
+        guard runs[machine] == run else { return false }
         jobs[machine] = .finished
         savedToken = package
         onConfigurationChanged()
+        return true
+    }
+
+    /// `install`, then `sync` of the package alone when the install ended
+    /// well and the CLI can. The install's own outcome decides, never a state
+    /// that the configuration's re-read may not have reached yet.
+    func installAndSync(_ package: String, token: String, zones: String = "") async {
+        let machine = self.machine
+        guard await install(package, token: token, zones: zones) else { return }
+        if self.machine == machine, canRunSync() { sync(package) }
     }
 
     /// Writes the zones the provider may manage into the machine's
@@ -145,7 +182,7 @@ final class DNSSetupStore: ObservableObject {
         guard let machine, !isRunning(machine), canEditMachineSettings(),
               let setting = DNSProviderCatalog.zonesSetting(for: package),
               let zoneList = zonesToSet(package, zones) else { return }
-        let run = begin(machine, .saveZones)
+        let run = begin(machine, .saveZones, package: package)
         if DemoMode.isActive { return fail(machine, run: run, step: .saveZones, error: Self.demoRefusal) }
         let service = self.service
         if let failure = await perform({ try service.setZones(setting: setting, machine: machine, zones: zoneList) }) {
@@ -159,7 +196,7 @@ final class DNSSetupStore: ObservableObject {
 
     func saveToken(_ package: String, token: String) async {
         guard let machine, !isRunning(machine) else { return }
-        let run = begin(machine, .saveToken)
+        let run = begin(machine, .saveToken, package: package)
         if DemoMode.isActive { return fail(machine, run: run, step: .saveToken, error: Self.demoRefusal) }
         let service = self.service
         let secret = secretName(package)
@@ -171,13 +208,21 @@ final class DNSSetupStore: ObservableObject {
         savedToken = package
     }
 
+    /// `saveToken`, then `sync` of the package alone when the token was kept
+    /// and the CLI can, so the new token reaches the machine.
+    func saveTokenAndSync(_ package: String, token: String) async {
+        let machine = self.machine
+        await saveToken(package, token: token)
+        if self.machine == machine, savedToken == package, canRunSync() { sync(package) }
+    }
+
     /// Applies only `package` on the machine, then delivers its token, as a
     /// job in the corner, which holds the log; the card says where it stands.
     @discardableResult
     func sync(_ package: String) -> UUID? {
         guard let machine, canRunSync(), !isRunning(machine), let center = center() else { return nil }
         if let previous = syncing[machine] { center.dismiss(previous) }
-        let run = begin(machine, .sync)
+        let run = begin(machine, .sync, package: package)
         let plan = MachineJobPlan(
             machine: machine, title: "Sync \(package) on \(machine)",
             steps: DNSProviderSetup.syncSteps(package: package, machine: machine))
@@ -190,6 +235,41 @@ final class DNSSetupStore: ObservableObject {
         started = id
         syncing[machine] = id
         return id
+    }
+
+    /// Drops `package` from the machine's configuration, then runs a full
+    /// sync as a corner job, then forgets its token. Only a full sync
+    /// rewrites the lock `dns providers` reads, so the provider stops
+    /// answering only after it. A package already gone from the
+    /// configuration that still answers had its sync fail: the removal goes
+    /// on from the sync.
+    func remove(_ package: String) async {
+        guard let machine, !isRunning(machine), canRunSync(), let center = center() else { return }
+        let alreadyRemoved = !isDeclared(package) && answers?.contains { $0.name == package } == true
+        let run = begin(machine, .remove, package: package)
+        if DemoMode.isActive { return fail(machine, run: run, step: .remove, error: Self.demoRefusal) }
+        let service = self.service
+        if !alreadyRemoved,
+           let failure = await perform({ try service.removePackage(package, machine: machine) }) {
+            return fail(machine, run: run, step: .remove, error: failure)
+        }
+        guard runs[machine] == run else { return }
+        if self.machine == machine { declared = (declared ?? []).filter { $0 != package } }
+        added[machine]?.remove(package)
+        if let previous = syncing[machine] { center.dismiss(previous) }
+        jobs[machine] = .running(.sync)
+        removing[machine] = package
+        let plan = MachineJobPlan(
+            machine: machine, title: "Remove \(package) from \(machine)",
+            steps: DNSProviderSetup.fullSyncSteps(machine: machine))
+        watch(center)
+        var started: UUID?
+        let id = center.run(plan) { [weak self] outcome in
+            guard let started else { return }
+            self?.syncFinished(machine, run: run, job: started, outcome: outcome)
+        }
+        started = id
+        syncing[machine] = id
     }
 
     /// A failed sync runs again in place, in the same corner job; false
@@ -208,25 +288,56 @@ final class DNSSetupStore: ObservableObject {
         guard let machine else { return }
         if let id = syncing[machine] { center()?.dismiss(id) }
         syncing[machine] = nil
+        removing[machine] = nil
         jobs[machine] = nil
         runs[machine] = nil
     }
 
     private func syncFinished(_ machine: String, run: UUID, job: UUID, outcome: MachineJobOutcome) {
         guard runs[machine] == run else { return }
+        let removed = removing[machine]
+        if outcome == .cancelled { removing[machine] = nil }
         switch outcome {
         case .succeeded:
+            if let removed {
+                forgetSecret(of: removed, machine: machine, run: run)
+                onSyncEnded(machine)
+                return
+            }
             jobs[machine] = .finished
         case .failed:
             let lines = center()?.job(job)?.log.lines ?? []
             var cause = "devmachine stopped."
             if case let .failed(reason) = center()?.job(job)?.phase { cause = reason }
             jobs[machine] = .failed(.sync, cause: cause, details: lines.isEmpty ? cause : lines.joined(separator: "\n"))
+            // `packages rm` already ran; without a new read the row would show it declared again.
+            if removed != nil { onConfigurationChanged() }
         case .cancelled:
             jobs[machine] = nil
             syncing[machine] = nil
         }
         onSyncEnded(machine)
+    }
+
+    private func forgetSecret(of package: String, machine: String, run: UUID) {
+        if machineKeepingSecret(of: package, besides: machine) != nil {
+            removing[machine] = nil
+            jobs[machine] = .finished
+            onConfigurationChanged()
+            return
+        }
+        jobs[machine] = .running(.remove)
+        let service = self.service
+        let secret = secretName(package)
+        Task { [weak self] in
+            guard let self else { return }
+            let failure = await self.perform({ try service.removeSecret(secret) })
+            self.removing[machine] = nil
+            if let failure { return self.fail(machine, run: run, step: .remove, error: failure) }
+            guard self.runs[machine] == run else { return }
+            self.jobs[machine] = .finished
+            self.onConfigurationChanged()
+        }
     }
 
     private func watch(_ center: MachineJobCenter) {
@@ -243,6 +354,7 @@ final class DNSSetupStore: ObservableObject {
         for (machine, id) in syncing {
             guard let job = centerJobs.first(where: { $0.id == id }) else {
                 syncing[machine] = nil
+                removing[machine] = nil
                 if case .failed(.sync, _, _) = jobs[machine] {
                     jobs[machine] = nil
                     runs[machine] = nil
@@ -273,9 +385,11 @@ final class DNSSetupStore: ObservableObject {
         return false
     }
 
-    private func begin(_ machine: String, _ step: DNSSetupStep) -> UUID {
+    private func begin(_ machine: String, _ step: DNSSetupStep, package: String) -> UUID {
         let run = UUID()
         runs[machine] = run
+        jobPackage[machine] = package
+        removing[machine] = nil
         jobs[machine] = .running(step)
         savedToken = nil
         savedZones = nil
@@ -303,12 +417,14 @@ final class DNSSetupStore: ObservableObject {
     #if DEBUG
     /// Demo walks only: a fixed state, with no real CLI behind it.
     func seedDemo(
-        machine: String, packages: [CLIPackage], answers: [DNSProviderAnswer]?, job: DNSSetupJob? = nil
+        machine: String, packages: [CLIPackage], answers: [DNSProviderAnswer]?, job: DNSSetupJob? = nil,
+        package: String? = nil
     ) {
         canRunSync = { true }
         canEditMachineSettings = { true }
         update(machine: machine, packages: packages, answers: answers)
         jobs[machine] = job
+        jobPackage[machine] = package
     }
 
     /// Demo walks only: syncs run on `center`, whose runner never reaches a CLI.

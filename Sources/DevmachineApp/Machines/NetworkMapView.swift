@@ -334,7 +334,7 @@ struct NetworkMapPainter {
     }
 
     private func drawHiddenSites(in context: inout GraphicsContext) {
-        let text = Text(verbatim: "+\(map.hiddenSites) more on the Published apps page")
+        let text = Text(verbatim: "+\(map.hiddenSites) more on the Publish page")
             .font(.system(size: 9 * fontScale, design: .monospaced))
             .foregroundColor(MapInk.tag)
         let y = geometry.siteLane(row: map.sites.count) - 2

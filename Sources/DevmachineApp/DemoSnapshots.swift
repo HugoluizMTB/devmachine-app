@@ -37,6 +37,9 @@ enum DemoSnapshots {
     /// Read by Settings → Machines so a machine opens selected for one
     /// screen. Same rule as `subdomainsInitialTab`.
     static var machinesSelected: String?
+    /// Read by the DNS provider chooser so a provider opens selected for one
+    /// screen. Same rule as `subdomainsInitialTab`.
+    static var dnsChooserPackage: String?
 
     private static let acmeAlias = "acme-devmachine"
     /// A big-display window, the proportions a Mac screenshot has on the
@@ -307,6 +310,8 @@ enum DemoSnapshots {
         Screen(id: "dns-syncing", fileName: "83-dns-syncing.png", settleNanoseconds: 700_000_000),
         Screen(id: "dns-failed", fileName: "84-dns-failed.png", settleNanoseconds: 500_000_000),
         Screen(id: "dns-ready", fileName: "85-dns-ready.png", settleNanoseconds: 700_000_000),
+        Screen(id: "dns-chooser-godaddy", fileName: "86-dns-chooser-godaddy.png", settleNanoseconds: 500_000_000),
+        Screen(id: "dns-settings", fileName: "87-dns-settings.png", settleNanoseconds: 500_000_000),
     ]
 
     /// The Packages walk (`DEVMACHINE_DEMO_WALK=packages`): see `DemoPackages`.
@@ -769,7 +774,8 @@ enum DemoSnapshots {
             DemoData.typedAtPrompt = [dropKind: dropPrompt]
             PaneUploadStore.shared.dropTarget = dropKind
         #if DEBUG
-        case "dns-none", "dns-not-synced", "dns-no-zones", "dns-syncing", "dns-failed", "dns-ready":
+        case "dns-none", "dns-not-synced", "dns-no-zones", "dns-syncing", "dns-failed", "dns-ready",
+            "dns-chooser-godaddy", "dns-settings":
             await DemoDNSWalk.prepare(screen.id, store: environment.caddyStore, model: model)
         case "ready-home":
             DemoMachineReady.seed(MachineReadinessStore.shared, model: model)

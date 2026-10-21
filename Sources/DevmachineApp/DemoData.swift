@@ -254,18 +254,25 @@ enum DemoData {
             resolvedWorkspace: "globex", containerName: nil),
     ]
 
-    static let subdomainStates: [String: MachineSitesState] = [
-        "main": MachineSitesState(rows: subdomainRows, hasLoaded: true),
-        "staging": MachineSitesState(rows: stagingSubdomainRows, hasLoaded: true),
-        "laptop": MachineSitesState(hasLoaded: true, notSetUpMessage: CaddyService.selfMessage("laptop")),
-    ]
+    @MainActor static var subdomainStates: [String: MachineSitesState] {
+        let mainRows: [SubdomainRow]
+        switch dnsScenario {
+        case .noneInstalled, .notSynced: mainRows = []
+        default: mainRows = subdomainRows
+        }
+        return [
+            "main": MachineSitesState(rows: mainRows, hasLoaded: true),
+            "staging": MachineSitesState(rows: stagingSubdomainRows, hasLoaded: true),
+            "laptop": MachineSitesState(hasLoaded: true, notSetUpMessage: CaddyService.selfMessage("laptop")),
+        ]
+    }
 
-    static let dnsProviders = ["cloudflare", "hostinger"]
+    static let dnsProviders = ["cloudflare", "godaddy", "hostinger"]
 
     /// Which DNS setup state the Subdomains page shows: `ready` everywhere
     /// but the `dns-setup` walk.
     enum DNSScenario {
-        case ready, noneInstalled, notSynced, noZones
+        case ready, noneInstalled, notSynced, noZones, mixed
     }
 
     @MainActor static var dnsScenario = DNSScenario.ready
@@ -278,6 +285,11 @@ enum DemoData {
             return []
         case .noZones:
             return [DNSProviderAnswer(name: "hostinger", zones: [], error: nil)]
+        case .mixed:
+            return [
+                DNSProviderAnswer(name: "cloudflare", zones: ["example.com"], error: nil),
+                DNSProviderAnswer(name: "hostinger", zones: [], error: "HOSTINGER_API_TOKEN is not set"),
+            ]
         }
     }
 
@@ -287,12 +299,14 @@ enum DemoData {
         case .ready: declared = dnsProviders
         case .noneInstalled: declared = []
         case .notSynced, .noZones: declared = ["hostinger"]
+        case .mixed: declared = ["cloudflare", "hostinger"]
         }
-        return ["cloudflare", "hostinger"].map { name in
+        let vendors = ["cloudflare": "Cloudflare", "godaddy": "GoDaddy", "hostinger": "Hostinger"]
+        return dnsProviders.map { name in
             CLIPackage(
                 name: name, scope: "machine",
                 installedOn: declared.contains(name) ? ["machine \(machineName)"] : [],
-                summary: "DNS zones on \(name == "cloudflare" ? "Cloudflare" : "Hostinger").",
+                summary: "DNS zones on \(vendors[name] ?? name).",
                 kind: "dns", category: "DNS",
                 credentials: [PackageCredential(name: name, kind: "secret", scope: "machine")])
         }
@@ -303,6 +317,9 @@ enum DemoData {
             DNSRecordRow(name: "app.acme.example.com", type: "A", value: machineAddress, ttl: 300),
             DNSRecordRow(name: "api.acme.example.com", type: "A", value: machineAddress, ttl: 300),
             DNSRecordRow(name: "acme.example.com", type: "TXT", value: "v=spf1 -all", ttl: 3600),
+        ],
+        "godaddy": [
+            DNSRecordRow(name: "shop.acme.example.com", type: "A", value: machineAddress, ttl: 600),
         ],
         "hostinger": [
             DNSRecordRow(name: "globex.example.com", type: "A", value: machineAddress, ttl: 3600),

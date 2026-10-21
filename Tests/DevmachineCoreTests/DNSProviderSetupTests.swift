@@ -61,6 +61,14 @@ final class DNSProviderSetupTests: XCTestCase {
             .working(.sync))
     }
 
+    func testAProviderThatAnswersWinsOverARunningJob() {
+        XCTAssertEqual(
+            DNSProviderSetup.evaluate(
+                declared: ["cloudflare"], answers: [answer("cloudflare", zones: ["example.com"])],
+                job: .running(.sync)),
+            .ready)
+    }
+
     func testAFailedJobShowsUntilAProviderAnswersWithZones() {
         let failed = DNSSetupJob.failed(.sync, cause: "exit status 2", details: "fatal")
         XCTAssertEqual(
@@ -188,5 +196,46 @@ final class DNSProviderSetupTests: XCTestCase {
                   hostinger.zones: [example.com]
             """)
         XCTAssertNil(DNSProviderCatalog.zonesSnippet(package: "cloudflare", machine: "main", zones: "example.com"))
+    }
+
+    func testEveryPackageStateFromOneMachine() {
+        let answers = [
+            answer("cloudflare", zones: ["example.com"]),
+            answer("hostinger", error: "HOSTINGER_API_TOKEN is not set"),
+            answer("godaddy"),
+        ]
+        let declared = ["cloudflare", "hostinger", "godaddy", "route53"]
+        XCTAssertEqual(DNSProviderSetup.evaluate(package: "cloudflare", declared: declared, answers: answers, job: nil), .ready)
+        XCTAssertEqual(
+            DNSProviderSetup.evaluate(package: "hostinger", declared: declared, answers: answers, job: nil),
+            .tokenMissing(error: "HOSTINGER_API_TOKEN is not set"))
+        XCTAssertEqual(DNSProviderSetup.evaluate(package: "godaddy", declared: declared, answers: answers, job: nil), .noZones)
+        XCTAssertEqual(DNSProviderSetup.evaluate(package: "route53", declared: declared, answers: answers, job: nil), .notSynced)
+        XCTAssertEqual(DNSProviderSetup.evaluate(package: "desec", declared: declared, answers: answers, job: nil), .notInstalled)
+    }
+
+    func testAJobWinsOverTheAnswer() {
+        XCTAssertEqual(
+            DNSProviderSetup.evaluate(package: "godaddy", declared: ["godaddy"], answers: [], job: .running(.remove)),
+            .working(.remove))
+        XCTAssertEqual(
+            DNSProviderSetup.evaluate(
+                package: "godaddy", declared: [], answers: [], job: .failed(.install, cause: "x", details: "y")),
+            .failed(.install, cause: "x", details: "y"))
+    }
+
+    func testStateLabelsAreShort() {
+        XCTAssertEqual(DNSProviderState.notInstalled.label, "Not installed")
+        XCTAssertEqual(DNSProviderState.tokenMissing(error: "e").label, "Token missing")
+        XCTAssertEqual(DNSProviderState.ready.label, "Ready")
+        XCTAssertEqual(DNSProviderState.working(.sync).label, "Working…")
+    }
+
+    func testRemoveNamesTheMachineThenSyncsEverythingThenForgetsTheSecret() {
+        XCTAssertEqual(
+            DNSProviderSetup.removeArguments(package: "godaddy", machine: "main"),
+            ["packages", "rm", "godaddy", "--machine", "main", "--yes"])
+        XCTAssertEqual(DNSProviderSetup.fullSyncSteps(machine: "main"), [["sync", "--machine", "main", "--yes"]])
+        XCTAssertEqual(DNSProviderSetup.secretRemoveArguments(credential: "godaddy"), ["secrets", "rm", "godaddy"])
     }
 }

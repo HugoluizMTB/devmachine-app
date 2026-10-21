@@ -215,6 +215,20 @@ final class DataCacheTests: XCTestCase {
         XCTAssertFalse(cache.isRefreshing(sites))
     }
 
+    func testWaitingForAKeyEndsWhenItsRunningFetchAnswers() async {
+        let cache = makeCache(clock: Clock())
+        _ = cache.revalidate(sites, fetch: {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            return [Item(id: "a", value: 1)]
+        }) { _ in }
+        XCTAssertTrue(cache.isRefreshing(sites))
+
+        await cache.waitForRunningFetch(sites)
+
+        XCTAssertFalse(cache.isRefreshing(sites))
+        XCTAssertEqual(cache.cached(sites)?.value, [Item(id: "a", value: 1)])
+    }
+
     func testDifferentKeysFetchSeparately() async throws {
         let cache = makeCache(clock: Clock())
         let counter = FetchCounter()
