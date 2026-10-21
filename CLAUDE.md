@@ -1806,8 +1806,24 @@ once may fail there.
   `ProcessCLIUpdater` keeps stdout apart (`StreamingProcess.run(separatesStdout:)`)
   and `CLIUpdateReport` reads it. The CLI prints the JSON even when a step
   failed, then exits non-zero; the app shows the stderr `error:` line.
-- **A newer CLI gets its own corner toast** (`CLIUpdateBanner`, under the
-  app's; both stack). Update runs `CLIUpdateCommand.forCLI(installed:)` and
+- **The app card's Update and Relaunch updates the CLI and packages
+  first.** `UpdateDialog` shows three steps (`UnifiedUpdateSteps`): CLI and
+  packages, app, relaunch. Step 1 (`UpdateController.updateTools`) calls the
+  cards' own `updateCLI` when the CLI is behind, then `updatePackages` when
+  the pin still is; nothing behind is "Up to date", skipped. A failure or a
+  CLI that needs the `CLIUpdateAdvice` command stops there: the app is not
+  installed, and the dialog offers "Update only the app" and Cancel. Then
+  the install runs as before (Homebrew, disk image, or the release page for
+  an ad-hoc build). The reason: a new app whose widgets need a newer CLI or
+  packages release must never start on a Mac that lacks them. While the app
+  card shows, it covers the CLI and packages cards and names what it also
+  updates (`AppUpdateCardContent`).
+- Every finished `updateCLI`/`updatePackages` calls
+  `UpdateDependencies.afterToolsUpdate`, which re-runs
+  `WidgetCompatibilityStore.check()`, so the "needs a newer CLI" card never
+  stays stale.
+- **A newer CLI gets its own corner toast** (`CLIUpdateBanner`) while no app
+  update is shown. Update runs `CLIUpdateCommand.forCLI(installed:)` and
   only when `canUpdateCLIInApp`; any other CLI gets the `CLIUpdateAdvice`
   command in a `DMCommandBlock`. On 0.7.31+ the done card reads "CLI updated
   to X · packages pinned vN · skills updated" (the version from `devmachine
@@ -1819,7 +1835,7 @@ once may fail there.
   Settings → About. Demo shots `65`–`69` and `57` (a 0.7.31 CLI) in the
   `cli-update` walk.
 - **A newer packages release gets its own corner card**
-  (`PackagesUpdateBanner`, under the CLI's; all three stack). On CLI 0.7.31+
+  (`PackagesUpdateBanner`, under the CLI's) while no app update is shown. On CLI 0.7.31+
   `check` also runs `packages outdated --format json` (the CLI caches it a
   day and falls back to its last answer offline). It fails only when it never
   had an answer: that is "unknown", so no card and only a log line
