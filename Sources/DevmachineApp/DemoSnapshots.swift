@@ -37,6 +37,9 @@ enum DemoSnapshots {
     /// Read by Settings → Machines so a machine opens selected for one
     /// screen. Same rule as `subdomainsInitialTab`.
     static var machinesSelected: String?
+    /// Read by the DNS provider chooser so a provider opens selected for one
+    /// screen. Same rule as `subdomainsInitialTab`.
+    static var dnsChooserPackage: String?
 
     private static let acmeAlias = "acme-devmachine"
     /// A big-display window, the proportions a Mac screenshot has on the

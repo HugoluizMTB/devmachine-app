@@ -224,7 +224,7 @@ final class CommandRegistryTests: XCTestCase {
             PaletteRanker.sections(all, query: query, mru: CommandMRU(ids: []))
                 .first?.commands.first?.id
         }
-        XCTAssertEqual(top("dns"), "go.subdomains")
+        XCTAssertEqual(top("dns"), "settings.dnsProviders")
         XCTAssertEqual(top("caddy"), "go.subdomains")
         XCTAssertEqual(top("ram"), "go.stats")
         XCTAssertEqual(top("prefs"), "go.settings")

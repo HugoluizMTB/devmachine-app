@@ -40,6 +40,10 @@ enum DNSSetupContent {
         }
     }
 
+    static func handMadeBar(_ machine: String) -> String {
+        "No DNS provider answers for \(machine): publishing a port prints the record for you to create by hand."
+    }
+
     static let handMadeRecords = "Until then, publishing a port saves the site and only prints the DNS "
         + "record for you to create by hand."
 

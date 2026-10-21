@@ -194,6 +194,6 @@ final class SetupPageWallpaperTests: XCTestCase {
     func testSettingsHasGeneralAppearanceAndHealthCheckButNoTerminalPreviewsOrAdvanced() {
         XCTAssertEqual(
             SettingsSection.allCases.map(\.title),
-            ["General", "Machines", "Workspaces", "Packages", "Coding agents", "Chats", "Shares", "Appearance", "Health check", "About"])
+            ["General", "Machines", "Workspaces", "Packages", "DNS providers", "Coding agents", "Chats", "Shares", "Appearance", "Health check", "About"])
     }
 }

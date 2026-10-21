@@ -5,7 +5,7 @@ import DevmachineCore
 /// The panes of Settings. One column held every field before, which made a
 /// change to the font size a scroll past every wallpaper.
 enum SettingsSection: String, CaseIterable {
-    case general, machines, workspaces, packages, harnesses, chats, shares, appearance, healthCheck, about
+    case general, machines, workspaces, packages, dnsProviders, harnesses, chats, shares, appearance, healthCheck, about
 
     var title: String {
         switch self {
@@ -13,6 +13,7 @@ enum SettingsSection: String, CaseIterable {
         case .machines: return "Machines"
         case .workspaces: return "Workspaces"
         case .packages: return "Packages"
+        case .dnsProviders: return "DNS providers"
         case .harnesses: return "Coding agents"
         case .chats: return "Chats"
         case .shares: return "Shares"
@@ -28,6 +29,7 @@ enum SettingsSection: String, CaseIterable {
         case .machines: return "The servers and local machines in the devmachine configuration."
         case .workspaces: return "Every workspace by machine: which ones the app reaches, and new, edit, forget or destroy."
         case .packages: return "Browse the catalog, and add or remove packages on a machine or workspace."
+        case .dnsProviders: return "Which registrar answers for your domain names, per machine, and the tokens they use."
         case .harnesses: return "Choose what new sessions start with."
         case .chats: return "Quick questions to Claude or Codex, apart from your coding sessions."
         case .shares: return "Sessions this Mac shared: who can still join, and until when."
@@ -43,6 +45,7 @@ enum SettingsSection: String, CaseIterable {
         case .machines: return "server.rack"
         case .workspaces: return "square.grid.2x2"
         case .packages: return "shippingbox"
+        case .dnsProviders: return "globe"
         case .harnesses: return "sparkles"
         case .chats: return "bubble.left.and.bubble.right"
         case .shares: return "person.2"
@@ -313,6 +316,7 @@ struct SetupPage: View {
                     case .machines: MachinesSettingsView()
                     case .workspaces: EmptyView()
                     case .packages: EmptyView()
+                    case .dnsProviders: Text(verbatim: "DNS providers")
                     case .harnesses: harnessesBlock.task { await machinesStore.load() }
                     case .chats:
                         ChatsSettingsView(
