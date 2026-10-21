@@ -407,4 +407,26 @@ final class DemoSnapshotsTests: XCTestCase {
             "\(data.count)\u{1e}" + data.base64EncodedString(), path: DemoSnapshots.fileViewerPath)
         XCTAssertEqual(preview?.kind, .code(language: "swift"))
     }
+
+    func testTheDNSSetupWalkIsItsOwnSet() {
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "dns-setup"]).map(\.id), [
+            "dns-none", "dns-not-synced", "dns-no-zones", "dns-syncing", "dns-failed", "dns-ready",
+            "dns-chooser-godaddy", "dns-settings",
+        ])
+        XCTAssertEqual(Set(DemoSnapshots.dnsSetupScreens.map(\.fileName)).count, 8)
+    }
+
+    func testDemoDNSDataOffersGoDaddy() {
+        XCTAssertEqual(DemoData.dnsProviders, ["cloudflare", "godaddy", "hostinger"])
+        XCTAssertEqual(DemoData.dnsPackages.map(\.name), ["cloudflare", "godaddy", "hostinger"])
+        XCTAssertEqual(DemoData.dnsRecordsByProvider["godaddy"]?.count, 1)
+    }
+
+    func testTheChooserScenariosHaveNoSitesOnMain() {
+        DemoData.dnsScenario = .noneInstalled
+        XCTAssertEqual(DemoData.subdomainStates["main"]?.rows, [])
+        DemoData.dnsScenario = .noZones
+        XCTAssertEqual(DemoData.subdomainStates["main"]?.rows.count, 3)
+        DemoData.dnsScenario = .ready
+    }
 }
