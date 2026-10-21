@@ -134,7 +134,8 @@ struct HomeCanvasView: View {
 
     @ViewBuilder
     private var catalogNotice: some View {
-        switch HomeCatalogNotice.of(catalog: catalog.catalog, state: catalog.state) {
+        switch HomeCatalogNotice.of(
+            catalog: catalog.catalog, state: catalog.state, configurationUnknown: controller.configurationUnknown) {
         case .none:
             EmptyView()
         case .loading:
@@ -146,6 +147,15 @@ struct HomeCanvasView: View {
             DMErrorStateView(
                 state: DMErrorState(title: "Could not fetch packages", message: message),
                 retry: { catalog.reloadSoon() })
+                .frame(width: m.card.sheet)
+                .padding(m.space.lg)
+                .dmGlass(radius: DMRadius.card)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case let .needsSetup(cause, details):
+            DMErrorStateView(
+                state: HomeCatalogNotice.setupErrorState(cause: cause, details: details),
+                retry: { model.openOnboarding() }, retryTitle: HomeCatalogNotice.finishSetupTitle,
+                retrySystemImage: "play.fill", retryVariant: .primary)
                 .frame(width: m.card.sheet)
                 .padding(m.space.lg)
                 .dmGlass(radius: DMRadius.card)
@@ -170,21 +180,38 @@ struct HomeCanvasView: View {
 }
 
 /// What Home says about its catalog while it has none: it is being
-/// fetched (never a blank Home), or it could not be, with Retry.
+/// fetched (never a blank Home), or it could not be, with Retry. A Mac
+/// without the CLI, or a CLI that names no configuration, gets "Finish
+/// setup" instead of the raw error.
 enum HomeCatalogNotice: Equatable {
     case none
     case loading
     case failed(String)
+    case needsSetup(cause: String, details: String)
 
     static let loadingText = "Fetching the packages release…"
+    static let setupTitle = "Devmachine is not set up on this Mac"
+    static let missingCLICause = "The devmachine command line tool is missing."
+    static let noConfigurationCause = "The devmachine command line tool has no configuration yet."
+    static let finishSetupTitle = "Finish setup"
 
-    static func of(catalog: WidgetCatalog?, state: WidgetCatalogStore.State) -> HomeCatalogNotice {
-        guard catalog == nil else { return .none }
-        switch state {
-        case .loading: return .loading
-        case let .failed(message): return .failed(message)
-        case .idle, .loaded: return .none
+    static func of(
+        catalog: WidgetCatalog?, state: WidgetCatalogStore.State, configurationUnknown: Bool = false
+    ) -> HomeCatalogNotice {
+        if case let .cliMissing(details) = state, catalog == nil || configurationUnknown {
+            return .needsSetup(cause: missingCLICause, details: details)
         }
+        if catalog == nil, state == .loading { return .loading }
+        if configurationUnknown {
+            return .needsSetup(
+                cause: noConfigurationCause, details: HomeBoardError.noConfiguration.localizedDescription)
+        }
+        guard catalog == nil, case let .failed(message) = state else { return .none }
+        return .failed(message)
+    }
+
+    static func setupErrorState(cause: String, details: String) -> DMErrorState {
+        DMErrorState(systemImage: "wrench.and.screwdriver", title: setupTitle, cause: cause, details: details)
     }
 }
 
@@ -210,18 +237,13 @@ struct WidgetGalleryPopover: View {
             surface: DefaultBoard.surface,
             catalog: catalog.catalog,
             entries: catalog.catalog.map { WidgetGallery.entries($0, surface: DefaultBoard.surface) } ?? [],
-            failure: failureMessage,
+            failure: catalog.failureMessage,
             blockedReason: { _ in controller.addBlockedReason },
             onAdd: { widget in if controller.add(widget, canvasWidth: canvasWidth) { onAdded() } },
             onRetry: { catalog.reloadSoon() },
             templates: WidgetGalleryNewWidgets.homeTemplates,
             canMakeWidgets: controller.canEdit,
             onNewWidget: onNewWidget)
-    }
-
-    private var failureMessage: String? {
-        if case let .failed(message) = catalog.state { return message }
-        return nil
     }
 }
 

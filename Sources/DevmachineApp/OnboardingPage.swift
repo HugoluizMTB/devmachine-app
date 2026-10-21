@@ -2,8 +2,8 @@ import SwiftUI
 import AppKit
 import DevmachineCore
 
-/// The first-run setup. It owns the whole window until the Mac is ready or
-/// the person skips it: the CLI is installed, then the Add machine wizard
+/// The first-run setup. It owns the whole window until the Mac is ready:
+/// the CLI is installed, then the Add machine wizard
 /// sets up the first machine (a server, or one on this Mac), every step a
 /// `devmachine` command with its log on screen. It ends on a button into the
 /// app, never on a restart.
@@ -11,7 +11,6 @@ struct OnboardingPage: View {
     @Environment(\.dmMetrics) private var m
 
     var onStart: () -> Void = {}
-    var onSkip: () -> Void = {}
 
     /// Set only for demo screenshots: the flow in a fixed state, and how to
     /// fill the wizard and the runs for it.
@@ -19,9 +18,8 @@ struct OnboardingPage: View {
 
     @StateObject private var runner = OnboardingRunner()
 
-    init(onStart: @escaping () -> Void = {}, onSkip: @escaping () -> Void = {}, demoScreen: String? = nil) {
+    init(onStart: @escaping () -> Void = {}, demoScreen: String? = nil) {
         self.onStart = onStart
-        self.onSkip = onSkip
         self.demoScreen = demoScreen
     }
 
@@ -102,22 +100,10 @@ struct OnboardingPage: View {
             DMButton("Set up devmachine", systemImage: "play.fill", size: .large,
                      isLoading: !flow.hasDetected) { runner.start() }
                 .keyboardShortcut(.defaultAction)
-            HStack(spacing: m.space.md) {
-                DMButton("Skip for now", variant: .ghost, size: .small) { skip() }
-                Text("Sessions on this Mac work without a machine. Settings can run the setup later.")
-                    .font(.dm(11))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-            .padding(.top, m.space.md)
         }
         .padding(m.space.xl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .dmGlass(radius: DMRadius.panel, style: .continuous, stroke: .white.opacity(0.12))
-    }
-
-    private func skip() {
-        runner.leave()
-        onSkip()
     }
 
     // MARK: - Steps outside the wizard

@@ -125,6 +125,7 @@ struct DevmachineApp: App {
                         stats.loadMachines()
                         MachinesStore.shared.requestLoad()
                         MachineReadinessStore.shared.requestCheck()
+                        HomeBoardController.shared.reload()
                     }
                     readiness.onPrepared = { [weak model] machine in
                         model?.refreshWorkspaces(onMachine: machine)

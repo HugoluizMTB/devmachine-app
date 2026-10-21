@@ -604,6 +604,25 @@ final class HomeBoardControllerTests: XCTestCase {
         XCTAssertEqual(answers.calls, 2)
     }
 
+    func testAConfigurationTheCLIDoesNotNameIsReportedUntilABoardOpens() async throws {
+        let configPath = root.appendingPathComponent("config").path
+        let answers = ConfigAnswers([nil, configPath])
+        let catalogStore = WidgetCatalogStore(read: { DemoData.widgetCatalog })
+        catalogStore.seed(DemoData.widgetCatalog)
+        let controller = HomeBoardController(
+            placementsFile: WidgetPlacementsFile(fileURL: root.appendingPathComponent("widget-placements.json")),
+            catalog: catalogStore,
+            configPath: { answers.next() })
+        controller.defaultBoard = { _ in DefaultBoard.make(harnesses: []) }
+        XCTAssertFalse(controller.configurationUnknown)
+        controller.start()
+        try await waitUntil { controller.configurationUnknown }
+        XCTAssertNil(controller.store)
+        controller.reload()
+        try await waitUntil { controller.store != nil }
+        XCTAssertFalse(controller.configurationUnknown)
+    }
+
     func testResetWithoutAConfigurationFolderKeepsThePlacements() throws {
         let controller = makeController()
         controller.applyPlaces(canvasWidth: 1280, enabledHarnesses: ["claude", "codex"])

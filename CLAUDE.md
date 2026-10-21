@@ -1000,9 +1000,22 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   Publish a port… and Preview open with something to show.
 
 ## First run (onboarding)
-- **Onboarding owns the window until the Mac is set up or skipped**
-  (`AppModel.launchRoute`): Home needs saved settings and the CLI (or a
-  remembered "Skip for now"). A first run never lands on Settings.
+- **Onboarding owns the window until the Mac is set up** (`AppModel.launchRoute`):
+  Home needs the CLI and saved settings, every launch. There is no way to
+  put the setup off: a skipped setup used to open Home with no CLI, which
+  showed only the wallpaper and a raw "not found" error. The old
+  `onboardingSkipped` default is deleted at launch, so a Mac that skipped
+  goes back to the setup. A first run never lands on Settings.
+- **Home is never empty when the setup is not done**
+  (`HomeCatalogNotice.needsSetup`): a CLI that goes missing after launch
+  (`WidgetCatalogStore.State.cliMissing`, from
+  `DevmachineCLIError.executableNotFound`) while no catalog was read, or a
+  CLI that names no configuration folder
+  (`HomeBoardController.configurationUnknown`), shows "Devmachine is not
+  set up on this Mac" with "Finish setup" (`AppModel.openOnboarding`) and
+  the raw error under "Show details". A Mac with the CLI and no machine
+  is not gated: Home draws the default board and the sidebar offers "Add
+  a machine". A missing config folder also draws the default board.
 - **The first run is the Add machine wizard, not a second implementation**
   (`OnboardingFlow`, a pure state machine driven by `OnboardingRunner`).
   The CLI is installed first, as a background step with its log
@@ -1092,7 +1105,8 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   carries a button back into onboarding.
 - **Leaving onboarding reads the CLI once, off the main thread**, and hands
   that answer to the workspace load. Then `onLeftOnboarding` reloads the
-  machine lists (Home's stats machines, `MachinesStore`, readiness), so a
+  machine lists (Home's stats machines, `MachinesStore`, readiness) and
+  Home's catalog and board (`HomeBoardController.reload`), so a
   machine the setup just added shows without a relaunch. The config
   folder watcher is made again on any check while the folder it watches
   did not exist when it was made (`isWatchingConfiguration`).

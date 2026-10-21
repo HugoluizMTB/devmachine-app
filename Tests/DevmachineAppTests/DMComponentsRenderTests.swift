@@ -151,6 +151,12 @@ private struct DMComponentsGallery: View {
                     title: "Codex usage isn't available", cause: "Codex doesn't seem to be signed in.",
                     details: "error: not signed in, run `codex login`"),
                 retry: {}, startsExpanded: true)
+            DMErrorStateView(
+                state: HomeCatalogNotice.setupErrorState(
+                    cause: HomeCatalogNotice.missingCLICause,
+                    details: "Devmachine CLI was not found at /Users/alice/.local/bin/devmachine."),
+                retry: {}, retryTitle: HomeCatalogNotice.finishSetupTitle, retrySystemImage: "play.fill",
+                retryVariant: .primary)
             HStack(alignment: .top, spacing: 0) {
                 DMStatusView(kind: .loading("Reading context…"), fillsHeight: false)
                 DMStatusView(

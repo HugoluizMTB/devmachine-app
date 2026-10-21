@@ -306,6 +306,43 @@ final class WidgetCatalogStoreTests: XCTestCase {
         XCTAssertEqual(HomeCatalogNotice.of(catalog: stale, state: .loading), .none)
     }
 
+    func testAMissingCLIAsksToFinishSetupAndKeepsTheRawErrorForDetails() async throws {
+        let missing = DevmachineCLIError.executableNotFound(["/opt/homebrew/bin/devmachine", "/Users/alice/.local/bin/devmachine"])
+        let store = WidgetCatalogStore(read: { throw missing })
+        await store.reload()
+        let details = try XCTUnwrap(missing.errorDescription)
+
+        XCTAssertEqual(store.state, .cliMissing(details))
+        XCTAssertEqual(store.failureMessage, details)
+        XCTAssertEqual(
+            HomeCatalogNotice.of(catalog: store.catalog, state: store.state),
+            .needsSetup(cause: HomeCatalogNotice.missingCLICause, details: details))
+    }
+
+    func testHomeAsksToFinishSetupWhenTheCLINamesNoConfiguration() {
+        let unknown = HomeBoardError.noConfiguration.localizedDescription
+        XCTAssertEqual(
+            HomeCatalogNotice.of(catalog: nil, state: .loaded, configurationUnknown: true),
+            .needsSetup(cause: HomeCatalogNotice.noConfigurationCause, details: unknown))
+        let loaded = WidgetCatalog(engine: "1.7", packagesRelease: "v54", widgets: [])
+        XCTAssertEqual(
+            HomeCatalogNotice.of(catalog: loaded, state: .loaded, configurationUnknown: true),
+            .needsSetup(cause: HomeCatalogNotice.noConfigurationCause, details: unknown))
+        XCTAssertEqual(HomeCatalogNotice.of(catalog: nil, state: .loading, configurationUnknown: true), .loading)
+        XCTAssertEqual(
+            HomeCatalogNotice.of(catalog: nil, state: .cliMissing("not found"), configurationUnknown: true),
+            .needsSetup(cause: HomeCatalogNotice.missingCLICause, details: "not found"))
+        XCTAssertEqual(HomeCatalogNotice.of(catalog: loaded, state: .cliMissing("not found")), .none)
+    }
+
+    func testTheFinishSetupCardSaysWhatIsMissing() {
+        let state = HomeCatalogNotice.setupErrorState(cause: HomeCatalogNotice.missingCLICause, details: "not found")
+        XCTAssertEqual(state.title, "Devmachine is not set up on this Mac")
+        XCTAssertEqual(state.cause, "The devmachine command line tool is missing.")
+        XCTAssertEqual(state.details, "not found")
+        XCTAssertEqual(HomeCatalogNotice.finishSetupTitle, "Finish setup")
+    }
+
     func testAPinnedCatalogNeverReadsTheCLI() async {
         let pinned = WidgetCatalog(engine: "1.0", packagesRelease: "v39", widgets: [])
         let box = ReadBox(.success(WidgetCatalog(engine: "1.0", packagesRelease: "v40", widgets: [])))
