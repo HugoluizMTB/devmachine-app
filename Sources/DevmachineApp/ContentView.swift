@@ -280,15 +280,21 @@ struct ContentView: View {
             if !model.sidebarCollapsed {
                 sidebarDivider
             }
-            DocumentSplitView(split: split, showsTrailing: showsDocumentPane) {
-                centerPane
-            } trailing: {
-                DocumentPane()
+            VStack(spacing: 0) {
+                if showsTabStrip {
+                    CenterTabStrip()
+                }
+                DocumentSplitView(split: split, showsTrailing: showsDocumentPane) {
+                    centerPane
+                } trailing: {
+                    DocumentPane()
+                }
+                .onChange(of: showsDocumentPane) { _, shown in
+                    if !shown { split.paneClosed() }
+                }
+                .onChange(of: previews.owner) { _, _ in split.paneClosed() }
             }
-            .onChange(of: showsDocumentPane) { _, shown in
-                if !shown { split.paneClosed() }
-            }
-            .onChange(of: previews.owner) { _, _ in split.paneClosed() }
+            .ignoresSafeArea(edges: .top)
             if model.showsContextPanel {
                 contextArea
             }
@@ -315,7 +321,7 @@ struct ContentView: View {
             // the window's top edge, no content-colored band above them.
             // Full screen has no title bar to inset from, yet the sidebar toggle
             // still sits on the buttons' line: the band around it stays clear.
-            MainPane(terminalTopInset: model.sidebarCollapsed
+            MainPane(terminalTopInset: model.sidebarCollapsed && !showsTabStrip
                 ? max(titlebarHeight, windowButtons.minY + windowButtons.maxY) : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.dmContentBg)
@@ -328,6 +334,13 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
+    }
+
+    /// The strip of open sessions and files over the terminal, when
+    /// Settings asks for it. It stays while a page covers the terminal, so
+    /// a tab is a way back.
+    private var showsTabStrip: Bool {
+        CenterTabStrip.shows(enabled: settingsStore.settings?.showsSessionTabs ?? false, mode: model.appMode)
     }
 
     /// The file pane: it sits beside the terminal, the way an editor puts a
