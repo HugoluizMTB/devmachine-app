@@ -15,16 +15,6 @@ enum CenterTab: Hashable {
         case let .file(owner, _): return owner
         }
     }
-
-    var isSession: Bool {
-        if case .session = self { return true }
-        return false
-    }
-
-    var path: String? {
-        if case let .file(_, path) = self { return path }
-        return nil
-    }
 }
 
 extension AppModel {

@@ -29,10 +29,6 @@ public struct WorkspaceCollapse: Equatable, Sendable {
         }
     }
 
-    public static func showsSessions(alias: String, collapsed: WorkspaceCollapse) -> Bool {
-        !collapsed.isCollapsed(alias)
-    }
-
     /// The number shown after a folded workspace's name; nothing for none.
     public static func countLabel(_ count: Int) -> String {
         count > 0 ? String(count) : ""

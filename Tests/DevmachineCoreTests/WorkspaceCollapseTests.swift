@@ -34,11 +34,11 @@ final class WorkspaceCollapseTests: XCTestCase {
         XCTAssertEqual(WorkspaceCollapse.load(defaults), collapse)
     }
 
-    func testCollapsedKeepsCardsAndHidesRows() {
+    func testOnlyTheToggledWorkspaceIsCollapsed() {
         var collapse = WorkspaceCollapse()
         collapse.toggle("acme-devmachine")
-        XCTAssertFalse(WorkspaceCollapse.showsSessions(alias: "acme-devmachine", collapsed: collapse))
-        XCTAssertTrue(WorkspaceCollapse.showsSessions(alias: "beta-devmachine", collapsed: collapse))
+        XCTAssertTrue(collapse.isCollapsed("acme-devmachine"))
+        XCTAssertFalse(collapse.isCollapsed("beta-devmachine"))
     }
 
     func testCountLabel() {

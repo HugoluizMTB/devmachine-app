@@ -39,7 +39,7 @@ struct WorkspacesWidgetView: View {
                         .padding(.top, m.space.sm)
                 }
                 let activity = firstSyncActivity(for: ws)
-                let showsSessions = WorkspaceCollapse.showsSessions(alias: ws.alias, collapsed: model.workspaceCollapse)
+                let showsSessions = !model.workspaceCollapse.isCollapsed(ws.alias)
                 groupHeader(
                     ws.name,
                     alias: ws.alias,
