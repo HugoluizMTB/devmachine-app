@@ -113,10 +113,9 @@ extension DemoSiteWalk {
 
     static let chatsScene = Scene(id: "chats", frames: [
         Frame(step: .chatsTour(0), hold: 1.2),
-        Frame(step: .chatsTour(1), hold: 1.4, pointer: .click(Spot(target: "sidebar:mode")),
-              label: Label(text: "Code, Chats and Schedule", near: "menu:mode-chats")),
-        Frame(step: .chatsTour(2), hold: 1.8, pointer: .click(Spot(target: "menu:mode-chats")),
-              label: chatLabel),
+        Frame(step: .chatsTour(1), hold: 1.4, pointer: .click(Spot(target: "nav:chats")),
+              label: Label(text: "Workspaces, Chats and Schedule", near: "nav:chats")),
+        Frame(step: .chatsTour(2), hold: 1.8, label: chatLabel),
         Frame(step: .chatsTour(2), hold: 1.8, pointer: .hover(Spot(target: "chat:copy")), label: chatLabel),
         Frame(step: .chatsTour(3), hold: 1.2, pointer: .click(Spot(target: "chats:new"))),
         Frame(step: .chatsTour(4), hold: 2.4, pointer: .click(Spot(target: "chat:harness")),
@@ -139,7 +138,7 @@ extension DemoSiteWalk {
             model.clickSession(contextSession)
             try? await Task.sleep(nanoseconds: 300_000_000)
         case 1:
-            model.showsModeMenu = true
+            break
         case 2:
             model.showChats(select: DemoChats.selectedID, store: store)
         case 3:

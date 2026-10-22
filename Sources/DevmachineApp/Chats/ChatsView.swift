@@ -73,13 +73,11 @@ struct ChatsSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: m.pt(10)) {
-                SidebarModeHeader(refresh: { Task { await store.refresh() } })
-                SidebarNewRow(title: "New chat", systemImage: "square.and.pencil", shortcut: "⌘N",
-                              selected: store.selectedID == nil) { store.startNewChat() }
+            SidebarTopBlock(title: SidebarNav.sectionTitle(.chats), bottomGap: false) {
+                SidebarRefreshButton { Task { await store.refresh() } }
+                SidebarPlusButton(help: "New chat (⌘N)") { store.startNewChat() }
                     .demoClickTarget("chats:new")
             }
-            .modifier(SidebarHeaderTop())
             DMSearchField(prompt: "Search chats", text: $query)
                 .padding(.horizontal, m.pt(10))
                 .frame(height: m.pt(30))

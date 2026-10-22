@@ -57,22 +57,25 @@ final class ChatsPaletteAndDemoTests: XCTestCase {
             id: "c", title: "Caddy reload", harness: .claude, workspace: "main", createdAt: Date(), updatedAt: Date())
         XCTAssertEqual(ChatAccessibility.rowLabel(chat, answering: false), "Caddy reload, Claude on main")
         XCTAssertEqual(ChatAccessibility.rowLabel(chat, answering: true), "Caddy reload, Claude on main, answering")
-        XCTAssertEqual(SidebarModeHeader.accessibilityValue(.code, codeWaits: true), "current: Code")
+        XCTAssertEqual(SidebarNav.accessibilityValue(.code, codeWaits: true), "current: Code")
         XCTAssertEqual(
-            SidebarModeHeader.accessibilityValue(.chats, codeWaits: true), "current: Chats, a session in Code is waiting")
+            SidebarNav.accessibilityValue(.chats, codeWaits: true), "current: Chats, a session in Code is waiting")
         XCTAssertEqual(ChatMenuItem(id: "x", title: "main", detail: "(default)").accessibilityTitle, "main, (default)")
         XCTAssertEqual(ChatMenuShortcut.keys("⌘1")?.0, KeyEquivalent("1"))
         XCTAssertNil(ChatMenuShortcut.keys("⌃⌥Space"))
     }
 
-    func testTheModeMenuOffersCodeAndChatsWithTheirShortcuts() {
+    func testTheNavRowsOfferWorkspacesChatsAndScheduleWithTheirShortcuts() {
         let model = AppModel(services: fixtureServices())
-        let items = SidebarModeMenuOverlay.items(model)
-        XCTAssertEqual(items.prefix(2).map(\.title), ["Code", "Chats"])
-        XCTAssertEqual(items.prefix(2).map(\.shortcut), ["⌘1", "⌘2"])
-        XCTAssertEqual(items.first?.checked, true)
-        items[1].action?()
+        XCTAssertEqual(SidebarNav.items.map(\.title), ["Workspaces", "Chats", "Schedule"])
+        XCTAssertEqual(SidebarNav.items.map(\.shortcut), ["⌘1", "⌘2", "⌘3"])
+        XCTAssertEqual(SidebarNav.items.map(\.systemImage),
+                       ["chevron.left.forwardslash.chevron.right", "bubble.left.and.bubble.right", "clock"])
+        SidebarNav.select(.chats, model: model)
         XCTAssertEqual(model.appMode, .chats)
+        XCTAssertTrue(SidebarNav.showsCodeWaits(item: SidebarNav.items[0], mode: .chats, codeWaits: true))
+        XCTAssertFalse(SidebarNav.showsCodeWaits(item: SidebarNav.items[0], mode: .code, codeWaits: true))
+        XCTAssertFalse(SidebarNav.showsCodeWaits(item: SidebarNav.items[1], mode: .code, codeWaits: true))
     }
 
     func testInChatsModeTheChatCommandsLead() {
@@ -84,13 +87,13 @@ final class ChatsPaletteAndDemoTests: XCTestCase {
         XCTAssertEqual(codeSections.first?.category, .goTo)
     }
 
-    func testTheChatsWalkKeepsItsScreensAndShowsTheModeMenu() {
+    func testTheChatsWalkKeepsItsScreensAndShowsTheSidebarNav() {
         let walk = DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "chats"])
         XCTAssertEqual(walk.map(\.fileName), [
             "01-chat-main.png", "02-chat-new.png", "03-chat-picker-harness.png", "04-chat-picker-workspace.png",
             "05-code-toggle.png", "06-quick-panel.png", "07-quick-panel-answer.png", "08-quick-panel-continue.png",
             "09-menubar-chats.png", "10-palette-chats.png", "11-context-ask-claude.png", "12-context-ask-codex.png",
-            "13-chat-error-logged-out.png", "14-settings-chats.png", "15-chat-mode-menu.png",
+            "13-chat-error-logged-out.png", "14-settings-chats.png", "15-sidebar-nav.png",
             "16-schedule-mode.png", "17-sidebar-collapsed.png", "18-chats-collapsed.png",
             "19-schedule-collapsed.png", "20-home-open.png", "21-home-collapsed.png",
             "22-chat-connecting.png",

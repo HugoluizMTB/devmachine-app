@@ -118,7 +118,7 @@ final class DemoSiteWalkTests: XCTestCase {
             "widget:\(DemoSiteWalk.codexUsage)", "widget:\(DemoSiteWalk.claudeUsage)", "home:add",
             "sheet:gallery:\(DemoSiteWalk.summaryType)",
             "scheduled:\(DemoScheduled.briefingID)", "scheduled:run:\(DemoScheduled.briefingRun)", "scheduled:new",
-            "sidebar:mode", "menu:mode-chats", "chat:copy", "chats:new", "chat:harness", "chat:workspace",
+            "nav:chats", "chat:copy", "chats:new", "chat:harness", "chat:workspace",
             "chat:readonly", "ask:input", "ask:clear",
         ])
     }

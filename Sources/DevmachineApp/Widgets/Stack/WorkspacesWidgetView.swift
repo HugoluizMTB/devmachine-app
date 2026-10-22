@@ -39,10 +39,13 @@ struct WorkspacesWidgetView: View {
                         .padding(.top, m.space.sm)
                 }
                 let activity = firstSyncActivity(for: ws)
+                let showsSessions = !model.workspaceCollapse.isCollapsed(ws.alias)
                 groupHeader(
                     ws.name,
                     alias: ws.alias,
                     offline: !ws.isLocal && model.offlineAliases.contains(ws.alias),
+                    collapsed: !showsSessions,
+                    count: model.sessionCount(alias: ws.alias),
                     action: ws.isLocal ? pickLocalFolder : { model.newSession(alias: ws.alias) },
                     filesButton: !ws.isLocal,
                     extraTopSpacing: index > 0,
@@ -85,7 +88,9 @@ struct WorkspacesWidgetView: View {
                         .padding(.horizontal, m.space.md)
                         .padding(.vertical, m.space.xs)
                 }
-                if ws.isLocal {
+                if !showsSessions {
+                    EmptyView()
+                } else if ws.isLocal {
                     ForEach(model.localSessions) { s in
                         localSessionRow(session: s)
                     }
@@ -206,6 +211,8 @@ struct WorkspacesWidgetView: View {
         _ title: String,
         alias: String,
         offline: Bool,
+        collapsed: Bool,
+        count: Int,
         action: (() -> Void)?,
         filesButton: Bool = true,
         extraTopSpacing: Bool,
@@ -214,10 +221,10 @@ struct WorkspacesWidgetView: View {
         DMSection(
             padding: EdgeInsets(top: extraTopSpacing ? 16 : 4, leading: 10, bottom: 4, trailing: 10),
             label: {
-                Text(title)
-                    .font(.dm(11, weight: .semibold))
-                    .foregroundStyle(Color.dmMuted)
-                    .opacity(disabled ? 0.5 : 1)
+                WorkspaceGroupTitle(title: title, collapsed: collapsed, count: count, disabled: disabled) {
+                    model.toggleWorkspaceCollapsed(alias)
+                }
+                .demoClickTarget("workspace:\(alias)")
                 if offline {
                     Circle()
                         .fill(Color.red)
@@ -252,6 +259,8 @@ struct WorkspacesWidgetView: View {
             }
         )
         .contextMenu {
+            Button(collapsed ? "Expand" : "Collapse") { model.toggleWorkspaceCollapsed(alias) }
+            Divider()
             Button("Open session grid") { model.openSessionGrid(alias) }
             Button("Browse files…") { openFiles(alias: alias) }
             if alias != Workspace.local.alias, model.hasCaddyMachine {
@@ -444,7 +453,7 @@ struct WorkspacesWidgetView: View {
                     case .spinner:
                         ProgressView()
                             .controlSize(.small)
-                            .scaleEffect(14.0 / 16.0)
+                            .scaleEffect(DMIconSize.sessionGlyph / 16.0)
                     case .attention:
                         Circle()
                             .fill(Color.orange)
@@ -461,7 +470,7 @@ struct WorkspacesWidgetView: View {
                         Color.clear
                     }
                 }
-                .frame(width: m.pt(14), height: m.pt(14))
+                .frame(width: m.pt(DMIconSize.sessionGlyph), height: m.pt(DMIconSize.sessionGlyph))
             ) : nil,
             title: title,
             subtitle: shown.subtitle,
@@ -487,13 +496,56 @@ struct WorkspacesWidgetView: View {
                             .help(badge.helpText)
                     }
                 }
-            )
+            ),
+            leadingOnTitleLine: true
         )
     }
 }
 
-/// The 14-point slot before a session's name, a terminal when no harness
-/// runs in it, so every name in the list starts at the same place.
+/// A workspace's name in its group header: a click folds its sessions away
+/// or brings them back. The chevron shows on hover and while folded; the
+/// count shows only while folded, where the rows it stands for are not.
+private struct WorkspaceGroupTitle: View {
+    @Environment(\.dmMetrics) private var m
+    let title: String
+    let collapsed: Bool
+    let count: Int
+    let disabled: Bool
+    let toggle: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: m.space.xs) {
+            Text(title)
+                .font(.dm(11, weight: .semibold))
+                .foregroundStyle(Color.dmMuted)
+            if collapsed {
+                Text(verbatim: WorkspaceCollapse.countLabel(count))
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted.opacity(0.7))
+            }
+            Image(systemName: "chevron.right")
+                .font(.dm(8, weight: .bold))
+                .foregroundStyle(Color.dmMuted.opacity(0.7))
+                .rotationEffect(.degrees(collapsed ? 0 : 90))
+                .opacity(hovering || collapsed ? 1 : 0)
+        }
+        .opacity(disabled ? 0.5 : 1)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture(perform: toggle)
+        .animation(.easeOut(duration: 0.12), value: collapsed)
+        .dmHelp(collapsed ? "Show the sessions" : "Hide the sessions")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(collapsed ? "collapsed, \(WorkspaceCollapse.countLabel(count)) sessions" : "expanded")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { toggle() }
+    }
+}
+
+/// The slot before a session's name, a terminal when no harness runs in
+/// it, so every name in the list starts at the same place.
 private struct SidebarHarnessIcon: View {
     @Environment(\.dmMetrics) private var m
     let icon: HarnessIcon?
@@ -520,7 +572,7 @@ private struct SidebarHarnessIcon: View {
                 Color.clear
             }
         }
-        .frame(width: m.pt(14), height: m.pt(14))
+        .frame(width: m.pt(DMIconSize.sessionGlyph), height: m.pt(DMIconSize.sessionGlyph))
     }
 }
 

@@ -107,6 +107,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// How those icons are drawn: in the harness's brand colors, or in the
     /// row's own tint.
     public var harnessIconStyle: HarnessIconStyle
+    /// A strip above the terminal with the sessions opened and the files
+    /// looked at this run. Off by default: the centre stays as it was.
+    public var showsSessionTabs: Bool
     /// Workspaces left out of the sidebar, by ssh alias. A list of what to
     /// hide, not of what to show: a workspace added to `~/.ssh/config` later
     /// appears on its own, which is what you want from a machine that gains
@@ -185,6 +188,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         showsSessionAge: Bool = true,
         showsAttention: Bool = true,
         harnessIconStyle: HarnessIconStyle = .color,
+        showsSessionTabs: Bool = false,
         hiddenWorkspaces: [String] = [],
         autoConnectWorkspaces: [String] = [],
         workspaceAliases: [String: String] = [:],
@@ -217,6 +221,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.showsSessionAge = showsSessionAge
         self.showsAttention = showsAttention
         self.harnessIconStyle = harnessIconStyle
+        self.showsSessionTabs = showsSessionTabs
         self.hiddenWorkspaces = hiddenWorkspaces
         self.autoConnectWorkspaces = autoConnectWorkspaces
         self.workspaceAliases = workspaceAliases
@@ -242,7 +247,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case opsRepoPath, hostAlias, publicIP, baseDomain, sshAgentSocket, wallpaper
         case terminalOpacity, terminalFontSize, uiFontScale, keptTerminals, debugLogging, remoteTerminalMode
-        case copyOnSelect, showsHarnessIcons, harnessIconStyle
+        case copyOnSelect, showsHarnessIcons, harnessIconStyle, showsSessionTabs
         case showsBusySpinner, showsBranch, showsSessionAge, showsAttention
         case hiddenWorkspaces, autoConnectWorkspaces, workspaceAliases, enabledHarnesses, localSessionProgram, remoteSessionProgram
         case workspaceSessionPrograms, newSessionProgram, linkOpening
@@ -281,6 +286,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         showsSessionAge = try values.decodeIfPresent(Bool.self, forKey: .showsSessionAge) ?? true
         showsAttention = try values.decodeIfPresent(Bool.self, forKey: .showsAttention) ?? true
         harnessIconStyle = (try? values.decodeIfPresent(HarnessIconStyle.self, forKey: .harnessIconStyle)) ?? .color
+        showsSessionTabs = try values.decodeIfPresent(Bool.self, forKey: .showsSessionTabs) ?? false
         linkOpening = (try? values.decodeIfPresent(LinkOpening.self, forKey: .linkOpening)) ?? .defaultBrowser
         operatorProgram = try? values.decodeIfPresent(SessionLaunchChoice.self, forKey: .operatorProgram)
         operatorSessionEnabled = (try? values.decodeIfPresent(Bool.self, forKey: .operatorSessionEnabled)) ?? true
@@ -345,6 +351,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try values.encode(showsSessionAge, forKey: .showsSessionAge)
         try values.encode(showsAttention, forKey: .showsAttention)
         try values.encode(harnessIconStyle, forKey: .harnessIconStyle)
+        try values.encode(showsSessionTabs, forKey: .showsSessionTabs)
         try values.encode(hiddenWorkspaces, forKey: .hiddenWorkspaces)
         try values.encode(autoConnectWorkspaces, forKey: .autoConnectWorkspaces)
         try values.encode(workspaceAliases, forKey: .workspaceAliases)

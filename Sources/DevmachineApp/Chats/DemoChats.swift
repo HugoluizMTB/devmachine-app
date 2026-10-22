@@ -163,7 +163,7 @@ enum DemoChats {
         .init(id: "context-ask-codex", fileName: "12-context-ask-codex.png", settleNanoseconds: 1_200_000_000),
         .init(id: "chat-error-logged-out", fileName: "13-chat-error-logged-out.png", settleNanoseconds: 600_000_000),
         .init(id: "settings-chats", fileName: "14-settings-chats.png", settleNanoseconds: 500_000_000),
-        .init(id: "chat-mode-menu", fileName: "15-chat-mode-menu.png", settleNanoseconds: 500_000_000),
+        .init(id: "sidebar-nav", fileName: "15-sidebar-nav.png", settleNanoseconds: 500_000_000),
         .init(id: "schedule-mode", fileName: "16-schedule-mode.png", settleNanoseconds: 900_000_000),
         .init(id: "sidebar-collapsed", fileName: "17-sidebar-collapsed.png", settleNanoseconds: 900_000_000),
         .init(id: "chats-collapsed", fileName: "18-chats-collapsed.png", settleNanoseconds: 700_000_000),
@@ -232,9 +232,8 @@ enum DemoChats {
                 messages: [ChatMessage(role: .user, text: "what does the retry loop in build.go do?")],
                 isStreaming: true, status: "Connecting to main…"))
             model.showChats(select: selectedID, store: store)
-        case "chat-mode-menu":
+        case "sidebar-nav":
             model.showChats(select: selectedID, store: store)
-            model.showsModeMenu = true
         case "palette-chats":
             model.showChats(select: selectedID, store: store)
             DemoSnapshots.paletteInitialQuery = "chat"

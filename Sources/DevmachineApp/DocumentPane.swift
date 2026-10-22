@@ -79,6 +79,10 @@ struct DocumentTabChip: View {
     let closeHelp: String
     let select: () -> Void
     let close: () -> Void
+    /// A harness's own icon in place of the symbol, as the sidebar draws it.
+    var image: NSImage? = nil
+    var imageIsTemplate = false
+    var iconColor = Color(hex: 0x5AA9E6)
     @State private var hovering = false
 
     static let maxTitleLength = 36
@@ -90,9 +94,7 @@ struct DocumentTabChip: View {
     var body: some View {
         HStack(spacing: m.space.xxs) {
             HStack(spacing: m.space.sm) {
-                Image(systemName: systemImage)
-                    .font(.dm(10))
-                    .foregroundStyle(Color(hex: 0x5AA9E6))
+                icon
                 Text(verbatim: Self.shortened(title))
                     .font(.dm(11.5))
                     .foregroundStyle(.white.opacity(selected ? 0.9 : 0.55))
@@ -115,6 +117,23 @@ struct DocumentTabChip: View {
         .background(selected ? Color.dmContentBg : (hovering ? Color.dmHover : Color.clear))
         .onHover { hovering = $0 }
         .onMiddleClick(while: hovering, perform: close)
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        if let image {
+            Image(nsImage: image)
+                .renderingMode(imageIsTemplate ? .template : .original)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .foregroundStyle(iconColor)
+                .frame(width: m.pt(DMIconSize.sessionGlyph), height: m.pt(DMIconSize.sessionGlyph))
+        } else {
+            Image(systemName: systemImage)
+                .font(.dm(10))
+                .foregroundStyle(iconColor)
+        }
     }
 }
 

@@ -49,15 +49,28 @@ struct SidebarView: View {
     }
 
     private var topBar: some View {
-        VStack(alignment: .leading, spacing: m.pt(10)) {
-            SidebarModeHeader(refresh: { model.refreshAllNow() })
-            SidebarNewRow(title: "New session", systemImage: "plus.rectangle", shortcut: "⌘N") {
-                model.requestQuickSession()
-            }
-            .help("A new session, like the one in front of you, or pick where")
+        SidebarTopBlock(title: SidebarNav.sectionTitle(.code)) {
+            SidebarRefreshButton { model.refreshAllNow() }
+            newMenu
         }
-        .padding(.bottom, m.pt(SidebarHeaderSpacing.blockGap))
-        .modifier(SidebarHeaderTop())
+    }
+
+    /// New session is ⌘N; a new workspace lives in the same + so the sidebar
+    /// has one place to add things.
+    private var newMenu: some View {
+        Menu {
+            Button("New session…") { model.requestQuickSession() }
+            Button("New workspace…") { model.requestNewWorkspace() }
+        } label: {
+            Image(systemName: "plus")
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: m.hit.header.width, height: m.hit.header.height)
+        .dmHelp("New session (⌘N) or workspace")
+        .accessibilityLabel("New session or workspace")
     }
 }
 

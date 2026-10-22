@@ -42,13 +42,22 @@ struct DMRow: View {
     /// Shown before `trailing`, and only while the pointer is on the row.
     var trailingHover: AnyView?
     var tap: (() -> Void)?
+    /// With a subtitle, keeps `leading` on the title's line instead of
+    /// between the two lines, as an editor's file icon sits by the name.
+    var leadingOnTitleLine = false
     @Environment(\.dmMetrics) private var m
     @State private var hovering = false
 
+    static func stackAlignment(leadingOnTitleLine: Bool, hasSubtitle: Bool) -> VerticalAlignment {
+        leadingOnTitleLine && hasSubtitle ? .top : .center
+    }
+
     var body: some View {
-        let content = HStack(spacing: m.space.md) {
+        let onTitleLine = Self.stackAlignment(leadingOnTitleLine: leadingOnTitleLine, hasSubtitle: subtitle != nil) == .top
+        let content = HStack(alignment: onTitleLine ? .top : .center, spacing: m.space.md) {
             if let leading {
                 leading
+                    .frame(height: onTitleLine ? m.pt(DMIconSize.sessionGlyphLine) : nil)
             } else if let systemImage {
                 Image(systemName: systemImage)
                     .font(.dm(iconSize))
