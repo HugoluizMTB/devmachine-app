@@ -288,6 +288,9 @@ final class DemoSnapshotsTests: XCTestCase {
 
     func testTheHarnessIconWalkCapturesTheSidebarOnItsOwn() {
         XCTAssertEqual(DemoSnapshots.harnessIconScreens.map(\.fileName), ["35-sidebar-harness-icons.png"])
+        XCTAssertEqual(DemoSnapshots.tabsScreens.map(\.fileName), ["36-tabs-open.png", "37-tabs-sidebar-closed.png"])
+        XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "tabs"]).map(\.id),
+                       ["tabs-open", "tabs-sidebar-closed"])
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "harness-icons"]).map(\.id),
                        DemoSnapshots.harnessIconScreens.map(\.id))
     }

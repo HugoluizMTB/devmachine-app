@@ -13,8 +13,8 @@ struct CenterTabStrip: View {
     @Environment(\.collapsedSidebarButtonFrame) private var toggleFrame
     @Environment(\.titleLine) private var titleLine
 
-    /// Points at 100%.
-    static let height: CGFloat = 34
+    /// The tab row, in points at 100%.
+    static let rowHeight: CGFloat = 34
     static let gapAfterToggle: CGFloat = 8
 
     static func shows(enabled: Bool, mode: AppMode) -> Bool {
@@ -22,16 +22,20 @@ struct CenterTabStrip: View {
     }
 
     /// With the sidebar closed the window buttons and the sidebar toggle sit
-    /// over the strip's corner, so its tabs start after the toggle and its
-    /// row centres on the buttons' line.
+    /// over the strip's corner, so its tabs start after the toggle and the
+    /// strip grows so that its row centres on the buttons' line.
     static func leadingInset(toggle: CGRect?, gap: CGFloat) -> CGFloat {
         guard let toggle else { return 0 }
         return toggle.maxX + gap
     }
 
-    static func topInset(toggle: CGRect?, titleLine: CGFloat, height: CGFloat) -> CGFloat {
-        guard toggle != nil else { return 0 }
-        return max(0, titleLine - height / 2)
+    static func stripHeight(toggle: CGRect?, titleLine: CGFloat, row: CGFloat) -> CGFloat {
+        guard toggle != nil else { return row }
+        return max(row, titleLine * 2)
+    }
+
+    static func rowTop(row: CGFloat, strip: CGFloat) -> CGFloat {
+        max(0, (strip - row) / 2)
     }
 
     static func fileIcon(path: String) -> String {
@@ -41,6 +45,9 @@ struct CenterTabStrip: View {
         default: return "doc.text"
         }
     }
+
+    private var row: CGFloat { m.pt(Self.rowHeight) }
+    private var strip: CGFloat { Self.stripHeight(toggle: toggleFrame, titleLine: titleLine, row: row) }
 
     var body: some View {
         HStack(spacing: m.space.xxs) {
@@ -53,10 +60,10 @@ struct CenterTabStrip: View {
                 .padding(.leading, m.space.xs)
             Spacer(minLength: 0)
         }
-        .frame(height: m.pt(Self.height))
+        .frame(height: row)
         .padding(.leading, Self.leadingInset(toggle: toggleFrame, gap: m.pt(Self.gapAfterToggle)))
-        .padding(.top, Self.topInset(toggle: toggleFrame, titleLine: titleLine, height: m.pt(Self.height)))
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, Self.rowTop(row: row, strip: strip))
+        .frame(maxWidth: .infinity, minHeight: strip, maxHeight: strip, alignment: .topLeading)
         .background(Color.dmSidebarBg)
         .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .contain)

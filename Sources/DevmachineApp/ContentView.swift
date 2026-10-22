@@ -280,21 +280,15 @@ struct ContentView: View {
             if !model.sidebarCollapsed {
                 sidebarDivider
             }
-            VStack(spacing: 0) {
-                if showsTabStrip {
-                    CenterTabStrip()
-                }
-                DocumentSplitView(split: split, showsTrailing: showsDocumentPane) {
-                    centerPane
-                } trailing: {
-                    DocumentPane()
-                }
-                .onChange(of: showsDocumentPane) { _, shown in
-                    if !shown { split.paneClosed() }
-                }
-                .onChange(of: previews.owner) { _, _ in split.paneClosed() }
+            DocumentSplitView(split: split, showsTrailing: showsDocumentPane) {
+                centerPane
+            } trailing: {
+                DocumentPane()
             }
-            .ignoresSafeArea(edges: .top)
+            .onChange(of: showsDocumentPane) { _, shown in
+                if !shown { split.paneClosed() }
+            }
+            .onChange(of: previews.owner) { _, _ in split.paneClosed() }
             if model.showsContextPanel {
                 contextArea
             }
@@ -321,8 +315,10 @@ struct ContentView: View {
             // the window's top edge, no content-colored band above them.
             // Full screen has no title bar to inset from, yet the sidebar toggle
             // still sits on the buttons' line: the band around it stays clear.
-            MainPane(terminalTopInset: model.sidebarCollapsed && !showsTabStrip
-                ? max(titlebarHeight, windowButtons.minY + windowButtons.maxY) : 0)
+            MainPane(
+                terminalTopInset: model.sidebarCollapsed && !showsTabStrip
+                    ? max(titlebarHeight, windowButtons.minY + windowButtons.maxY) : 0,
+                showsTabStrip: showsTabStrip)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.dmContentBg)
                 .ignoresSafeArea(edges: .top)
@@ -337,8 +333,7 @@ struct ContentView: View {
     }
 
     /// The strip of open sessions and files over the terminal, when
-    /// Settings asks for it. It stays while a page covers the terminal, so
-    /// a tab is a way back.
+    /// Settings asks for it.
     private var showsTabStrip: Bool {
         CenterTabStrip.shows(enabled: settingsStore.settings?.showsSessionTabs ?? false, mode: model.appMode)
     }
@@ -403,22 +398,34 @@ private struct MainPane: View {
     /// and the sidebar toggle sit over the pane then, so the terminal starts
     /// below them. Home keeps running under them, edge to edge.
     var terminalTopInset: CGFloat = 0
+    /// The open tabs over the terminal. Laid out in this pane, above the
+    /// terminal, never beside it in the window: a terminal is an AppKit view,
+    /// and one laid over a SwiftUI strip by a safe-area stretch painted on
+    /// top of it.
+    var showsTabStrip = false
 
     var body: some View {
         ZStack {
             WallpaperBackground(style: .ambient)
 
-            // Only the selected terminal is mounted: the registry owns the process,
-            // so an unmounted one keeps running and re-attaches on the next select.
-            // A session in the session grid is mounted by the grid instead — mounting it here as
-            // well would pull the shared view out of its grid cell.
-            if let selected = model.selection, !isInSessionGrid(selected) {
-                terminal(for: selected)
-            }
-            if MainPaneVisibility.showsHome(
-                hasSelection: model.selection != nil, activePage: model.activePage) {
-                HomeView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                if showsTabStrip {
+                    CenterTabStrip()
+                }
+                ZStack {
+                    // Only the selected terminal is mounted: the registry owns the process,
+                    // so an unmounted one keeps running and re-attaches on the next select.
+                    // A session in the session grid is mounted by the grid instead — mounting it here as
+                    // well would pull the shared view out of its grid cell.
+                    if let selected = model.selection, !isInSessionGrid(selected) {
+                        terminal(for: selected)
+                    }
+                    if MainPaneVisibility.showsHome(
+                        hasSelection: model.selection != nil, activePage: model.activePage) {
+                        HomeView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
             }
         }
     }

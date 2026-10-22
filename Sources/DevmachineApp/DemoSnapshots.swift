@@ -208,6 +208,15 @@ enum DemoSnapshots {
         Screen(id: "sidebar-harness-icons", fileName: "35-sidebar-harness-icons.png", settleNanoseconds: 900_000_000),
     ]
 
+    /// The tabs walk (`DEVMACHINE_DEMO_WALK=tabs`): Settings → Appearance →
+    /// "Show open sessions and files as tabs" on, three of acme's sessions
+    /// and a file opened, umbrella folded; then the same with the sidebar
+    /// closed, where the strip starts after the window buttons.
+    static let tabsScreens: [Screen] = [
+        Screen(id: "tabs-open", fileName: "36-tabs-open.png", settleNanoseconds: 900_000_000),
+        Screen(id: "tabs-sidebar-closed", fileName: "37-tabs-sidebar-closed.png", settleNanoseconds: 900_000_000),
+    ]
+
     /// `DEVMACHINE_DEMO_ICON_STYLE=monochrome` draws that walk's icons in the
     /// row's tint; brand colors by default, as Settings starts.
     static func iconStyle(from environment: [String: String]) -> HarnessIconStyle {
@@ -419,6 +428,7 @@ enum DemoSnapshots {
         switch environment["DEVMACHINE_DEMO_WALK"] {
         case "worktrees": return worktreeScreens
         case "harness-icons": return harnessIconScreens
+        case "tabs": return tabsScreens
         case "update-toast": return updateToastScreens
         case "cli-update": return cliUpdateScreens
         case "file-viewer": return fileViewerScreens
@@ -682,6 +692,15 @@ enum DemoSnapshots {
         switch screen.id {
         case "sessions":
             model.openSessionGrid(acmeAlias)
+        case "tabs-open", "tabs-sidebar-closed":
+            environment.settingsStore.settings?.showsHarnessIcons = true
+            environment.settingsStore.settings?.showsSessionTabs = true
+            model.workspaceCollapse.set("umbrella-devmachine", collapsed: true)
+            model.clickSession(SessionRef(alias: acmeAlias, name: "api — tests"))
+            model.fileOpened(path: "/home/acme/dash/README.md")
+            model.clickSession(SessionRef(alias: acmeAlias, name: "codex — landing page"))
+            model.clickSession(SessionRef(alias: acmeAlias, name: "claude — payments refactor"))
+            model.sidebarCollapsed = screen.id == "tabs-sidebar-closed"
         case "sidebar-harness-icons":
             environment.settingsStore.settings?.showsHarnessIcons = true
             environment.settingsStore.settings?.harnessIconStyle = Self.iconStyle(

@@ -13,11 +13,13 @@ final class CenterTabStripRenderTests: XCTestCase {
 
     func testTheStripMovesOutFromUnderTheWindowButtonsOnlyWhileTheSidebarIsClosed() {
         XCTAssertEqual(CenterTabStrip.leadingInset(toggle: nil, gap: 8), 0)
-        XCTAssertEqual(CenterTabStrip.topInset(toggle: nil, titleLine: 22, height: 34), 0)
+        XCTAssertEqual(CenterTabStrip.stripHeight(toggle: nil, titleLine: 22, row: 34), 34)
         let toggle = CGRect(x: 86, y: 10, width: 24, height: 24)
         XCTAssertEqual(CenterTabStrip.leadingInset(toggle: toggle, gap: 8), 118)
-        XCTAssertEqual(CenterTabStrip.topInset(toggle: toggle, titleLine: 22, height: 34), 5)
-        XCTAssertEqual(CenterTabStrip.topInset(toggle: toggle, titleLine: 10, height: 34), 0)
+        XCTAssertEqual(CenterTabStrip.stripHeight(toggle: toggle, titleLine: 22, row: 34), 44)
+        XCTAssertEqual(CenterTabStrip.stripHeight(toggle: toggle, titleLine: 10, row: 34), 34)
+        XCTAssertEqual(CenterTabStrip.rowTop(row: 34, strip: 44), 5)
+        XCTAssertEqual(CenterTabStrip.rowTop(row: 34, strip: 34), 0)
     }
 
     func testAFileTabIconFollowsTheExtension() {
