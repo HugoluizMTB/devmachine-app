@@ -140,7 +140,7 @@ enum DemoSnapshots {
         Screen(
             id: "context-ask-claude", fileName: "27-ask.png", settleNanoseconds: 1_200_000_000,
             zoom: "context:ask", windowSize: NSSize(width: 1600, height: 1000)),
-        Screen(id: "chat-mode-menu", fileName: "28-mode-menu.png", settleNanoseconds: 500_000_000),
+        Screen(id: "sidebar-nav", fileName: "28-sidebar-nav.png", settleNanoseconds: 500_000_000),
     ]
 
     /// The preview screen: acme's dev server session with its landing page

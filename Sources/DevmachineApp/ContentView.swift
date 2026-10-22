@@ -75,7 +75,6 @@ struct ContentView: View {
         .toolbarBackground(.hidden, for: .windowToolbar)
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { titlebarHeight = $0 }
         .coordinateSpace(.named(Self.windowSpace))
-        .modifier(SidebarModeMenuOverlay(model: model))
         .background(Color.dmSidebarBg)
         .overlay {
             if model.showFileSearch, let target = model.commandTarget(for: model.selection) {

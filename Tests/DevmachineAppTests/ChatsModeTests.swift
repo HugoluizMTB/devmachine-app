@@ -62,17 +62,23 @@ final class ChatsModeTests: XCTestCase {
 }
 
 @MainActor
-final class SidebarModeHeaderTests: XCTestCase {
-    func testTheTitleNamesTheMode() {
-        XCTAssertEqual(SidebarModeHeader.title(.code), "CODE WORKSPACES")
-        XCTAssertEqual(SidebarModeHeader.title(.chats), "CHAT WORKSPACES")
+final class SidebarNavTests: XCTestCase {
+    func testTheSectionTitleNamesThePlace() {
+        XCTAssertEqual(SidebarNav.sectionTitle(.code), "WORKSPACES")
+        XCTAssertEqual(SidebarNav.sectionTitle(.chats), "CHATS")
+        XCTAssertEqual(SidebarNav.sectionTitle(.schedule), "SCHEDULE")
     }
 
-    func testChangingModeClosesTheMenu() {
+    func testNavItemsRunTheSameModelCallsAsTheOldMenu() {
         let model = AppModel(services: fixtureServices())
-        model.showsModeMenu = true
         model.appMode = .chats
-        XCTAssertFalse(model.showsModeMenu)
+        SidebarNav.select(.code, model: model)
+        XCTAssertEqual(model.appMode, .code)
+        SidebarNav.select(.schedule, model: model)
+        XCTAssertEqual(model.appMode, .schedule)
+        XCTAssertNil(model.activePage)
+        SidebarNav.select(.chats, model: model)
+        XCTAssertEqual(model.appMode, .chats)
     }
 }
 
@@ -88,15 +94,12 @@ final class ScheduleModeTests: XCTestCase {
         XCTAssertEqual(model.activePage, .stats)
     }
 
-    func testTheMenuAndTitleNameSchedule() {
+    func testTheNavRowNamesSchedule() {
         let model = AppModel(services: fixtureServices())
-        XCTAssertEqual(SidebarModeHeader.title(.schedule), "SCHEDULE")
-        let items = SidebarModeMenuOverlay.items(model)
-        XCTAssertEqual(items.prefix(3).map(\.title), ["Code", "Chats", "Schedule"])
-        XCTAssertEqual(items[2].shortcut, "⌘3")
-        items[2].action?()
+        XCTAssertEqual(SidebarNav.items[2].title, "Schedule")
+        XCTAssertEqual(SidebarNav.items[2].shortcut, "⌘3")
+        SidebarNav.select(.schedule, model: model)
         XCTAssertEqual(model.appMode, .schedule)
-        XCTAssertEqual(SidebarModeMenuOverlay.items(model).count, 3)
         XCTAssertEqual(DevmachineApp.newItemTitle(.schedule), "New Task")
     }
 

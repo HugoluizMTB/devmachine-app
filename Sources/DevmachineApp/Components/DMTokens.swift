@@ -51,6 +51,8 @@ enum DMIconSize {
     static let sm: CGFloat = 11
     static let md: CGFloat = 12.5
     static let lg: CGFloat = 20
+    /// The glyph before a sidebar place (Workspaces, Chats, Schedule).
+    static let navGlyph: CGFloat = 12
 }
 
 /// The inside of a list row and the gap around it, in points at 100%.

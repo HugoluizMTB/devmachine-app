@@ -81,7 +81,7 @@ final class DemoSnapshotsTests: XCTestCase {
             "10-publish-port.png", "18-operator.png", "19-home.png",
             "20-menubar-usage.png", "21-command-palette.png", "22-drop-files.png",
             "23-preview.png", "24-scheduled.png", "25-quick-panel.png", "26-chats.png", "27-ask.png",
-            "28-mode-menu.png",
+            "28-sidebar-nav.png",
         ])
     }
 
@@ -91,7 +91,7 @@ final class DemoSnapshotsTests: XCTestCase {
 
     func testTheChatsScreensCloseTheWalkWithAskZoomed() {
         let last = Array(DemoSnapshots.screens.suffix(4))
-        XCTAssertEqual(last.map(\.id), ["quick-panel-answer", "chat-main", "context-ask-claude", "chat-mode-menu"])
+        XCTAssertEqual(last.map(\.id), ["quick-panel-answer", "chat-main", "context-ask-claude", "sidebar-nav"])
         XCTAssertEqual(last.map(\.zoom), [nil, nil, "context:ask", nil])
         XCTAssertEqual(last[2].windowSize, NSSize(width: 1600, height: 1000))
     }

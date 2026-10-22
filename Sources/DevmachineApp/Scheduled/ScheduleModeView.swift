@@ -46,13 +46,11 @@ struct ScheduleSidebar: View {
     var body: some View {
         let groups = Self.groups(store.rows)
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: m.pt(10)) {
-                SidebarModeHeader(refresh: { store.refresh() })
-                SidebarNewRow(title: "New task", systemImage: "plus", shortcut: "⌘N") { store.requestNewTask() }
+            SidebarTopBlock(title: SidebarNav.sectionTitle(.schedule)) {
+                SidebarRefreshButton { store.refresh() }
+                SidebarPlusButton(help: "New task (⌘N)") { store.requestNewTask() }
                     .disabled(store.workspaces.isEmpty)
             }
-            .padding(.bottom, m.pt(SidebarHeaderSpacing.blockGap))
-            .modifier(SidebarHeaderTop())
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(groups, id: \.name) { group in
