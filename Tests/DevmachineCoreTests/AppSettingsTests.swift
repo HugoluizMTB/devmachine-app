@@ -18,6 +18,19 @@ private func fullRepo() -> (String) -> Bool {
 }
 
 final class AppSettingsTests: XCTestCase {
+    func testShowsSessionTabsDefaultsOffAndRoundTrips() throws {
+        XCTAssertFalse(goodSettings.showsSessionTabs)
+        var settings = goodSettings
+        settings.showsSessionTabs = true
+        let data = try JSONEncoder().encode(settings)
+        XCTAssertTrue(try JSONDecoder().decode(AppSettings.self, from: data).showsSessionTabs)
+        let old = try JSONSerialization.data(withJSONObject: [
+            "opsRepoPath": "/Users/alice/.config/devmachine", "hostAlias": "devmachine",
+            "publicIP": "203.0.113.7", "baseDomain": "example.com",
+        ])
+        XCTAssertFalse(try JSONDecoder().decode(AppSettings.self, from: old).showsSessionTabs)
+    }
+
     func testWorkspaceSuffixIsDashPlusAlias() {
         XCTAssertEqual(goodSettings.workspaceSuffix, "-devmachine")
     }

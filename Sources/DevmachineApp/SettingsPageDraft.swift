@@ -38,6 +38,7 @@ final class SettingsPageDraft: ObservableObject {
     @Published var showsSessionAge = true
     @Published var showsAttention = true
     @Published var harnessIconStyle = HarnessIconStyle.color
+    @Published var showsSessionTabs = false
     @Published var linkOpening = LinkOpening.defaultBrowser
     @Published var hiddenWorkspaces: [String] = []
     @Published var enabledHarnesses = AppSettings.empty.enabledHarnesses

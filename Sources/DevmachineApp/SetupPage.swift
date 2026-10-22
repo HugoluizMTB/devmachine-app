@@ -131,6 +131,7 @@ struct SetupPage: View {
             showsSessionAge: form.showsSessionAge,
             showsAttention: form.showsAttention,
             harnessIconStyle: form.harnessIconStyle,
+            showsSessionTabs: form.showsSessionTabs,
             hiddenWorkspaces: form.hiddenWorkspaces,
             autoConnectWorkspaces: settingsStore.settings?.autoConnectWorkspaces ?? [],
             enabledHarnesses: form.enabledHarnesses,
@@ -1008,6 +1009,15 @@ struct SetupPage: View {
             .controlSize(.small)
             note("Spinner and attention work for remote sessions. "
                 + "Attention needs the agent to ring the terminal bell.")
+            Toggle(isOn: $form.showsSessionTabs) {
+                Text(verbatim: "Show open sessions and files as tabs")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            note("A strip above the terminal lists the sessions you opened and the files "
+                + "you looked at. Closing a tab only takes it off the strip; the session keeps running.")
         }
     }
 
@@ -1371,6 +1381,7 @@ struct SetupPage: View {
             form.showsSessionAge = current.showsSessionAge
             form.showsAttention = current.showsAttention
             form.harnessIconStyle = current.harnessIconStyle
+            form.showsSessionTabs = current.showsSessionTabs
             form.linkOpening = current.linkOpening
             form.hiddenWorkspaces = current.hiddenWorkspaces
             form.operatorProgram = current.operatorProgram
