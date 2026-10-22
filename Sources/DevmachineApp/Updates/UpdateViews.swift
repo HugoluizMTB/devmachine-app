@@ -71,6 +71,52 @@ enum PackagesUpdateContent {
     }
 }
 
+/// The app card's title, which names what its dialog also updates.
+enum AppUpdateCardContent {
+    static func title(version: String, installed: Bool, cli: SemanticVersion?, packages: String?) -> String {
+        let head = "Devmachine \(version) " + (installed ? "is installed" : "is available")
+        guard !installed else { return head }
+        let also = [cli.map { "the CLI to \($0)" }, packages.map { "packages to \($0)" }].compactMap { $0 }
+        guard !also.isEmpty else { return head }
+        return head + " · also updates " + also.joined(separator: " and ")
+    }
+}
+
+/// The app dialog's three steps, kept apart from the view so it is tested.
+enum UnifiedUpdateContent {
+    static let updateOnlyTheAppTitle = "Update only the app"
+    static let toolsRunning = "Updating the CLI and packages…"
+
+    static func title(_ step: UnifiedUpdateStep, appVersion: String) -> String {
+        switch step {
+        case .tools: return "CLI and packages"
+        case .app: return "Devmachine \(appVersion)"
+        case .relaunch: return "Relaunch"
+        }
+    }
+
+    static func toolsDetail(cli: CLIUpdateNotice?, packages: PackagesOutdated?) -> String {
+        let parts = [
+            cli.map { "CLI \($0.installed) → \($0.latest)" },
+            packages.map { "packages \($0.pinned) → \($0.latest)" },
+        ].compactMap { $0 }
+        return parts.isEmpty ? "Up to date" : parts.joined(separator: " · ")
+    }
+
+    static func status(_ status: UnifiedUpdateStepStatus) -> String {
+        switch status {
+        case .waiting: return "Waiting"
+        case .running: return "Running"
+        case .done: return "Done"
+        case .upToDate: return "Up to date"
+        case .couldNotCheck: return "Could not check"
+        case .skipped: return "Skipped"
+        case .failed: return "Failed"
+        case .moveByHand: return "Move it by hand"
+        }
+    }
+}
+
 /// Kept apart from the view so the wording is tested, and is the same for a
 /// Homebrew and a disk image install.
 struct UpdateDialogContent: Equatable {
@@ -177,7 +223,7 @@ struct UpdateBanner: View {
     @Environment(\.dmMetrics) private var m
 
     var body: some View {
-        if let release = updates.availableRelease {
+        if updates.availableRelease != nil {
             VStack(alignment: .leading, spacing: m.row.horizontal) {
                 HStack(alignment: .top, spacing: m.row.horizontal) {
                     Image(systemName: "arrow.down.circle.fill")
@@ -185,9 +231,9 @@ struct UpdateBanner: View {
                         .foregroundStyle(Color.accentColor)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: m.space.xxs) {
-                        Text(verbatim: "Devmachine \(release.version?.description ?? release.tagName) "
-                            + (updates.isWaitingForRestart ? "is installed" : "is available"))
+                        Text(verbatim: updates.appCardTitle)
                             .font(.dm(12, weight: .semibold))
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(verbatim: "Your sessions keep running.")
                             .font(.dm(11))
                             .foregroundStyle(Color.dmMuted)
@@ -411,6 +457,8 @@ struct PackagesUpdateBanner: View {
     }
 }
 
+/// The CLI, the packages pin and the skills come first, then the app, then
+/// the relaunch: a new app never starts against a CLI it needs to be newer.
 struct UpdateDialog: View {
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject private var updates: UpdateController
@@ -434,6 +482,7 @@ struct UpdateDialog: View {
                     }
                     .frame(maxHeight: m.pt(180))
                 }
+                UnifiedUpdateStepsView()
                 if let command = content.homebrewCommand {
                     VStack(alignment: .leading, spacing: m.space.sm) {
                         Text(verbatim: "Installed with Homebrew. The app runs this for you:")
@@ -455,6 +504,28 @@ struct UpdateDialog: View {
 
     @ViewBuilder
     private func state(_ content: UpdateDialogContent) -> some View {
+        switch updates.toolsStep {
+        case .running:
+            UpdateProgressView(label: UnifiedUpdateContent.toolsRunning)
+            DMLogView(lines: updates.packagesPhase == .running ? updates.packagesOutput : updates.cliOutput)
+        case .failed(let error) where updates.phase == .idle:
+            DMErrorStateView(state: error, retry: { start() })
+            toolsStepButtons()
+        case .needsManualUpdate(let command) where updates.phase == .idle:
+            VStack(alignment: .leading, spacing: m.space.sm) {
+                Text(verbatim: CLIUpdateContent.terminalLead(manual: true))
+                    .font(.dm(11))
+                    .foregroundStyle(Color.dmMuted)
+                DMCommandBlock(command, wraps: true)
+            }
+            toolsStepButtons()
+        default:
+            appState(content)
+        }
+    }
+
+    @ViewBuilder
+    private func appState(_ content: UpdateDialogContent) -> some View {
         switch updates.phase {
         case .failed(let error):
             DMErrorStateView(state: error, retry: { Task { await updates.install() } })
@@ -484,23 +555,52 @@ struct UpdateDialog: View {
             }
         case .idle:
             if updates.canInstallInPlace {
-                buttons(primary: content.primaryTitle) { Task { await updates.install() } }
+                buttons(primary: content.primaryTitle) { start() }
             } else {
                 Text(verbatim: "This copy was built on this Mac without a Developer ID signature, so it "
                     + "cannot check that an update is genuine. Download the new version instead.")
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
                     .fixedSize(horizontal: false, vertical: true)
-                buttons(primary: "Open Release Page") {
-                    if let url = updates.availableRelease?.htmlURL { NSWorkspace.shared.open(url) }
-                    close()
-                }
+                buttons(primary: "Open Release Page") { start() }
             }
         default:
             UpdateProgressView(phase: updates.phase)
             if case .upgradingWithHomebrew = updates.phase {
                 DMLogView(lines: updates.homebrewOutput)
             }
+        }
+    }
+
+    private func start() {
+        if updates.canInstallInPlace {
+            Task { await updates.updateAll() }
+        } else {
+            Task {
+                if await updates.updateTools() { openReleasePage() }
+            }
+        }
+    }
+
+    private func updateOnlyTheApp() {
+        if updates.canInstallInPlace {
+            Task { await updates.updateOnlyTheApp() }
+        } else {
+            openReleasePage()
+        }
+    }
+
+    private func openReleasePage() {
+        if let url = updates.availableRelease?.htmlURL { NSWorkspace.shared.open(url) }
+        close()
+    }
+
+    private func toolsStepButtons() -> some View {
+        HStack {
+            Spacer()
+            DMButton("Cancel", variant: .outline) { close() }
+                .keyboardShortcut(.cancelAction)
+            DMButton(UnifiedUpdateContent.updateOnlyTheAppTitle) { updateOnlyTheApp() }
         }
     }
 
@@ -522,6 +622,72 @@ struct UpdateDialog: View {
     private func close() {
         updates.dismissFailure()
         updates.showsDialog = false
+    }
+}
+
+private struct UnifiedUpdateStepsView: View {
+    @Environment(\.dmMetrics) private var m
+    @EnvironmentObject private var updates: UpdateController
+
+    var body: some View {
+        let steps = updates.dialogSteps
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            ForEach(UnifiedUpdateStep.allCases, id: \.self) { step in
+                row(step, status: steps.status(step))
+            }
+        }
+        .padding(m.space.md)
+        .dmSurface(Color.dmBand, radius: DMRadius.panel)
+    }
+
+    private func row(_ step: UnifiedUpdateStep, status: UnifiedUpdateStepStatus) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: m.space.md) {
+            icon(status)
+                .frame(width: m.pt(14))
+            VStack(alignment: .leading, spacing: m.space.xxs) {
+                Text(verbatim: UnifiedUpdateContent.title(step, appVersion: appVersion))
+                    .font(.dm(12, weight: .medium))
+                if let detail = detail(step, status: status) {
+                    Text(verbatim: detail)
+                        .font(.dm(11))
+                        .foregroundStyle(Color.dmMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: m.space.sm)
+            Text(verbatim: UnifiedUpdateContent.status(status))
+                .font(.dm(11))
+                .foregroundStyle(Color.dmMuted)
+        }
+    }
+
+    private var appVersion: String {
+        updates.availableRelease.map { $0.version?.description ?? $0.tagName } ?? ""
+    }
+
+    private func detail(_ step: UnifiedUpdateStep, status: UnifiedUpdateStepStatus) -> String? {
+        guard step == .tools, status == .waiting || status == .running || status == .failed else { return nil }
+        return UnifiedUpdateContent.toolsDetail(cli: updates.cliNotice, packages: updates.packagesNotice)
+    }
+
+    @ViewBuilder
+    private func icon(_ status: UnifiedUpdateStepStatus) -> some View {
+        switch status {
+        case .running:
+            ProgressView().controlSize(.small)
+        case .done:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .failed:
+            Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+        case .upToDate:
+            Image(systemName: "checkmark.circle").foregroundStyle(Color.dmMuted)
+        case .skipped, .couldNotCheck:
+            Image(systemName: "minus.circle").foregroundStyle(Color.dmMuted)
+        case .moveByHand:
+            Image(systemName: "hand.point.right").foregroundStyle(Color.dmMuted)
+        case .waiting:
+            Image(systemName: "circle").foregroundStyle(Color.dmMuted)
+        }
     }
 }
 
@@ -562,7 +728,8 @@ struct UpdatesSettingsView: View {
             .toggleStyle(.switch)
             .controlSize(.small)
             note("Looks at launch and every 6 hours. Nothing installs until you click Update and Relaunch. "
-                + "Updating replaces only this app, never the CLI, its configuration or your machines.")
+                + "A CLI or packages pin that is behind is updated first, then this app. Your configuration "
+                + "and machines stay as they are.")
 
             if let error = updates.checkError {
                 DMErrorStateView(state: error, retry: { updates.checkNow() })

@@ -13,11 +13,12 @@ enum DemoCLIUpdate {
     }
 
     enum ToastState {
-        case withAppUpdate, running, updated, failed, manual, pinned
+        case available, running, updated, failed, manual, pinned
     }
 
-    /// The packages card: next to the app's and the CLI's (`available`),
-    /// then alone while it runs, once done, and after a failure.
+    /// The packages card: under the CLI's (`available`), then alone while it
+    /// runs, once done, and after a failure. Neither has an app update, which
+    /// would cover both.
     enum PackagesState {
         case available, running, done, failed
     }
@@ -30,7 +31,7 @@ enum DemoCLIUpdate {
     static func toastStack(_ state: ToastState, model: AppModel) async -> some View {
         let updates: UpdateController
         switch state {
-        case .withAppUpdate: updates = await controller(.available, appUpdate: true)
+        case .available: updates = await controller(.available)
         case .running: updates = await controller(.running)
         case .updated: updates = await controller(.updated)
         case .failed: updates = await controller(.failed)
@@ -41,6 +42,16 @@ enum DemoCLIUpdate {
             updates = await controller(.updated, installed: "0.7.31")
         }
         return stack(updates, model: model)
+    }
+
+    /// The app's update dialog with its three steps, while a CLI 0.7.31 and
+    /// its packages pin are both behind.
+    static func dialog() async -> some View {
+        let updates = await controller(.available, appUpdate: true, installed: "0.7.31")
+        return UpdateDialog()
+            .environmentObject(updates)
+            .background(Color.dmContentBg)
+            .environment(\.colorScheme, .dark)
     }
 
     private static func stack(_ updates: UpdateController, model: AppModel) -> some View {
@@ -92,7 +103,7 @@ enum DemoCLIUpdate {
     private static func packagesController(_ state: PackagesState) async -> UpdateController {
         let fake = fakeCLIFolder(version: "0.7.31")
         try? Data(fakePackagesCLI(state).utf8).write(to: fake.script)
-        let updates = makeController(appUpdate: state == .available, fake: fake, cliLatest: state == .available)
+        let updates = makeController(appUpdate: false, fake: fake, cliLatest: state == .available)
         await updates.check(userInitiated: true)
         switch state {
         case .available:

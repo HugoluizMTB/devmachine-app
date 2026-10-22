@@ -333,6 +333,12 @@ final class DemoSnapshotsTests: XCTestCase {
         XCTAssertEqual(Set(names).count, names.count)
     }
 
+    func testTheCLIUpdateWalkShowsTheUpdateDialogWithItsSteps() {
+        let dialog = DemoSnapshots.cliUpdateScreens.first { $0.id == "update-dialog-steps" }
+        XCTAssertEqual(dialog?.fileName, "205-update-dialog-steps.png")
+        XCTAssertEqual(DemoSnapshots.chrome(for: "update-dialog-steps"), .panel)
+    }
+
     func testTheMachineReadyWalkIsItsOwnSet() {
         XCTAssertEqual(DemoSnapshots.walk(environment: ["DEVMACHINE_DEMO_WALK": "machine-ready"]).map(\.id), [
             "ready-home", "ready-running", "ready-failed", "ready-done", "ready-first-sync", "ready-old-cli",

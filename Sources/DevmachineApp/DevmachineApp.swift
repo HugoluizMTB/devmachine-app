@@ -21,7 +21,7 @@ struct DevmachineApp: App {
     @StateObject private var fileTreeStore = FileTreeStore()
     @StateObject private var fileSearchStore = FileSearchStore()
     @StateObject private var paletteRecents = PaletteRecentsStore()
-    @StateObject private var updates = UpdateController.live()
+    @StateObject private var updates: UpdateController
 
     init() {
         _ = SettingsStore.shared
@@ -29,6 +29,8 @@ struct DevmachineApp: App {
         LogFiles.shared.startWatching()
         ScrollBarStyle.apply()
         MainWindowSizer.readSavedFrame()
+        let updates = UpdateController.live()
+        _updates = StateObject(wrappedValue: updates)
         let prs = PRStore()
         let stats = StatsStore()
         _prStore = StateObject(wrappedValue: prs)
@@ -45,6 +47,7 @@ struct DevmachineApp: App {
                 machines: stats.machines.count)
         }
         WidgetCompatibilityStore.shared.onUpdated = {
+            updates.checkNow()
             HomeBoardController.shared.reload()
             StackBoardController.reloadAll()
             MenubarController.shared.reload()

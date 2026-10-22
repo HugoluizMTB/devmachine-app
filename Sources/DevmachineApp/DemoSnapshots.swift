@@ -73,7 +73,8 @@ enum DemoSnapshots {
              "scheduled-setup-failed-sheet",
              "cli-update-toast", "cli-update-toast-running", "cli-update-toast-updated", "cli-update-toast-failed",
              "cli-update-toast-manual", "cli-update-toast-pinned", "packages-update-toast",
-             "packages-update-toast-running", "packages-update-toast-done", "packages-update-toast-failed":
+             "packages-update-toast-running", "packages-update-toast-done", "packages-update-toast-failed",
+             "update-dialog-steps":
             return .panel
         case _ where DemoHostKey.handles(screenID):
             return .panel
@@ -234,10 +235,10 @@ enum DemoSnapshots {
 
     /// The CLI update walk (`DEVMACHINE_DEMO_WALK=cli-update`): the Updates
     /// pane's CLI block before, during and after `update --cli-only`, run on
-    /// a fake CLI script, then the corner toast in the same states (`65` has
-    /// an app update too, so both cards stack). `57` is a CLI 0.7.31 that ran
+    /// a fake CLI script, then the corner toast in the same states, with no
+    /// app update (one would cover them). `57` is a CLI 0.7.31 that ran
     /// `update --no-machines`; `53`–`56` are the packages card, the first one
-    /// under the app's and the CLI's.
+    /// under the CLI's. `205` is the app's update dialog with its three steps.
     static let cliUpdateScreens: [Screen] = [
         Screen(id: "cli-update-available", fileName: "60-cli-update-available.png", settleNanoseconds: 200_000_000),
         Screen(id: "cli-update-running", fileName: "61-cli-update-running.png", settleNanoseconds: 200_000_000),
@@ -260,6 +261,7 @@ enum DemoSnapshots {
         Screen(
             id: "packages-update-toast-failed", fileName: "56-packages-update-toast-failed.png",
             settleNanoseconds: 200_000_000),
+        Screen(id: "update-dialog-steps", fileName: "205-update-dialog-steps.png", settleNanoseconds: 200_000_000),
     ]
 
     /// The setup flow walk (`DEVMACHINE_DEMO_WALK=setup-flow`): the first-run
@@ -592,6 +594,8 @@ enum DemoSnapshots {
             case "packages-update-toast", "packages-update-toast-running", "packages-update-toast-done",
                  "packages-update-toast-failed":
                 view = await packagesUpdateToastView(screen.id, model: environment.model)
+            case "update-dialog-steps":
+                view = standaloneView(await DemoCLIUpdate.dialog(), fittingSize: NSSize(width: 560, height: 760))
             case "packages-confirm":
                 view = DemoPackages.confirmView()
             case "scheduled-setup-sheet":
@@ -1071,7 +1075,7 @@ enum DemoSnapshots {
         case "cli-update-toast-failed": state = .failed
         case "cli-update-toast-manual": state = .manual
         case "cli-update-toast-pinned": state = .pinned
-        default: state = .withAppUpdate
+        default: state = .available
         }
         return standaloneView(
             await DemoCLIUpdate.toastStack(state, model: model), fittingSize: NSSize(width: 400, height: 520))
