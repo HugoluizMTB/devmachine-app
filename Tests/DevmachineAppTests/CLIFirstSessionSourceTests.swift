@@ -171,6 +171,20 @@ final class CLIFirstSessionSourceTests: XCTestCase {
         XCTAssertEqual(try results[beta.alias]?.get().map(\.name), ["web"])
     }
 
+    func testALoginTheAgentWouldNotSignIsTheAgentsFailureNotTheMachines() {
+        let message = "the machine refused the login: machine main answered on 203.0.113.10 but refused the login "
+            + "for acme: sign_and_send_pubkey: signing failed for ED25519 /Users/alice/.ssh/id_ed25519 from agent: "
+            + "agent refused operation; acme@203.0.113.10: Permission denied (publickey)."
+        let runner = SessionsCLIRunner(result: (output(
+            workspace("acme", error: #"{"kind":"login-refused","message":"\#(message)"}"#)), "", 0))
+
+        let results = source(runner).sessions(for: [acme], settings: .empty)
+
+        XCTAssertThrowsError(try results[acme.alias]?.get()) { error in
+            XCTAssertEqual((error as? SessionStoreError)?.failure, .agentRefused)
+        }
+    }
+
     func testALoginTheAgentHasNotApprovedIsWaitingNotUnreachable() {
         let message = "the SSH agent has not approved the key yet: machine \\\"main\\\" answered on 203.0.113.10"
         let runner = SessionsCLIRunner(result: (output(

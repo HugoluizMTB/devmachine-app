@@ -2293,15 +2293,24 @@ final class AppModel: ObservableObject {
     /// Coming back to the app: what it shows is read again at once, rather
     /// than at the next background tick.
     func appBecameActive() {
+        liftAgentPauses()
         if let lastSweepAt, sweepClock().timeIntervalSince(lastSweepAt) < 5 { return }
         refreshAll()
+    }
+
+    /// Coming back to the app is the moment 1Password gets unlocked, so an
+    /// agent pause ends then, and each machine is asked once more.
+    private func liftAgentPauses() {
+        for (alias, pause) in pollPauses where pause.reason == .agentLocked {
+            pollPauses[alias] = nil
+        }
     }
 
     /// The sidebar's refresh button. An unreachable machine costs nothing to
     /// ask, so its pause is lifted and it is asked now; a refused login keeps
     /// its pause, since each one counts toward a ban.
     func refreshAllNow() {
-        for (alias, pause) in pollPauses where pause.reason == .unreachable {
+        for (alias, pause) in pollPauses where pause.reason == .unreachable || pause.reason == .agentLocked {
             pollPauses[alias] = nil
         }
         refreshAll()
@@ -2433,6 +2442,16 @@ final class AppModel: ObservableObject {
                     return
                 }
             }
+            // This Mac's agent would not sign: the machine refused nothing
+            // and its sessions keep running, so no hold, no red, no problem
+            // under the name; a quiet pause, and it is asked again.
+            if failure == .agentRefused {
+                offlineAliases.remove(alias)
+                pausesAgain = true
+                pausePolling(alias: alias, after: .agentRefused)
+                syncContext()
+                return
+            }
             let problem = SessionProblem(error)
             if sessionProblems[alias] != problem { sessionProblems[alias] = problem }
             if (error as? SessionListError)?.problem == .tmuxMissing {
@@ -2527,7 +2546,7 @@ final class AppModel: ObservableObject {
         switch error.failure {
         case .authDenied: return .refused
         case .unreachable: return LoginFailure(message: error.stderr)
-        case .hostKeyRejected, .loginWaiting: return nil
+        case .hostKeyRejected, .loginWaiting, .agentRefused: return nil
         }
     }
 
@@ -2598,7 +2617,7 @@ final class AppModel: ObservableObject {
     /// refused login keeps its pause: each one counts toward a ban.
     func networkReturned() {
         reconnectingSince = pauseClock()
-        for (alias, pause) in pollPauses where pause.reason == .unreachable || pause.reason == .reconnecting {
+        for (alias, pause) in pollPauses where pause.reason.liftsOnReturn {
             pollPauses[alias] = nil
         }
         scheduleSweep(after: networkSweepDelay)
@@ -2677,6 +2696,14 @@ final class AppModel: ObservableObject {
         switch failure {
         case .hostKeyRejected, .loginWaiting:
             return
+        case .agentRefused:
+            let pause = PollPause(.agentLocked, machine: machine, from: pauseClock())
+            setPause(pause, alias: alias)
+            guard let machine else { return }
+            for ws in workspaces(onMachine: machine) where ws.alias != alias {
+                setPause(pause, alias: ws.alias)
+                markAnswered(ws.alias)
+            }
         case .authDenied:
             let refusals = (loginRefusals[alias] ?? 0) + 1
             loginRefusals[alias] = refusals

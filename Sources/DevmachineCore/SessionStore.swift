@@ -57,9 +57,15 @@ public enum SSHFailure: Equatable, Sendable {
     /// login open and asks nothing more of the server while it waits, so it
     /// counts toward no ban and the host is up.
     case loginWaiting
+    /// This Mac's SSH agent would not sign (1Password locked or not
+    /// answering after a wake). The machine refused nothing, and the
+    /// sessions on it keep running; asking again once the agent is back is
+    /// all there is to do.
+    case agentRefused
 
     public static func classify(exitCode: Int32, stderr: String) -> SSHFailure? {
         guard exitCode == 255 else { return nil }
+        if FailureCause.isSSHAgentFailure(stderr) { return .agentRefused }
         // A refused login wins: it counts toward a ban whatever came before.
         if FailureCause.isSSHLoginRefused(stderr) { return .authDenied }
         return HostKeyTrust.isHostKeyRejection(stderr) ? .hostKeyRejected : .unreachable

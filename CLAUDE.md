@@ -1133,6 +1133,18 @@ coding agent icon…", the widget field "Coding agent"). Code and JSON keep
   package both wait for the first sync, so the card says
   `devmachine sync --machine <m>` instead of offering Prepare, which would fix
   only the package. Home keeps the machine's own card. Demo shot `79`.
+- **An SSH agent that will not sign is not a refused login**
+  (`SSHFailure.agentRefused`, from `FailureCause.isSSHAgentFailure`: "agent
+  refused operation", "communication with agent failed"). After a wake,
+  1Password is locked and every machine fails this way at once; the machine
+  accepted the key and saw no bad signature, and its sessions keep running.
+  So: no `LoginHoldCenter` hold, no red, no problem under the name, no toast.
+  One quiet `agentLocked` pause per machine (`PollPause.agentLockedSeconds`),
+  drawn as one card for the whole sidebar, lifted when the app becomes
+  active, the network returns, Refresh, or the timer. The hold with "Check
+  the machine's key and user, then Retry" is for a login the server itself
+  turned down. This once filled the sidebar with "The server refused the
+  login" cards after every sleep, and the owner was right to be angry.
 - **A session list never fails silently** (`SessionListProblem`): ssh looking
   the alias itself up as a hostname means no Host entry, exit 127 means no
   tmux. Neither stops the sweep or pauses polling; both show in the sidebar

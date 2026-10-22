@@ -10,7 +10,9 @@ public enum LoginFailure: Equatable, Sendable {
 
     public init?(message: String) {
         let lowered = message.lowercased()
-        if FailureCause.isSSHLoginRefused(message)
+        if FailureCause.isSSHAgentFailure(message) {
+            return nil
+        } else if FailureCause.isSSHLoginRefused(message)
             || ["does not log in", "no more authentication methods", "login-refused"].contains(where: lowered.contains) {
             self = .refused
         } else if lowered.contains("connection refused") {

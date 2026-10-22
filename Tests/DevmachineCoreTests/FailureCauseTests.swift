@@ -40,6 +40,19 @@ final class FailureCauseTests: XCTestCase {
     func testSSHExitingWithAFileErrorIsNotAnAuthFailure() {
         XCTAssertEqual(SSHFailure.classify(exitCode: 255, stderr: "alice@acme: Permission denied (publickey)."), .authDenied)
         XCTAssertEqual(
+            SSHFailure.classify(
+                exitCode: 255,
+                stderr: "sign_and_send_pubkey: signing failed for ED25519 \"/Users/alice/.ssh/id_ed25519\" from agent: "
+                    + "agent refused operation\nalice@acme: Permission denied (publickey)."),
+            .agentRefused)
+        XCTAssertEqual(
+            SSHFailure.classify(
+                exitCode: 255,
+                stderr: "sign_and_send_pubkey: signing failed for ED25519 \"/Users/alice/.ssh/id_ed25519\" from agent: "
+                    + "communication with agent failed\nalice@acme: Permission denied (publickey)."),
+            .agentRefused)
+        XCTAssertNil(LoginFailure(message: "from agent: agent refused operation\nalice@acme: Permission denied (publickey)."))
+        XCTAssertEqual(
             SSHFailure.classify(exitCode: 255, stderr: "error: failed to delete '/home/alice/x': Permission denied"),
             .unreachable)
         XCTAssertNil(SSHFailure.classify(exitCode: 1, stderr: "Permission denied (publickey)."))

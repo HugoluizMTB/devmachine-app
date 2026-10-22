@@ -14,9 +14,19 @@ struct PollPause: Equatable {
         /// the network is still coming up, so it is grey, not red, and asked
         /// again sooner.
         case reconnecting
+        /// This Mac's SSH agent would not sign, which after a wake means
+        /// 1Password is locked: every machine fails the same way at once, so
+        /// the sidebar shows one quiet card for all of them, and each machine
+        /// is asked again on its own once the pause ends or the person comes
+        /// back to the app.
+        case agentLocked
 
         /// Paused for the whole machine, so the sidebar shows one card for it.
         var coversMachine: Bool { self != .loginRefused }
+
+        /// Ends early when the person comes back to the app or the network
+        /// returns: asking again costs the machine nothing it counts.
+        var liftsOnReturn: Bool { self == .unreachable || self == .reconnecting || self == .agentLocked }
     }
 
     /// A locked agent after waking refuses every login until someone unlocks
@@ -29,6 +39,10 @@ struct PollPause: Equatable {
     /// unreachable after 30 seconds, and each of those is a dropped login on
     /// the machine.
     static let reconnectingSeconds: TimeInterval = 30
+    /// An agent that would not sign is asked again a few minutes later, one
+    /// login per machine each time: the machine sees a login that was never
+    /// signed, which a strict fail2ban may still count, so no faster.
+    static let agentLockedSeconds: TimeInterval = 180
     /// A workspace refused again right after its pause will most likely be
     /// refused the next time too, so each refusal in a row doubles its pause,
     /// up to this.
@@ -60,6 +74,7 @@ struct PollPause: Equatable {
         switch reason {
         case .unreachable: return unreachableSeconds
         case .reconnecting: return reconnectingSeconds
+        case .agentLocked: return agentLockedSeconds
         case .loginRefused: return loginRefusedSeconds(refusals: refusals)
         }
     }
@@ -77,6 +92,9 @@ struct PollPause: Equatable {
             return "Couldn't reach \(workspace). Paused checking it for \(minutes) min."
         case .reconnecting:
             return "Reconnecting to \(machine ?? workspace)…"
+        case .agentLocked:
+            return "1Password hasn't unlocked its SSH agent since the Mac woke. "
+                + "Your sessions keep running; unlock 1Password and they're checked again."
         }
     }
 }
