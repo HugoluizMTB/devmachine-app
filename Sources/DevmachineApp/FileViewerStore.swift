@@ -14,6 +14,10 @@ final class FileViewerStore: ObservableObject {
     /// The pane is on screen only while it holds a file.
     @Published private(set) var isOpen = false
 
+    /// Told the path of every file shown, so the strip over the terminal
+    /// can keep a tab for it.
+    var onOpen: ((String) -> Void)?
+
     private let host: HostRunner
     private var current: (target: CommandTarget, path: String)?
 
@@ -29,6 +33,7 @@ final class FileViewerStore: ObservableObject {
         preview = nil
         errorText = nil
         showsSource = false
+        onOpen?(path)
         load()
     }
 

@@ -496,6 +496,7 @@ final class AppModel: ObservableObject {
         localSessionHarnesses[multiplexerName] = nil
         localSessionNames[handle] = nil
         updateSidebarOrder { $0.removeSession(handle, in: Workspace.local.alias) }
+        dropTabs(of: .localSession(name: s.handle, path: s.path))
         if selection == .localSession(name: s.handle, path: s.path) { selection = nil }
     }
 
@@ -576,6 +577,7 @@ final class AppModel: ObservableObject {
             if let selection {
                 activePage = nil
                 appMode = .code
+                openTabs.open(.session(selection))
                 TerminalRegistry.shared.requestFocus(selection.terminalKind)
             }
             // Leaving the session list (ops shell, Home) drops the session
@@ -683,6 +685,12 @@ final class AppModel: ObservableObject {
     @Published var sidebarCollapsed: Bool = (UserDefaults.standard.object(forKey: "sidebarCollapsed") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "sidebarCollapsed") }
     }
+
+    /// The sessions opened and the files looked at this run, in the order
+    /// they were opened; drawn over the terminal when Settings says so.
+    @Published var openTabs = TabList<CenterTab>()
+    /// The viewer beside the terminal, for a file tab to open or close it.
+    weak var fileViewer: FileViewerStore?
 
     /// Workspaces whose sessions are folded away in the sidebar.
     @Published var workspaceCollapse: WorkspaceCollapse = AppModel.savedWorkspaceCollapse() {
@@ -918,6 +926,7 @@ final class AppModel: ObservableObject {
         selectedSessions.remove(ref)
         if selectionAnchor == ref { selectionAnchor = nil }
         if selection == item { selection = nil }
+        dropTabs(of: item)
         TerminalRegistry.shared.close(item.terminalKind)
     }
 
@@ -1782,7 +1791,7 @@ final class AppModel: ObservableObject {
     }
 
     /// The kill's own answer, not a later list, says the session is gone.
-    private func forgetDeletedSession(_ ref: SessionRef) {
+    func forgetDeletedSession(_ ref: SessionRef) {
         justDeleted[ref] = Date()
         justCreated[ref] = nil
         updateSidebarOrder { $0.removeSession(ref.name, in: ref.alias) }
@@ -1793,6 +1802,7 @@ final class AppModel: ObservableObject {
         selectedSessions.remove(ref)
         TerminalRegistry.shared.close(alias: ref.alias, session: ref.name)
         PreviewStore.shared.closeSession(ref)
+        dropTabs(of: .session(alias: ref.alias, name: ref.name))
         if selection == .session(alias: ref.alias, name: ref.name) {
             selection = nil
         }
@@ -1862,6 +1872,7 @@ final class AppModel: ObservableObject {
                 PreviewStore.shared.moveSession(
                     from: SessionRef(alias: alias, name: old), to: SessionRef(alias: alias, name: clean))
                 let oldItem = SidebarItem.session(alias: alias, name: old)
+                self.moveTabs(from: oldItem, to: .session(alias: alias, name: clean))
                 if self.selection == oldItem {
                     self.selection = .session(alias: alias, name: clean)
                 }

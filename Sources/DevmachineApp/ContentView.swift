@@ -146,6 +146,8 @@ struct ContentView: View {
             let open = openWindow
             MainWindowOpener.openWindow = { open(id: "main") }
             model.settings = settingsStore.settings
+            model.fileViewer = viewerStore
+            viewerStore.onOpen = { [weak model] path in model?.fileOpened(path: path) }
             model.checkCLIAndProceed(isConfigured: settingsStore.isConfigured)
             Task { await compat.check() }
             StackBoardController.startAll()
