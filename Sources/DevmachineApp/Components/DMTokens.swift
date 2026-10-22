@@ -53,6 +53,10 @@ enum DMIconSize {
     static let lg: CGFloat = 20
     /// The glyph before a sidebar place (Workspaces, Chats, Schedule).
     static let navGlyph: CGFloat = 12
+    /// The harness icon or terminal glyph before a session's name, and the
+    /// height of the name line it sits on.
+    static let sessionGlyph: CGFloat = 12
+    static let sessionGlyphLine: CGFloat = 16
 }
 
 /// The inside of a list row and the gap around it, in points at 100%.

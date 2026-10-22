@@ -453,7 +453,7 @@ struct WorkspacesWidgetView: View {
                     case .spinner:
                         ProgressView()
                             .controlSize(.small)
-                            .scaleEffect(14.0 / 16.0)
+                            .scaleEffect(DMIconSize.sessionGlyph / 16.0)
                     case .attention:
                         Circle()
                             .fill(Color.orange)
@@ -470,7 +470,7 @@ struct WorkspacesWidgetView: View {
                         Color.clear
                     }
                 }
-                .frame(width: m.pt(14), height: m.pt(14))
+                .frame(width: m.pt(DMIconSize.sessionGlyph), height: m.pt(DMIconSize.sessionGlyph))
             ) : nil,
             title: title,
             subtitle: shown.subtitle,
@@ -496,7 +496,8 @@ struct WorkspacesWidgetView: View {
                             .help(badge.helpText)
                     }
                 }
-            )
+            ),
+            leadingOnTitleLine: true
         )
     }
 }
@@ -543,8 +544,8 @@ private struct WorkspaceGroupTitle: View {
     }
 }
 
-/// The 14-point slot before a session's name, a terminal when no harness
-/// runs in it, so every name in the list starts at the same place.
+/// The slot before a session's name, a terminal when no harness runs in
+/// it, so every name in the list starts at the same place.
 private struct SidebarHarnessIcon: View {
     @Environment(\.dmMetrics) private var m
     let icon: HarnessIcon?
@@ -571,7 +572,7 @@ private struct SidebarHarnessIcon: View {
                 Color.clear
             }
         }
-        .frame(width: m.pt(14), height: m.pt(14))
+        .frame(width: m.pt(DMIconSize.sessionGlyph), height: m.pt(DMIconSize.sessionGlyph))
     }
 }
 
