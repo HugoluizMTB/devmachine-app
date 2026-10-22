@@ -526,6 +526,9 @@ final class TerminalRegistry: NSObject {
                         continue
                     case .hostKeyRejected?, .loginWaiting?:
                         skipped.insert(check.machine)
+                    case .agentRefused?:
+                        skipped.insert(check.machine)
+                        failures.append((check.alias, .agentRefused))
                     case .authDenied?:
                         failures.append((check.alias, .authDenied))
                     case .unreachable?:

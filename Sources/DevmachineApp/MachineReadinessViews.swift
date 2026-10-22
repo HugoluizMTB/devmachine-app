@@ -191,7 +191,7 @@ struct PollPauseSidebarCard: View {
     var body: some View {
         HStack(spacing: m.space.sm) {
             Image(systemName: Self.symbol(for: reason))
-                .foregroundStyle(reason == .reconnecting ? Color.dmMuted : .orange)
+                .foregroundStyle(reason == .reconnecting || reason == .agentLocked ? Color.dmMuted : .orange)
             Text(verbatim: notice)
                 .font(.dm(11.5, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
@@ -208,6 +208,7 @@ struct PollPauseSidebarCard: View {
         case .unreachable: return "wifi.exclamationmark"
         case .reconnecting: return "arrow.triangle.2.circlepath"
         case .loginRefused: return "pause.circle"
+        case .agentLocked: return "lock"
         }
     }
 }

@@ -53,6 +53,18 @@ public enum FailureCause: String, CaseIterable, Sendable {
             || lowered.contains("too many authentication failures")
     }
 
+    /// ssh's words when this Mac's own SSH agent would not sign: 1Password
+    /// locked or not answering after a wake, or an approval dismissed. The
+    /// machine accepted the key and saw no bad signature, so nothing was
+    /// refused on its side, whatever the "Permission denied" that follows
+    /// says.
+    public static func isSSHAgentFailure(_ message: String) -> Bool {
+        let lowered = message.lowercased()
+        return ["agent refused operation", "communication with agent failed",
+                "sign_and_send_pubkey: signing failed", "could not open a connection to your authentication agent"]
+            .contains { lowered.contains($0) }
+    }
+
     public var summary: String {
         switch self {
         case .signInNeeded: "You may need to sign in again."

@@ -156,6 +156,10 @@ struct WorkspacesWidgetView: View {
     /// first of its workspaces the sidebar shows.
     private func pollPauseCard(for workspace: Workspace) -> PollPause? {
         guard let pause = model.pollPauses[workspace.alias] else { return nil }
+        if pause.reason == .agentLocked {
+            let first = model.visibleWorkspaces.first { model.pollPauses[$0.alias]?.reason == .agentLocked }
+            return first?.alias == workspace.alias ? pause : nil
+        }
         guard pause.reason.coversMachine, let machine = pause.machine else { return pause }
         let first = model.visibleWorkspaces.first {
             let other = model.pollPauses[$0.alias]

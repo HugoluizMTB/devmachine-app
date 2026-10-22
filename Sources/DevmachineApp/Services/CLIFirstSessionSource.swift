@@ -97,7 +97,8 @@ struct CLIFirstSessionSource: SessionListSource {
         case "host-key-rejected":
             return .failure(SessionStoreError(failure: .hostKeyRejected, stderr: error.message))
         case "login-refused":
-            return .failure(SessionStoreError(failure: .authDenied, stderr: error.message))
+            let failure: SSHFailure = FailureCause.isSSHAgentFailure(error.message) ? .agentRefused : .authDenied
+            return .failure(SessionStoreError(failure: failure, stderr: error.message))
         case "login-waiting":
             return .failure(SessionStoreError(failure: .loginWaiting, stderr: error.message))
         default:

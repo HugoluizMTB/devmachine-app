@@ -49,6 +49,11 @@ private final class ScriptedSessionSource: SessionListSource, @unchecked Sendabl
             throw SessionStoreError(failure: .hostKeyRejected, stderr: "Host key verification failed.")
         case .loginWaiting?:
             throw SessionStoreError(failure: .loginWaiting, stderr: "the SSH agent has not approved the key yet")
+        case .agentRefused?:
+            throw SessionStoreError(
+                failure: .agentRefused,
+                stderr: "sign_and_send_pubkey: signing failed for ED25519 \"/Users/alice/.ssh/id_ed25519\" from agent: "
+                    + "agent refused operation\n\(workspace.name)@203.0.113.7: Permission denied (publickey).")
         case nil:
             return [TmuxSession(name: "dash", windows: 1, harnesses: [])]
         }
@@ -641,6 +646,61 @@ final class PollPauseTests: XCTestCase {
         source.fail(acme.alias, with: nil)
         try await sweep(model)
         XCTAssertNil(model.sessionProblems[acme.alias])
+    }
+
+    func testAnAgentThatWillNotSignPausesQuietlyAndHoldsNothing() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: nil)
+        let model = wakeModel(source)
+        try await sweep(model)
+        XCTAssertEqual(model.sessionsByAlias[acme.alias]?.map(\.name), ["dash"])
+
+        source.fail(acme.alias, with: .agentRefused)
+        source.fail(gamma.alias, with: .agentRefused)
+        let toasts = toastCounter(model, label: PollPause(.agentLocked, machine: "main", from: Date()).notice(workspace: "acme"))
+        defer { toasts.cancel() }
+        try await sweep(model)
+
+        XCTAssertNil(model.loginHold(alias: acme.alias), "the machine refused nothing")
+        XCTAssertNil(model.loginHold(alias: gamma.alias))
+        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .agentLocked)
+        XCTAssertEqual(model.pollPauses[beta.alias]?.reason, .agentLocked, "its sibling on the same machine waits too")
+        XCTAssertEqual(model.pollPauses[gamma.alias]?.reason, .agentLocked)
+        XCTAssertTrue(model.isPollingPaused(alias: acme.alias))
+        XCTAssertFalse(model.offlineAliases.contains(acme.alias))
+        XCTAssertNil(model.sessionProblems[acme.alias])
+        XCTAssertNil(model.sessionProblems[beta.alias])
+        XCTAssertEqual(model.sessionsByAlias[acme.alias]?.map(\.name), ["dash"], "the sessions it knew stay on screen")
+        XCTAssertEqual(toasts.count, 0, "nothing is announced")
+    }
+
+    func testComingBackToTheAppEndsTheAgentPauseAndAsksAgain() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .agentRefused)
+        let model = wakeModel(source)
+        try await sweep(model)
+        XCTAssertEqual(model.pollPauses[acme.alias]?.reason, .agentLocked)
+        let before = source.calls(acme.alias)
+
+        source.fail(acme.alias, with: nil)
+        model.sweepClock = { Date().addingTimeInterval(60) }
+        model.appBecameActive()
+        try await waitFor { source.calls(self.acme.alias) > before && !model.isSweeping }
+
+        XCTAssertNil(model.pollPauses[acme.alias])
+        XCTAssertNil(model.pollPauses[beta.alias])
+        XCTAssertEqual(model.sessionsByAlias[acme.alias]?.map(\.name), ["dash"])
+    }
+
+    func testTheAgentPauseEndsOnItsOwnAfterAWhile() async throws {
+        let source = ScriptedSessionSource()
+        source.fail(acme.alias, with: .agentRefused)
+        let model = wakeModel(source)
+        try await sweep(model)
+        XCTAssertTrue(model.isPollingPaused(alias: acme.alias))
+
+        model.pauseClock = { Date().addingTimeInterval(PollPause.agentLockedSeconds + 1) }
+        XCTAssertFalse(model.isPollingPaused(alias: acme.alias))
     }
 
     func testWakingWaitsForTheNetworkBeforeItSweeps() async throws {
