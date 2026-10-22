@@ -34,6 +34,7 @@ enum ContextTab: String, CaseIterable {
 
 struct ContextPanel: View {
     @Environment(\.titleLine) private var titleLine
+    @Environment(\.titlebarHeight) private var titlebarHeight
     @Environment(\.dmMetrics) private var m
     @EnvironmentObject var model: AppModel
     @ObservedObject var store: ContextStore
@@ -217,8 +218,18 @@ struct ContextPanel: View {
             }
         )
         .frame(height: 2 * titleLine)
+        // Taller than the title bar: a scroll view whose top touches the
+        // title bar's band is stretched up to the window's top edge, and that
+        // AppKit view then takes every click meant for this header.
+        .frame(height: ContextPanelHeader.height(titleLine: titleLine, titlebar: titlebarHeight), alignment: .top)
     }
 
+}
+
+enum ContextPanelHeader {
+    static func height(titleLine: CGFloat, titlebar: CGFloat) -> CGFloat {
+        max(2 * titleLine, titlebar > 0 ? titlebar + 1 : 0)
+    }
 }
 
 private struct ContextPush: Equatable {

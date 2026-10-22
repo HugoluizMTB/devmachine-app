@@ -49,6 +49,7 @@ struct ContentView: View {
                         \.sidebarHeaderTop,
                         SidebarHeaderSpacing.top(buttons: windowButtons))
                     .environment(\.titleLine, SidebarHeaderSpacing.line(buttons: windowButtons))
+                    .environment(\.titlebarHeight, titlebarHeight)
             }
         }
         .overlay(alignment: .topLeading) {

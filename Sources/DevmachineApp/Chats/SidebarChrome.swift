@@ -121,12 +121,23 @@ private struct TitleLineKey: EnvironmentKey {
     static let defaultValue: CGFloat = SidebarHeaderSpacing.fallbackLine
 }
 
+private struct TitlebarHeightKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
 extension EnvironmentValues {
     /// The window buttons' vertical center, in points from the window's top:
     /// the line the title bar's controls sit on.
     var titleLine: CGFloat {
         get { self[TitleLineKey.self] }
         set { self[TitleLineKey.self] = newValue }
+    }
+
+    /// The title bar's height, in points: the window's top safe area. Zero
+    /// in full screen, where there is no title bar.
+    var titlebarHeight: CGFloat {
+        get { self[TitlebarHeightKey.self] }
+        set { self[TitlebarHeightKey.self] = newValue }
     }
 
     /// Where the sidebar's header starts, in points from the window's top:
