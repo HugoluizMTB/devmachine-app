@@ -34,11 +34,11 @@ final class UpdateViewsRenderTests: XCTestCase {
     private struct HelperDidNotStart: Error {}
 
     private func controller(
-        method: AppInstallMethod, relaunches: Bool = true, cli: String = "0.7.1"
+        method: AppInstallMethod, relaunches: Bool = true, cli: String = "0.7.1", app: String = "0.1.2"
     ) async -> UpdateController {
         suite = "app.devmachine.mac.tests.\(UUID().uuidString)"
         let updates = UpdateController(dependencies: UpdateDependencies(
-            currentVersion: SemanticVersion("0.1.2"),
+            currentVersion: SemanticVersion(app),
             appFeed: ReleaseFeed(url: ReleaseFeed.appReleases, fetcher: FixedHTTP(), userAgent: "Devmachine"),
             cliFeed: ReleaseFeed(url: ReleaseFeed.cliReleases, fetcher: FixedHTTP(), userAgent: "Devmachine"),
             preferences: UpdatePreferences(defaults: UserDefaults(suiteName: suite)!),
@@ -101,6 +101,23 @@ final class UpdateViewsRenderTests: XCTestCase {
             name: "about-restart")
     }
 
+    func testTheDialogShowsTheStepsAndAFailedOrManualStepOne() async throws {
+        let failed = await controller(method: .manual, cli: "0.7.31")
+        await failed.updateAll()
+        guard case .failed = failed.toolsStep else { return XCTFail("\(failed.toolsStep)") }
+        try render(UpdateDialog().environmentObject(failed).background(Color.dmContentBg), name: "dialog-step-failed")
+
+        let manual = await controller(method: .manual, cli: "0.7.22")
+        await manual.updateAll()
+        guard case .needsManualUpdate = manual.toolsStep else { return XCTFail("\(manual.toolsStep)") }
+        try render(UpdateDialog().environmentObject(manual).background(Color.dmContentBg), name: "dialog-step-manual")
+
+        let model = AppModel(store: SessionStore(runner: SilentRunner()))
+        DMFitCheck.assertFits("update toast that also updates the CLI and packages") {
+            UpdateBanner().environmentObject(failed).environmentObject(model)
+        }
+    }
+
     func testTheBannerActionsStayInsideTheCardAtEveryTextSize() {
         let saved = DMFont.scale
         defer { DMFont.scale = saved }
@@ -137,7 +154,7 @@ final class UpdateViewsRenderTests: XCTestCase {
     }
 
     func testTheCLIToastFitsAtEveryTextSize() async {
-        let updates = await controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"))
+        let updates = await controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"), app: "0.1.3")
         XCTAssertTrue(updates.showsCLIBanner)
         let model = AppModel(store: SessionStore(runner: SilentRunner()))
         DMFitCheck.assertFits("CLI update toast") {
@@ -150,7 +167,7 @@ final class UpdateViewsRenderTests: XCTestCase {
     }
 
     func testThePackagesCardFitsAtEveryTextSize() async {
-        let updates = await controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"), cli: "0.7.31")
+        let updates = await controller(method: .homebrew(brew: "/opt/homebrew/bin/brew"), cli: "0.7.31", app: "0.1.3")
         XCTAssertTrue(updates.showsPackagesBanner)
         let model = AppModel(store: SessionStore(runner: SilentRunner()))
         DMFitCheck.assertFits("packages update card") {
