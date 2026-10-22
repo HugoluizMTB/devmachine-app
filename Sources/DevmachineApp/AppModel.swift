@@ -683,6 +683,27 @@ final class AppModel: ObservableObject {
     @Published var sidebarCollapsed: Bool = (UserDefaults.standard.object(forKey: "sidebarCollapsed") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "sidebarCollapsed") }
     }
+
+    /// Workspaces whose sessions are folded away in the sidebar.
+    @Published var workspaceCollapse: WorkspaceCollapse = AppModel.savedWorkspaceCollapse() {
+        didSet {
+            guard workspaceCollapse != oldValue, !DemoMode.isActive, NSClassFromString("XCTestCase") == nil else { return }
+            workspaceCollapse.save(.standard)
+        }
+    }
+
+    private static func savedWorkspaceCollapse() -> WorkspaceCollapse {
+        guard !DemoMode.isActive, NSClassFromString("XCTestCase") == nil else { return WorkspaceCollapse() }
+        return WorkspaceCollapse.load(.standard)
+    }
+
+    func toggleWorkspaceCollapsed(_ alias: String) {
+        workspaceCollapse.toggle(alias)
+    }
+
+    func sessionCount(alias: String) -> Int {
+        alias == Workspace.local.alias ? localSessions.count : sessions(in: alias).count
+    }
     /// Points at 100% text size; drawn at `DMMetrics.pt(_:)`, so the pane grows with the text.
     @Published var sidebarWidth: CGFloat = {
         let saved = CGFloat(UserDefaults.standard.double(forKey: "sidebarWidth"))
