@@ -949,6 +949,22 @@ struct SetupPage: View {
                 + "workspaces.")
             copyOnSelectToggle
             remoteTerminalPicker
+            sessionTabsToggle
+        }
+    }
+
+    private var sessionTabsToggle: some View {
+        VStack(alignment: .leading, spacing: m.space.sm) {
+            settingsHeading("Tabs")
+            Toggle(isOn: $form.showsSessionTabs) {
+                Text(verbatim: "Show open sessions and files as tabs")
+                    .font(.dm(12))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            note("A strip above the terminal lists the sessions you opened and the files "
+                + "you looked at. Closing a tab only takes it off the strip; the session keeps running.")
         }
     }
 
@@ -1009,15 +1025,7 @@ struct SetupPage: View {
             .controlSize(.small)
             note("Spinner and attention work for remote sessions. "
                 + "Attention needs the agent to ring the terminal bell.")
-            Toggle(isOn: $form.showsSessionTabs) {
-                Text(verbatim: "Show open sessions and files as tabs")
-                    .font(.dm(12))
-                    .foregroundStyle(.white.opacity(0.85))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            note("A strip above the terminal lists the sessions you opened and the files "
-                + "you looked at. Closing a tab only takes it off the strip; the session keeps running.")
+
         }
     }
 
