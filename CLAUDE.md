@@ -1800,6 +1800,13 @@ once may fail there.
 - **NEVER add any Claude/AI attribution, trailer, or `Co-Authored-By` — anywhere.**
 - Branch prefix `da-` when not committing straight to `main` locally.
 
+## Changelog
+- **Every app release adds an `App vX.Y.Z — date` entry to
+  `~/dev/devmachine-cli/docs/changelog.md`** (the public changelog the site
+  publishes at https://mydevmachine.sh/changelog/). Push it to the CLI's
+  `main`, then `gh workflow run deploy.yml -R mydevmachine/docs`. Only what a
+  user can see changed; no tests, CI or internal work.
+
 ## Updates
 - The updater replaces this app. For the CLI it runs one of the
   `CLIUpdateCommand` forms and nothing else: `update --cli-only` (CLI
