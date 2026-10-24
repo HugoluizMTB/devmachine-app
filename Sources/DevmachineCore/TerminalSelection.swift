@@ -50,6 +50,20 @@ public enum TerminalPointer {
     public static func copiesOnRelease(enabled: Bool, dragged: Bool, clickCount: Int, hasSelection: Bool) -> Bool {
         enabled && hasSelection && (dragged || clickCount >= 2)
     }
+
+    /// Whether a release over a link opens it. The terminal finds the link on
+    /// every click, so this is the only thing that decides: the modifiers of
+    /// the release itself, never a key state read later or a highlight the
+    /// pointer left behind. Both ⌘ and ⌥ answer, because a Mac terminal uses ⌘
+    /// and this app used to ask for ⌥. ⇧ with one of them copies the link
+    /// rather than opening it, which is the caller's own rule, so it still
+    /// answers; ⌃ opens the context menu and never does.
+    public static func opensLink(
+        command: Bool, option: Bool, control: Bool, shift: Bool, dragged: Bool, clickCount: Int
+    ) -> Bool {
+        guard !dragged, clickCount == 1, !control else { return false }
+        return command || option
+    }
 }
 
 /// A clipboard write a program sent through OSC 52 (tmux's copy mode, an

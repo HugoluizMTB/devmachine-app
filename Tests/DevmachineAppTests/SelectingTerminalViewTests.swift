@@ -6,9 +6,14 @@ import SwiftTerm
 /// A pane whose program bytes are recorded instead of written to a process.
 private final class RecordingTerminalView: SelectingTerminalView {
     var sent: [UInt8] = []
+    var opened: [String] = []
 
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {
         sent.append(contentsOf: data)
+    }
+
+    override func openRequestedLink(_ link: String, params: [String: String]) {
+        opened.append(link)
     }
 }
 
@@ -126,6 +131,52 @@ final class SelectingTerminalViewTests: XCTestCase {
         XCTAssertEqual(clipboard, "charlie")
         click(col: 13, row: 0, clicks: 3)
         XCTAssertEqual(view.getSelection()?.trimmingCharacters(in: .whitespacesAndNewlines), "alpha bravo charlie")
+    }
+
+    /// A bare web address, which is all a program prints and all a multiplexer
+    /// keeps after it repaints its screen.
+    private func feedPlainLink() {
+        view.feed(text: "see https://example.com/pr/42 now\r\n")
+    }
+
+    func testCommandAndAClickOpenABareWebAddress() async throws {
+        feedPlainLink()
+        click(col: 10, row: 2, flags: .command)
+        XCTAssertEqual(view.opened, ["https://example.com/pr/42"])
+    }
+
+    func testOptionAndAClickOpenItToo() async throws {
+        feedPlainLink()
+        click(col: 10, row: 2, flags: .option)
+        XCTAssertEqual(view.opened, ["https://example.com/pr/42"])
+    }
+
+    func testAPlainClickOnALinkOpensNothingAndStillReachesTheProgram() async throws {
+        feedPlainLink()
+        view.feed(text: Self.tmuxMouse)
+        click(col: 10, row: 2)
+        try await settle()
+        XCTAssertEqual(view.opened, [])
+        XCTAssertEqual(String(decoding: view.sent, as: UTF8.self), "\u{1b}[<0;11;3M\u{1b}[<0;11;3m")
+    }
+
+    func testTheModifiersOfAClickDoNotOutliveIt() async throws {
+        feedPlainLink()
+        click(col: 10, row: 2, flags: .command)
+        XCTAssertEqual(view.opened.count, 1)
+        view.requestOpenLink(source: view, link: "https://example.com/other", params: [:])
+        XCTAssertEqual(view.opened, ["https://example.com/pr/42"])
+    }
+
+    func testCommandAndADragSelectsInsteadOfOpening() async throws {
+        feedPlainLink()
+        let start = point(col: 4, row: 2)
+        let end = point(col: 29, row: 2)
+        view.mouseDown(with: mouse(.leftMouseDown, start, flags: .command))
+        view.mouseDragged(with: mouse(.leftMouseDragged, end, flags: .command))
+        view.mouseUp(with: mouse(.leftMouseUp, end, flags: .command))
+        XCTAssertEqual(view.opened, [])
+        XCTAssertEqual(view.getSelection(), "https://example.com/pr/42")
     }
 
     func testCopyOnSelectOffLeavesTheClipboardAlone() async throws {

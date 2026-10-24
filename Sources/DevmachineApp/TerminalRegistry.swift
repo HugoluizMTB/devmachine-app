@@ -233,10 +233,6 @@ final class TerminalRegistry: NSObject {
         term.optionAsMetaKey = false
         term.kind = kind
         term.copiesOnSelect = { SettingsStore.shared.settings?.copyOnSelect ?? true }
-        // ⌘ and a click, the way every other Mac terminal opens a link. A plain
-        // click stays what it is, so clicking a web address inside a program
-        // that reads the mouse still reaches the program.
-        term.linkHighlightMode = .hoverWithModifier
         // Explicit hyperlinks plus bare addresses: the local multiplexer loses
         // the hyperlink when it repaints its screen, and the text is all that
         // is left to match.
@@ -1033,7 +1029,7 @@ final class LegacyKeyboardTerminalView: SelectingTerminalView {
     var kind: TerminalKind?
 
     override func openRequestedLink(_ link: String, params: [String: String]) {
-        TerminalRegistry.shared.openLink(link, from: kind, flags: NSEvent.modifierFlags)
+        TerminalRegistry.shared.openLink(link, from: kind, flags: linkModifiers)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

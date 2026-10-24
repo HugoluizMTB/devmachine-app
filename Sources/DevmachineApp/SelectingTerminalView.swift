@@ -24,10 +24,20 @@ class SelectingTerminalView: LocalProcessTerminalView {
     private var press: NSEvent?
     private var dragged = false
     private var replayingClick = false
+    private var release: NSEvent?
+    private var releaseWasDragged = false
+    private var openedLink = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         selectedTextBackgroundColor = Self.selectionColor
+        // The one mode that answers a bare web address, which is all a program
+        // prints and all a multiplexer keeps once it repaints its screen. The
+        // modes that ask for a modifier answer explicit hyperlinks only, so ⌘
+        // and a click opened a link while the hyperlink lasted and stopped
+        // working the moment the screen was drawn again. What opens is decided
+        // in `requestOpenLink`, not here.
+        linkHighlightMode = .hover
         let gate = TerminalDelegateGate(view: self)
         delegateGate = gate
         terminalDelegate = gate
@@ -47,9 +57,18 @@ class SelectingTerminalView: LocalProcessTerminalView {
 
     override func mouseDown(with event: NSEvent) {
         press = event
+        release = nil
         dragged = false
+        openedLink = false
         selecting { super.mouseDown(with: event) }
     }
+
+    /// A firm press on a trackpad reaches stage 2, and the terminal then takes
+    /// the press for itself: it selects the word and marks the press handled,
+    /// which drops the link the release was going to open. That is why ⌘ and a
+    /// click opened a link on some clicks and did nothing on others. The pane
+    /// owns selection anyway, so the stage is nothing to it.
+    override func pressureChange(with event: NSEvent) {}
 
     override func mouseDragged(with event: NSEvent) {
         guard let press else { return }
@@ -73,6 +92,16 @@ class SelectingTerminalView: LocalProcessTerminalView {
         let pressed = press
         press = nil
         dragged = false
+        release = event
+        releaseWasDragged = wasDragged
+        openedLink = false
+        // The click's own modifiers last exactly as long as the click. Kept
+        // past it, a link asked for by anything else would be opened by the ⌘
+        // of a click made minutes ago.
+        defer {
+            release = nil
+            releaseWasDragged = false
+        }
         selecting { super.mouseUp(with: event) }
         if TerminalPointer.copiesOnRelease(
             enabled: copiesOnSelect(), dragged: wasDragged, clickCount: event.clickCount,
@@ -81,7 +110,7 @@ class SelectingTerminalView: LocalProcessTerminalView {
         }
         let gesture = TerminalPointer.Gesture.release(
             dragged: wasDragged, clickCount: event.clickCount, command: event.modifierFlags.contains(.command))
-        if TerminalPointer.route(gesture) == .selectionThenProgram, let pressed {
+        if !openedLink, TerminalPointer.route(gesture) == .selectionThenProgram, let pressed {
             replayClick(press: pressed, release: event)
         }
     }
@@ -92,9 +121,27 @@ class SelectingTerminalView: LocalProcessTerminalView {
         copySelection()
     }
 
+    /// The terminal resolves the link on every click and asks here. Whether it
+    /// opens is decided by the release's own modifiers: the terminal's highlight
+    /// modes tie a click to a hover the pointer has to have left behind and to a
+    /// ⌘ state it only learns while the pane holds the keyboard, and either one
+    /// missing turned ⌘ and a click into nothing at all.
     override func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
         guard !replayingClick else { return }
+        let flags = linkModifiers
+        guard TerminalPointer.opensLink(
+            command: flags.contains(.command), option: flags.contains(.option),
+            control: flags.contains(.control), shift: flags.contains(.shift),
+            dragged: releaseWasDragged, clickCount: release?.clickCount ?? 1) else { return }
+        openedLink = true
         openRequestedLink(link, params: params)
+    }
+
+    /// The modifiers of the click that asked for the link, so what a subclass
+    /// does with it is decided by the same press the person made and not by a
+    /// key state read a moment later.
+    var linkModifiers: NSEvent.ModifierFlags {
+        release?.modifierFlags ?? NSEvent.modifierFlags
     }
 
     func openRequestedLink(_ link: String, params: [String: String]) {
@@ -120,9 +167,19 @@ class SelectingTerminalView: LocalProcessTerminalView {
 
     /// SwiftTerm sends the click to the program only when the program reads
     /// the mouse; otherwise the second pass finds nothing left to do.
+    ///
+    /// `.hover` makes the terminal answer a link on any click and stop there,
+    /// so the replayed click would never reach the program. The mode that asks
+    /// for a modifier finds no link in a plain click, which is exactly what the
+    /// replay needs, so it is worn for the length of it.
     private func replayClick(press: NSEvent, release: NSEvent) {
         replayingClick = true
-        defer { replayingClick = false }
+        let mode = linkHighlightMode
+        linkHighlightMode = .hoverWithModifier
+        defer {
+            linkHighlightMode = mode
+            replayingClick = false
+        }
         super.mouseDown(with: press)
         super.mouseUp(with: release)
     }

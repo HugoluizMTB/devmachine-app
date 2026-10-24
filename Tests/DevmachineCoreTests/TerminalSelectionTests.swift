@@ -79,3 +79,34 @@ final class TerminalDragThresholdTests: XCTestCase {
         XCTAssertTrue(TerminalPointer.isDrag(from: CGPoint(x: 10, y: 10), to: CGPoint(x: 10, y: 4)))
     }
 }
+
+final class TerminalLinkGestureTests: XCTestCase {
+    private func opens(command: Bool = false, option: Bool = false, control: Bool = false,
+                       shift: Bool = false, dragged: Bool = false, clickCount: Int = 1) -> Bool {
+        TerminalPointer.opensLink(command: command, option: option, control: control,
+                                  shift: shift, dragged: dragged, clickCount: clickCount)
+    }
+
+    func testCommandOrOptionOpensTheLink() {
+        XCTAssertTrue(opens(command: true))
+        XCTAssertTrue(opens(option: true))
+    }
+
+    func testAPlainClickLeavesTheLinkAloneSoItReachesTheProgram() {
+        XCTAssertFalse(opens())
+    }
+
+    func testADragSelectsAndADoubleClickTakesTheWord() {
+        XCTAssertFalse(opens(command: true, dragged: true))
+        XCTAssertFalse(opens(command: true, clickCount: 2))
+    }
+
+    func testControlOpensTheContextMenuInstead() {
+        XCTAssertFalse(opens(command: true, control: true))
+    }
+
+    func testShiftStillAnswersBecauseTheCallerCopiesTheLinkThere() {
+        XCTAssertTrue(opens(command: true, shift: true))
+        XCTAssertFalse(opens(shift: true))
+    }
+}
