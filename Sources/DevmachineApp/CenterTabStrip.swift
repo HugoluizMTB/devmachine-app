@@ -2,10 +2,11 @@ import SwiftUI
 import AppKit
 import DevmachineCore
 
-/// The strip over the terminal: one tab per session opened this run, with
-/// its harness's icon, and one per file looked at from a session, then +.
-/// Closing a tab takes it off the strip and nothing else; the session goes
-/// on running and stays in the sidebar.
+/// The strip over the terminal: one tab per session of the workspace on
+/// screen opened this run, with its harness's icon, and one per file looked
+/// at from one of them, then +. Another workspace's tabs wait for it; Home
+/// shows none. Closing a tab (its ×, ⌘W) takes it off the strip and nothing
+/// else; the session goes on running and stays in the sidebar.
 struct CenterTabStrip: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var settingsStore: SettingsStore
@@ -51,7 +52,7 @@ struct CenterTabStrip: View {
 
     var body: some View {
         HStack(spacing: m.space.xxs) {
-            ForEach(model.openTabs.items, id: \.self) { tab in
+            ForEach(model.visibleTabs, id: \.self) { tab in
                 chip(tab)
             }
             DMIconButton(systemImage: "plus", size: 11, hitSize: DMHitSize.compact) { model.requestQuickSession() }
@@ -80,7 +81,7 @@ struct CenterTabStrip: View {
                 systemImage: "apple.terminal",
                 title: model.title(for: tab),
                 selected: selected,
-                closeHelp: "Close the tab (the session keeps running)",
+                closeHelp: "Close the tab (⌘W; the session keeps running)",
                 select: { model.select(tab: tab) },
                 close: { model.close(tab: tab) },
                 image: icon?.image,

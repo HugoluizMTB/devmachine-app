@@ -22,6 +22,15 @@ final class TabListTests: XCTestCase {
         XCTAssertEqual(tabs.items, [])
     }
 
+    func testClosingTheSelectedItemPicksTheNeighbourAmongItsOwnKind() {
+        var tabs = TabList(["a1", "b1", "a2", "b2", "a3"])
+        XCTAssertEqual(tabs.close("a2", selected: "a2") { $0.hasPrefix("a") }, "a3")
+        XCTAssertEqual(tabs.items, ["a1", "b1", "b2", "a3"])
+        XCTAssertEqual(tabs.close("a3", selected: "a3") { $0.hasPrefix("a") }, "a1", "nothing of its kind to the right")
+        XCTAssertNil(tabs.close("a1", selected: "a1") { $0.hasPrefix("a") }, "the other kind is never picked")
+        XCTAssertEqual(tabs.items, ["b1", "b2"])
+    }
+
     func testClosingAnotherItemKeepsTheSelection() {
         var tabs = TabList(["a", "b", "c"])
         XCTAssertEqual(tabs.close("a", selected: "c"), "c")

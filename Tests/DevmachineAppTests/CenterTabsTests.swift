@@ -108,6 +108,69 @@ final class CenterTabsTests: XCTestCase {
         XCTAssertEqual(model.openTabs.items, [], "a session's file tabs go with it")
     }
 
+    func testTheStripShowsTheTabsOfTheWorkspaceOnScreenAndNoneOnHome() {
+        let model = model()
+        let beta = SidebarItem.session(alias: "beta-devmachine", name: "web")
+        model.selection = dash
+        model.fileOpened(path: "/home/alice/dash/a.md")
+        model.selection = shell
+        model.selection = beta
+        model.selection = api
+        XCTAssertEqual(model.visibleTabs, [.session(dash), .file(owner: dash, path: "/home/alice/dash/a.md"), .session(api)])
+        model.selection = shell
+        XCTAssertEqual(model.visibleTabs, [.session(shell)])
+        model.selection = beta
+        XCTAssertEqual(model.visibleTabs, [.session(beta)])
+        model.goHome()
+        XCTAssertEqual(model.visibleTabs, [])
+        XCTAssertEqual(model.openTabs.items.count, 5, "Home hides the tabs; it does not close them")
+    }
+
+    func testClosingTheSelectedSessionTabStaysInItsWorkspace() {
+        let model = model()
+        model.selection = dash
+        model.selection = shell
+        model.selection = api
+        model.close(tab: .session(api))
+        XCTAssertEqual(model.selection, dash, "the neighbour in the same workspace, not the local shell between them")
+        model.close(tab: .session(dash))
+        XCTAssertNil(model.selection, "no tab left in the workspace goes Home, not to another workspace")
+        XCTAssertEqual(model.openTabs.items, [.session(shell)])
+    }
+
+    func testCommandWClosesTheTabOnScreenAndKeepsTheSession() throws {
+        let model = model()
+        let viewer = try XCTUnwrap(viewer)
+        model.sessionsByAlias["acme-devmachine"] = [TmuxSession(name: "dash", windows: 1, harnesses: [])]
+        model.selection = api
+        model.selection = dash
+        viewer.open(.remote(alias: "acme-devmachine", session: "dash"), path: "/home/alice/dash/a.md")
+        let fileTab = CenterTab.file(owner: dash, path: "/home/alice/dash/a.md")
+        XCTAssertEqual(model.tabOnScreen, fileTab, "the file the viewer shows goes first")
+
+        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeTab)
+        XCTAssertFalse(viewer.isOpen)
+        XCTAssertEqual(model.openTabs.items, [.session(api), .session(dash)])
+        XCTAssertEqual(model.selection, dash)
+        XCTAssertEqual(model.tabOnScreen, .session(dash))
+
+        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeTab)
+        XCTAssertEqual(model.openTabs.items, [.session(api)])
+        XCTAssertEqual(model.selection, api)
+        XCTAssertNil(model.pendingEndSession)
+        XCTAssertEqual(model.sessions(in: "acme-devmachine").map(\.name), ["dash"], "the session keeps running")
+
+        model.goHome()
+        XCTAssertNil(model.tabOnScreen)
+        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeWindow)
+
+        model.selection = api
+        model.dropTabs(of: api)
+        XCTAssertNil(model.tabOnScreen, "a session on screen without a tab leaves ⌘W to the window")
+        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeWindow)
+        XCTAssertEqual(model.selection, api)
+    }
+
     func testClosingASessionTabKeepsItsTerminalInTheSidebar() {
         let model = model()
         model.sessionsByAlias["acme-devmachine"] = [TmuxSession(name: "dash", windows: 1, harnesses: [])]

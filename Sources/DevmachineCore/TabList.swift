@@ -18,15 +18,15 @@ public struct TabList<Item: Hashable & Sendable>: Equatable, Sendable {
     }
 
     /// Takes `item` out and answers what to select: `selected` when it was
-    /// not the one closed, else the neighbour to its right, else to its
-    /// left, else nothing.
+    /// not the one closed, else the nearest neighbour `among` accepts, to
+    /// its right first, then to its left, else nothing.
     @discardableResult
-    public mutating func close(_ item: Item, selected: Item?) -> Item? {
+    public mutating func close(_ item: Item, selected: Item?, among isNeighbour: (Item) -> Bool = { _ in true }) -> Item? {
         guard let index = items.firstIndex(of: item) else { return selected }
         items.remove(at: index)
         guard selected == item else { return selected }
-        if items.indices.contains(index) { return items[index] }
-        return items.last
+        if let right = items[index...].first(where: isNeighbour) { return right }
+        return items[..<index].last(where: isNeighbour)
     }
 
     public mutating func removeAll(where shouldRemove: (Item) -> Bool) {

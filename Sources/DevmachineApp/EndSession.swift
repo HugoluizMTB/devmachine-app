@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import DevmachineCore
 
-/// A session ⌘W or the sidebar offers to end: what the dialog names and where it runs.
+/// A session ⇧⌘W or the sidebar offers to end: what the dialog names and where it runs.
 struct SessionEndRequest: Equatable {
     let item: SidebarItem
     let name: String
@@ -10,7 +10,7 @@ struct SessionEndRequest: Equatable {
 }
 
 enum CloseCommandRoute: Equatable {
-    case askToEndSession
+    case closeTab
     case closePreview(UUID)
     case closeWindow
 }
@@ -24,12 +24,15 @@ extension AppModel {
         return selection
     }
 
-    /// A preview with the keyboard is what ⌘W closes, the way a browser
-    /// closes its tab; the session beside it stays.
+    /// ⌘W closes a tab, the way a browser does, and ends nothing: a preview
+    /// with the keyboard first, else the tab on screen (`tabOnScreen`), whose
+    /// session keeps running. With no tab on screen it closes the window.
+    /// Ending a session is ⇧⌘W (`requestEndSession`).
     func handleCloseCommand(inMainWindow: Bool, focusedPreview: UUID? = nil) -> CloseCommandRoute {
         if inMainWindow, let focusedPreview { return .closePreview(focusedPreview) }
-        guard inMainWindow, requestEndSession() else { return .closeWindow }
-        return .askToEndSession
+        guard inMainWindow, let tab = tabOnScreen else { return .closeWindow }
+        close(tab: tab)
+        return .closeTab
     }
 
     @discardableResult
@@ -84,7 +87,7 @@ enum CloseCommand {
         switch model.handleCloseCommand(inMainWindow: inMainWindow, focusedPreview: FocusedPreview.tabID()) {
         case .closeWindow: window?.performClose(nil)
         case let .closePreview(id): PreviewStore.shared.close(id)
-        case .askToEndSession: break
+        case .closeTab: break
         }
     }
 }

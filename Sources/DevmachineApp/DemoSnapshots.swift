@@ -212,10 +212,13 @@ enum DemoSnapshots {
     /// The tabs walk (`DEVMACHINE_DEMO_WALK=tabs`): Settings → Appearance →
     /// "Show open sessions and files as tabs" on, three of acme's sessions
     /// and a file opened, umbrella folded; then the same with the sidebar
-    /// closed, where the strip starts after the window buttons.
+    /// closed, where the strip starts after the window buttons; then a
+    /// globex session on screen, whose strip holds only globex's tab while
+    /// acme's four wait.
     static let tabsScreens: [Screen] = [
         Screen(id: "tabs-open", fileName: "36-tabs-open.png", settleNanoseconds: 900_000_000),
         Screen(id: "tabs-sidebar-closed", fileName: "37-tabs-sidebar-closed.png", settleNanoseconds: 900_000_000),
+        Screen(id: "tabs-other-workspace", fileName: "38-tabs-other-workspace.png", settleNanoseconds: 900_000_000),
     ]
 
     /// `DEVMACHINE_DEMO_ICON_STYLE=monochrome` draws that walk's icons in the
@@ -696,7 +699,7 @@ enum DemoSnapshots {
         switch screen.id {
         case "sessions":
             model.openSessionGrid(acmeAlias)
-        case "tabs-open", "tabs-sidebar-closed":
+        case "tabs-open", "tabs-sidebar-closed", "tabs-other-workspace":
             environment.settingsStore.settings?.showsHarnessIcons = true
             environment.settingsStore.settings?.showsSessionTabs = true
             model.workspaceCollapse.set("umbrella-devmachine", collapsed: true)
@@ -704,6 +707,9 @@ enum DemoSnapshots {
             model.fileOpened(path: "/home/acme/dash/README.md")
             model.clickSession(SessionRef(alias: acmeAlias, name: "codex — landing page"))
             model.clickSession(SessionRef(alias: acmeAlias, name: "claude — payments refactor"))
+            if screen.id == "tabs-other-workspace" {
+                model.clickSession(SessionRef(alias: "globex-devmachine", name: "dashboard — tests"))
+            }
             model.sidebarCollapsed = screen.id == "tabs-sidebar-closed"
         case "sidebar-harness-icons":
             environment.settingsStore.settings?.showsHarnessIcons = true

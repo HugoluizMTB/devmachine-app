@@ -963,8 +963,9 @@ struct SetupPage: View {
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-            note("A strip above the terminal lists the sessions you opened and the files "
-                + "you looked at. Closing a tab only takes it off the strip; the session keeps running.")
+            note("A strip above the terminal lists the sessions you opened in the selected "
+                + "workspace and the files you looked at. Closing a tab (its ×, or ⌘W) only takes it "
+                + "off the strip; the session keeps running. ⇧⌘W ends the session.")
         }
     }
 

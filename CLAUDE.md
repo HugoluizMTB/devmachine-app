@@ -528,6 +528,26 @@ Rules:
 - Only a started mosh that could not get through shows the pane notice. A
   machine without mosh-server is a choice; the badge's tooltip says why.
 
+## Tab strip over the terminal
+- **The strip shows the workspace on screen** (`AppModel.visibleTabs`,
+  drawn by `CenterTabStrip`): the session and file tabs whose owner is in the
+  selected session's workspace (Local is a workspace). Home, a page and the
+  session grid show none; the other workspaces' tabs stay open in
+  `openTabs` and come back with a session of theirs. Closing the session
+  tab on screen moves to its neighbour in the same workspace
+  (`TabList.close(_:selected:among:)`), or Home when it was the workspace's
+  last, never to another workspace.
+- **⌘W closes a tab and ends nothing.** `handleCloseCommand` closes a
+  preview with the keyboard first, else `tabOnScreen` (the file the viewer
+  shows when it has a tab, else the session's tab); the session keeps
+  running, as the chip's × does. With no tab on screen ⌘W closes the
+  window. **⇧⌘W is "End Session…"** (`requestEndSession`, the sheet), the
+  same action as the sidebar's row menu and ⌘K. The owner asked for this
+  split: ⌘W opening the End session sheet while × only hid the tab read as
+  two different closes.
+- Demo walk `DEVMACHINE_DEMO_WALK=tabs`: `36`–`38`, the last one a globex
+  session with acme's tabs hidden.
+
 ## Previews
 - The context panel's Preview tab lists the selected workspace's published
   sites and the ports its user listens on (`PreviewTargets`, from `expose list`

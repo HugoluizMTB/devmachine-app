@@ -44,19 +44,28 @@ final class EndSessionTests: XCTestCase {
         }
     }
 
-    func testASingleRemoteSessionAsksToEndIt() {
+    func testCommandWClosesTheTabAndEndsNothing() {
         model.clickSession(SessionRef(alias: acme.alias, name: "dash"))
 
-        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .askToEndSession)
+        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeTab)
+        XCTAssertNil(model.pendingEndSession)
+        XCTAssertEqual(model.openTabs.items, [])
+        XCTAssertNil(model.selection)
+    }
+
+    func testEndSessionAsksAboutTheOneRemoteSessionOnScreen() {
+        model.clickSession(SessionRef(alias: acme.alias, name: "dash"))
+
+        XCTAssertTrue(model.requestEndSession())
         XCTAssertEqual(model.pendingEndSession, SessionEndRequest(
             item: .session(alias: acme.alias, name: "dash"), name: "dash", place: "acme"))
     }
 
-    func testASingleLocalSessionAsksToEndItInLocal() {
+    func testEndSessionAsksAboutTheOneLocalSessionOnScreenInLocal() {
         model.addLocalSession(path: "/Users/alice/dev/beta")
         model.selection = .localSession(name: "beta", path: "/Users/alice/dev/beta")
 
-        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .askToEndSession)
+        XCTAssertTrue(model.requestEndSession())
         XCTAssertEqual(model.pendingEndSession?.name, "beta")
         XCTAssertEqual(model.pendingEndSession?.place, "Local")
     }
@@ -109,14 +118,15 @@ final class EndSessionTests: XCTestCase {
         model.activePage = .sessionGrid([dash, api])
 
         XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeWindow)
+        XCTAssertFalse(model.requestEndSession())
         XCTAssertNil(model.pendingEndSession)
     }
 
-    func testSeveralSelectedSessionsKeepTheDefaultClose() {
+    func testSeveralSelectedSessionsAreNeverOfferedToEnd() {
         model.clickSession(SessionRef(alias: acme.alias, name: "dash"))
         model.cmdClickSession(SessionRef(alias: acme.alias, name: "api"))
 
-        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeWindow)
+        XCTAssertFalse(model.requestEndSession())
         XCTAssertNil(model.pendingEndSession)
     }
 
@@ -130,6 +140,7 @@ final class EndSessionTests: XCTestCase {
         model.activePage = .stats
 
         XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeWindow)
+        XCTAssertFalse(model.requestEndSession())
     }
 
     func testAnotherWindowKeepsTheDefaultClose() {
@@ -142,13 +153,14 @@ final class EndSessionTests: XCTestCase {
     func testTheOperatorSessionIsNeverOfferedToEnd() {
         model.selection = .localSession(name: Workspace.operatorSession, path: "/Users/alice/dev/ops")
 
-        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeWindow)
+        XCTAssertFalse(model.requestEndSession())
         XCTAssertNil(model.pendingEndSession)
+        XCTAssertEqual(model.handleCloseCommand(inMainWindow: true), .closeTab, "its tab closes like any other")
     }
 
     func testConfirmingKillsThatRemoteSession() async throws {
         model.clickSession(SessionRef(alias: acme.alias, name: "dash"))
-        _ = model.handleCloseCommand(inMainWindow: true)
+        model.requestEndSession()
 
         model.confirmEndSession()
 
@@ -160,7 +172,7 @@ final class EndSessionTests: XCTestCase {
     func testConfirmingRemovesThatLocalSession() {
         model.addLocalSession(path: "/Users/alice/dev/beta")
         model.selection = .localSession(name: "beta", path: "/Users/alice/dev/beta")
-        _ = model.handleCloseCommand(inMainWindow: true)
+        model.requestEndSession()
 
         model.confirmEndSession()
 
@@ -172,7 +184,7 @@ final class EndSessionTests: XCTestCase {
     func testCancellingEndsNothing() async throws {
         let item = SidebarItem.session(alias: acme.alias, name: "dash")
         model.clickSession(SessionRef(alias: acme.alias, name: "dash"))
-        _ = model.handleCloseCommand(inMainWindow: true)
+        model.requestEndSession()
 
         model.cancelEndSession()
         model.confirmEndSession()

@@ -182,8 +182,9 @@ struct DevmachineApp: App {
         .defaultSize(MainWindowSizing.preferred)
         .commands {
             CommandGroup(replacing: .newItem) { }
-            // Replaces File > Close so ⌘W can ask to end the one session on
-            // screen; every other case still closes the key window.
+            // Replaces File > Close so ⌘W closes the tab on screen (the
+            // session keeps running); every other case still closes the key
+            // window. ⇧⌘W is the one that asks to end the session.
             CommandGroup(replacing: .saveItem) {
                 Button("Close") { CloseCommand.perform(model: model) }
                     .keyboardShortcut("w", modifiers: .command)
@@ -200,6 +201,7 @@ struct DevmachineApp: App {
                 }
                 .keyboardShortcut("n", modifiers: .command)
                 Button("End Session…") { model.requestEndSession() }
+                    .keyboardShortcut("w", modifiers: [.command, .shift])
                     .disabled(model.endableSession == nil)
                 Divider()
                 Button("Previous Session") { model.moveToPreviousSession() }

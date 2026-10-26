@@ -15,9 +15,33 @@ enum CenterTab: Hashable {
         case let .file(owner, _): return owner
         }
     }
+
+    /// The workspace the tab is shown under; a local session's is Local's.
+    var workspaceAlias: String { owner.sessionRef.alias }
 }
 
 extension AppModel {
+    /// The strip's tabs: those of the workspace of the session on screen.
+    /// Home and a page over the session show none; the tabs stay open.
+    var visibleTabs: [CenterTab] {
+        guard activePage == nil, let selection else { return [] }
+        let alias = selection.sessionRef.alias
+        return openTabs.items.filter { $0.workspaceAlias == alias }
+    }
+
+    /// The tab ⌘W closes: the file the viewer shows beside the session when
+    /// it has a tab, else the session's own tab when it is open. Nothing on
+    /// Home, a page, the session grid, or a session whose tab was dropped.
+    var tabOnScreen: CenterTab? {
+        guard activePage == nil, let selection else { return nil }
+        if fileViewer?.isOpen == true, let path = fileViewer?.path {
+            let fileTab = CenterTab.file(owner: selection, path: path)
+            if openTabs.contains(fileTab) { return fileTab }
+        }
+        let sessionTab = CenterTab.session(selection)
+        return openTabs.contains(sessionTab) ? sessionTab : nil
+    }
+
     func title(for tab: CenterTab) -> String {
         switch tab {
         case let .session(.session(_, name)):
@@ -65,7 +89,8 @@ extension AppModel {
 
     /// Takes the tab off the strip. A session keeps running; a file tab
     /// also closes the viewer when it shows that file. Closing the session
-    /// on screen moves to the neighbour tab, or Home when it was the last.
+    /// on screen moves to the neighbour tab in the same workspace, or Home
+    /// when it was the workspace's last.
     func close(tab: CenterTab) {
         switch tab {
         case let .file(_, path):
@@ -74,7 +99,7 @@ extension AppModel {
         case let .session(item):
             let wasOnScreen = activePage == nil && selection == item
             openTabs.removeAll { $0.owner == item && $0 != tab }
-            let next = openTabs.close(tab, selected: wasOnScreen ? tab : nil)
+            let next = openTabs.close(tab, selected: wasOnScreen ? tab : nil) { $0.workspaceAlias == tab.workspaceAlias }
             guard wasOnScreen else { return }
             if let next {
                 select(tab: next)
