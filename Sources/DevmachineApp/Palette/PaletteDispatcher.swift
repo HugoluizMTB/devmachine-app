@@ -147,6 +147,8 @@ struct PaletteDispatcher {
         case let .openChat(id): model.showChats(select: id, store: chats)
         case .showChats: model.showChats(store: chats)
         case .showCode: model.appMode = .code
+        case .openSchema:
+            if let target = model.selectedSessionTarget { model.showPage(.schema(target)) }
         case .quit: system.quit()
         }
     }

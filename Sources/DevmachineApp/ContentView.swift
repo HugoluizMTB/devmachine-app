@@ -389,6 +389,7 @@ private struct PageHost: View {
         case .sessionGrid(let refs): SessionGridView(refs: refs).ignoresSafeArea(edges: .top)
         case .addMachine: AddMachinePage()
         case let .operatorChooser(harnesses, last): OperatorChooserPage(harnesses: harnesses, last: last)
+        case let .schema(target): SchemaPage(target: target)
         }
     }
 }
