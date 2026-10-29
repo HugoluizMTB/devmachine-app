@@ -38,9 +38,8 @@ public struct SchemaSource: Equatable, Sendable, Identifiable {
     }
 
     public var title: String {
-        let count = files.count
-        let suffix = count > 1 ? " · \(count) files" : ""
-        return "\(kind.title) — \(location)\(suffix)"
+        if files.count == 1, let file = files.first { return file.path }
+        return "\(location) · \(files.count) \(kind.title) files"
     }
 
     public func parse() -> DBSchema {
@@ -72,6 +71,11 @@ public enum SchemaDiscovery {
         case "$f" in *.js|*.ts|*.mjs|*.cjs) grep -q 'Schema' "$f" 2>/dev/null || continue ;; esac; \
         printf '%s%s\\n' '\(marker)' "$f"; base64 < "$f"; done | head -c \(maxBytes)
         """
+    }
+
+    public static func command(in folder: String?) -> String {
+        guard let folder, !folder.isEmpty else { return command }
+        return "cd \(FileUpload.shellQuoted(folder)) && " + command
     }
 
     public static func parseOutput(_ output: String) -> [SchemaFile] {

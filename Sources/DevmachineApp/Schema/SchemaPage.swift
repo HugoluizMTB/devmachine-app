@@ -3,6 +3,8 @@ import DevmachineCore
 
 struct SchemaPage: View {
     let target: CommandTarget
+    var folder: String?
+    var onClose: (() -> Void)?
     @Environment(\.dmMetrics) private var m
     @StateObject private var store: SchemaStore
     @State private var zoom: CGFloat = 1
@@ -17,8 +19,10 @@ struct SchemaPage: View {
 
     private enum Mode: String, CaseIterable { case view, model }
 
-    init(target: CommandTarget, store: SchemaStore? = nil) {
+    init(target: CommandTarget, folder: String? = nil, store: SchemaStore? = nil, onClose: (() -> Void)? = nil) {
         self.target = target
+        self.folder = folder
+        self.onClose = onClose
         _store = StateObject(wrappedValue: store ?? SchemaStore())
     }
 
@@ -31,9 +35,10 @@ struct SchemaPage: View {
         .background(Color.dmContentBg)
         .onAppear {
             zoom = SchemaZoom.clamp(DMFont.scale)
-            store.load(target)
+            store.load(target, folder: folder)
         }
-        .onChange(of: target) { _, new in store.load(new) }
+        .onChange(of: target) { _, new in store.load(new, folder: folder) }
+        .onChange(of: folder) { _, new in store.load(target, folder: new) }
         .confirmationDialog(
             "Discard your model changes?",
             isPresented: Binding(get: { pendingReload != nil }, set: { if !$0 { pendingReload = nil } })
@@ -52,12 +57,10 @@ struct SchemaPage: View {
 
     private var header: some View {
         HStack(spacing: m.space.md) {
-            Text("Schema")
+            Text(verbatim: folderName)
                 .font(.dm(13, weight: .semibold))
                 .foregroundStyle(Color.dmRowText)
-            Text(verbatim: target.label)
-                .font(.dm(11))
-                .foregroundStyle(Color.dmMuted)
+                .help(folder ?? target.label)
             if store.sources.count > 1 {
                 sourceMenu
             } else if let source = store.selectedSource {
@@ -68,10 +71,10 @@ struct SchemaPage: View {
                     .truncationMode(.middle)
             }
             if store.status == .loaded {
-                DMPill(text: store.schema.dialect.title, color: .dmMuted)
-                Text(verbatim: summary)
+                Text(verbatim: "\(store.schema.dialect.title) · \(summary)")
                     .font(.dm(11))
                     .foregroundStyle(Color.dmMuted)
+                    .lineLimit(1)
             }
             Spacer(minLength: m.space.md)
             if store.status == .loaded {
@@ -89,6 +92,7 @@ struct SchemaPage: View {
                     fontSize: 11, horizontalPadding: 10, verticalPadding: 3, grouped: true)
                     .fixedSize()
                 zoomControls
+                DMButton(icon: "arrow.up.left.and.arrow.down.right", label: "Fit to window", size: .small) { store.fit() }
                 DMButton(icon: "wand.and.rays", label: "Auto layout", size: .small) { store.autoLayout() }
                 exportMenu
             }
@@ -97,8 +101,17 @@ struct SchemaPage: View {
             }
             DMIconButton(systemImage: "arrow.clockwise", size: DMMetrics.baseFontSize, tint: nil) { request(.refresh) }
                 .help("Look for schema files again")
+            if let onClose {
+                DMIconButton(systemImage: "xmark", size: DMMetrics.baseFontSize, tint: nil, action: onClose)
+                    .help("Close the schema and go back to the terminal")
+            }
         }
         .padding(m.pt(10))
+    }
+
+    private var folderName: String {
+        guard let folder, !folder.isEmpty else { return target.label }
+        return (folder as NSString).lastPathComponent
     }
 
     private var summary: String {
@@ -237,7 +250,7 @@ struct SchemaPage: View {
         HStack(spacing: 0) {
             tableList
                 .frame(width: m.pt(220))
-                .background(Color.dmSidebarBg)
+            Divider()
             ZStack(alignment: .bottomLeading) {
                 SchemaCanvas(store: store, zoom: $zoom, focusRequest: focusRequest)
                 if let error = store.editError {
@@ -249,9 +262,9 @@ struct SchemaPage: View {
                 }
             }
             if let selected = store.selectedTable, store.schema.table(selected) != nil {
+                Divider()
                 SchemaInspector(store: store, tableName: selected, onFocus: focus)
                     .frame(width: m.pt(300))
-                    .background(Color.dmSidebarBg)
             }
         }
     }

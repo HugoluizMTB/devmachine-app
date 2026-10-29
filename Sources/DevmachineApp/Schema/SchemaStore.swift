@@ -18,11 +18,13 @@ final class SchemaStore: ObservableObject {
     @Published var selectedTable: String?
     @Published var isModeling = false
     @Published var editError: String?
+    @Published private(set) var fitRequest = 0
 
     let metrics = SchemaLayout.Metrics()
     private let host: HostRunner
     private let demo: Bool
     private var target: CommandTarget?
+    private var folder: String?
     private var savedPositions: [String: [String: SchemaPoint]] = [:]
     private var parsed: [String: DBSchema] = [:]
 
@@ -34,9 +36,10 @@ final class SchemaStore: ObservableObject {
     var isEdited: Bool { schema != original }
     var selectedSource: SchemaSource? { sources.first { $0.id == selectedSourceID } }
 
-    func load(_ target: CommandTarget) {
-        guard self.target != target || status == .idle else { return }
+    func load(_ target: CommandTarget, folder: String? = nil) {
+        guard self.target != target || self.folder != folder || status == .idle else { return }
         self.target = target
+        self.folder = folder
         refresh()
     }
 
@@ -48,8 +51,9 @@ final class SchemaStore: ObservableObject {
         }
         status = .loading
         let host = self.host
+        let command = SchemaDiscovery.command(in: folder)
         Task.detached {
-            let result = Result { try host.runCapturing(target, SchemaDiscovery.command) }
+            let result = Result { try host.runCapturing(target, command) }
             let files = (try? result.get()).map { SchemaDiscovery.parseOutput($0.stdout) } ?? []
             let found = SchemaStore.read(files)
             await MainActor.run {
@@ -96,11 +100,17 @@ final class SchemaStore: ObservableObject {
         editError = nil
         positions = savedPositions[id] ?? SchemaLayout.layout(schema, metrics: metrics)
         fillMissingPositions()
+        fitRequest += 1
         status = .loaded
     }
 
     func autoLayout() {
         positions = SchemaLayout.layout(schema, metrics: metrics)
+        fitRequest += 1
+    }
+
+    func fit() {
+        fitRequest += 1
     }
 
     func move(_ table: String, to point: SchemaPoint) {

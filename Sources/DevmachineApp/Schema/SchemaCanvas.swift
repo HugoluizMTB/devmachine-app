@@ -21,6 +21,8 @@ struct SchemaCanvas: View {
                     guard let table else { return }
                     withAnimation(.easeInOut(duration: 0.25)) { reader.scrollTo(table, anchor: .center) }
                 }
+                .onChange(of: store.fitRequest) { _, _ in fit(viewport: proxy.size, reader: reader) }
+                .onAppear { fit(viewport: proxy.size, reader: reader) }
             }
         }
         .simultaneousGesture(
@@ -34,6 +36,20 @@ struct SchemaCanvas: View {
         )
     }
 
+    private func fit(viewport: CGSize, reader: ScrollViewProxy) {
+        guard !store.schema.tables.isEmpty, viewport.width > 0, viewport.height > 0 else { return }
+        let bounds = SchemaLayout.bounds(store.positions, schema: store.schema, metrics: metrics)
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let scale = min(
+            1,
+            (viewport.width - margin * 2) / CGFloat(bounds.width),
+            (viewport.height - margin * 2) / CGFloat(bounds.height))
+        zoom = SchemaZoom.clamp(scale)
+        DispatchQueue.main.async { reader.scrollTo(SchemaCanvas.originID, anchor: .topLeading) }
+    }
+
+    static let originID = "schema-canvas-origin"
+
     private func content(viewport: CGSize) -> some View {
         let positions = livePositions
         let bounds = SchemaLayout.bounds(positions, schema: store.schema, metrics: metrics)
@@ -44,6 +60,9 @@ struct SchemaCanvas: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture { store.selectedTable = nil }
+            Color.clear
+                .frame(width: 1, height: 1)
+                .id(SchemaCanvas.originID)
             Canvas { context, _ in
                 drawRelations(in: &context, highlighted: highlighted, positions: positions)
             }

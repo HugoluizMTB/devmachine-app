@@ -213,7 +213,7 @@ struct ContextPanel: View {
                 }
                 if let commandTarget {
                     DMIconButton(systemImage: "cylinder.split.1x2", size: 12) {
-                        model.showPage(.schema(commandTarget))
+                        model.openSchema()
                     }
                     .help("Database schema")
                 }

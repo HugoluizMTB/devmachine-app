@@ -10,7 +10,6 @@ enum AppPage: Hashable {
     case addMachine
     /// Starting the Operator: which installed harness to run, `last` selected.
     case operatorChooser([HarnessID], last: SessionLaunchChoice?)
-    case schema(CommandTarget)
 }
 
 enum AppMode: String {

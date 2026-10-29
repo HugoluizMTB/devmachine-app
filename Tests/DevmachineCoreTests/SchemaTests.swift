@@ -533,3 +533,43 @@ final class SchemaReviewFixTests: XCTestCase {
         XCTAssertEqual(sources[2].parse().dialect, .sqlite)
     }
 }
+
+final class SchemaDiscoveryFolderTests: XCTestCase {
+    func testFindsTheSchemaInsideTheChosenFolder() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("schema-\(UUID().uuidString)")
+        let folder = root.appendingPathComponent("acme app/prisma")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try """
+        datasource db {
+          provider = "postgresql"
+          url      = env("DATABASE_URL")
+        }
+        model Team {
+          id   Int    @id
+          name String
+        }
+        """.write(to: folder.appendingPathComponent("schema.prisma"), atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", SchemaDiscovery.command(in: root.appendingPathComponent("acme app").path)]
+        process.currentDirectoryURL = root
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        let files = SchemaDiscovery.parseOutput(String(decoding: data, as: UTF8.self))
+        XCTAssertEqual(files.map(\.path), ["prisma/schema.prisma"])
+        let sources = SchemaDiscovery.sources(from: files)
+        XCTAssertEqual(sources.first?.title, "prisma/schema.prisma")
+        XCTAssertEqual(sources.first?.parse().tables.map(\.name), ["Team"])
+    }
+
+    func testNoFolderKeepsTheSessionDirectory() {
+        XCTAssertEqual(SchemaDiscovery.command(in: nil), SchemaDiscovery.command)
+        XCTAssertTrue(SchemaDiscovery.command(in: "/srv/it's here").hasPrefix("cd '/srv/it'\\''s here' && "))
+    }
+}
